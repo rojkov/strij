@@ -1,5 +1,10 @@
 #build --extra_toolchains=//toolchain:cc_toolchain_for_linux_x86_64
 
+build --cxxopt=-std=c++23 --host_cxxopt=-std=c++23
+# This is used to build rules_foreign_cc correctly.
+# See https://github.com/bazel-contrib/rules_foreign_cc/issues/1427
+build --repo_env=BAZEL_CONLYOPTS="-std=gnu17"
+
 # Address sanitizing
 build:asan --extra_toolchains=//toolchain:cc_toolchain_for_linux_x86_64
 build:asan --features=asan

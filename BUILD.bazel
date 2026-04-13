@@ -1,0 +1,10 @@
+load("@rules_foreign_cc//foreign_cc:configure.bzl", "configure_make")
+
+configure_make(
+    name = "liburing",
+    args = ["-j8"],
+    configure_in_place = True,
+    lib_source = "@liburing//:all_srcs",
+    out_static_libs = ["liburing.a"],
+    visibility = ["//visibility:public"],
+)

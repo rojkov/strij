@@ -8,6 +8,8 @@ single_version_override(
     version = "1.17.0",
 )
 
+bazel_dep(name = "rules_foreign_cc", version = "0.15.1")
+
 # Hedron's Compile Commands Extractor for Bazel
 # https://github.com/hedronvision/bazel-compile-commands-extractor
 bazel_dep(name = "hedron_compile_commands", dev_dependency = True)
@@ -24,3 +26,21 @@ git_override(
 #register_toolchains(
 #    "//toolchain:cc_toolchain_for_linux_x86_64"
 #)
+
+_ALL_CONTENT = """\
+filegroup(
+    name = "all_srcs",
+    srcs = glob(["**"]),
+	visibility = ["//visibility:public"],
+)
+"""
+
+http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+
+http_archive(
+    name = "liburing",
+    build_file_content = _ALL_CONTENT,
+    sha256 = "5f80964108981c6ad979c735f0b4877d5f49914c2a062f8e88282f26bf61de0c",
+    strip_prefix = "liburing-liburing-2.14",
+    urls = ["https://github.com/axboe/liburing/archive/refs/tags/liburing-2.14.tar.gz"],
+)

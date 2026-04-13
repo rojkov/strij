@@ -5,6 +5,7 @@ cc_library(
     srcs = ["component.cpp"],
     hdrs = ["component.hh"],
     visibility = ["//visibility:public"],
+    deps = ["//:liburing"],
 )
 
 cc_test(
