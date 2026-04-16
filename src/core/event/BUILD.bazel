@@ -1,0 +1,12 @@
+load("@rules_cc//cc:defs.bzl", "cc_library")
+
+cc_library(
+    name = "dispatcher_impl_lib",
+    srcs = ["dispatcher_impl.cc"],
+    hdrs = ["dispatcher_impl.hh"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//:liburing",
+        "//carrot/event:dispatcher_interface",
+    ],
+)

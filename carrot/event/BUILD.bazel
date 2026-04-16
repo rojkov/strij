@@ -1,0 +1,8 @@
+load("@rules_cc//cc:defs.bzl", "cc_library")
+
+cc_library(
+    name = "dispatcher_interface",
+    hdrs = ["dispatcher.hh"],
+    visibility = ["//visibility:public"],
+    deps = ["//carrot/common:pure_lib"],
+)
