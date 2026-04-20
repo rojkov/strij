@@ -6,3 +6,10 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = ["//carrot/common:pure_lib"],
 )
+
+cc_library(
+    name = "io_object_interface",
+    hdrs = ["io_object.hh"],
+    visibility = ["//visibility:public"],
+    deps = ["//carrot/common:pure_lib"],
+)

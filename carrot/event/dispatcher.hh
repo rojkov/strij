@@ -3,6 +3,7 @@
 #include <memory>
 
 #include "carrot/common/pure.hh"
+#include "carrot/event/command.hh"
 
 namespace carrot {
 namespace event {
@@ -18,6 +19,7 @@ public:
   Dispatcher& operator=(Dispatcher&&) noexcept = delete;
 
   virtual void Run() PURE;
+  virtual void SubmitCommand(Command cmd) PURE;
 };
 
 using DispatcherPtr = std::unique_ptr<Dispatcher>;
