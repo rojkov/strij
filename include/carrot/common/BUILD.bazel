@@ -1,6 +1,6 @@
-load("@rules_cc//cc:defs.bzl", "cc_library")
+load("//bazel:build_system.bzl", "carrot_cc_library")
 
-cc_library(
+carrot_cc_library(
     name = "pure_lib",
     hdrs = ["pure.hh"],
     visibility = ["//visibility:public"],

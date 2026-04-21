@@ -1,0 +1,24 @@
+load("//bazel:build_system.bzl", "carrot_cc_library")
+
+carrot_cc_library(
+    name = "command_interface",
+    hdrs = ["command.hh"],
+    visibility = ["//visibility:public"],
+)
+
+carrot_cc_library(
+    name = "dispatcher_interface",
+    hdrs = ["dispatcher.hh"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "command_interface",
+        "//include/carrot/common:pure_lib",
+    ],
+)
+
+carrot_cc_library(
+    name = "io_object_interface",
+    hdrs = ["io_object.hh"],
+    visibility = ["//visibility:public"],
+    deps = ["//include/carrot/common:pure_lib"],
+)

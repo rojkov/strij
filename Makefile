@@ -7,7 +7,7 @@ BAZELISK_VERSION = 1.28.1
 BAZELISK_URL = https://github.com/bazelbuild/bazelisk/releases/download/v${BAZELISK_VERSION}/bazelisk-amd64.deb
 
 build:
-	bazel build //...
+	bazel build //src/...
 
 compiledb:
 	bazel run @hedron_compile_commands//:refresh_all

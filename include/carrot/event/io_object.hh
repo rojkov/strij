@@ -5,8 +5,7 @@
 #include "carrot/common/pure.hh"
 #include "carrot/event/command.hh"
 
-namespace carrot {
-namespace event {
+namespace carrot::event {
 
 class IOObject {
 public:
@@ -14,9 +13,9 @@ public:
   virtual ~IOObject() = default;
 
   IOObject(const IOObject&) = delete;
-  IOObject& operator=(const IOObject&) = delete;
+  auto operator=(const IOObject&) -> IOObject& = delete;
   IOObject(IOObject&&) noexcept = delete;
-  IOObject& operator=(IOObject&&) noexcept = delete;
+  auto operator=(IOObject&&) noexcept -> IOObject& = delete;
 
   virtual void HandleCompletion(int res, uint32_t flags) PURE;
   virtual void ProcessCommand(Command cmd) PURE;
@@ -24,5 +23,4 @@ public:
 
 using IOObjectPtr = std::unique_ptr<IOObject>;
 
-} // namespace event
-} // namespace carrot
+} // namespace carrot::event

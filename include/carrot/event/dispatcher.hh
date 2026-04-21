@@ -4,9 +4,9 @@
 
 #include "carrot/common/pure.hh"
 #include "carrot/event/command.hh"
+#include "liburing.h"
 
-namespace carrot {
-namespace event {
+namespace carrot::event {
 
 class Dispatcher {
 public:
@@ -14,15 +14,16 @@ public:
   virtual ~Dispatcher() = default;
 
   Dispatcher(const Dispatcher&) = delete;
-  Dispatcher& operator=(const Dispatcher&) = delete;
+  auto operator=(const Dispatcher&) -> Dispatcher& = delete;
   Dispatcher(Dispatcher&&) noexcept = delete;
-  Dispatcher& operator=(Dispatcher&&) noexcept = delete;
+  auto operator=(Dispatcher&&) noexcept -> Dispatcher& = delete;
 
+  [[nodiscard]] virtual auto GetRing() -> struct io_uring* PURE;
   virtual void Run() PURE;
+  virtual void Shutdown() PURE;
   virtual void SubmitCommand(Command cmd) PURE;
 };
 
-using DispatcherPtr = std::unique_ptr<Dispatcher>;
+using DispatcherSharedPtr = std::shared_ptr<Dispatcher>;
 
-} // namespace event
-} // namespace carrot
+} // namespace carrot::event

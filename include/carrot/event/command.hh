@@ -1,16 +1,14 @@
 
 #pragma once
 
-namespace carrot {
-namespace event {
+namespace carrot::event {
 
 class IOObject;
 
 struct Command {
-  enum type_ { ACTIVATE_READ };
+  enum Type { ACTIVATE_READ } type_{};
   IOObject* destination_{nullptr};
   void* args_{nullptr};
 };
 
-} // namespace event
-} // namespace carrot
+} // namespace carrot::event
