@@ -11,7 +11,8 @@ carrot_cc_library(
     hdrs = ["dispatcher.hh"],
     visibility = ["//visibility:public"],
     deps = [
-        "command_interface",
+        ":command_interface",
+        "//:liburing",
         "//include/carrot/common:pure_lib",
     ],
 )

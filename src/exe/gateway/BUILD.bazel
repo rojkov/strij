@@ -6,5 +6,6 @@ carrot_cc_binary(
     deps = [
         "//src/core/common:signal_monitor_lib",
         "//src/core/event:dispatcher_impl_lib",
+        "//src/core/logging:log_lib",
     ],
 )

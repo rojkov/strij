@@ -1,0 +1,31 @@
+load("//bazel:build_system.bzl", "carrot_cc_library")
+
+carrot_cc_library(
+    name = "log_frontend_lib",
+    srcs = ["log_frontend.cc"],
+    hdrs = ["log_frontend.hh"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//include/carrot/event:dispatcher_interface",
+        "//include/carrot/event:io_object_interface",
+        "//rigtorp:spsc_queue_lib",
+    ],
+)
+
+carrot_cc_library(
+    name = "logger_lib",
+    srcs = ["logger.cc"],
+    hdrs = ["logger.hh"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":log_frontend_lib",
+        "//src/core/event:dispatcher_impl_lib",
+    ],
+)
+
+carrot_cc_library(
+    name = "log_lib",
+    hdrs = ["log.hh"],
+    visibility = ["//visibility:public"],
+    deps = ["logger_lib"],
+)

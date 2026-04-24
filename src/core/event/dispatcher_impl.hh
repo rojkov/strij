@@ -1,24 +1,35 @@
 #pragma once
 
+#include <sys/types.h>
+
 #include <vector>
 
 #include "carrot/event/dispatcher.hh"
+#include "carrot/event/io_object.hh"
 
 namespace carrot::event {
 
-class DispatcherImpl : public Dispatcher {
+class DispatcherImpl : public Dispatcher, public IOObject {
 public:
   DispatcherImpl();
+
+  // Dispatcher interface
   [[nodiscard]] auto GetRing() -> struct io_uring* override;
   void Run() override;
   void Shutdown() override;
   void SubmitCommand(Command cmd) override;
+
+  // IOObject interface
+  void HandleCompletion(int res, uint32_t flags) override;
+  void ProcessCommand(Command cmd) override;
 
 private:
   const uint32_t entries_num_{4096};
   struct io_uring ring_{};
   std::vector<Command> command_queue_;
   bool is_finishing_{false};
+  int event_fd_{-1};
+  uint64_t event_fd_val_{0};
 };
 
 } // namespace carrot::event
