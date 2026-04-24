@@ -1,9 +1,9 @@
 load("//bazel:build_system.bzl", "carrot_cc_library")
 
 carrot_cc_library(
-    name = "application_lib",
-    srcs = ["application.cc"],
-    hdrs = ["application.hh"],
+    name = "signal_monitor_lib",
+    srcs = ["signal_monitor.cc"],
+    hdrs = ["signal_monitor.hh"],
     visibility = ["//visibility:public"],
     deps = [
         "//include/carrot/event:dispatcher_interface",

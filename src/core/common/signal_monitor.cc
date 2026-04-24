@@ -1,23 +1,28 @@
-#include "gateway/application.hh"
+#include "core/common/signal_monitor.hh"
 
 #include <err.h>
 
 #include <cassert>
 #include <cstdint>
 
-namespace carrot::gateway {
+namespace carrot::common {
 
-Application::Application(carrot::event::DispatcherSharedPtr dispatcher)
-    : dispatcher_(std::move(dispatcher)) {}
+SignalMonitor::SignalMonitor(event::DispatcherSharedPtr dispatcher)
+    : dispatcher_(std::move(dispatcher)) {
 
-void Application::HandleCompletion(int res, [[maybe_unused]] uint32_t flags) {
+  carrot::event::Command activate_signal_handling{.destination_ = this};
+
+  dispatcher_->SubmitCommand(activate_signal_handling);
+}
+
+void SignalMonitor::HandleCompletion(int res, [[maybe_unused]] uint32_t flags) {
   assert(dispatcher_ != nullptr);
   assert(res >= 0);
 
   dispatcher_->Shutdown();
 }
 
-void Application::ProcessCommand(event::Command cmd) {
+void SignalMonitor::ProcessCommand(event::Command cmd) {
   assert(cmd.type_ == event::Command::ACTIVATE_READ);
 
   struct io_uring* ring = dispatcher_->GetRing();
@@ -38,4 +43,4 @@ void Application::ProcessCommand(event::Command cmd) {
   io_uring_prep_read(sqe, sfd, &fdsi_, sizeof(fdsi_), 0);
 }
 
-} // namespace carrot::gateway
+} // namespace carrot::common

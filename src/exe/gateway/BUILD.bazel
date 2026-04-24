@@ -4,7 +4,7 @@ carrot_cc_binary(
     name = "gateway",
     srcs = ["gateway.cc"],
     deps = [
+        "//src/core/common:signal_monitor_lib",
         "//src/core/event:dispatcher_impl_lib",
-        "//src/gateway:application_lib",
     ],
 )

@@ -5,11 +5,11 @@
 #include "carrot/event/dispatcher.hh"
 #include "carrot/event/io_object.hh"
 
-namespace carrot::gateway {
+namespace carrot::common {
 
-class Application : public event::IOObject {
+class SignalMonitor : public event::IOObject {
 public:
-  explicit Application(event::DispatcherSharedPtr dispatcher);
+  explicit SignalMonitor(event::DispatcherSharedPtr dispatcher);
 
   // event::IOObject overrides
   void HandleCompletion(int res, [[maybe_unused]] uint32_t flags) override;
@@ -20,4 +20,4 @@ private:
   event::DispatcherSharedPtr dispatcher_;
 };
 
-} // namespace carrot::gateway
+} // namespace carrot::common
