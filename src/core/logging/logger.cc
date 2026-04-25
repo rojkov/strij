@@ -1,5 +1,6 @@
 #include "core/logging/logger.hh"
 
+#include <absl/synchronization/mutex.h>
 #include <sys/eventfd.h>
 
 #include "core/event/dispatcher_impl.hh"
@@ -18,7 +19,7 @@ void Logger::RegisterThread() {
   local_context_ = ctx;
 
   {
-    std::lock_guard<std::mutex> lock(mtx_);
+    absl::MutexLock lock(worker_queues_mtx_);
     worker_queues_.push_back(ctx);
   }
 }

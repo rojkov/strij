@@ -1,9 +1,10 @@
 #pragma once
 
-#include <mutex>
 #include <thread>
 #include <vector>
 
+#include "absl/base/thread_annotations.h"
+#include "absl/synchronization/mutex.h"
 #include "carrot/event/dispatcher.hh"
 #include "core/logging/log_frontend.hh"
 
@@ -22,8 +23,8 @@ public:
 private:
   Logger();
 
-  std::mutex mtx_;
-  std::vector<LogFrontend*> worker_queues_;
+  absl::Mutex worker_queues_mtx_;
+  std::vector<LogFrontend*> worker_queues_ ABSL_GUARDED_BY(worker_queues_mtx_);
   event::DispatcherSharedPtr dispatcher_;
   std::thread thread_;
 };
