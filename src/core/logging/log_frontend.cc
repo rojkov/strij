@@ -8,6 +8,15 @@
 
 namespace carrot::logging {
 
+void pack_arg(std::byte*& ptr, std::string_view sw) {
+  size_t len = sw.size();
+  pack_arg(ptr, len);
+  std::memcpy(ptr, sw.data(), len);
+  ptr += len;
+}
+
+void pack_arg(std::byte*& ptr, const std::string& value) { pack_arg(ptr, std::string_view(value)); }
+
 LogFrontend::LogFrontend(event::DispatcherSharedPtr dispatcher)
     : event_fd_{eventfd(0, EFD_NONBLOCK)}, event_fd_val_{0} {
   if (event_fd_ == -1) {
@@ -21,8 +30,8 @@ LogFrontend::LogFrontend(event::DispatcherSharedPtr dispatcher)
   dispatcher_ = std::move(dispatcher);
 };
 
-void LogFrontend::Log(const std::string& msg) {
-  queue_.emplace(msg);
+void LogFrontend::Log(LogEntry&& entry) {
+  queue_.emplace(std::move(entry));
   uint64_t val = 1; // Value doesn't matter, we just need to wake up the event loop
   write(event_fd_, &val, sizeof(val));
 }
@@ -35,7 +44,9 @@ void LogFrontend::HandleCompletion(int res, uint32_t flags) {
   }
   // Process all log entries in the queue
   while (queue_.front()) {
-    std::cout << *queue_.front() << std::endl;
+    std::string output;
+    queue_.front()->format_fn_(queue_.front()->fmt_str_, queue_.front()->args_data_, output);
+    std::cout << output << std::endl;
     queue_.pop();
   }
 
