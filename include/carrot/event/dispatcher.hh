@@ -1,6 +1,7 @@
 #pragma once
 
 #include <memory>
+#include <span>
 
 #include "carrot/common/pure.hh"
 #include "carrot/event/command.hh"
@@ -22,6 +23,8 @@ public:
   virtual void Run() PURE;
   virtual void Shutdown() PURE;
   virtual void SubmitCommand(Command cmd) PURE;
+  virtual void PrepareRead(IOObject* io_object, int fd, std::span<std::byte> buf,
+                           off_t offset) PURE;
 };
 
 using DispatcherSharedPtr = std::shared_ptr<Dispatcher>;

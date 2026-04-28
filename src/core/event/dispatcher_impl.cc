@@ -77,4 +77,11 @@ void DispatcherImpl::ProcessCommand(Command cmd) {
   printf("Dispatcher received command: type=%d\n", cmd.type_);
 }
 
+void DispatcherImpl::PrepareRead(IOObject* io_object, int fd, std::span<std::byte> buf,
+                                 off_t offset) {
+  auto* sqe = io_uring_get_sqe(&ring_);
+  io_uring_sqe_set_data(sqe, io_object);
+  io_uring_prep_read(sqe, fd, buf.data(), buf.size(), offset);
+}
+
 } // namespace carrot::event

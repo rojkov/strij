@@ -14,9 +14,9 @@
 namespace carrot::logging {
 
 struct LogEntry {
-  const char* fmt_str_;
   void (*format_fn_)(const char* fmt_str, const std::byte* data, std::string& out);
 
+  const char* fmt_str_;
   alignas(16) std::byte args_data_[512];
 };
 
@@ -88,6 +88,7 @@ void pack_arg(std::byte*& ptr, const std::string& value);
 class LogFrontend : public event::IOObject {
 public:
   explicit LogFrontend(event::DispatcherSharedPtr dispatcher);
+  ~LogFrontend();
 
   void Log(LogEntry&& entry);
 

@@ -18,17 +18,17 @@ void pack_arg(std::byte*& ptr, std::string_view sw) {
 void pack_arg(std::byte*& ptr, const std::string& value) { pack_arg(ptr, std::string_view(value)); }
 
 LogFrontend::LogFrontend(event::DispatcherSharedPtr dispatcher)
-    : event_fd_{eventfd(0, EFD_NONBLOCK)}, event_fd_val_{0} {
+    : event_fd_{eventfd(0, EFD_NONBLOCK)}, event_fd_val_{0}, dispatcher_{std::move(dispatcher)} {
   if (event_fd_ == -1) {
     perror("eventfd");
     exit(EXIT_FAILURE);
   }
 
-  auto* sqe = io_uring_get_sqe(dispatcher->GetRing());
-  io_uring_sqe_set_data(sqe, this);
-  io_uring_prep_read(sqe, event_fd_, &event_fd_val_, sizeof(event_fd_val_), 0);
-  dispatcher_ = std::move(dispatcher);
+  dispatcher_->PrepareRead(this, event_fd_,
+                           std::as_writable_bytes(std::span<uint64_t, 1>{&event_fd_val_, 1}), 0);
 };
+
+LogFrontend::~LogFrontend() { close(event_fd_); }
 
 void LogFrontend::Log(LogEntry&& entry) {
   queue_.emplace(std::move(entry));

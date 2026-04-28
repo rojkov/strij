@@ -18,6 +18,7 @@ public:
   void Run() override;
   void Shutdown() override;
   void SubmitCommand(Command cmd) override;
+  void PrepareRead(IOObject* io_object, int fd, std::span<std::byte> buf, off_t offset) override;
 
   // IOObject interface
   void HandleCompletion(int res, uint32_t flags) override;

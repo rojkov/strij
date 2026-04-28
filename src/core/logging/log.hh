@@ -5,6 +5,7 @@
 #define LOG_REGISTER_THREAD() carrot::logging::Logger::GetInstance().RegisterThread()
 
 namespace carrot::logging {
+
 // Helper function that deduces argument types and logs them
 template <typename... Args> inline void log_impl(const char* fmt_str, Args&&... args) {
   if (carrot::logging::Logger::local_context_ != nullptr) {
@@ -17,6 +18,7 @@ template <typename... Args> inline void log_impl(const char* fmt_str, Args&&... 
     carrot::logging::Logger::local_context_->Log(std::move(entry));
   }
 }
+
 } // namespace carrot::logging
 
 #define LOG(format, ...) carrot::logging::log_impl(format, __VA_ARGS__)
