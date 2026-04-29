@@ -1,0 +1,11 @@
+load("//bazel:build_system.bzl", "carrot_cc_test")
+
+carrot_cc_test(
+    name = "log_frontend_test",
+    srcs = ["log_frontend_test.cc"],
+    deps = [
+        "//src/core/logging:log_frontend_lib",
+        "//test/mocks/event:event_mocks_lib",
+        "@googletest//:gtest_main",
+    ],
+)

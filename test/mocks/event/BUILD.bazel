@@ -1,0 +1,8 @@
+load("//bazel:build_system.bzl", "carrot_cc_test_library")
+
+carrot_cc_test_library(
+    name = "event_mocks_lib",
+    srcs = ["mocks.cc"],
+    hdrs = ["mocks.hh"],
+    deps = ["//include/carrot/event:dispatcher_interface"],
+)
