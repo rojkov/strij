@@ -4,6 +4,7 @@
 #include <cstring>
 #include <format>
 #include <iostream>
+#include <source_location>
 #include <string>
 #include <tuple>
 #include <type_traits>
@@ -20,6 +21,7 @@ struct LogEntry {
   const char* fmt_str_;
   std::chrono::system_clock::time_point timestamp_;
   uint32_t thread_id_;
+  std::source_location location_;
   alignas(16) std::byte args_data_[512];
 };
 

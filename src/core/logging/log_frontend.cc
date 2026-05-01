@@ -45,16 +45,19 @@ void LogFrontend::HandleCompletion(int res, uint32_t flags) {
   // Process all log entries in the queue
   while (queue_.front()) {
     std::string output;
-    queue_.front()->format_fn_(queue_.front()->fmt_str_, queue_.front()->args_data_, output);
-    auto time = std::chrono::system_clock::to_time_t(queue_.front()->timestamp_);
+    auto* entry = queue_.front();
+    entry->format_fn_(entry->fmt_str_, entry->args_data_, output);
+    auto time = std::chrono::system_clock::to_time_t(entry->timestamp_);
     auto local_time = *std::localtime(&time);
     auto microseconds = std::chrono::duration_cast<std::chrono::microseconds>(
-                            queue_.front()->timestamp_.time_since_epoch()) %
+                            entry->timestamp_.time_since_epoch()) %
                         1000000;
 
-    std::cout << std::format("{:02}:{:02}:{:02}.{:06} ", local_time.tm_hour, local_time.tm_min,
-                             local_time.tm_sec, microseconds.count())
-              << queue_.front()->thread_id_ << " " << output << std::endl;
+    std::cout << std::format("{:02}:{:02}:{:02}.{:06} {} {}:{}:{} ", local_time.tm_hour,
+                             local_time.tm_min, local_time.tm_sec, microseconds.count(),
+                             entry->thread_id_, entry->location_.file_name(),
+                             entry->location_.line(), entry->location_.function_name())
+              << output << std::endl;
     queue_.pop();
   }
 
