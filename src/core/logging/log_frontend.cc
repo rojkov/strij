@@ -51,9 +51,8 @@ void LogFrontend::HandleCompletion(int res, uint32_t flags) {
   }
 
   // Re-arm the eventfd for the next log entry
-  auto* sqe = io_uring_get_sqe(dispatcher_->GetRing());
-  io_uring_sqe_set_data(sqe, this);
-  io_uring_prep_read(sqe, event_fd_, &event_fd_val_, sizeof(event_fd_val_), 0);
+  dispatcher_->PrepareRead(this, event_fd_,
+                           std::as_writable_bytes(std::span<uint64_t, 1>{&event_fd_val_, 1}), 0);
 }
 
 void LogFrontend::ProcessCommand(event::Command cmd) {
