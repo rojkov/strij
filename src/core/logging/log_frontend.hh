@@ -97,12 +97,6 @@ public:
 
   void Log(LogEntry&& entry);
 
-  void LogForDebug(LogEntry&& entry) {
-    std::string output;
-    entry.format_fn_(entry.fmt_str_, entry.args_data_, output);
-    std::cout << "LogForDebug: " << output << std::endl;
-  }
-
   // event::IOObject interface
   void HandleCompletion(int res, uint32_t flags) override;
   void ProcessCommand(event::Command cmd) override;

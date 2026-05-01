@@ -20,7 +20,6 @@ inline void log_impl(LogEntry::severity severity, std::source_location&& locatio
     entry.format_fn_ = get_format_fn<Args...>();
     std::byte* ptr = entry.args_data_;
     (pack_arg(ptr, args), ...);
-    // carrot::logging::Logger::local_context_->LogForDebug(std::move(entry));
     carrot::logging::Logger::local_context_->Log(std::move(entry));
   }
 }
