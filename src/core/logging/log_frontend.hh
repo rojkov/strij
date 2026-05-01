@@ -1,5 +1,6 @@
 #pragma once
 
+#include <chrono>
 #include <cstring>
 #include <format>
 #include <iostream>
@@ -17,12 +18,13 @@ struct LogEntry {
   void (*format_fn_)(const char* fmt_str, const std::byte* data, std::string& out);
 
   const char* fmt_str_;
+  std::chrono::system_clock::time_point timestamp_;
+  uint32_t thread_id_;
   alignas(16) std::byte args_data_[512];
 };
 
 template <typename T> struct Unpacker {
   static T unpack(const std::byte*& ptr) {
-    printf("1 Unpacking argument of type %s\n", typeid(T).name());
     T val;
     std::memcpy(&val, ptr, sizeof(T));
     ptr += sizeof(T);
@@ -32,7 +34,6 @@ template <typename T> struct Unpacker {
 
 template <> struct Unpacker<char const*> {
   static char const* unpack(const std::byte*& ptr) {
-    printf("2 Unpacking argument of type %s\n", typeid(char const*).name());
     char const* val{reinterpret_cast<char const*>(ptr)};
     ptr += sizeof(char const*);
     return val;
