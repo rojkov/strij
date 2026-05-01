@@ -7,17 +7,17 @@ BAZELISK_VERSION = 1.28.1
 BAZELISK_URL = https://github.com/bazelbuild/bazelisk/releases/download/v${BAZELISK_VERSION}/bazelisk-amd64.deb
 
 build:
-	bazel build //src/...
+	bazel build //...
 
 compiledb:
 	bazel run @hedron_compile_commands//:refresh_all
 
 coverage:
-	bazel coverage //src/...
+	bazel coverage //...
 	./tools/generate_coverage.sh bazel-out/_coverage/_coverage_report.dat
 
 test:
-	bazel test //src/...
+	bazel test //...
 
 toolchain/abs_path.bzl:
 	echo "module_abs_path = \"${MAKEFILE_DIR}\"" > $@
