@@ -53,7 +53,8 @@ void LogFrontend::HandleCompletion(int res, uint32_t flags) {
                             entry->timestamp_.time_since_epoch()) %
                         1000000;
 
-    std::cout << std::format("{:02}:{:02}:{:02}.{:06} {} {}:{}:{} ", local_time.tm_hour,
+    std::cout << std::format("{} {:02}:{:02}:{:02}.{:06} {} {}:{}:{} ",
+                             static_cast<char>(entry->severity_), local_time.tm_hour,
                              local_time.tm_min, local_time.tm_sec, microseconds.count(),
                              entry->thread_id_, entry->location_.file_name(),
                              entry->location_.line(), entry->location_.function_name())

@@ -8,9 +8,11 @@ namespace carrot::logging {
 
 // Helper function that deduces argument types and logs them
 template <typename... Args>
-inline void log_impl(std::source_location&& location, const char* fmt_str, Args&&... args) {
+inline void log_impl(LogEntry::severity severity, std::source_location&& location,
+                     const char* fmt_str, Args&&... args) {
   if (carrot::logging::Logger::local_context_ != nullptr) {
     carrot::logging::LogEntry entry;
+    entry.severity_ = severity;
     entry.timestamp_ = std::chrono::system_clock::now();
     entry.thread_id_ = gettid();
     entry.location_ = std::move(location);
@@ -25,5 +27,11 @@ inline void log_impl(std::source_location&& location, const char* fmt_str, Args&
 
 } // namespace carrot::logging
 
-#define LOG(format, ...)                                                                           \
-  carrot::logging::log_impl(std::source_location::current(), format, __VA_ARGS__)
+#define LOG(s, format, ...)                                                                        \
+  carrot::logging::log_impl(carrot::logging::LogEntry::s, std::source_location::current(), format, \
+                            __VA_ARGS__)
+
+#define LOG_DEBUG(format, ...) LOG(DEBUG, format, __VA_ARGS__)
+#define LOG_INFO(format, ...) LOG(INFO, format, __VA_ARGS__)
+#define LOG_WARNING(format, ...) LOG(WARNING, format, __VA_ARGS__)
+#define LOG_ERROR(format, ...) LOG(ERROR, format, __VA_ARGS__)

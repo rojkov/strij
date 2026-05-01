@@ -12,21 +12,26 @@ auto main() -> int {
 
   LOG_REGISTER_THREAD();
 
-  LOG("Hello from the main thread! {} {}", 42, "literal string");
+  LOG_INFO("Hello from the main thread! {} {}", 42, "literal string");
 
   {
     std::string_view test_str = "test string";
     std::string_view test_str2 = "jjjjjjj";
 
-    LOG("Second line {} {}", test_str, test_str2);
+    LOG_INFO("Second line {} {}", test_str, test_str2);
   }
 
   {
     // Test how the logger handles a scoped string; the string data should be copied correctly and
     // not cause use-after-free.
     std::string temp_str = "temporary string";
-    LOG("Logging a scoped string: {}", temp_str);
+    LOG_INFO("Logging a scoped string: {}", temp_str);
   }
+
+  LOG_DEBUG("{}", 1);
+  LOG_INFO("{}", 1);
+  LOG_WARNING("{}", 1);
+  LOG_ERROR("{}", 1);
 
   dispatcher->Run();
   logger.Stop();
