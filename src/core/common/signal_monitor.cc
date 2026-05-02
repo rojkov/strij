@@ -7,6 +7,8 @@
 #include <cstdint>
 #include <cstdio>
 
+#include "core/logging/log.hh"
+
 namespace carrot::common {
 
 SignalMonitor::SignalMonitor(event::DispatcherSharedPtr dispatcher)
@@ -33,6 +35,7 @@ SignalMonitor::SignalMonitor(event::DispatcherSharedPtr dispatcher)
 void SignalMonitor::HandleCompletion(int res, [[maybe_unused]] uint32_t flags) {
   assert(dispatcher_ != nullptr);
   assert(res >= 0);
+  LOG_DEBUG("handling signal. res={}", res);
 
   close(sfd_);
   dispatcher_->Shutdown();

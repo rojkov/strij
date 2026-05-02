@@ -8,5 +8,6 @@ carrot_cc_library(
     deps = [
         "//include/carrot/event:dispatcher_interface",
         "//include/carrot/event:io_object_interface",
+        "//src/core/logging:log_lib",
     ],
 )
