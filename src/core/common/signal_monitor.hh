@@ -18,6 +18,7 @@ public:
 private:
   struct signalfd_siginfo fdsi_{};
   event::DispatcherSharedPtr dispatcher_;
+  int sfd_;
 };
 
 } // namespace carrot::common
