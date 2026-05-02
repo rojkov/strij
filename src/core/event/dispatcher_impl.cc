@@ -16,10 +16,9 @@ DispatcherImpl::DispatcherImpl() {
     perror("eventfd");
     exit(EXIT_FAILURE);
   }
-  auto* sqe = io_uring_get_sqe(&ring_);
-  assert(sqe != nullptr);
-  io_uring_sqe_set_data(sqe, static_cast<IOObject*>(this)); // pre-cast to avoid type erase issues
-  io_uring_prep_read(sqe, event_fd_, &event_fd_val_, sizeof(event_fd_val_), 0);
+
+  PrepareRead(this, event_fd_, std::as_writable_bytes(std::span<uint64_t, 1>{&event_fd_val_, 1}),
+              0);
 }
 
 auto DispatcherImpl::GetRing() -> struct io_uring* {
@@ -69,10 +68,9 @@ void DispatcherImpl::Shutdown() {
 void DispatcherImpl::SubmitCommand(Command cmd) { command_queue_.push_back(cmd); }
 
 void DispatcherImpl::HandleCompletion(int res, uint32_t flags) {
-  // This is a simple example of handling a completion for the dispatcher itself.
-  // In a real implementation, you would likely have more complex logic here.
   printf("Dispatcher received completion: res=%d, flags=%u\n", res, flags);
   is_finishing_ = true;
+  // We don't re-arm this event_fd_ after this point -> closing.
   close(event_fd_);
 }
 
@@ -85,6 +83,7 @@ void DispatcherImpl::ProcessCommand(Command cmd) {
 void DispatcherImpl::PrepareRead(IOObject* io_object, int fd, std::span<std::byte> buf,
                                  off_t offset) {
   auto* sqe = io_uring_get_sqe(&ring_);
+  assert(sqe != nullptr);
   io_uring_sqe_set_data(sqe, io_object);
   io_uring_prep_read(sqe, fd, buf.data(), buf.size(), offset);
 }

@@ -37,6 +37,7 @@ void SignalMonitor::HandleCompletion(int res, [[maybe_unused]] uint32_t flags) {
   assert(res >= 0);
   LOG_DEBUG("handling signal. res={}", res);
 
+  // We are not going to re-arm reading from this fd -> closing...
   close(sfd_);
   dispatcher_->Shutdown();
 }
