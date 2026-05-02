@@ -65,7 +65,8 @@ template <> struct Unpacker<std::string> {
 
 template <typename... Args>
 void format_trampoline(const char* fmt_str, const std::byte* data, std::string& out) {
-  const std::byte* ptr = data;
+  // This ptr may be unused if Args are empty.
+  [[maybe_unused]] const std::byte* ptr = data;
   auto args_tuple = std::tuple<std::decay_t<Args>...>{Unpacker<std::decay_t<Args>>::unpack(ptr)...};
   // Unpack every argument into a std::format-compatible dynamic format list
   out = std::apply(

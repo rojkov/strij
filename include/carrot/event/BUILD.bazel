@@ -12,7 +12,6 @@ carrot_cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":command_interface",
-        "//:liburing",
         "//include/carrot/common:pure_lib",
     ],
 )

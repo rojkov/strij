@@ -1,6 +1,7 @@
 #include "core/logging/log_frontend.hh"
 
 #include <sys/eventfd.h>
+#include <unistd.h>
 
 #include <iostream>
 

@@ -18,7 +18,8 @@ inline void log_impl(LogEntry::severity severity, std::source_location&& locatio
     entry.location_ = std::move(location);
     entry.fmt_str_ = fmt_str;
     entry.format_fn_ = get_format_fn<Args...>();
-    std::byte* ptr = entry.args_data_;
+    // This ptr may be unused if Args are empty.
+    [[maybe_unused]] std::byte* ptr = entry.args_data_;
     (pack_arg(ptr, args), ...);
     carrot::logging::Logger::local_context_->Log(std::move(entry));
   }
@@ -28,9 +29,9 @@ inline void log_impl(LogEntry::severity severity, std::source_location&& locatio
 
 #define LOG(s, format, ...)                                                                        \
   carrot::logging::log_impl(carrot::logging::LogEntry::s, std::source_location::current(), format, \
-                            __VA_ARGS__)
+                            ##__VA_ARGS__)
 
-#define LOG_DEBUG(format, ...) LOG(DEBUG, format, __VA_ARGS__)
-#define LOG_INFO(format, ...) LOG(INFO, format, __VA_ARGS__)
-#define LOG_WARNING(format, ...) LOG(WARNING, format, __VA_ARGS__)
-#define LOG_ERROR(format, ...) LOG(ERROR, format, __VA_ARGS__)
+#define LOG_DEBUG(format, ...) LOG(DEBUG, format, ##__VA_ARGS__)
+#define LOG_INFO(format, ...) LOG(INFO, format, ##__VA_ARGS__)
+#define LOG_WARNING(format, ...) LOG(WARNING, format, ##__VA_ARGS__)
+#define LOG_ERROR(format, ...) LOG(ERROR, format, ##__VA_ARGS__)

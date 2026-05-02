@@ -6,6 +6,7 @@
 
 #include "carrot/event/dispatcher.hh"
 #include "carrot/event/io_object.hh"
+#include "liburing.h"
 
 namespace carrot::event {
 
@@ -14,10 +15,10 @@ public:
   DispatcherImpl();
 
   // Dispatcher interface
-  [[nodiscard]] auto GetRing() -> struct io_uring* override;
   void Run() override;
   void Shutdown() override;
   void SubmitCommand(Command cmd) override;
+  void PrepareAcceptMultishot(IOObject* io_object, int fd) override;
   void PrepareRead(IOObject* io_object, int fd, std::span<std::byte> buf, off_t offset) override;
 
   // IOObject interface

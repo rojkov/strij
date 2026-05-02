@@ -1,0 +1,13 @@
+load("//bazel:build_system.bzl", "carrot_cc_library")
+
+carrot_cc_library(
+    name = "tcp_listener_lib",
+    srcs = ["tcp_listener.cc"],
+    hdrs = ["tcp_listener.hh"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//include/carrot/event:dispatcher_interface",
+        "//include/carrot/event:io_object_interface",
+        "//src/core/logging:log_lib",
+    ],
+)

@@ -21,11 +21,6 @@ DispatcherImpl::DispatcherImpl() {
               0);
 }
 
-auto DispatcherImpl::GetRing() -> struct io_uring* {
-  printf("DispatcherImpl::GetRing called... %p\n", this);
-  return &ring_;
-}
-
 void DispatcherImpl::Run() {
   while (!is_finishing_) {
     struct io_uring_cqe* cqe{nullptr};
@@ -78,6 +73,13 @@ void DispatcherImpl::ProcessCommand(Command cmd) {
   // This is a simple example of processing a command for the dispatcher itself.
   // In a real implementation, you would likely have more complex logic here.
   printf("Dispatcher received command: type=%d\n", cmd.type_);
+}
+
+void DispatcherImpl::PrepareAcceptMultishot(IOObject* io_object, int fd) {
+  auto* sqe = io_uring_get_sqe(&ring_);
+  assert(sqe != nullptr);
+  io_uring_sqe_set_data(sqe, io_object);
+  io_uring_prep_multishot_accept(sqe, fd, nullptr, nullptr, 0);
 }
 
 void DispatcherImpl::PrepareRead(IOObject* io_object, int fd, std::span<std::byte> buf,

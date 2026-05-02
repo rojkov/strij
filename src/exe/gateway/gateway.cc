@@ -1,5 +1,6 @@
 #include "core/common/signal_monitor.hh"
 #include "core/event/dispatcher_impl.hh"
+#include "core/io/tcp_listener.hh"
 #include "core/logging/log.hh"
 
 auto main() -> int {
@@ -32,6 +33,8 @@ auto main() -> int {
   LOG_INFO("{}", 1);
   LOG_WARNING("{}", 1);
   LOG_ERROR("{}", 1);
+
+  carrot::io::TcpListener listener{dispatcher, 8081};
 
   dispatcher->Run();
   logger.Stop();
