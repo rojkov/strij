@@ -3,6 +3,8 @@
 #include <sys/eventfd.h>
 #include <unistd.h>
 
+#include <cassert>
+
 #include "carrot/event/io_object.hh"
 
 namespace carrot::event {
@@ -15,6 +17,7 @@ DispatcherImpl::DispatcherImpl() {
     exit(EXIT_FAILURE);
   }
   auto* sqe = io_uring_get_sqe(&ring_);
+  assert(sqe != nullptr);
   io_uring_sqe_set_data(sqe, static_cast<IOObject*>(this)); // pre-cast to avoid type erase issues
   io_uring_prep_read(sqe, event_fd_, &event_fd_val_, sizeof(event_fd_val_), 0);
 }
@@ -40,17 +43,18 @@ void DispatcherImpl::Run() {
 
     // Process all completions in this tick.
     unsigned head{0};
-    uint32_t count{0};
+    unsigned count{0};
     io_uring_for_each_cqe(&ring_, head, cqe) {
       count++;
-      printf("CQE received: res=%d, flags=%u\n", cqe->res, cqe->flags);
+      printf("t:%d CQE received: res=%d, flags=%u count=%d\n", gettid(), cqe->res, cqe->flags,
+             count);
       auto* obj = static_cast<IOObject*>(io_uring_cqe_get_data(cqe));
       if (obj != nullptr) {
         obj->HandleCompletion(cqe->res, cqe->flags);
       }
     }
 
-    io_uring_cq_advance(&ring_, head);
+    io_uring_cq_advance(&ring_, count);
   }
   printf("Exiting run loop, cleaning up io_uring... %p\n", this);
 
@@ -69,6 +73,7 @@ void DispatcherImpl::HandleCompletion(int res, uint32_t flags) {
   // In a real implementation, you would likely have more complex logic here.
   printf("Dispatcher received completion: res=%d, flags=%u\n", res, flags);
   is_finishing_ = true;
+  close(event_fd_);
 }
 
 void DispatcherImpl::ProcessCommand(Command cmd) {
