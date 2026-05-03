@@ -36,7 +36,6 @@ def carrot_cc_library(
         hdrs = [],
         deps = [],
         visibility = ["//visibility:private"]):
-    print(visibility_for_tests(native.package_name()))
     cc_library(
         name = name,
         srcs = srcs,
