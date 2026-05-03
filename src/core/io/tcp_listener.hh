@@ -1,7 +1,10 @@
 #pragma once
 
+#include <vector>
+
 #include "carrot/event/dispatcher.hh"
 #include "carrot/event/io_object.hh"
+#include "core/io/connection.hh"
 
 namespace carrot::io {
 
@@ -16,6 +19,7 @@ public:
 private:
   event::DispatcherSharedPtr dispatcher_;
   int listen_fd_;
+  std::vector<std::unique_ptr<Connection>> owned_connections_;
 };
 
 } // namespace carrot::io

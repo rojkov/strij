@@ -20,5 +20,8 @@ carrot_cc_library(
     name = "io_object_interface",
     hdrs = ["io_object.hh"],
     visibility = ["//visibility:public"],
-    deps = ["//include/carrot/common:pure_lib"],
+    deps = [
+        ":command_interface",
+        "//include/carrot/common:pure_lib",
+    ],
 )
