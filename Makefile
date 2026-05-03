@@ -9,7 +9,7 @@ BAZELISK_URL = https://github.com/bazelbuild/bazelisk/releases/download/v${BAZEL
 build:
 	bazel build //...
 
-compiledb:
+compiledb: build
 	bazel run @hedron_compile_commands//:refresh_all
 
 coverage:
