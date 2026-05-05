@@ -24,6 +24,8 @@ public:
   virtual void PrepareAcceptMultishot(IOObject* io_object, int fd) PURE;
   virtual void PrepareRead(IOObject* io_object, int fd, std::span<std::byte> buf,
                            off_t offset) PURE;
+  virtual void PrepareWrite(IOObject* io_object, int fd, std::span<std::byte> buf,
+                            off_t offset) PURE;
 };
 
 using DispatcherSharedPtr = std::shared_ptr<Dispatcher>;
