@@ -12,7 +12,7 @@ if [ -z ${COV_FILE} ]; then
     exit 1
 fi
 
-COVERAGE_VALUE="$(genhtml --prefix "${PWD}" --output "coverage" ${COV_FILE} | tee /dev/stderr | grep lines... | cut -d ' ' -f 4)"
+COVERAGE_VALUE="$(genhtml --ignore-errors inconsistent,unsupported,corrupt --prefix "${PWD}" --output "coverage" ${COV_FILE} | tee /dev/stderr | grep lines... | cut -d ' ' -f 4)"
 COVERAGE_VALUE=${COVERAGE_VALUE%?}
 
 echo "Code coverage overall: ${COVERAGE_VALUE}"
