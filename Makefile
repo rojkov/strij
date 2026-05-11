@@ -13,7 +13,7 @@ compiledb: build
 	bazel run @hedron_compile_commands//:refresh_all
 
 coverage:
-	bazel coverage //...
+	bazel coverage --instrumentation_filter="//src/..." //...
 	./tools/generate_coverage.sh bazel-out/_coverage/_coverage_report.dat
 
 test:
