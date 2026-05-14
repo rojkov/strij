@@ -13,6 +13,8 @@ public:
   MOCK_METHOD(void, PrepareAcceptMultishot, (IOObject * io_object, int fd), (override));
   MOCK_METHOD(void, PrepareRead,
               (IOObject * io_object, int fd, std::span<std::byte> buf, off_t offset), (override));
+  MOCK_METHOD(void, PrepareWrite,
+              (IOObject * io_object, int fd, std::span<std::byte> buf, off_t offset), (override));
 };
 
 } // namespace carrot::event
