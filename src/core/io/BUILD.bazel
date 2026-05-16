@@ -1,10 +1,21 @@
 load("//bazel:build_system.bzl", "carrot_cc_library")
 
 carrot_cc_library(
+    name = "llhttp_parser_lib",
+    srcs = ["llhttp_parser.cc"],
+    hdrs = ["llhttp_parser.hh"],
+    deps = [
+        "//:llhttp",
+        "//src/core/logging:log_lib",
+    ],
+)
+
+carrot_cc_library(
     name = "connection_lib",
     srcs = ["connection.cc"],
     hdrs = ["connection.hh"],
     deps = [
+        ":llhttp_parser_lib",
         "//include/carrot/event:dispatcher_interface",
         "//include/carrot/event:io_object_interface",
         "//src/core/logging:log_lib",

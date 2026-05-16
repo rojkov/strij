@@ -5,6 +5,7 @@
 
 #include "carrot/event/dispatcher.hh"
 #include "carrot/event/io_object.hh"
+#include "core/io/llhttp_parser.hh"
 
 namespace carrot::io {
 

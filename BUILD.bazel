@@ -1,4 +1,5 @@
 load("@rules_foreign_cc//foreign_cc:configure.bzl", "configure_make")
+load("@rules_foreign_cc//foreign_cc:defs.bzl", "cmake")
 
 configure_make(
     name = "liburing",
@@ -6,5 +7,16 @@ configure_make(
     configure_in_place = True,
     lib_source = "@liburing//:all_srcs",
     out_static_libs = ["liburing.a"],
+    visibility = ["//visibility:public"],
+)
+
+cmake(
+    name = "llhttp",
+    cache_entries = {
+        "LLHTTP_BUILD_STATIC_LIBS": "ON",
+        "LLHTTP_BUILD_SHARED_LIBS": "OFF",
+    },
+    lib_source = "@llhttp//:all_srcs",
+    out_static_libs = ["libllhttp.a"],
     visibility = ["//visibility:public"],
 )

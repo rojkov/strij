@@ -46,3 +46,11 @@ http_archive(
     strip_prefix = "liburing-liburing-2.14",
     urls = ["https://github.com/axboe/liburing/archive/refs/tags/liburing-2.14.tar.gz"],
 )
+
+http_archive(
+    name = "llhttp",
+    build_file_content = _ALL_CONTENT,
+    sha256 = "86a8c16759fdcc7aa2c9841fbe8ba2e77ea98be7d5d45615f2604776d0ff78c7",
+    strip_prefix = "llhttp-release-v9.4.1",
+    urls = ["https://github.com/nodejs/llhttp/archive/refs/tags/release/v9.4.1.tar.gz"],
+)
