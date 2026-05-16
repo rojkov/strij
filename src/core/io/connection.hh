@@ -3,6 +3,8 @@
 #include <array>
 #include <functional>
 
+#include "src/core/io/llhttp_parser.hh"
+
 #include "carrot/event/dispatcher.hh"
 #include "carrot/event/io_object.hh"
 #include "core/io/llhttp_parser.hh"
@@ -38,6 +40,8 @@ private:
   int fd_;
   event::DispatcherSharedPtr dispatcher_;
   Reader reader_;
+  std::unique_ptr<LlhttpParser> parser_;
+  std::string response_;
 };
 
 } // namespace carrot::io

@@ -90,7 +90,7 @@ void DispatcherImpl::PrepareRead(IOObject* io_object, int fd, std::span<std::byt
   io_uring_prep_read(sqe, fd, buf.data(), buf.size(), offset);
 }
 
-void DispatcherImpl::PrepareWrite(IOObject* io_object, int fd, std::span<std::byte> buf,
+void DispatcherImpl::PrepareWrite(IOObject* io_object, int fd, std::span<const std::byte> buf,
                                   off_t offset) {
   auto* sqe = io_uring_get_sqe(&ring_);
   assert(sqe != nullptr);
