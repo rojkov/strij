@@ -9,8 +9,6 @@ carrot_cc_library(
         "//include/carrot/event:dispatcher_interface",
         "//include/carrot/event:io_object_interface",
         "//rigtorp:spsc_queue_lib",
-        "@abseil-cpp//absl/base",
-        "@abseil-cpp//absl/synchronization",
     ],
 )
 
@@ -22,6 +20,7 @@ carrot_cc_library(
     deps = [
         ":log_frontend_lib",
         "//src/core/event:dispatcher_impl_lib",
+        "@abseil-cpp//absl/synchronization",
     ],
 )
 

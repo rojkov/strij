@@ -1,6 +1,5 @@
 #include "core/logging/logger.hh"
 
-#include <absl/synchronization/mutex.h>
 #include <sys/eventfd.h>
 
 #include "core/event/dispatcher_impl.hh"
