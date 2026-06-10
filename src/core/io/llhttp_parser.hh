@@ -18,10 +18,12 @@ public:
     body_start_ = start - data_.data();
     body_size_ = size;
   };
-  auto GetBody() -> std::span<std::byte> { return {data_.data() + body_start_, body_size_}; }
+  auto GetBody() -> std::span<std::byte> {
+    return {std::next(data_.data(), body_start_), body_size_};
+  }
 
 private:
-  std::array<std::byte, 4096> data_;
+  std::array<std::byte, 4096> data_{};
   uint32_t body_start_{0};
   size_t body_size_{0};
 };
@@ -40,8 +42,8 @@ public:
   void ProcessCommand(event::Command cmd) override {}
 
 private:
-  static int on_body(llhttp_t* parser, const char* at, size_t length);
-  static int on_message_complete(llhttp_t* parser);
+  static auto on_body(llhttp_t* parser, const char* at, size_t length) -> int;
+  static auto on_message_complete(llhttp_t* parser) -> int;
 
   auto readBuffer() -> std::span<std::byte>;
   void Parse(size_t length);

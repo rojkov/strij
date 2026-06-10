@@ -98,13 +98,13 @@ auto LlhttpParser::onMessageComplete(llhttp_t* parser) -> int {
   return 0;
 }
 
-int LlhttpParser::on_body(llhttp_t* parser, const char* at, size_t length) {
+auto LlhttpParser::on_body(llhttp_t* parser, const char* at, size_t length) -> int {
   auto* obj = static_cast<LlhttpParser*>(parser->data);
   assert(obj != nullptr);
   return obj->onBody(parser, at, length);
 }
 
-int LlhttpParser::on_message_complete(llhttp_t* parser) {
+auto LlhttpParser::on_message_complete(llhttp_t* parser) -> int {
   auto* obj = static_cast<LlhttpParser*>(parser->data);
   assert(obj != nullptr);
   return obj->onMessageComplete(parser);
