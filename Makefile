@@ -11,6 +11,7 @@ build:
 
 compiledb: build
 	bazel run @hedron_compile_commands//:refresh_all
+	bazel build //...
 
 coverage:
 	bazel coverage --instrumentation_filter="//src/..." //...
