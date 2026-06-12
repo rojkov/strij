@@ -40,28 +40,85 @@ LlhttpParser::~LlhttpParser() {}
 
 void LlhttpParser::HandleCompletion(int res, uint32_t flags) {
   if (res > 0) {
-    Parse(res);
-    on_next_read_ready_(this, readBuffer());
+    size_t offset = active_chunk_->WriteCursor();
+    Parse(offset, res);
+    active_chunk_->AdvanceCursor(res);
+
+    if (is_message_complete_) {
+      FinalizeMessage();
+    } else {
+      if (active_chunk_->IsFull()) {
+        body_chunks_.push_back(std::move(active_chunk_));
+        active_chunk_ = std::make_unique<Chunk>();
+      }
+      on_next_read_ready_(this, readBuffer());
+    }
   } else {
     on_end_of_stream_();
   }
 }
 
-void LlhttpParser::Parse(size_t length) {
+void LlhttpParser::Parse(size_t offset, size_t length) {
   assert(active_chunk_ != nullptr);
-  LOG_DEBUG("Parse({})\n{}", length,
-            std::string{reinterpret_cast<char*>(active_chunk_->Data().data()), length});
-  auto* data = reinterpret_cast<char*>(active_chunk_->Data().data());
+  char* data = reinterpret_cast<char*>(active_chunk_->Data().data() + offset);
+  LOG_DEBUG("Parse({})\n{}", length, std::string{data, length});
   enum llhttp_errno err = llhttp_execute(&parser_, data, length);
   assert(err == HPE_OK);
   LOG_DEBUG("Successfully parsed one chunk");
-  if (!is_message_complete_) {
-  }
 }
 
 auto LlhttpParser::readBuffer() -> std::span<std::byte> {
   LOG_DEBUG("LlhttpParser::ReadBuffer");
-  return active_chunk_->Data();
+  return active_chunk_->WritableSpan();
+}
+
+void LlhttpParser::FinalizeMessage() {
+  if (!active_chunk_->HasBodies() && body_chunks_.empty()) {
+    on_request_({});
+    return;
+  }
+
+  // Collect body data from active_chunk_ followed by previously pushed chunks.
+  size_t total_size = 0;
+  if (active_chunk_->HasBodies()) {
+    for (const auto& bs : active_chunk_->GetBodies()) {
+      total_size += bs.size;
+    }
+  }
+  for (const auto& chunk : body_chunks_) {
+    for (const auto& bs : chunk->GetBodies()) {
+      total_size += bs.size;
+    }
+  }
+
+  if (body_chunks_.empty() && active_chunk_->GetBodies().size() == 1) {
+    const auto& bs = active_chunk_->GetBodies().front();
+    on_request_(std::as_bytes(active_chunk_->Data().subspan(bs.start, bs.size)));
+    return;
+  }
+
+  if (body_chunks_.size() == 1 && body_chunks_.front()->GetBodies().size() == 1 &&
+      !active_chunk_->HasBodies()) {
+    const auto& bs = body_chunks_.front()->GetBodies().front();
+    on_request_(std::as_bytes(body_chunks_.front()->Data().subspan(bs.start, bs.size)));
+    body_chunks_.clear();
+    return;
+  }
+
+  std::vector<std::byte> body;
+  body.reserve(total_size);
+  for (const auto& chunk : body_chunks_) {
+    for (const auto& bs : chunk->GetBodies()) {
+      body.append_range(chunk->Data().subspan(bs.start, bs.size));
+    }
+  }
+  if (active_chunk_->HasBodies()) {
+    for (const auto& bs : active_chunk_->GetBodies()) {
+      body.append_range(active_chunk_->Data().subspan(bs.start, bs.size));
+    }
+  }
+  on_request_(body);
+  body_chunks_.clear();
 }
 
 auto LlhttpParser::onBody(llhttp_t* parser, const char* at, size_t length) -> int {
@@ -71,30 +128,13 @@ auto LlhttpParser::onBody(llhttp_t* parser, const char* at, size_t length) -> in
   assert(active_chunk_->Data().data() <= bytes.data());
   assert(active_chunk_->Data().size() >= length);
   assert(bytes.data() < active_chunk_->Data().data() + active_chunk_->Data().size());
-  active_chunk_->SetBody(reinterpret_cast<const std::byte*>(at), length);
-  // TODO: can we reuse active_chunk_ if it is not full yet.
-  body_chunks_.push_back(std::move(active_chunk_));
-  // TODO: can we postpone chunk creation until dispatcher's PrepareRead()?
-  active_chunk_ = std::make_unique<Chunk>();
+  active_chunk_->AddBody(reinterpret_cast<const std::byte*>(at), length);
   return 0;
 }
 
 auto LlhttpParser::onMessageComplete(llhttp_t* parser) -> int {
   LOG_DEBUG("LlhttpParser::onMessageComplete");
   is_message_complete_ = true;
-  if (body_chunks_.size() == 1) {
-    on_request_(body_chunks_.front()->GetBody());
-  } else if (body_chunks_.size() > 1) {
-    size_t total_size{0};
-    for (const auto& chunk : body_chunks_) {
-      total_size += chunk->GetBody().size();
-    }
-    std::vector<std::byte> body;
-    body.reserve(total_size);
-    for (const auto& chunk : body_chunks_) {
-      body.append_range(chunk->GetBody());
-    }
-  }
   return 0;
 }
 

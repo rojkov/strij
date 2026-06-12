@@ -13,19 +13,28 @@ namespace carrot::io {
 
 class Chunk final {
 public:
-  auto Data() -> std::span<std::byte> { return data_; }
-  void SetBody(const std::byte* start, size_t size) {
-    body_start_ = start - data_.data();
-    body_size_ = size;
+  struct BodySpan {
+    uint32_t start;
+    size_t size;
   };
-  auto GetBody() -> std::span<std::byte> {
-    return {std::next(data_.data(), body_start_), body_size_};
+
+  auto Data() -> std::span<std::byte> { return data_; }
+  auto WritableSpan() -> std::span<std::byte> {
+    return {data_.data() + write_cursor_, data_.size() - write_cursor_};
   }
+  auto WriteCursor() const -> size_t { return write_cursor_; }
+  void AdvanceCursor(size_t n) { write_cursor_ += n; }
+  void AddBody(const std::byte* body_start, size_t body_size) {
+    bodies_.push_back({static_cast<uint32_t>(body_start - data_.data()), body_size});
+  }
+  bool HasBodies() const { return !bodies_.empty(); }
+  bool IsFull() const { return write_cursor_ >= data_.size(); }
+  auto GetBodies() const -> const std::vector<BodySpan>& { return bodies_; }
 
 private:
   std::array<std::byte, 4096> data_{};
-  uint32_t body_start_{0};
-  size_t body_size_{0};
+  size_t write_cursor_{0};
+  std::vector<BodySpan> bodies_;
 };
 
 using ChunkPtr = std::unique_ptr<Chunk>;
@@ -46,7 +55,8 @@ private:
   static auto on_message_complete(llhttp_t* parser) -> int;
 
   auto readBuffer() -> std::span<std::byte>;
-  void Parse(size_t length);
+  void Parse(size_t offset, size_t length);
+  void FinalizeMessage();
   auto onBody(llhttp_t* parser, const char* at, size_t length) -> int;
   auto onMessageComplete(llhttp_t* parser) -> int;
 
