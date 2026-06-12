@@ -1,7 +1,6 @@
 #pragma once
 
 #include <array>
-#include <deque>
 #include <functional>
 #include <memory>
 #include <span>
@@ -20,20 +19,22 @@ public:
 
   auto Data() -> std::span<std::byte> { return data_; }
   auto WritableSpan() -> std::span<std::byte> {
-    return {data_.data() + write_cursor_, data_.size() - write_cursor_};
+    return {std::next(data_.data(), write_cursor_), data_.size() - write_cursor_};
   }
-  auto WriteCursor() const -> size_t { return write_cursor_; }
-  void AdvanceCursor(size_t n) { write_cursor_ += n; }
+  [[nodiscard]] auto WriteCursor() const -> size_t { return write_cursor_; }
+  void AdvanceCursor(ssize_t n) { write_cursor_ += n; }
   void AddBody(const std::byte* body_start, size_t body_size) {
-    bodies_.push_back({static_cast<uint32_t>(body_start - data_.data()), body_size});
+    bodies_.push_back(
+        {.start = static_cast<uint32_t>(body_start - data_.data()), .size = body_size});
   }
-  bool HasBodies() const { return !bodies_.empty(); }
-  bool IsFull() const { return write_cursor_ >= data_.size(); }
-  auto GetBodies() const -> const std::vector<BodySpan>& { return bodies_; }
+  [[nodiscard]] auto HasBodies() const -> bool { return !bodies_.empty(); }
+  [[nodiscard]] auto IsFull() const -> bool { return write_cursor_ >= data_.size(); }
+  [[nodiscard]] auto GetBodies() const -> const std::vector<BodySpan>& { return bodies_; }
 
 private:
-  std::array<std::byte, 4096> data_{};
-  size_t write_cursor_{0};
+  const static size_t CHUNK_SIZE{4096};
+  std::array<std::byte, CHUNK_SIZE> data_{};
+  ssize_t write_cursor_{0};
   std::vector<BodySpan> bodies_;
 };
 
@@ -44,20 +45,27 @@ public:
   LlhttpParser(std::function<void(event::IOObject*, std::span<std::byte>)>&& on_next_read_ready,
                std::function<void()>&& on_end_of_stream,
                std::function<void(std::span<const std::byte>)>&& on_request);
-  ~LlhttpParser() override;
+  ~LlhttpParser() override = default;
+
+  LlhttpParser(const LlhttpParser&) = delete;
+  auto operator=(const LlhttpParser&) -> LlhttpParser& = delete;
+  LlhttpParser(LlhttpParser&&) noexcept = delete;
+  auto operator=(LlhttpParser&&) noexcept -> LlhttpParser& = delete;
 
   // IOObject interface
   void HandleCompletion(int res, uint32_t flags) override;
   void ProcessCommand(event::Command cmd) override {}
 
+  void SetWriteInFlight() { write_in_flight_ = true; }
+
 private:
-  static auto on_body(llhttp_t* parser, const char* at, size_t length) -> int;
+  static auto on_body(llhttp_t* parser, const char* ptr, size_t length) -> int;
   static auto on_message_complete(llhttp_t* parser) -> int;
 
   auto readBuffer() -> std::span<std::byte>;
-  void Parse(size_t offset, size_t length);
-  void FinalizeMessage();
-  auto onBody(llhttp_t* parser, const char* at, size_t length) -> int;
+  void parse(size_t offset, size_t length);
+  void finalizeMessage();
+  auto onBody(llhttp_t* parser, const char* ptr, size_t length) -> int;
   auto onMessageComplete(llhttp_t* parser) -> int;
 
   // TODO: These two callbacks may become a part of ReadFacilitator interface
@@ -66,10 +74,11 @@ private:
   std::function<void()> on_end_of_stream_;
   std::function<void(std::span<const std::byte>)> on_request_;
 
-  llhttp_t parser_;
-  llhttp_settings_t settings_;
+  llhttp_t parser_{};
+  llhttp_settings_t settings_{};
   ChunkPtr active_chunk_;
-  bool is_message_complete_{false}; // TODO: not used?
+  bool is_message_complete_{false};
+  bool write_in_flight_{false};
   std::vector<ChunkPtr> body_chunks_;
 };
 

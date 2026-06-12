@@ -24,7 +24,7 @@ void Logger::RegisterThread() {
 }
 
 void Logger::Run() {
-  thread_ = std::thread([this]() { dispatcher_->Run(); });
+  thread_ = std::thread([this]() -> void { dispatcher_->Run(); });
 }
 
 void Logger::Stop() {

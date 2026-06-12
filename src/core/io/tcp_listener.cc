@@ -5,8 +5,10 @@
 #include <netinet/in.h>
 #include <sys/socket.h>
 
+#include <algorithm>
 #include <cstring>
 #include <format>
+#include <memory>
 
 #include "core/logging/log.hh"
 #include "liburing.h"
@@ -54,9 +56,18 @@ void TcpListener::HandleCompletion(int res, uint32_t flags) {
     LOG_WARNING("no more multishot accepts. Were they canceled?");
   }
 
-  owned_connections_.emplace_back(new Connection(res, dispatcher_));
+  owned_connections_.push_back(std::make_unique<Connection>(res, dispatcher_, this));
 }
 
-void TcpListener::ProcessCommand(event::Command cmd) {}
+void TcpListener::ProcessCommand(event::Command cmd) {
+  if (cmd.type_ == event::Command::CLOSE_CONNECTION) {
+    auto* conn = static_cast<Connection*>(cmd.args_);
+    auto it = std::find_if(owned_connections_.begin(), owned_connections_.end(),
+                           [conn](const auto& ptr) -> bool { return ptr.get() == conn; });
+    if (it != owned_connections_.end()) {
+      owned_connections_.erase(it);
+    }
+  }
+}
 
 } // namespace carrot::io

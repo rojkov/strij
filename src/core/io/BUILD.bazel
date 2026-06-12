@@ -18,7 +18,6 @@ carrot_cc_library(
         ":llhttp_parser_lib",
         "//include/carrot/event:dispatcher_interface",
         "//include/carrot/event:io_object_interface",
-        "//src/core/logging:log_lib",
     ],
 )
 
