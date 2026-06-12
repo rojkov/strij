@@ -73,6 +73,7 @@ auto LlhttpParser::readBuffer() -> std::span<std::byte> {
 }
 
 void LlhttpParser::FinalizeMessage() {
+  // No body data at all — deliver an empty request body.
   if (!active_chunk_->HasBodies() && body_chunks_.empty()) {
     on_request_({});
     return;
@@ -91,12 +92,16 @@ void LlhttpParser::FinalizeMessage() {
     }
   }
 
+  // The entire body fits in the current chunk as a single contiguous span —
+  // pass it through without copying.
   if (body_chunks_.empty() && active_chunk_->GetBodies().size() == 1) {
     const auto& bs = active_chunk_->GetBodies().front();
     on_request_(std::as_bytes(active_chunk_->Data().subspan(bs.start, bs.size)));
     return;
   }
 
+  // The entire body was pushed into one full chunk as a single contiguous span
+  // and the active chunk is empty — pass it through without copying.
   if (body_chunks_.size() == 1 && body_chunks_.front()->GetBodies().size() == 1 &&
       !active_chunk_->HasBodies()) {
     const auto& bs = body_chunks_.front()->GetBodies().front();
@@ -105,6 +110,8 @@ void LlhttpParser::FinalizeMessage() {
     return;
   }
 
+  // Body is split across multiple chunks or body descriptor segments —
+  // concatenate everything into a single contiguous buffer.
   std::vector<std::byte> body;
   body.reserve(total_size);
   for (const auto& chunk : body_chunks_) {
