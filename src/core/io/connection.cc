@@ -11,7 +11,7 @@ namespace carrot::io {
 Connection::Connection(int connection_fd, event::DispatcherSharedPtr dispatcher)
     : fd_{connection_fd}, dispatcher_{std::move(dispatcher)},
       parser_{std::make_unique<LlhttpParser>(
-          [this](event::IOObject* reader, std::span<std::byte> buf) {
+          [this](event::IOObject* reader, std::span<std::byte> buf) -> void {
             dispatcher_->PrepareRead(reader, fd_, buf, 0);
           },
           std::bind(&Connection::onEndOfStream, this),
