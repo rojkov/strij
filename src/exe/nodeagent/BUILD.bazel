@@ -1,0 +1,12 @@
+load("//bazel:build_system.bzl", "carrot_cc_binary")
+
+carrot_cc_binary(
+    name = "nodeagent",
+    srcs = ["nodeagent.cc"],
+    deps = [
+        "//src/core/common:signal_monitor_lib",
+        "//src/core/event:dispatcher_impl_lib",
+        "//src/core/io:tcp_listener_lib",
+        "//src/core/logging:log_lib",
+    ],
+)
