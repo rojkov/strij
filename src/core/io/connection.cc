@@ -14,7 +14,7 @@ Connection::Connection(int connection_fd, event::DispatcherSharedPtr dispatcher,
     : fd_{connection_fd}, dispatcher_{std::move(dispatcher)}, owner_{owner},
       parser_{std::make_unique<LlhttpParser>(
           [this](event::IOObject* reader, std::span<std::byte> buf) -> void {
-            dispatcher_->PrepareRead(reader, fd_, buf, 0);
+            dispatcher_->PrepareRead(reader, 0, fd_, buf, 0);
           },
           [this]() -> void { onEndOfStream(); },
           [this](std::span<const std::byte> buf) -> void {
@@ -25,8 +25,8 @@ Connection::Connection(int connection_fd, event::DispatcherSharedPtr dispatcher,
                                     buf.size(), body);
 
             auto response_bytes = std::as_bytes(std::span(response_.data(), response_.size()));
-            parser_->SetWriteInFlight();
-            dispatcher_->PrepareWrite(parser_.get(), fd_, response_bytes, 0);
+            dispatcher_->PrepareWrite(parser_.get(), static_cast<uint8_t>(LlhttpParser::Op::Write),
+                                      fd_, response_bytes, 0);
           })} {}
 
 void Connection::onEndOfStream() {

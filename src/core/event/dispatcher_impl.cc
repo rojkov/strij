@@ -4,10 +4,24 @@
 #include <unistd.h>
 
 #include <cassert>
+#include <cstdint>
 
 #include "carrot/event/io_object.hh"
+#include "include/carrot/event/io_object.hh"
 
 namespace carrot::event {
+
+const uintptr_t tag_mask{7};
+
+namespace {
+
+inline auto merge_with_tag(IOObject* io_object, uint8_t tag) -> void* {
+  assert((tag & ~tag_mask) == 0);
+
+  return reinterpret_cast<void*>(reinterpret_cast<uintptr_t>(io_object) | tag);
+}
+
+} // namespace
 
 DispatcherImpl::DispatcherImpl() {
   io_uring_queue_init(entries_num_, &ring_, 0);
@@ -17,7 +31,7 @@ DispatcherImpl::DispatcherImpl() {
     exit(EXIT_FAILURE);
   }
 
-  PrepareRead(this, event_fd_, std::as_writable_bytes(std::span<uint64_t, 1>{&event_fd_val_, 1}),
+  PrepareRead(this, 0, event_fd_, std::as_writable_bytes(std::span<uint64_t, 1>{&event_fd_val_, 1}),
               0);
 }
 
@@ -42,9 +56,11 @@ void DispatcherImpl::Run() {
       count++;
       printf("t:%d CQE received: res=%d, flags=%u count=%d\n", gettid(), cqe->res, cqe->flags,
              count);
-      auto* obj = static_cast<IOObject*>(io_uring_cqe_get_data(cqe));
+      auto user_data = reinterpret_cast<uintptr_t>(io_uring_cqe_get_data(cqe));
+      uint8_t tag = user_data & tag_mask;
+      auto* obj = reinterpret_cast<IOObject*>(user_data & ~tag_mask);
       if (obj != nullptr) {
-        obj->HandleCompletion(cqe->res, cqe->flags);
+        obj->HandleCompletion(tag, cqe->res, cqe->flags);
       }
     }
 
@@ -62,7 +78,7 @@ void DispatcherImpl::Shutdown() {
 
 void DispatcherImpl::SubmitCommand(Command cmd) { command_queue_.push_back(cmd); }
 
-void DispatcherImpl::HandleCompletion(int res, uint32_t flags) {
+void DispatcherImpl::HandleCompletion(uint8_t tag, int res, uint32_t flags) {
   printf("Dispatcher received completion: res=%d, flags=%u\n", res, flags);
   is_finishing_ = true;
   // We don't re-arm this event_fd_ after this point -> closing.
@@ -75,26 +91,26 @@ void DispatcherImpl::ProcessCommand(Command cmd) {
   printf("Dispatcher received command: type=%d\n", cmd.type_);
 }
 
-void DispatcherImpl::PrepareAcceptMultishot(IOObject* io_object, int fd) {
+void DispatcherImpl::PrepareAcceptMultishot(IOObject* io_object, uint8_t tag, int fd) {
   auto* sqe = io_uring_get_sqe(&ring_);
   assert(sqe != nullptr);
-  io_uring_sqe_set_data(sqe, io_object);
+  io_uring_sqe_set_data(sqe, merge_with_tag(io_object, tag));
   io_uring_prep_multishot_accept(sqe, fd, nullptr, nullptr, 0);
 }
 
-void DispatcherImpl::PrepareRead(IOObject* io_object, int fd, std::span<std::byte> buf,
+void DispatcherImpl::PrepareRead(IOObject* io_object, uint8_t tag, int fd, std::span<std::byte> buf,
                                  off_t offset) {
   auto* sqe = io_uring_get_sqe(&ring_);
   assert(sqe != nullptr);
-  io_uring_sqe_set_data(sqe, io_object);
+  io_uring_sqe_set_data(sqe, merge_with_tag(io_object, tag));
   io_uring_prep_read(sqe, fd, buf.data(), buf.size(), offset);
 }
 
-void DispatcherImpl::PrepareWrite(IOObject* io_object, int fd, std::span<const std::byte> buf,
-                                  off_t offset) {
+void DispatcherImpl::PrepareWrite(IOObject* io_object, uint8_t tag, int fd,
+                                  std::span<const std::byte> buf, off_t offset) {
   auto* sqe = io_uring_get_sqe(&ring_);
   assert(sqe != nullptr);
-  io_uring_sqe_set_data(sqe, io_object);
+  io_uring_sqe_set_data(sqe, merge_with_tag(io_object, tag));
   io_uring_prep_write(sqe, fd, buf.data(), buf.size(), offset);
 }
 

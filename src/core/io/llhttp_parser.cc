@@ -22,9 +22,8 @@ LlhttpParser::LlhttpParser(
   on_next_read_ready_(this, readBuffer());
 }
 
-void LlhttpParser::HandleCompletion(int res, uint32_t /*flags*/) {
-  if (write_in_flight_) {
-    write_in_flight_ = false;
+void LlhttpParser::HandleCompletion(uint8_t tag, int res, uint32_t /*flags*/) {
+  if (static_cast<Op>(tag) == Op::Write) {
     on_end_of_stream_();
     return;
   }

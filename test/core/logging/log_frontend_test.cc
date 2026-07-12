@@ -10,7 +10,7 @@ using ::testing::_;
 
 TEST(LogFrontendTest, simple_log) {
   auto mocked_dispatcher = std::make_shared<event::MockDispatcher>();
-  EXPECT_CALL(*mocked_dispatcher, PrepareRead(_, _, _, _));
+  EXPECT_CALL(*mocked_dispatcher, PrepareRead(_, _, _, _, _));
 
   LogFrontend lf(mocked_dispatcher);
   LogEntry entry{};

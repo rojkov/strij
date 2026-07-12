@@ -25,7 +25,7 @@ LogFrontend::LogFrontend(event::DispatcherSharedPtr dispatcher)
     exit(EXIT_FAILURE);
   }
 
-  dispatcher_->PrepareRead(this, event_fd_,
+  dispatcher_->PrepareRead(this, 0, event_fd_,
                            std::as_writable_bytes(std::span<uint64_t, 1>{&event_fd_val_, 1}), 0);
 };
 
@@ -37,7 +37,7 @@ void LogFrontend::Log(LogEntry&& entry) {
   write(event_fd_, &val, sizeof(val));
 }
 
-void LogFrontend::HandleCompletion(int res, uint32_t flags) {
+void LogFrontend::HandleCompletion(uint8_t tag, int res, uint32_t flags) {
   printf("LogFrontend::HandleCompletion called with res=%d, flags=%u\n", res, flags);
   if (res < 0) {
     perror("eventfd read");
@@ -63,7 +63,7 @@ void LogFrontend::HandleCompletion(int res, uint32_t flags) {
   }
 
   // Re-arm the eventfd for the next log entry
-  dispatcher_->PrepareRead(this, event_fd_,
+  dispatcher_->PrepareRead(this, 0, event_fd_,
                            std::as_writable_bytes(std::span<uint64_t, 1>{&event_fd_val_, 1}), 0);
 }
 

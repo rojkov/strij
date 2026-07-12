@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <memory>
 #include <span>
 
@@ -21,11 +22,12 @@ public:
   virtual void Run() PURE;
   virtual void Shutdown() PURE;
   virtual void SubmitCommand(Command cmd) PURE;
-  virtual void PrepareAcceptMultishot(IOObject* io_object, int fd) PURE;
-  virtual void PrepareRead(IOObject* io_object, int fd, std::span<std::byte> buf,
+  // tag is interpreted by the receiver IOObject.
+  virtual void PrepareAcceptMultishot(IOObject* io_object, uint8_t tag, int fd) PURE;
+  virtual void PrepareRead(IOObject* io_object, uint8_t tag, int fd, std::span<std::byte> buf,
                            off_t offset) PURE;
-  virtual void PrepareWrite(IOObject* io_object, int fd, std::span<const std::byte> buf,
-                            off_t offset) PURE;
+  virtual void PrepareWrite(IOObject* io_object, uint8_t tag, int fd,
+                            std::span<const std::byte> buf, off_t offset) PURE;
 };
 
 using DispatcherSharedPtr = std::shared_ptr<Dispatcher>;

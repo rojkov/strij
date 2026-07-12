@@ -18,13 +18,14 @@ public:
   void Run() override;
   void Shutdown() override;
   void SubmitCommand(Command cmd) override;
-  void PrepareAcceptMultishot(IOObject* io_object, int fd) override;
-  void PrepareRead(IOObject* io_object, int fd, std::span<std::byte> buf, off_t offset) override;
-  void PrepareWrite(IOObject* io_object, int fd, std::span<const std::byte> buf,
+  void PrepareAcceptMultishot(IOObject* io_object, uint8_t tag, int fd) override;
+  void PrepareRead(IOObject* io_object, uint8_t tag, int fd, std::span<std::byte> buf,
+                   off_t offset) override;
+  void PrepareWrite(IOObject* io_object, uint8_t tag, int fd, std::span<const std::byte> buf,
                     off_t offset) override;
 
   // IOObject interface
-  void HandleCompletion(int res, uint32_t flags) override;
+  void HandleCompletion(uint8_t tag, int res, uint32_t flags) override;
   void ProcessCommand(Command cmd) override;
 
 private:

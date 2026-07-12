@@ -39,10 +39,10 @@ TcpListener::TcpListener(event::DispatcherSharedPtr dispatcher, uint32_t port)
     throw std::runtime_error(std::format("unable to listen: {}", std::strerror(errno)));
   }
 
-  dispatcher_->PrepareAcceptMultishot(this, listen_fd_);
+  dispatcher_->PrepareAcceptMultishot(this, 0, listen_fd_);
 }
 
-void TcpListener::HandleCompletion(int res, uint32_t flags) {
+void TcpListener::HandleCompletion(uint8_t tag, int res, uint32_t flags) {
   if (res < 0) {
     LOG_ERROR("unable to accept connection");
     return;

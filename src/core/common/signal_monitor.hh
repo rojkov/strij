@@ -12,7 +12,7 @@ public:
   explicit SignalMonitor(event::DispatcherSharedPtr dispatcher);
 
   // event::IOObject overrides
-  void HandleCompletion(int res, [[maybe_unused]] uint32_t flags) override;
+  void HandleCompletion(uint8_t tag, int res, [[maybe_unused]] uint32_t flags) override;
   void ProcessCommand(event::Command cmd) override;
 
 private:

@@ -42,6 +42,8 @@ using ChunkPtr = std::unique_ptr<Chunk>;
 
 class LlhttpParser : public event::IOObject {
 public:
+  enum class Op : uint8_t { Read = 0, Write = 1 };
+
   LlhttpParser(std::function<void(event::IOObject*, std::span<std::byte>)>&& on_next_read_ready,
                std::function<void()>&& on_end_of_stream,
                std::function<void(std::span<const std::byte>)>&& on_request);
@@ -53,10 +55,8 @@ public:
   auto operator=(LlhttpParser&&) noexcept -> LlhttpParser& = delete;
 
   // IOObject interface
-  void HandleCompletion(int res, uint32_t flags) override;
+  void HandleCompletion(uint8_t tag, int res, uint32_t flags) override;
   void ProcessCommand(event::Command cmd) override {}
-
-  void SetWriteInFlight() { write_in_flight_ = true; }
 
 private:
   static auto on_body(llhttp_t* parser, const char* ptr, size_t length) -> int;
@@ -78,7 +78,6 @@ private:
   llhttp_settings_t settings_{};
   ChunkPtr active_chunk_;
   bool is_message_complete_{false};
-  bool write_in_flight_{false};
   std::vector<ChunkPtr> body_chunks_;
 };
 

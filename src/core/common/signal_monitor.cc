@@ -29,10 +29,10 @@ SignalMonitor::SignalMonitor(event::DispatcherSharedPtr dispatcher)
   }
 
   dispatcher_->PrepareRead(
-      this, sfd_, std::as_writable_bytes(std::span<struct signalfd_siginfo, 1>{&fdsi_, 1}), 0);
+      this, 0, sfd_, std::as_writable_bytes(std::span<struct signalfd_siginfo, 1>{&fdsi_, 1}), 0);
 }
 
-void SignalMonitor::HandleCompletion(int res, [[maybe_unused]] uint32_t flags) {
+void SignalMonitor::HandleCompletion(uint8_t tag, int res, [[maybe_unused]] uint32_t flags) {
   assert(dispatcher_ != nullptr);
   assert(res >= 0);
   LOG_DEBUG("handling signal. res={}", res);

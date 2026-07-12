@@ -18,7 +18,11 @@ public:
   IOObject(IOObject&&) noexcept = delete;
   auto operator=(IOObject&&) noexcept -> IOObject& = delete;
 
-  virtual void HandleCompletion(int res, uint32_t flags) PURE;
+  /**
+   * @brief A hook called by `Dispatcher` upon completion of a system call.
+   * @param tag An operation tag interpreted by an IOObject subclass.
+   */
+  virtual void HandleCompletion(uint8_t tag, int res, uint32_t flags) PURE;
   virtual void ProcessCommand(Command cmd) PURE;
 };
 

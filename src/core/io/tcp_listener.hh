@@ -13,7 +13,7 @@ public:
   TcpListener(event::DispatcherSharedPtr dispatcher, uint32_t port);
 
   // IOObject interface
-  void HandleCompletion(int res, uint32_t flags) override;
+  void HandleCompletion(uint8_t tag, int res, uint32_t flags) override;
   void ProcessCommand(event::Command cmd) override;
 
 private:
