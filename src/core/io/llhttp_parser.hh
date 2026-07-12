@@ -5,7 +5,7 @@
 #include <memory>
 #include <span>
 
-#include "carrot/event/io_object.hh"
+#include "core/io/protocol_parser.hh"
 #include "llhttp.h"
 
 namespace carrot::io {
@@ -19,10 +19,11 @@ public:
 
   auto Data() -> std::span<std::byte> { return data_; }
   auto WritableSpan() -> std::span<std::byte> {
-    return {std::next(data_.data(), write_cursor_), data_.size() - write_cursor_};
+    return {std::next(data_.data(), static_cast<ssize_t>(write_cursor_)),
+            data_.size() - write_cursor_};
   }
   [[nodiscard]] auto WriteCursor() const -> size_t { return write_cursor_; }
-  void AdvanceCursor(ssize_t n) { write_cursor_ += n; }
+  void AdvanceCursor(size_t n) { write_cursor_ += n; }
   void AddBody(const std::byte* body_start, size_t body_size) {
     bodies_.push_back(
         {.start = static_cast<uint32_t>(body_start - data_.data()), .size = body_size});
@@ -34,19 +35,15 @@ public:
 private:
   const static size_t CHUNK_SIZE{4096};
   std::array<std::byte, CHUNK_SIZE> data_{};
-  ssize_t write_cursor_{0};
+  size_t write_cursor_{0};
   std::vector<BodySpan> bodies_;
 };
 
 using ChunkPtr = std::unique_ptr<Chunk>;
 
-class LlhttpParser : public event::IOObject {
+class LlhttpParser final : public ProtocolParser {
 public:
-  enum class Op : uint8_t { Read = 0, Write = 1 };
-
-  LlhttpParser(std::function<void(event::IOObject*, std::span<std::byte>)>&& on_next_read_ready,
-               std::function<void()>&& on_end_of_stream,
-               std::function<void(std::span<const std::byte>)>&& on_request);
+  explicit LlhttpParser(std::function<void(std::span<const std::byte>)>&& on_message);
   ~LlhttpParser() override = default;
 
   LlhttpParser(const LlhttpParser&) = delete;
@@ -54,25 +51,20 @@ public:
   LlhttpParser(LlhttpParser&&) noexcept = delete;
   auto operator=(LlhttpParser&&) noexcept -> LlhttpParser& = delete;
 
-  // IOObject interface
-  void HandleCompletion(uint8_t tag, int res, uint32_t flags) override;
-  void ProcessCommand(event::Command cmd) override {}
+  // ProtocolParser interface
+  auto GetReadBuffer() -> std::span<std::byte> override;
+  auto OnData(size_t bytes_read) -> Action override;
 
 private:
   static auto on_body(llhttp_t* parser, const char* ptr, size_t length) -> int;
   static auto on_message_complete(llhttp_t* parser) -> int;
 
-  auto readBuffer() -> std::span<std::byte>;
   void parse(size_t offset, size_t length);
   void finalizeMessage();
   auto onBody(llhttp_t* parser, const char* ptr, size_t length) -> int;
   auto onMessageComplete(llhttp_t* parser) -> int;
 
-  // TODO: These two callbacks may become a part of ReadFacilitator interface
-  // (currently provided by the io::Connection class).
-  std::function<void(event::IOObject* reader, std::span<std::byte> buf)> on_next_read_ready_;
-  std::function<void()> on_end_of_stream_;
-  std::function<void(std::span<const std::byte>)> on_request_;
+  std::function<void(std::span<const std::byte>)> on_message_;
 
   llhttp_t parser_{};
   llhttp_settings_t settings_{};

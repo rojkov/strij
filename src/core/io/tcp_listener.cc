@@ -10,14 +10,30 @@
 #include <format>
 #include <memory>
 
+#include "core/io/http_echo_handler.hh"
+#include "core/io/llhttp_parser.hh"
 #include "core/logging/log.hh"
 #include "liburing.h"
 
 namespace carrot::io {
 
-TcpListener::TcpListener(event::DispatcherSharedPtr dispatcher, uint32_t port)
+namespace {
+
+auto makeDefaultFactory() -> ConnectionFactory {
+  return [](std::function<void(std::span<const std::byte>)> on_message)
+             -> std::pair<ProtocolParserPtr, MessageHandlerPtr> {
+    return std::make_pair<ProtocolParserPtr, MessageHandlerPtr>(
+        std::make_unique<LlhttpParser>(std::move(on_message)), std::make_unique<HttpEchoHandler>());
+  };
+}
+
+} // namespace
+
+TcpListener::TcpListener(event::DispatcherSharedPtr dispatcher, uint32_t port,
+                         ConnectionFactory factory)
     : dispatcher_{std::move(dispatcher)},
-      listen_fd_{socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, 0)} {
+      listen_fd_{socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, 0)},
+      factory_{factory ? std::move(factory) : makeDefaultFactory()} {
   if (listen_fd_ < 0) {
     throw std::runtime_error("unable to open a TCP socket");
   }
@@ -56,7 +72,7 @@ void TcpListener::HandleCompletion(uint8_t tag, int res, uint32_t flags) {
     LOG_WARNING("no more multishot accepts. Were they canceled?");
   }
 
-  owned_connections_.push_back(std::make_unique<Connection>(res, dispatcher_, this));
+  owned_connections_.push_back(std::make_unique<Connection>(res, dispatcher_, this, factory_));
 }
 
 void TcpListener::ProcessCommand(event::Command cmd) {

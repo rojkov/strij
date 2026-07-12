@@ -13,6 +13,10 @@ auto main() -> int {
 
   LOG_REGISTER_THREAD();
 
+  // TODO: have an application-wide connection owner:
+  // 1. keeps track of existing connections and deletes closed ones.
+  // 2. It should be event::Object to be able to ProcessCommand() (upon closing a connection).
+
   carrot::io::TcpListener listener{dispatcher, 9090};
 
   dispatcher->Run();

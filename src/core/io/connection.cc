@@ -2,32 +2,39 @@
 
 #include <unistd.h>
 
-#include <format>
-#include <string_view>
-
-#include "src/core/io/llhttp_parser.hh"
-
 namespace carrot::io {
 
 Connection::Connection(int connection_fd, event::DispatcherSharedPtr dispatcher,
-                       event::IOObject* owner)
-    : fd_{connection_fd}, dispatcher_{std::move(dispatcher)}, owner_{owner},
-      parser_{std::make_unique<LlhttpParser>(
-          [this](event::IOObject* reader, std::span<std::byte> buf) -> void {
-            dispatcher_->PrepareRead(reader, 0, fd_, buf, 0);
-          },
-          [this]() -> void { onEndOfStream(); },
-          [this](std::span<const std::byte> buf) -> void {
-            // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast)
-            auto body = std::string_view(reinterpret_cast<const char*>(buf.data()), buf.size());
-            response_ = std::format("HTTP/1.1 200 OK\r\nContent-Length: {}\r\nContent-Type: "
-                                    "text/plain\r\nConnection: close\r\n\r\n{}",
-                                    buf.size(), body);
+                       event::IOObject* owner, ConnectionFactory factory)
+    : fd_{connection_fd}, dispatcher_{std::move(dispatcher)}, owner_{owner} {
+  auto [parser, handler] = factory([this](std::span<const std::byte> msg) {
+    handler_->OnMessage(msg, *this);
+  });
+  parser_ = std::move(parser);
+  handler_ = std::move(handler);
+  dispatcher_->PrepareRead(this, kRead, fd_, parser_->GetReadBuffer(), 0);
+}
 
-            auto response_bytes = std::as_bytes(std::span(response_.data(), response_.size()));
-            dispatcher_->PrepareWrite(parser_.get(), static_cast<uint8_t>(LlhttpParser::Op::Write),
-                                      fd_, response_bytes, 0);
-          })} {}
+void Connection::HandleCompletion(uint8_t tag, int res, uint32_t /*flags*/) {
+  if (tag == kRead) {
+    if (res > 0) {
+      auto action = parser_->OnData(static_cast<size_t>(res));
+      if (action == ProtocolParser::Action::NeedMoreData) {
+        dispatcher_->PrepareRead(this, kRead, fd_, parser_->GetReadBuffer(), 0);
+      }
+    } else {
+      onEndOfStream();
+    }
+  } else if (tag == kWrite) {
+    onEndOfStream();
+  }
+}
+
+void Connection::Write(std::span<const std::byte> data) {
+  write_buf_.assign(data.begin(), data.end());
+  dispatcher_->PrepareWrite(this, kWrite, fd_,
+                            std::as_bytes(std::span(write_buf_.data(), write_buf_.size())), 0);
+}
 
 void Connection::onEndOfStream() {
   ::close(fd_);

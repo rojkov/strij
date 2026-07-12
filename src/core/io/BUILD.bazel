@@ -1,10 +1,21 @@
 load("//bazel:build_system.bzl", "carrot_cc_library")
 
 carrot_cc_library(
+    name = "protocol_parser",
+    hdrs = ["protocol_parser.hh"],
+)
+
+carrot_cc_library(
+    name = "message_handler",
+    hdrs = ["message_handler.hh"],
+)
+
+carrot_cc_library(
     name = "llhttp_parser_lib",
     srcs = ["llhttp_parser.cc"],
     hdrs = ["llhttp_parser.hh"],
     deps = [
+        ":protocol_parser",
         "//:llhttp",
         "//src/core/logging:log_lib",
     ],
@@ -15,9 +26,20 @@ carrot_cc_library(
     srcs = ["connection.cc"],
     hdrs = ["connection.hh"],
     deps = [
-        ":llhttp_parser_lib",
+        ":message_handler",
+        ":protocol_parser",
         "//include/carrot/event:dispatcher_interface",
         "//include/carrot/event:io_object_interface",
+    ],
+)
+
+carrot_cc_library(
+    name = "http_echo_handler_lib",
+    srcs = ["http_echo_handler.cc"],
+    hdrs = ["http_echo_handler.hh"],
+    deps = [
+        ":connection_lib",
+        ":message_handler",
     ],
 )
 
@@ -28,5 +50,7 @@ carrot_cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":connection_lib",
+        ":http_echo_handler_lib",
+        ":llhttp_parser_lib",
     ],
 )

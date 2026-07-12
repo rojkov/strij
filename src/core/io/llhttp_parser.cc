@@ -7,40 +7,33 @@
 
 namespace carrot::io {
 
-LlhttpParser::LlhttpParser(
-    std::function<void(event::IOObject*, std::span<std::byte>)>&& on_next_read_ready,
-    std::function<void()>&& on_end_of_stream,
-    std::function<void(std::span<const std::byte>)>&& on_request)
-    : on_next_read_ready_{std::move(on_next_read_ready)},
-      on_end_of_stream_{std::move(on_end_of_stream)}, on_request_{std::move(on_request)},
-      active_chunk_{std::make_unique<Chunk>()} {
+LlhttpParser::LlhttpParser(std::function<void(std::span<const std::byte>)>&& on_message)
+    : on_message_{std::move(on_message)}, active_chunk_{std::make_unique<Chunk>()} {
   llhttp_settings_init(&settings_);
   settings_.on_body = on_body;
   settings_.on_message_complete = on_message_complete;
   llhttp_init(&parser_, HTTP_REQUEST, &settings_);
   parser_.data = this;
-  on_next_read_ready_(this, readBuffer());
 }
 
-void LlhttpParser::HandleCompletion(uint8_t tag, int res, uint32_t /*flags*/) {
-  if (static_cast<Op>(tag) == Op::Write) {
-    on_end_of_stream_();
-    return;
+auto LlhttpParser::GetReadBuffer() -> std::span<std::byte> {
+  if (active_chunk_->IsFull()) {
+    body_chunks_.push_back(std::move(active_chunk_));
+    active_chunk_ = std::make_unique<Chunk>();
   }
+  return active_chunk_->WritableSpan();
+}
 
-  if (res > 0) {
-    const size_t offset = active_chunk_->WriteCursor();
-    parse(offset, res);
-    active_chunk_->AdvanceCursor(res);
+auto LlhttpParser::OnData(size_t bytes_read) -> Action {
+  const size_t offset = active_chunk_->WriteCursor();
+  parse(offset, bytes_read);
+  active_chunk_->AdvanceCursor(bytes_read);
 
-    if (is_message_complete_) {
-      finalizeMessage();
-    } else {
-      on_next_read_ready_(this, readBuffer());
-    }
-  } else {
-    on_end_of_stream_();
+  if (is_message_complete_) {
+    finalizeMessage();
+    return Action::MessageComplete;
   }
+  return Action::NeedMoreData;
 }
 
 void LlhttpParser::parse(const size_t offset, size_t length) {
@@ -52,20 +45,10 @@ void LlhttpParser::parse(const size_t offset, size_t length) {
   LOG_DEBUG("Successfully parsed one chunk");
 }
 
-auto LlhttpParser::readBuffer() -> std::span<std::byte> {
-  LOG_DEBUG("LlhttpParser::ReadBuffer");
-  if (active_chunk_->IsFull()) {
-    body_chunks_.push_back(std::move(active_chunk_));
-    active_chunk_ = std::make_unique<Chunk>();
-  }
-
-  return active_chunk_->WritableSpan();
-}
-
 void LlhttpParser::finalizeMessage() {
   // No body data at all — deliver an empty request body.
   if (!active_chunk_->HasBodies() && body_chunks_.empty()) {
-    on_request_({});
+    on_message_({});
     return;
   }
 
@@ -86,7 +69,7 @@ void LlhttpParser::finalizeMessage() {
   // pass it through without copying.
   if (body_chunks_.empty() && active_chunk_->GetBodies().size() == 1) {
     const auto& body_span = active_chunk_->GetBodies().front();
-    on_request_(std::as_bytes(active_chunk_->Data().subspan(body_span.start, body_span.size)));
+    on_message_(std::as_bytes(active_chunk_->Data().subspan(body_span.start, body_span.size)));
     return;
   }
 
@@ -95,7 +78,7 @@ void LlhttpParser::finalizeMessage() {
   if (body_chunks_.size() == 1 && body_chunks_.front()->GetBodies().size() == 1 &&
       !active_chunk_->HasBodies()) {
     const auto& body_span = body_chunks_.front()->GetBodies().front();
-    on_request_(
+    on_message_(
         std::as_bytes(body_chunks_.front()->Data().subspan(body_span.start, body_span.size)));
     body_chunks_.clear();
     return;
@@ -115,7 +98,7 @@ void LlhttpParser::finalizeMessage() {
       body.append_range(active_chunk_->Data().subspan(body_span.start, body_span.size));
     }
   }
-  on_request_(body);
+  on_message_(body);
   body_chunks_.clear();
 }
 
