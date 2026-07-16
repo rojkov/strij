@@ -1,6 +1,5 @@
 #pragma once
 
-#include <functional>
 #include <memory>
 #include <vector>
 
@@ -12,8 +11,7 @@ namespace carrot::io {
 
 class TcpListener : public event::IOObject {
 public:
-  TcpListener(event::DispatcherSharedPtr dispatcher, uint32_t port,
-              ConnectionFactory factory = nullptr);
+  TcpListener(event::DispatcherSharedPtr dispatcher, uint32_t port, ConnectionFactory factory);
 
   // IOObject interface
   void HandleCompletion(uint8_t tag, int res, uint32_t flags) override;

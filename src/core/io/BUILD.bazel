@@ -14,6 +14,7 @@ carrot_cc_library(
     name = "llhttp_parser_lib",
     srcs = ["llhttp_parser.cc"],
     hdrs = ["llhttp_parser.hh"],
+    visibility = ["//visibility:public"],
     deps = [
         ":protocol_parser",
         "//:llhttp",
@@ -37,6 +38,7 @@ carrot_cc_library(
     name = "http_echo_handler_lib",
     srcs = ["http_echo_handler.cc"],
     hdrs = ["http_echo_handler.hh"],
+    visibility = ["//visibility:public"],
     deps = [
         ":connection_lib",
         ":message_handler",
@@ -50,7 +52,6 @@ carrot_cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":connection_lib",
-        ":http_echo_handler_lib",
-        ":llhttp_parser_lib",
+        "//src/core/logging:log_lib",
     ],
 )
