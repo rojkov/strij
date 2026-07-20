@@ -1,0 +1,10 @@
+load("//bazel:build_system.bzl", "carrot_cc_test")
+
+carrot_cc_test(
+    name = "tlv_parser_test",
+    srcs = ["tlv_parser_test.cc"],
+    deps = [
+        "//src/core/io:tlv_parser_lib",
+        "@googletest//:gtest_main",
+    ],
+)

@@ -6,9 +6,9 @@ carrot_cc_binary(
     deps = [
         "//src/core/common:signal_monitor_lib",
         "//src/core/event:dispatcher_impl_lib",
-        "//src/core/io:http_echo_handler_lib",
-        "//src/core/io:llhttp_parser_lib",
         "//src/core/io:tcp_listener_lib",
+        "//src/core/io:tlv_parser_lib",
+        "//src/core/io:trivial_echo_handler_lib",
         "//src/core/logging:log_lib",
     ],
 )

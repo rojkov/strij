@@ -30,6 +30,17 @@ carrot_cc_library(
 )
 
 carrot_cc_library(
+    name = "tlv_parser_lib",
+    srcs = ["tlv_parser.cc"],
+    hdrs = ["tlv_parser.hh"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":protocol_parser",
+        "//src/core/logging:log_lib",
+    ],
+)
+
+carrot_cc_library(
     name = "connection_lib",
     srcs = ["connection.cc"],
     hdrs = ["connection.hh"],
@@ -45,6 +56,17 @@ carrot_cc_library(
     name = "http_echo_handler_lib",
     srcs = ["http_echo_handler.cc"],
     hdrs = ["http_echo_handler.hh"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":connection_lib",
+        ":message_handler",
+    ],
+)
+
+carrot_cc_library(
+    name = "trivial_echo_handler_lib",
+    srcs = ["trivial_echo_handler.cc"],
+    hdrs = ["trivial_echo_handler.hh"],
     visibility = ["//visibility:public"],
     deps = [
         ":connection_lib",

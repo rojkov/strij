@@ -1,8 +1,8 @@
 #include "core/common/signal_monitor.hh"
 #include "core/event/dispatcher_impl.hh"
-#include "core/io/http_echo_handler.hh"
-#include "core/io/llhttp_parser.hh"
 #include "core/io/tcp_listener.hh"
+#include "core/io/tlv_parser.hh"
+#include "core/io/trivial_echo_handler.hh"
 #include "core/logging/log.hh"
 
 auto main() -> int {
@@ -24,8 +24,8 @@ auto main() -> int {
       [](std::function<void(std::span<const std::byte>)> on_message)
           -> std::pair<carrot::io::ProtocolParserPtr, carrot::io::MessageHandlerPtr> {
         return std::make_pair<carrot::io::ProtocolParserPtr, carrot::io::MessageHandlerPtr>(
-            std::make_unique<carrot::io::LlhttpParser>(std::move(on_message)),
-            std::make_unique<carrot::io::HttpEchoHandler>());
+            std::make_unique<carrot::io::TlvParser>(std::move(on_message)),
+            std::make_unique<carrot::io::TrivialEchoHandler>());
       }};
 
   dispatcher->Run();

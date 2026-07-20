@@ -1,0 +1,8 @@
+InheritParentConfig: true
+# Disable the noisy checks for tests
+Checks:
+  - '-cppcoreguidelines-avoid-magic-numbers'
+  - '-cppcoreguidelines-non-private-member-variables-in-classes'
+  - '-cppcoreguidelines-owning-memory'
+  - '-readability-magic-numbers'
+  - '-misc-non-private-member-variables-in-classes'
