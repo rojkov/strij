@@ -7,7 +7,6 @@ namespace carrot::io {
 class HttpEchoHandler final : public MessageHandler {
 public:
   HttpEchoHandler() = default;
-  ~HttpEchoHandler() override = default;
 
   void OnMessage(std::span<const std::byte> msg, Connection& conn) override;
 };

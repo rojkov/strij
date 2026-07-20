@@ -11,11 +11,18 @@ carrot_cc_library(
 )
 
 carrot_cc_library(
+    name = "chunk_lib",
+    srcs = ["chunk.cc"],
+    hdrs = ["chunk.hh"],
+)
+
+carrot_cc_library(
     name = "llhttp_parser_lib",
     srcs = ["llhttp_parser.cc"],
     hdrs = ["llhttp_parser.hh"],
     visibility = ["//visibility:public"],
     deps = [
+        ":chunk_lib",
         ":protocol_parser",
         "//:llhttp",
         "//src/core/logging:log_lib",
