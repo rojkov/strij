@@ -1,14 +1,14 @@
 #pragma once
 
-#include "core/io/message_handler.hh"
+#include "core/io/connection.hh"
 
 namespace carrot::io {
 
-class TrivialEchoHandler final : public MessageHandler {
+class TrivialEchoHandler {
 public:
   TrivialEchoHandler() = default;
 
-  void OnMessage(std::span<const std::byte> msg, Connection& conn) override;
+  void HandleMessage(std::span<const std::byte> msg, Connection& conn);
 };
 
 } // namespace carrot::io

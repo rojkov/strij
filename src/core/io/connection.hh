@@ -8,14 +8,13 @@
 
 #include "carrot/event/dispatcher.hh"
 #include "carrot/event/io_object.hh"
-#include "core/io/message_handler.hh"
 #include "core/io/protocol_parser.hh"
 
 namespace carrot::io {
 
-using ConnectionFactory = std::function<std::pair<std::unique_ptr<ProtocolParser>,
-                                                 std::unique_ptr<MessageHandler>>(
-    std::function<void(std::span<const std::byte>)> on_message)>;
+class Connection;
+
+using ConnectionFactory = std::function<std::unique_ptr<ProtocolParser>(Connection& conn)>;
 
 class Connection final : public event::IOObject {
 public:
@@ -43,7 +42,6 @@ private:
   event::DispatcherSharedPtr dispatcher_;
   event::IOObject* owner_;
   std::unique_ptr<ProtocolParser> parser_;
-  std::unique_ptr<MessageHandler> handler_;
   std::string write_buf_;
 };
 

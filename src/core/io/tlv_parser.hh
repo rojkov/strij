@@ -4,6 +4,7 @@
 #include <functional>
 
 #include "core/io/protocol_parser.hh"
+#include "core/io/tlv_frame.hh"
 
 namespace carrot::io {
 
@@ -11,7 +12,7 @@ const size_t kBufferSize{4096};
 
 class TlvParser final : public ProtocolParser {
 public:
-  explicit TlvParser(std::function<void(std::span<const std::byte>)>&& on_message);
+  explicit TlvParser(std::move_only_function<void(TlvFrame)>&& on_message);
 
   // ProtocolParser interface
   auto GetReadBuffer() -> std::span<std::byte> override;
@@ -30,7 +31,7 @@ private:
   void setState(state new_state);
 
   frame frame_{.type_id_ = 0, .length_ = 0};
-  std::function<void(std::span<const std::byte>)> on_message_;
+  std::move_only_function<void(TlvFrame)> on_message_;
   std::array<std::byte, kBufferSize> buffer_{};
   size_t cursor_{0};
   size_t bytes_not_parsed_{0};

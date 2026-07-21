@@ -11,7 +11,7 @@ namespace carrot::io {
 
 class LlhttpParser final : public ProtocolParser {
 public:
-  explicit LlhttpParser(std::function<void(std::span<const std::byte>)>&& on_message);
+  explicit LlhttpParser(std::move_only_function<void(std::span<const std::byte>)>&& on_message);
   ~LlhttpParser() override = default;
 
   LlhttpParser(const LlhttpParser&) = delete;
@@ -32,7 +32,7 @@ private:
   auto onBody(llhttp_t* parser, const char* ptr, size_t length) -> int;
   auto onMessageComplete(llhttp_t* parser) -> int;
 
-  std::function<void(std::span<const std::byte>)> on_message_;
+  std::move_only_function<void(std::span<const std::byte>)> on_message_;
 
   llhttp_t parser_{};
   llhttp_settings_t settings_{};

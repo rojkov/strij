@@ -9,7 +9,7 @@
 
 namespace carrot::io {
 
-TlvParser::TlvParser(std::function<void(std::span<const std::byte>)>&& on_message)
+TlvParser::TlvParser(std::move_only_function<void(TlvFrame)>&& on_message)
     : on_message_{std::move(on_message)} {}
 
 auto TlvParser::GetReadBuffer() -> std::span<std::byte> {
@@ -150,12 +150,19 @@ void TlvParser::setState(state new_state) {
   case empty: {
     assert(state_ == type_read || state_ == length_read || state_ == value_partially_copied);
     if (state_ == type_read) {
-      on_message_({});
+      // Zero-length value: deliver TlvFrame with empty value
+      on_message_(TlvFrame{frame_.type_id_, std::span<const std::byte>{}});
     } else if (state_ == length_read) {
-      on_message_({std::next(buffer_.data(), static_cast<ssize_t>(cursor_)), frame_.length_});
+      // Value fits in buffer: deliver TlvFrame with span over buffer
+      auto value = std::span<const std::byte>(
+          std::next(buffer_.data(), static_cast<ssize_t>(cursor_)), frame_.length_);
+      on_message_(TlvFrame{frame_.type_id_, value});
     } else if (state_ == value_partially_copied) {
+      // Value was accumulated in a vector: deliver TlvFrame with span over accumulated
       assert(accumulated_value_ != nullptr);
-      on_message_(*accumulated_value_);
+      on_message_(
+          TlvFrame{frame_.type_id_, std::span<const std::byte>(accumulated_value_->data(),
+                                                               accumulated_value_->size())});
       accumulated_value_.reset(nullptr);
     }
 

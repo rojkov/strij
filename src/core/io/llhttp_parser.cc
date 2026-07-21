@@ -7,7 +7,7 @@
 
 namespace carrot::io {
 
-LlhttpParser::LlhttpParser(std::function<void(std::span<const std::byte>)>&& on_message)
+LlhttpParser::LlhttpParser(std::move_only_function<void(std::span<const std::byte>)>&& on_message)
     : on_message_{std::move(on_message)}, active_chunk_{std::make_unique<Chunk>()} {
   llhttp_settings_init(&settings_);
   settings_.on_body = on_body;

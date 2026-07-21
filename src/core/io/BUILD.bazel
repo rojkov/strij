@@ -1,13 +1,14 @@
 load("//bazel:build_system.bzl", "carrot_cc_library")
 
 carrot_cc_library(
-    name = "protocol_parser",
-    hdrs = ["protocol_parser.hh"],
+    name = "tlv_frame",
+    hdrs = ["tlv_frame.hh"],
+    visibility = ["//visibility:public"],
 )
 
 carrot_cc_library(
-    name = "message_handler",
-    hdrs = ["message_handler.hh"],
+    name = "protocol_parser",
+    hdrs = ["protocol_parser.hh"],
 )
 
 carrot_cc_library(
@@ -36,6 +37,7 @@ carrot_cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":protocol_parser",
+        ":tlv_frame",
         "//src/core/logging:log_lib",
     ],
 )
@@ -45,10 +47,52 @@ carrot_cc_library(
     srcs = ["connection.cc"],
     hdrs = ["connection.hh"],
     deps = [
-        ":message_handler",
         ":protocol_parser",
         "//include/carrot/event:dispatcher_interface",
         "//include/carrot/event:io_object_interface",
+    ],
+)
+
+carrot_cc_library(
+    name = "result_receiver_storage",
+    hdrs = ["result_receiver_storage.hh"],
+    visibility = ["//visibility:public"],
+)
+
+carrot_cc_library(
+    name = "echo_result_receiver_lib",
+    srcs = ["echo_result_receiver.cc"],
+    hdrs = ["echo_result_receiver.hh"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":connection_lib",
+        ":result_receiver_storage",
+    ],
+)
+
+carrot_cc_library(
+    name = "gateway_http_handler_lib",
+    srcs = ["gateway_http_handler.cc"],
+    hdrs = ["gateway_http_handler.hh"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":connection_lib",
+        ":result_receiver_storage",
+        ":tlv_frame",
+        "//src/core/logging:log_lib",
+    ],
+)
+
+carrot_cc_library(
+    name = "gateway_tlv_handler_lib",
+    srcs = ["gateway_tlv_handler.cc"],
+    hdrs = ["gateway_tlv_handler.hh"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":connection_lib",
+        ":result_receiver_storage",
+        ":tlv_frame",
+        "//src/core/logging:log_lib",
     ],
 )
 
@@ -59,7 +103,6 @@ carrot_cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":connection_lib",
-        ":message_handler",
     ],
 )
 
@@ -70,7 +113,17 @@ carrot_cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":connection_lib",
-        ":message_handler",
+    ],
+)
+
+carrot_cc_library(
+    name = "nodeagent_tlv_handler_lib",
+    srcs = ["nodeagent_tlv_handler.cc"],
+    hdrs = ["nodeagent_tlv_handler.hh"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":connection_lib",
+        ":tlv_frame",
     ],
 )
 
@@ -81,6 +134,19 @@ carrot_cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":connection_lib",
+        "//src/core/logging:log_lib",
+    ],
+)
+
+carrot_cc_library(
+    name = "tcp_connector_lib",
+    srcs = ["tcp_connector.cc"],
+    hdrs = ["tcp_connector.hh"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":connection_lib",
+        ":gateway_tlv_handler_lib",
+        ":tlv_parser_lib",
         "//src/core/logging:log_lib",
     ],
 )

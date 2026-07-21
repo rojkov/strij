@@ -1,21 +1,19 @@
-#include "core/io/http_echo_handler.hh"
+#include "core/io/echo_result_receiver.hh"
 
 #include <format>
 #include <string>
 #include <string_view>
 
-#include "core/io/connection.hh"
-
 namespace carrot::io {
 
-void HttpEchoHandler::HandleMessage(std::span<const std::byte> msg, Connection& conn) {
+void EchoResultReceiver::Deliver(std::span<const std::byte> value) {
   // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast)
-  auto body = std::string_view(reinterpret_cast<const char*>(msg.data()), msg.size());
+  auto body = std::string_view(reinterpret_cast<const char*>(value.data()), value.size());
   auto response = std::format("HTTP/1.1 200 OK\r\nContent-Length: {}\r\nContent-Type: "
                               "text/plain\r\nConnection: close\r\n\r\n{}",
-                              msg.size(), body);
+                              value.size(), body);
   auto response_bytes = std::as_bytes(std::span(response.data(), response.size()));
-  conn.Write(response_bytes);
+  conn_.Write(response_bytes);
 }
 
 } // namespace carrot::io

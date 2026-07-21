@@ -3,7 +3,7 @@
 #include "core/io/connection.hh"
 
 namespace carrot::io {
-void TrivialEchoHandler::OnMessage(std::span<const std::byte> msg, Connection& conn) {
+void TrivialEchoHandler::HandleMessage(std::span<const std::byte> msg, Connection& conn) {
   // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast)
   conn.Write(msg);
 }

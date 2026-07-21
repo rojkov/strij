@@ -34,7 +34,7 @@
 `Connection` SHALL own a `std::string write_buf_` member field. `Connection::Write(data)` SHALL copy `data` into `write_buf_` before calling `Dispatcher::PrepareWrite(this, WriteTag, fd_, write_buf_, 0)`. This ensures the write buffer is stable even if the caller's data is a temporary.
 
 #### Scenario: Handler writes a response
-- **WHEN** a `MessageHandler` calls `conn.Write(data)`
+- **WHEN** a handler calls `conn.Write(data)`
 - **THEN** Connection SHALL copy `data` into `write_buf_` and register an async write with the Dispatcher
 
 #### Scenario: Write buffer lifetime
@@ -42,23 +42,32 @@
 - **THEN** `write_buf_` SHALL remain valid and unmodified until the write `HandleCompletion` returns
 
 ### Requirement: Connection uses abstract parser and handler
-`Connection` SHALL accept a `unique_ptr<ProtocolParser>` and a `unique_ptr<MessageHandler>` in its constructor instead of constructing `LlhttpParser` directly. Connection SHALL NOT depend on `LlhttpParser` or any concrete parser type.
+`Connection` SHALL accept a `unique_ptr<ProtocolParser>` in its constructor. Connection SHALL own only the parser. Handler ownership SHALL be managed by the parser's callback lambda (captured as `unique_ptr`). Connection SHALL NOT depend on `LlhttpParser`, any concrete parser type, or any handler type.
 
-#### Scenario: Connection is constructed with injected dependencies
-- **WHEN** a `Connection` is created with a parser and handler
-- **THEN** it SHALL own both via `unique_ptr` and delegate parsing to the parser and message handling to the handler
+#### Scenario: Connection is constructed with injected parser
+- **WHEN** a `Connection` is created with a parser
+- **THEN** it SHALL own the parser via `unique_ptr` and delegate parsing to the parser
+- **AND** the handler SHALL be owned by the parser's callback lambda, not by Connection
 
 #### Scenario: Connection header has no llhttp dependency
 - **WHEN** `connection.hh` is included
 - **THEN** it SHALL NOT transitively include any llhttp headers or `LlhttpParser` headers
 
-### Requirement: TcpListener uses parser/handler factory
-`TcpListener` SHALL accept a factory callable that produces `(unique_ptr<ProtocolParser>, unique_ptr<MessageHandler>)` pairs for each new connection. A default factory producing `LlhttpParser` + `HttpEchoHandler` SHALL be provided.
+#### Scenario: Connection header has no handler dependency
+- **WHEN** `connection.hh` is included
+- **THEN** it SHALL NOT transitively include any `MessageHandler` headers
 
-#### Scenario: TcpListener creates a connection with factory-provided dependencies
+### Requirement: TcpListener uses parser factory
+`TcpListener` SHALL accept a factory callable that produces `unique_ptr<ProtocolParser>` for each new connection.
+
+#### Scenario: TcpListener creates a connection with factory-provided parser
 - **WHEN** a new TCP connection is accepted
-- **THEN** TcpListener SHALL call the factory to obtain a parser and handler, then construct a `Connection` with them
+- **THEN** TcpListener SHALL call the factory to obtain a parser, then construct a `Connection` with it
 
-#### Scenario: Default factory produces HTTP components
-- **WHEN** TcpListener is constructed without an explicit factory
-- **THEN** it SHALL use a default factory that creates `LlhttpParser` + `HttpEchoHandler` pairs
+### Requirement: ConnectionFactory type
+`ConnectionFactory` SHALL be a `std::function` that takes `Connection&` and returns `std::unique_ptr<ProtocolParser>`. Handler ownership SHALL be internal to the parser's callback (captured as `unique_ptr` in the lambda).
+
+#### Scenario: Factory produces parser with embedded handler
+- **WHEN** `ConnectionFactory` is invoked for a new connection
+- **THEN** it SHALL return a `unique_ptr<ProtocolParser>` whose callback owns the handler via `unique_ptr` capture
+- **AND** the parser SHALL be the sole return value (no pair, no separate handler)

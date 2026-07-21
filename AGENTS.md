@@ -1,6 +1,7 @@
 # Carrot
 
-C++23 event-loop gateway server using `io_uring` (Linux). Bazel 9.0.1 build.
+C++23 gateway server and distributed node agent servers `io_uring`-based (Linux) event loop. Bazel 9.0.1 build.
+No synchronous system calls. Use `io_uring` as much as possible.
 
 ## Commands (Makefile wrappers)
 
@@ -26,6 +27,7 @@ C++23 event-loop gateway server using `io_uring` (Linux). Bazel 9.0.1 build.
 ## Code conventions
 
 - **Headers:** `.hh`, **sources:** `.cc`, **header guards:** `#pragma once`
+- **Method names** are capitalized when public to distinguish them visually from private ones.
 - **Namespaces:** `carrot::common`, `carrot::event`, `carrot::io`, `carrot::logging`
 - **Format:** `.clang-format` — column 100, left-aligned pointers, grouped includes.
 - **Lint:** `.clang-tidy` with cppcoreguidelines/modernize/readability checks.
@@ -33,10 +35,9 @@ C++23 event-loop gateway server using `io_uring` (Linux). Bazel 9.0.1 build.
 
 ## Architecture
 
-- **Entrypoint:** `//src/exe/gateway:gateway` (`gateway.cc`)
+- **Entrypoints:** `//src/exe/gateway:gateway` (`gateway.cc`) and `//src/exe/nodeagent:nodeagent` (`nodeagent.cc`)
 - **Event loop:** `Dispatcher` (abstract) / `DispatcherImpl` (io_uring, 4096 entries). `IOObject` handles completions; `Command` struct carries type/target/args.
 - **Logging:** Singleton `Logger` runs its own `DispatcherImpl` in a dedicated thread. Each thread registers a `LogFrontend` (lock-free SPSC queue). Macros: `LOG_DEBUG()`, `LOG_INFO()`, `LOG_WARNING()`, `LOG_ERROR()`, `LOG_REGISTER_THREAD()`.
-- **I/O:** `TcpListener` (multishot accept on :8081), `Connection` (echo 200 OK), `LlhttpParser` (chunk buffering, llhttp C lib).
 
 ## Testing
 

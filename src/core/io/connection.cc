@@ -7,11 +7,7 @@ namespace carrot::io {
 Connection::Connection(int connection_fd, event::DispatcherSharedPtr dispatcher,
                        event::IOObject* owner, ConnectionFactory factory)
     : fd_{connection_fd}, dispatcher_{std::move(dispatcher)}, owner_{owner} {
-  auto [parser, handler] = factory([this](std::span<const std::byte> msg) {
-    handler_->OnMessage(msg, *this);
-  });
-  parser_ = std::move(parser);
-  handler_ = std::move(handler);
+  parser_ = factory(*this);
   dispatcher_->PrepareRead(this, kRead, fd_, parser_->GetReadBuffer(), 0);
 }
 
@@ -26,7 +22,6 @@ void Connection::HandleCompletion(uint8_t tag, int res, uint32_t /*flags*/) {
       onEndOfStream();
     }
   } else if (tag == kWrite) {
-    onEndOfStream();
   }
 }
 
