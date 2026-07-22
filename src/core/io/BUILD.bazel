@@ -97,26 +97,6 @@ carrot_cc_library(
 )
 
 carrot_cc_library(
-    name = "http_echo_handler_lib",
-    srcs = ["http_echo_handler.cc"],
-    hdrs = ["http_echo_handler.hh"],
-    visibility = ["//visibility:public"],
-    deps = [
-        ":connection_lib",
-    ],
-)
-
-carrot_cc_library(
-    name = "trivial_echo_handler_lib",
-    srcs = ["trivial_echo_handler.cc"],
-    hdrs = ["trivial_echo_handler.hh"],
-    visibility = ["//visibility:public"],
-    deps = [
-        ":connection_lib",
-    ],
-)
-
-carrot_cc_library(
     name = "nodeagent_tlv_handler_lib",
     srcs = ["nodeagent_tlv_handler.cc"],
     hdrs = ["nodeagent_tlv_handler.hh"],
