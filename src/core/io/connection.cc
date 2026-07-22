@@ -1,5 +1,6 @@
 #include "core/io/connection.hh"
 
+#include <cassert>
 #include <unistd.h>
 
 namespace carrot::io {
@@ -22,13 +23,31 @@ void Connection::HandleCompletion(uint8_t tag, int res, uint32_t /*flags*/) {
       onEndOfStream();
     }
   } else if (tag == kWrite) {
+    if (res > 0) {
+      write_offset_ += static_cast<size_t>(res);
+      if (write_offset_ < write_buf_.size()) {
+        dispatcher_->PrepareWrite(
+            this, kWrite, fd_,
+            std::span<const std::byte>(write_buf_.data() + write_offset_,
+                                       write_buf_.size() - write_offset_),
+            0);
+      } else {
+        write_buf_.clear();
+        write_offset_ = 0;
+      }
+    } else {
+      write_buf_.clear();
+      write_offset_ = 0;
+    }
   }
 }
 
 void Connection::Write(std::span<const std::byte> data) {
+  assert(write_buf_.empty() && "previous write still in-flight");
   write_buf_.assign(data.begin(), data.end());
+  write_offset_ = 0;
   dispatcher_->PrepareWrite(this, kWrite, fd_,
-                            std::as_bytes(std::span(write_buf_.data(), write_buf_.size())), 0);
+                            std::span<const std::byte>(write_buf_.data(), write_buf_.size()), 0);
 }
 
 void Connection::onEndOfStream() {

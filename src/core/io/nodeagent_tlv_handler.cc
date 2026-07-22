@@ -1,8 +1,5 @@
 #include "core/io/nodeagent_tlv_handler.hh"
 
-#include <arpa/inet.h>
-
-#include <cstring>
 #include <vector>
 
 #include "core/io/connection.hh"
@@ -15,14 +12,7 @@ void NodeagentTlvHandler::HandleFrame(TlvFrame frame, Connection& conn) {
     return; // Only handle task submissions
   }
 
-  std::vector<std::byte> response;
-  response.reserve(5 + frame.value.size());
-  response.push_back(std::byte{TlvFrame::kResult});
-  response.resize(5);
-  uint32_t net_len = htonl(static_cast<uint32_t>(frame.value.size()));
-  std::memcpy(response.data() + 1, &net_len, 4);
-  response.insert(response.end(), frame.value.begin(), frame.value.end());
-
+  auto response = SerializeTlvFrame(TlvFrame::kResult, frame.value);
   conn.Write(response);
 }
 

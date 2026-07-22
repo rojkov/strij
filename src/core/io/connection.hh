@@ -1,10 +1,11 @@
 #pragma once
 
+#include <cstddef>
 #include <functional>
 #include <memory>
 #include <span>
-#include <string>
 #include <utility>
+#include <vector>
 
 #include "carrot/event/dispatcher.hh"
 #include "carrot/event/io_object.hh"
@@ -42,7 +43,8 @@ private:
   event::DispatcherSharedPtr dispatcher_;
   event::IOObject* owner_;
   std::unique_ptr<ProtocolParser> parser_;
-  std::string write_buf_;
+  std::vector<std::byte> write_buf_;
+  size_t write_offset_{0};
 };
 
 } // namespace carrot::io

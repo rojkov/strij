@@ -2,6 +2,7 @@ load("//bazel:build_system.bzl", "carrot_cc_library")
 
 carrot_cc_library(
     name = "tlv_frame",
+    srcs = ["tlv_frame.cc"],
     hdrs = ["tlv_frame.hh"],
     visibility = ["//visibility:public"],
 )

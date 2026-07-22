@@ -27,11 +27,11 @@ auto main() -> int {
 
   // Connect to nodeagents
   carrot::io::TcpConnector connector{dispatcher, storage};
-  std::vector<carrot::io::TlvSenderPtr> senders;
+  std::vector<carrot::io::Connection*> nodeagent_conns;
 
   try {
-    int conn_fd = connector.Connect("127.0.0.1", 9090);
-    senders.push_back(std::make_unique<carrot::io::TlvSender>(conn_fd));
+    auto* conn = connector.Connect("127.0.0.1", 9090);
+    nodeagent_conns.push_back(conn);
   } catch (const std::exception& e) {
     LOG_WARNING("Failed to connect to nodeagent: {}", e.what());
   }
@@ -40,7 +40,7 @@ auto main() -> int {
       dispatcher, 8081,
       [&](carrot::io::Connection& conn) -> std::unique_ptr<carrot::io::ProtocolParser> {
         auto handler = std::make_unique<carrot::io::GatewayHttpHandler>(
-            senders, storage,
+            nodeagent_conns, storage,
             [](carrot::io::Connection& conn) -> std::unique_ptr<carrot::io::ResultReceiver> {
               return std::make_unique<carrot::io::EchoResultReceiver>(conn);
             });

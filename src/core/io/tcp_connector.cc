@@ -16,7 +16,7 @@ namespace carrot::io {
 TcpConnector::TcpConnector(event::DispatcherSharedPtr dispatcher, ResultReceiverStorage& storage)
     : dispatcher_{std::move(dispatcher)}, storage_{storage} {}
 
-int TcpConnector::Connect(const std::string& host, uint16_t port) {
+Connection* TcpConnector::Connect(const std::string& host, uint16_t port) {
   int fd = socket(AF_INET, SOCK_STREAM, 0);
   if (fd < 0) {
     throw std::runtime_error("failed to create socket");
@@ -47,7 +47,7 @@ int TcpConnector::Connect(const std::string& host, uint16_t port) {
   connections_.push_back(
       std::make_unique<Connection>(fd, dispatcher_, this, std::move(factory)));
 
-  return fd;
+  return connections_.back().get();
 }
 
 void TcpConnector::HandleCompletion(uint8_t /*tag*/, int /*res*/, uint32_t /*flags*/) {}

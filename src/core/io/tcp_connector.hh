@@ -21,7 +21,7 @@ public:
   TcpConnector(TcpConnector&&) noexcept = delete;
   auto operator=(TcpConnector&&) noexcept -> TcpConnector& = delete;
 
-  int Connect(const std::string& host, uint16_t port);
+  Connection* Connect(const std::string& host, uint16_t port);
 
   void HandleCompletion(uint8_t tag, int res, uint32_t flags) override;
   void ProcessCommand(event::Command cmd) override;

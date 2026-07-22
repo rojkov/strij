@@ -20,6 +20,7 @@ carrot_cc_test(
         "//src/core/io:result_receiver_storage",
         "//src/core/io:tlv_frame",
         "//src/core/io:tlv_parser_lib",
+        "//test/mocks/event:event_mocks_lib",
         "@googletest//:gtest_main",
     ],
 )

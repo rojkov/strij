@@ -5,9 +5,14 @@
 #include <cstring>
 #include <vector>
 
+#include "test/mocks/event/mocks.hh"
+
+#include "carrot/event/io_object.hh"
+#include "core/io/connection.hh"
 #include "core/io/gateway_http_handler.hh"
 #include "core/io/gateway_tlv_handler.hh"
 #include "core/io/nodeagent_tlv_handler.hh"
+#include "core/io/protocol_parser.hh"
 #include "core/io/result_receiver_storage.hh"
 #include "core/io/tlv_frame.hh"
 #include "core/io/tlv_parser.hh"
@@ -25,82 +30,74 @@ public:
   }
 };
 
-class TlvSenderTest : public ::testing::Test {
-protected:
-  void SetUp() override {
-    int fds[2];
-    ASSERT_EQ(0, socketpair(AF_UNIX, SOCK_STREAM, 0, fds));
-    read_fd_ = fds[0];
-    write_fd_ = fds[1];
-  }
-
-  void TearDown() override {
-    close(read_fd_);
-    close(write_fd_);
-  }
-
-  int read_fd_;
-  int write_fd_;
-};
+class SerializeTlvFrameTest : public ::testing::Test {};
 
 // NOLINTBEGIN(modernize-use-trailing-return-type)
 
-TEST_F(TlvSenderTest, SendFrameWritesCorrectBytes) {
-  TlvSender sender(write_fd_);
-
-  uint64_t task_id = 42;
+TEST_F(SerializeTlvFrameTest, SerializesCorrectWireFormat) {
   auto value = std::vector<std::byte>{std::byte{0xAA}, std::byte{0xBB}};
-  sender.SendFrame(TlvFrame::kTaskSubmission, task_id, value);
+  auto frame = SerializeTlvFrame(TlvFrame::kTaskSubmission, value);
 
-  // Read the frame from the socket
-  std::array<std::byte, 1024> buf{};
-  ssize_t n = ::read(read_fd_, buf.data(), buf.size());
-  ASSERT_GT(n, 5);
-
-  // Parse: [type_id:1][length:4][task_id:8][payload:N]
-  EXPECT_EQ(static_cast<uint8_t>(buf[0]), TlvFrame::kTaskSubmission);
+  // [type_id:1][length:4][value:N]
+  ASSERT_GE(frame.size(), 5U);
+  EXPECT_EQ(static_cast<uint8_t>(frame[0]), TlvFrame::kTaskSubmission);
 
   uint32_t net_len{};
-  std::memcpy(&net_len, buf.data() + 1, 4);
+  std::memcpy(&net_len, frame.data() + 1, 4);
   uint32_t length = ntohl(net_len);
-  EXPECT_EQ(length, sizeof(uint64_t) + value.size());
+  EXPECT_EQ(length, value.size());
 
-  uint64_t received_task_id{};
-  std::memcpy(&received_task_id, buf.data() + 5, sizeof(uint64_t));
-  EXPECT_EQ(received_task_id, task_id);
-
-  EXPECT_TRUE(
-      std::equal(buf.begin() + 13, buf.begin() + 13 + value.size(), value.begin()));
+  EXPECT_TRUE(std::equal(frame.begin() + 5, frame.begin() + 5 + value.size(), value.begin()));
 }
 
-TEST_F(TlvSenderTest, SendResultFrame) {
-  TlvSender sender(write_fd_);
-
-  uint64_t task_id = 99;
+TEST_F(SerializeTlvFrameTest, SerializesResultType) {
   auto value = std::vector<std::byte>{std::byte{0x11}};
-  sender.SendFrame(TlvFrame::kResult, task_id, value);
+  auto frame = SerializeTlvFrame(TlvFrame::kResult, value);
 
-  std::array<std::byte, 1024> buf{};
-  ssize_t n = ::read(read_fd_, buf.data(), buf.size());
-  ASSERT_GT(n, 5);
-
-  EXPECT_EQ(static_cast<uint8_t>(buf[0]), TlvFrame::kResult);
+  ASSERT_GE(frame.size(), 5U);
+  EXPECT_EQ(static_cast<uint8_t>(frame[0]), TlvFrame::kResult);
 }
 
-TEST_F(TlvSenderTest, SendEmptyValue) {
-  TlvSender sender(write_fd_);
+TEST_F(SerializeTlvFrameTest, SerializesEmptyValue) {
+  auto frame = SerializeTlvFrame(TlvFrame::kHeartbeat, std::span<const std::byte>{});
 
-  uint64_t task_id = 1;
-  sender.SendFrame(TlvFrame::kHeartbeat, task_id, std::span<const std::byte>{});
-
-  std::array<std::byte, 1024> buf{};
-  ssize_t n = ::read(read_fd_, buf.data(), buf.size());
-  ASSERT_GT(n, 5);
+  ASSERT_GE(frame.size(), 5U);
+  EXPECT_EQ(static_cast<uint8_t>(frame[0]), TlvFrame::kHeartbeat);
 
   uint32_t net_len{};
-  std::memcpy(&net_len, buf.data() + 1, 4);
+  std::memcpy(&net_len, frame.data() + 1, 4);
   uint32_t length = ntohl(net_len);
-  EXPECT_EQ(length, sizeof(uint64_t)); // Just the task_id, no payload
+  EXPECT_EQ(length, 0U);
+}
+
+TEST_F(SerializeTlvFrameTest, RoundTripsThroughTlvParser) {
+  uint64_t task_id = 42;
+  auto payload = std::vector<std::byte>{std::byte{0xAA}, std::byte{0xBB}};
+
+  // Build value with task_id prefix (same as GatewayHttpHandler does)
+  std::vector<std::byte> value;
+  value.reserve(sizeof(uint64_t) + payload.size());
+  std::memcpy(value.data(), &task_id, sizeof(uint64_t));
+  // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast)
+  auto* tid = reinterpret_cast<const std::byte*>(&task_id);
+  value.assign(tid, tid + sizeof(uint64_t));
+  value.insert(value.end(), payload.begin(), payload.end());
+
+  auto wire = SerializeTlvFrame(TlvFrame::kTaskSubmission, value);
+
+  // Parse it back with TlvParser
+  std::vector<TlvFrame> received_frames;
+  TlvParser parser([&received_frames](TlvFrame frame) { received_frames.push_back(frame); });
+
+  auto read_buf = parser.GetReadBuffer();
+  std::memcpy(read_buf.data(), wire.data(), wire.size());
+  parser.OnData(wire.size());
+
+  ASSERT_EQ(received_frames.size(), 1U);
+  EXPECT_EQ(received_frames[0].type_id, TlvFrame::kTaskSubmission);
+  EXPECT_EQ(received_frames[0].value.size(), value.size());
+  EXPECT_TRUE(
+      std::equal(received_frames[0].value.begin(), received_frames[0].value.end(), value.begin()));
 }
 
 class GatewayTlvHandlerTest : public ::testing::Test {
@@ -136,8 +133,8 @@ TEST_F(GatewayTlvHandlerTest, DispatchResultToReceiver) {
   receiver->Deliver(payload);
 
   ASSERT_EQ(mock_ptr->last_value.size(), payload.size());
-  EXPECT_TRUE(std::equal(mock_ptr->last_value.begin(), mock_ptr->last_value.end(),
-                          payload.begin()));
+  EXPECT_TRUE(
+      std::equal(mock_ptr->last_value.begin(), mock_ptr->last_value.end(), payload.begin()));
 
   close(dummy_fds[0]);
   close(dummy_fds[1]);
@@ -156,16 +153,9 @@ TEST_F(GatewayTlvHandlerTest, IgnoreUnknownTaskId) {
   EXPECT_TRUE(mock_ptr->last_value.empty());
 }
 
-TEST_F(GatewayTlvHandlerTest, HeartbeatFrame) {
-  // Heartbeat frames have no task_id or payload
-  // Just verify the type_id constant is correct
-  EXPECT_EQ(TlvFrame::kHeartbeat, 2);
-}
+TEST_F(GatewayTlvHandlerTest, HeartbeatFrame) { EXPECT_EQ(TlvFrame::kHeartbeat, 2); }
 
-TEST_F(GatewayTlvHandlerTest, UndersizedFrameIgnored) {
-  // Frame too small to contain type_id + length
-  EXPECT_LT(2, 5U);
-}
+TEST_F(GatewayTlvHandlerTest, UndersizedFrameIgnored) { EXPECT_LT(2, 5U); }
 
 class ResultReceiverStorageTest : public ::testing::Test {};
 
@@ -212,13 +202,7 @@ TEST_F(NodeagentTlvHandlerTest, EchoTaskSubmissionWireFormat) {
   std::memcpy(value_bytes.data(), &task_id, sizeof(uint64_t));
   std::memcpy(value_bytes.data() + sizeof(uint64_t), payload.data(), payload.size());
 
-  std::vector<std::byte> response;
-  response.reserve(5 + value_bytes.size());
-  response.push_back(std::byte{TlvFrame::kResult});
-  response.resize(5);
-  uint32_t net_len = htonl(static_cast<uint32_t>(value_bytes.size()));
-  std::memcpy(response.data() + 1, &net_len, 4);
-  response.insert(response.end(), value_bytes.begin(), value_bytes.end());
+  auto response = SerializeTlvFrame(TlvFrame::kResult, value_bytes);
 
   ssize_t written = ::write(write_fd_, response.data(), response.size());
   ASSERT_EQ(written, static_cast<ssize_t>(response.size()));
@@ -250,13 +234,7 @@ TEST_F(NodeagentTlvHandlerTest, EchoTaskSubmissionParsedByTlvParser) {
   std::memcpy(value_bytes.data(), &task_id, sizeof(uint64_t));
   std::memcpy(value_bytes.data() + sizeof(uint64_t), payload.data(), payload.size());
 
-  std::vector<std::byte> response;
-  response.reserve(5 + value_bytes.size());
-  response.push_back(std::byte{TlvFrame::kResult});
-  response.resize(5);
-  uint32_t net_len = htonl(static_cast<uint32_t>(value_bytes.size()));
-  std::memcpy(response.data() + 1, &net_len, 4);
-  response.insert(response.end(), value_bytes.begin(), value_bytes.end());
+  auto response = SerializeTlvFrame(TlvFrame::kResult, value_bytes);
 
   ssize_t written = ::write(write_fd_, response.data(), response.size());
   ASSERT_EQ(written, static_cast<ssize_t>(response.size()));
@@ -282,6 +260,106 @@ TEST_F(NodeagentTlvHandlerTest, EchoTaskSubmissionParsedByTlvParser) {
 
   auto parsed_payload = received_frames[0].value.subspan(sizeof(uint64_t));
   EXPECT_TRUE(std::equal(parsed_payload.begin(), parsed_payload.end(), payload.begin()));
+}
+
+class ConnectionPartialWriteTest : public ::testing::Test {
+protected:
+  void SetUp() override {
+    int fds[2];
+    ASSERT_EQ(0, socketpair(AF_UNIX, SOCK_STREAM, 0, fds));
+    read_fd_ = fds[0];
+    write_fd_ = fds[1];
+  }
+
+  void TearDown() override {
+    close(read_fd_);
+    close(write_fd_);
+  }
+
+  int read_fd_;
+  int write_fd_;
+};
+
+class TrivialParser final : public ProtocolParser {
+public:
+  auto GetReadBuffer() -> std::span<std::byte> override {
+    return std::span<std::byte>(buf_.data(), buf_.size());
+  }
+  auto OnData(size_t /*bytes_read*/) -> Action override { return Action::NeedMoreData; }
+
+private:
+  std::array<std::byte, 128> buf_{};
+};
+
+struct DummyOwner final : public carrot::event::IOObject {
+  void HandleCompletion(uint8_t /*tag*/, int /*res*/, uint32_t /*flags*/) override {}
+  void ProcessCommand(carrot::event::Command /*cmd*/) override {}
+};
+
+TEST_F(ConnectionPartialWriteTest, PartialWriteResubmitsRemaining) {
+  auto dispatcher = std::make_shared<carrot::event::MockDispatcher>();
+  DummyOwner owner;
+
+  // Suppress uninteresting PrepareRead call from Connection constructor
+  EXPECT_CALL(*dispatcher,
+              PrepareRead(::testing::_, ::testing::_, ::testing::_, ::testing::_, ::testing::_))
+      .WillOnce(::testing::Return());
+
+  carrot::io::Connection conn(
+      write_fd_, dispatcher, &owner,
+      [](carrot::io::Connection&) -> std::unique_ptr<carrot::io::ProtocolParser> {
+        return std::make_unique<TrivialParser>();
+      });
+
+  // Enforce call order: Write() → 100 bytes, then HandleCompletion → 70 bytes
+  {
+    ::testing::InSequence seq;
+    EXPECT_CALL(*dispatcher,
+                PrepareWrite(::testing::_, ::testing::_, ::testing::_, ::testing::_, 0))
+        .Times(1);
+    EXPECT_CALL(*dispatcher, PrepareWrite(::testing::_, ::testing::_, ::testing::_,
+                                          ::testing::Truly([](std::span<const std::byte> s) {
+                                            return s.size() == 70;
+                                          }),
+                                          0))
+        .Times(1);
+  }
+
+  // Write 100 bytes
+  auto data = std::vector<std::byte>(100, std::byte{0x42});
+  conn.Write(data);
+
+  // Simulate a partial write: only 30 bytes written — triggers resubmit of remaining 70
+  conn.HandleCompletion(1 /*kWrite*/, 30, 0);
+}
+
+TEST_F(ConnectionPartialWriteTest, CompleteWriteClearsBuffer) {
+  auto dispatcher = std::make_shared<carrot::event::MockDispatcher>();
+  DummyOwner owner;
+
+  // Suppress uninteresting PrepareRead call from Connection constructor
+  EXPECT_CALL(*dispatcher,
+              PrepareRead(::testing::_, ::testing::_, ::testing::_, ::testing::_, ::testing::_))
+      .WillOnce(::testing::Return());
+
+  carrot::io::Connection conn(
+      write_fd_, dispatcher, &owner,
+      [](carrot::io::Connection&) -> std::unique_ptr<carrot::io::ProtocolParser> {
+        return std::make_unique<TrivialParser>();
+      });
+
+  auto data = std::vector<std::byte>{std::byte{0x01}, std::byte{0x02}};
+  EXPECT_CALL(*dispatcher, PrepareWrite(::testing::_, ::testing::_, ::testing::_, ::testing::_, 0))
+      .Times(1);
+  conn.Write(data);
+
+  // Simulate complete write
+  conn.HandleCompletion(1 /*kWrite*/, 2, 0);
+
+  // Should be able to write again (buffer cleared)
+  EXPECT_CALL(*dispatcher, PrepareWrite(::testing::_, ::testing::_, ::testing::_, ::testing::_, 0))
+      .Times(1);
+  conn.Write(data);
 }
 
 // NOLINTEND(modernize-use-trailing-return-type)
