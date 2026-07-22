@@ -23,6 +23,8 @@ public:
                    off_t offset) override;
   void PrepareWrite(IOObject* io_object, uint8_t tag, int fd, std::span<const std::byte> buf,
                     off_t offset) override;
+  void PrepareConnect(IOObject* io_object, uint8_t tag, int fd, const struct sockaddr* addr,
+                      socklen_t addrlen) override;
 
   // IOObject interface
   void HandleCompletion(uint8_t tag, int res, uint32_t flags) override;

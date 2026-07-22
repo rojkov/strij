@@ -10,7 +10,7 @@ carrot_cc_binary(
         "//src/core/io:gateway_http_handler_lib",
         "//src/core/io:gateway_tlv_handler_lib",
         "//src/core/io:llhttp_parser_lib",
-        "//src/core/io:tcp_connector_lib",
+        "//src/core/io:node_directory_lib",
         "//src/core/io:tcp_listener_lib",
         "//src/core/io:tlv_parser_lib",
         "//src/core/logging:log_lib",

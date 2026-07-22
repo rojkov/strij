@@ -4,6 +4,8 @@
 #include <memory>
 #include <span>
 
+#include <sys/socket.h>
+
 #include "carrot/common/pure.hh"
 #include "carrot/event/command.hh"
 
@@ -28,6 +30,8 @@ public:
                            off_t offset) PURE;
   virtual void PrepareWrite(IOObject* io_object, uint8_t tag, int fd,
                             std::span<const std::byte> buf, off_t offset) PURE;
+  virtual void PrepareConnect(IOObject* io_object, uint8_t tag, int fd,
+                              const struct sockaddr* addr, socklen_t addrlen) PURE;
 };
 
 using DispatcherSharedPtr = std::shared_ptr<Dispatcher>;

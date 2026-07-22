@@ -19,6 +19,10 @@ public:
               (IOObject * io_object, uint8_t tag, int fd, std::span<const std::byte> buf,
                off_t offset),
               (override));
+  MOCK_METHOD(void, PrepareConnect,
+              (IOObject * io_object, uint8_t tag, int fd, const struct sockaddr* addr,
+               socklen_t addrlen),
+              (override));
 };
 
 } // namespace carrot::event

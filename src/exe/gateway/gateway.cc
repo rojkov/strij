@@ -9,8 +9,8 @@
 #include "core/io/gateway_http_handler.hh"
 #include "core/io/gateway_tlv_handler.hh"
 #include "core/io/llhttp_parser.hh"
+#include "core/io/node_directory.hh"
 #include "core/io/result_receiver_storage.hh"
-#include "core/io/tcp_connector.hh"
 #include "core/io/tcp_listener.hh"
 #include "core/io/tlv_parser.hh"
 #include "core/logging/log.hh"
@@ -25,22 +25,25 @@ auto main() -> int {
 
   carrot::io::ResultReceiverStorage storage;
 
-  // Connect to nodeagents
-  carrot::io::TcpConnector connector{dispatcher, storage};
-  std::vector<carrot::io::Connection*> nodeagent_conns;
+  // Node directory with async connect
+  auto connection_factory =
+      [&storage](carrot::io::Connection& conn) -> std::unique_ptr<carrot::io::ProtocolParser> {
+    auto handler = std::make_unique<carrot::io::GatewayTlvHandler>(storage);
+    return std::make_unique<carrot::io::TlvParser>(
+        [h = std::move(handler), &conn](carrot::io::TlvFrame frame) {
+          h->HandleFrame(frame, conn);
+        });
+  };
 
-  try {
-    auto* conn = connector.Connect("127.0.0.1", 9090);
-    nodeagent_conns.push_back(conn);
-  } catch (const std::exception& e) {
-    LOG_WARNING("Failed to connect to nodeagent: {}", e.what());
-  }
+  carrot::io::NodeDirectory node_directory{dispatcher, {"127.0.0.1:9090"},
+                                           std::move(connection_factory)};
+  node_directory.StartConnectAll();
 
   carrot::io::TcpListener http_listener{
       dispatcher, 8081,
       [&](carrot::io::Connection& conn) -> std::unique_ptr<carrot::io::ProtocolParser> {
         auto handler = std::make_unique<carrot::io::GatewayHttpHandler>(
-            nodeagent_conns, storage,
+            node_directory, storage,
             [](carrot::io::Connection& conn) -> std::unique_ptr<carrot::io::ResultReceiver> {
               return std::make_unique<carrot::io::EchoResultReceiver>(conn);
             });

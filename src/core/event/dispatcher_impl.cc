@@ -107,11 +107,19 @@ void DispatcherImpl::PrepareRead(IOObject* io_object, uint8_t tag, int fd, std::
 }
 
 void DispatcherImpl::PrepareWrite(IOObject* io_object, uint8_t tag, int fd,
-                                  std::span<const std::byte> buf, off_t offset) {
+                                   std::span<const std::byte> buf, off_t offset) {
   auto* sqe = io_uring_get_sqe(&ring_);
   assert(sqe != nullptr);
   io_uring_sqe_set_data(sqe, merge_with_tag(io_object, tag));
   io_uring_prep_write(sqe, fd, buf.data(), buf.size(), offset);
+}
+
+void DispatcherImpl::PrepareConnect(IOObject* io_object, uint8_t tag, int fd,
+                                    const struct sockaddr* addr, socklen_t addrlen) {
+  auto* sqe = io_uring_get_sqe(&ring_);
+  assert(sqe != nullptr);
+  io_uring_sqe_set_data(sqe, merge_with_tag(io_object, tag));
+  io_uring_prep_connect(sqe, fd, addr, addrlen);
 }
 
 } // namespace carrot::event

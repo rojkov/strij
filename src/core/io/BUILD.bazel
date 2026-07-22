@@ -78,6 +78,7 @@ carrot_cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":connection_lib",
+        ":node_directory_lib",
         ":result_receiver_storage",
         ":tlv_frame",
         "//src/core/logging:log_lib",
@@ -120,14 +121,26 @@ carrot_cc_library(
 )
 
 carrot_cc_library(
-    name = "tcp_connector_lib",
-    srcs = ["tcp_connector.cc"],
-    hdrs = ["tcp_connector.hh"],
+    name = "node_lib",
+    srcs = ["node.cc"],
+    hdrs = ["node.hh"],
     visibility = ["//visibility:public"],
     deps = [
         ":connection_lib",
-        ":gateway_tlv_handler_lib",
-        ":tlv_parser_lib",
+        "//include/carrot/event:dispatcher_interface",
+        "//include/carrot/event:io_object_interface",
         "//src/core/logging:log_lib",
+    ],
+)
+
+carrot_cc_library(
+    name = "node_directory_lib",
+    srcs = ["node_directory.cc"],
+    hdrs = ["node_directory.hh"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":connection_lib",
+        ":node_lib",
+        "//include/carrot/event:dispatcher_interface",
     ],
 )

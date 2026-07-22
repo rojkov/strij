@@ -13,7 +13,8 @@
 namespace carrot::io {
 
 void GatewayHttpHandler::HandleMessage(std::span<const std::byte> msg, Connection& conn) {
-  if (nodeagent_conns_.empty()) {
+  auto* node = node_directory_.GetNextNode();
+  if (node == nullptr) {
     auto response = std::format("HTTP/1.1 503 Service Unavailable\r\nContent-Length: "
                                 "0\r\nConnection: close\r\n\r\n");
     auto response_bytes = std::as_bytes(std::span(response.data(), response.size()));
@@ -22,8 +23,7 @@ void GatewayHttpHandler::HandleMessage(std::span<const std::byte> msg, Connectio
   }
 
   auto task_id = next_task_id_++;
-  auto* nodeagent_conn = nodeagent_conns_[round_robin_ % nodeagent_conns_.size()];
-  round_robin_++;
+  auto* nodeagent_conn = node->GetConnection();
 
   auto receiver = make_receiver_(conn);
   storage_.put(task_id, std::move(receiver));
