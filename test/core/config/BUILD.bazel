@@ -1,0 +1,10 @@
+load("//bazel:build_system.bzl", "carrot_cc_test")
+
+carrot_cc_test(
+    name = "config_loader_test",
+    srcs = ["config_loader_test.cc"],
+    deps = [
+        "//src/core/config:config_loader_lib",
+        "@googletest//:gtest_main",
+    ],
+)

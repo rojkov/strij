@@ -1,0 +1,25 @@
+syntax = "proto3";
+
+package carrot.config;
+
+import "options.proto";
+
+message NodeAgentConfig {
+  TlvListener tlv_listener = 1;
+  Logging logging = 2;
+  // RESERVED for future (v2+): not used by nodeagent in v1
+  // google.protobuf.Duration connection_timeout = 3;
+  // google.protobuf.Duration heartbeat_interval = 4;
+  // TlsConfig tls = 5;
+}
+
+message TlvListener {
+  string address = 1;
+  uint32 port = 2 [(carrot.config.required) = true,
+                   (carrot.config.range_min) = "1",
+                   (carrot.config.range_max) = "65535"];
+  // RESERVED for future (v2+)
+  // uint32 max_connections = 3;
+  // bool reuse_port = 4;
+  // uint32 read_buffer_size = 5;
+}

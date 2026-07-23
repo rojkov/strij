@@ -1,7 +1,8 @@
 #include "core/io/connection.hh"
 
-#include <cassert>
 #include <unistd.h>
+
+#include <cassert>
 
 namespace carrot::io {
 
@@ -28,8 +29,9 @@ void Connection::HandleCompletion(uint8_t tag, int res, uint32_t /*flags*/) {
       if (write_offset_ < write_buf_.size()) {
         dispatcher_->PrepareWrite(
             this, kWrite, fd_,
-            std::span<const std::byte>(write_buf_.data() + write_offset_,
-                                       write_buf_.size() - write_offset_),
+            std::span<const std::byte>(
+                std::next(write_buf_.data(), static_cast<ssize_t>(write_offset_)),
+                write_buf_.size() - write_offset_),
             0);
       } else {
         write_buf_.clear();

@@ -1,0 +1,48 @@
+# Kubernetes ConfigMap example for Carrot Gateway
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: carrot-gateway-config
+  namespace: carrot
+data:
+  gateway.yaml: |
+    http_listener:
+      address: "0.0.0.0"
+      port: 8081
+
+    node_connections:
+      - address: "nodeagent-0.carrot.svc.cluster.local:9090"
+
+    logging:
+      level: "info"
+      format: "json"
+      output: "stdout"
+---
+# Kubernetes ConfigMap example for Carrot NodeAgent
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: carrot-nodeagent-config
+  namespace: carrot
+data:
+  nodeagent.yaml: |
+    tlv_listener:
+      address: "0.0.0.0"
+      port: 9090
+
+    logging:
+      level: "debug"
+      format: "json"
+      output: "stdout"
+---
+# Usage in a Pod spec:
+# spec:
+#   containers:
+#     - name: gateway
+#       volumeMounts:
+#         - name: config
+#           mountPath: /etc/carrot
+#   volumes:
+#     - name: config
+#       configMap:
+#         name: carrot-gateway-config

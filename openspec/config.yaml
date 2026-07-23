@@ -1,0 +1,11 @@
+schema: spec-driven
+context: |
+  Tech stack: c++23, bazel
+  Testing: GoogleTest
+
+rules:
+  specs:
+    - Use Given/When/Then format
+    - Reference existing patterns before inventing new ones
+  design:
+    - Include sequence diagrams for complex flows

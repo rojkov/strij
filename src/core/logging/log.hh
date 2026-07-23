@@ -23,6 +23,8 @@ inline void log_impl(LogEntry::severity severity, std::source_location&& locatio
     (pack_arg(ptr, args), ...);
     carrot::logging::Logger::local_context_->Log(std::move(entry));
   }
+  // TODO: if there's no local context then log to stderr with a visual marker letting know that
+  // the logger thread isn't functional.
 }
 
 } // namespace carrot::logging

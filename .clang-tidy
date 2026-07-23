@@ -7,6 +7,10 @@ Checks:
   - 'cppcoreguidelines-*'
   - 'modernize-*'
   - 'misc-*'
+  - '-misc-no-recursion'
   - 'perforamnce-*'
   - 'portability-*'
   - 'readability-*'
+CheckOptions:
+  readability-identifier-length.MinimumLoopCounterNameLength: '2'
+  readability-function-cognitive-complexity.Threshold: 25

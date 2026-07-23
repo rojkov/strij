@@ -1,0 +1,16 @@
+load("//bazel:build_system.bzl", "carrot_cc_library")
+
+carrot_cc_library(
+    name = "config_loader_lib",
+    srcs = ["config_loader.cc"],
+    hdrs = ["config_loader.hh"],
+    deps = [
+        "//src/core/config/proto:config_cc_proto",
+        "@yaml_cpp//:yaml_cpp",
+        "@abseil-cpp//absl/flags:parse",
+        "@abseil-cpp//absl/flags:usage",
+        "@abseil-cpp//absl/strings",
+        "@protobuf//:protobuf",
+    ],
+    visibility = ["//visibility:public"],
+)

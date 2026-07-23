@@ -70,3 +70,20 @@ $ make coverage
 ```
 
 The code coverage report should be in `./coverage` now.
+
+## Configuration
+
+Gateway and NodeAgent use YAML configuration files with layered overrides (defaults → YAML → env → CLI). See [docs/config.md](docs/config.md) for full documentation.
+
+Quick start:
+
+```bash
+# Validate config without starting
+./gateway --config_file config/gateway.yaml --validate_only
+
+# Start with environment variable override
+CARROT_GATEWAY_HTTP_LISTENER_PORT=9090 ./gateway
+
+# Start with CLI flag override
+./gateway --http_port=9090 --log_level=debug
+```

@@ -1,0 +1,34 @@
+syntax = "proto3";
+
+package carrot.config;
+
+import "options.proto";
+
+message GatewayConfig {
+  HttpListener http_listener = 1;
+  repeated NodeConnection node_connections = 2;
+  Logging logging = 3;
+  // RESERVED for future (v2+): not used by gateway in v1
+  // google.protobuf.Duration connection_timeout = 4;
+  // google.protobuf.Duration request_timeout = 5;
+  // TlsConfig tls = 6;
+}
+
+message HttpListener {
+  string address = 1;
+  uint32 port = 2 [(carrot.config.required) = true,
+                   (carrot.config.range_min) = "1",
+                   (carrot.config.range_max) = "65535"];
+  // RESERVED for future (v2+)
+  // uint32 max_connections = 3;
+  // bool reuse_port = 4;
+}
+
+message NodeConnection {
+  string address = 1 [(carrot.config.required) = true,
+                      (carrot.config.pattern) = "^[^:]+:\\d+$"];
+  // RESERVED for future (v2+): NodeDirectory doesn't use these yet
+  // uint32 connect_timeout_ms = 2;
+  // uint32 max_reconnect_attempts = 3;
+  // uint32 reconnect_backoff_ms = 4;
+}

@@ -1,0 +1,34 @@
+syntax = "proto3";
+
+package carrot.config;
+
+import "google/protobuf/descriptor.proto";
+
+// Shared logging configuration message
+message Logging {
+  string level = 1 [(carrot.config.enum_values) = "trace",
+                    (carrot.config.enum_values) = "debug",
+                    (carrot.config.enum_values) = "info",
+                    (carrot.config.enum_values) = "warn",
+                    (carrot.config.enum_values) = "error"];
+  string format = 2 [(carrot.config.enum_values) = "text",
+                     (carrot.config.enum_values) = "json"];
+  string output = 3 [(carrot.config.enum_values) = "stdout",
+                     (carrot.config.enum_values) = "stderr"];
+  // RESERVED for future: string file_path = 4;  // Required if output="file" (future)
+  bool include_source_location = 5;
+}
+
+// Custom validation options for protobuf config fields.
+// Usage:
+//   uint32 port = 1 [(carrot.config.required) = true,
+//                    (carrot.config.range_min) = "1",
+//                    (carrot.config.range_max) = "65535"];
+extend google.protobuf.FieldOptions {
+  bool required = 50000;
+  string range_min = 50001;
+  string range_max = 50002;
+  repeated string enum_values = 50003;
+  string pattern = 50004;
+  string deprecated_message = 50005;
+}

@@ -2,6 +2,9 @@ bazel_dep(name = "rules_cc", version = "0.2.17")
 bazel_dep(name = "platforms", version = "1.0.0")
 bazel_dep(name = "googletest", version = "1.17.0")
 bazel_dep(name = "abseil-cpp", version = "20260107.1")
+bazel_dep(name = "protobuf", version = "33.4")
+bazel_dep(name = "rules_proto", version = "7.1.0")
+bazel_dep(name = "rules_python", version = "1.8.0")
 
 single_version_override(
     module_name = "googletest",
@@ -53,4 +56,23 @@ http_archive(
     sha256 = "86a8c16759fdcc7aa2c9841fbe8ba2e77ea98be7d5d45615f2604776d0ff78c7",
     strip_prefix = "llhttp-release-v9.4.1",
     urls = ["https://github.com/nodejs/llhttp/archive/refs/tags/release/v9.4.1.tar.gz"],
+)
+
+http_archive(
+    name = "yaml_cpp",
+    build_file_content = """\
+load("@rules_cc//cc:defs.bzl", "cc_library")
+
+cc_library(
+    name = "yaml_cpp",
+    srcs = glob(["src/**/*.cpp"]),
+    hdrs = glob(["include/**/*.h"]) + glob(["src/**/*.h"]),
+    includes = ["include", "src"],
+    visibility = ["//visibility:public"],
+    copts = ["-DYAML_CPP_STATIC_DEFINE"],
+)
+""",
+    sha256 = "43e6a9fcb146ad871515f0d0873947e5d497a1c9c60c58cb102a97b47208b7c3",
+    strip_prefix = "yaml-cpp-yaml-cpp-0.7.0",
+    urls = ["https://github.com/jbeder/yaml-cpp/archive/refs/tags/yaml-cpp-0.7.0.tar.gz"],
 )
