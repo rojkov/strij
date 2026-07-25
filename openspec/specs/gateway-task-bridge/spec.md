@@ -19,15 +19,16 @@ Bridges HTTP requests at the gateway to nodeagent task processing via TLV connec
 - **THEN** `get(42)` SHALL return nullptr
 
 ### Requirement: GatewayHttpHandler creates tasks from HTTP requests
-`GatewayHttpHandler` SHALL receive `HttpRequest` messages (body + metadata), generate a monotonic task_id, select a nodeagent connection via round-robin, create a result receiver, store it in `ResultReceiverStorage`, serialize a TLV frame via `SerializeTlvFrame()`, and submit the task by calling `Connection::Write()` on the selected nodeagent connection.
+`GatewayHttpHandler` SHALL receive `HttpRequest` messages (body + metadata), generate a monotonic task_id, query `NodeDirectory` for the next available node, create a result receiver, store it in `ResultReceiverStorage`, serialize a TLV frame via `SerializeTlvFrame()`, and submit the task by calling `Connection::Write()` on the selected node's connection.
 
 #### Scenario: HTTP request creates a task
 - **WHEN** an HTTP request with a body arrives at the gateway
 - **THEN** the handler SHALL generate a new task_id
-- **AND** select the next nodeagent connection (round-robin)
-- **AND** store a result receiver in `ResultReceiverStorage` keyed by task_id
+- **AND** query `NodeDirectory::GetNextNode()` for the next available node
+- **AND** if a node is available, store a result receiver in `ResultReceiverStorage` keyed by task_id
 - **AND** serialize a TLV frame with type_id=TaskSubmission and value containing [task_id][HTTP body] via `SerializeTlvFrame()`
-- **AND** call `Connection::Write(frame)` on the selected nodeagent connection
+- **AND** call `Connection::Write(frame)` on the selected node's connection
+- **AND** if no node is available, respond with 503 Service Unavailable
 
 ### Requirement: GatewayTlvHandler dispatches TLV frames by type_id
 `GatewayTlvHandler` SHALL receive `TlvFrame` messages and dispatch based on type_id. For type_id=Result, it SHALL look up the result receiver by task_id and deliver the result. For type_id=Heartbeat, it SHALL acknowledge the heartbeat (implementation TBD).
@@ -52,18 +53,19 @@ Bridges HTTP requests at the gateway to nodeagent task processing via TLV connec
 - **AND** send a `TlvFrame` with type_id=Result and value containing [task_id][payload] back on the same connection
 
 ### Requirement: Gateway pre-establishes TLV connections to nodeagents
-Gateway SHALL connect to configured nodeagent addresses on startup and hold `Connection*` references for each connection. The HTTP handler SHALL use these connections to submit tasks via `Connection::Write()`.
+Gateway SHALL create a `NodeDirectory` with configured nodeagent addresses on startup. `NodeDirectory::StartConnectAll()` SHALL be called before `Dispatcher::Run()`. The HTTP handler SHALL query `NodeDirectory` for available nodes to submit tasks.
 
 #### Scenario: Gateway connects to multiple nodeagents
-- **WHEN** gateway starts with configured nodeagent addresses [agent1:9090, agent2:9090]
-- **THEN** gateway SHALL establish TCP connections to both nodeagents
-- **AND** store `Connection*` references for each connection
-- **AND** the HTTP handler SHALL distribute tasks across connections via round-robin
+- **WHEN** gateway starts with configured nodeagent addresses ["agent1:9090", "agent2:9090"]
+- **THEN** gateway SHALL create a `NodeDirectory` with these addresses
+- **AND** call `StartConnectAll()` before the event loop starts
+- **AND** as nodes connect, they become available for task routing via `GetNextNode()`
 
 #### Scenario: Gateway handles nodeagent connection failure
-- **WHEN** a connection to a nodeagent fails on startup
-- **THEN** gateway SHALL log an error and continue with remaining connections
-- **AND** if no connections are available, HTTP requests SHALL receive a 503 Service Unavailable response
+- **WHEN** a nodeagent fails to connect (async connect returns error)
+- **THEN** the corresponding `Node` SHALL transition to `kDisconnected`
+- **AND** `NodeDirectory::GetNextNode()` SHALL skip disconnected nodes
+- **AND** if no nodes are available, HTTP requests SHALL receive a 503 Service Unavailable response
 
 ### Requirement: Simple echo end-to-end flow
 A complete echo cycle: HTTP client sends request with body → gateway creates task → TLV task frame sent to nodeagent → nodeagent echoes payload → TLV result frame returned → gateway delivers result → HTTP client receives response with original body.
