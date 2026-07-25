@@ -2,8 +2,12 @@ http_listener:
   address: "0.0.0.0"
   port: 8081
 
-node_connections:
-  - address: "127.0.0.1:9090"
+node_discovery:
+  name: "static"
+  typed_config:
+    "@type": "type.googleapis.com/carrot.config.StaticNodeDiscoveryConfig"
+    addresses:
+      - "127.0.0.1:9090"
 
 logging:
   level: "info"

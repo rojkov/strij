@@ -24,16 +24,21 @@ Allow the gateway to discover node addresses from pluggable sources (static conf
 
 ### R4: GatewayConfig Integration
 - `GatewayConfig.node_discovery` field of type `ExtensionConfig`
+- `node_discovery` is **required** — gateway exits with error if absent
 - Gateway looks up `node_discovery.name()` in `Registry<NodeDiscoveryFactory>`
 - Unpacks `typed_config` into the factory's expected config type
 - Calls `factory->create(unpacked_config, context)`
 
-### R5: Backward Compatibility
-- If `node_discovery` is not set in config, gateway falls back to `node_connections[]`
-- Legacy `node_connections[]` creates a `StaticNodeDiscovery` internally
-- Existing configs work without modification
+### R5: Error on missing node_discovery
+- If `node_discovery` is not set in config, gateway exits with `return 1` and a descriptive error
+- The `--validate-only` flag also catches this and exits with error
+- `node_connections[]` is no longer used as a fallback
 
-### R6: Bazel Extension Pattern
+### R6: Error on unregistered extension name
+- If `node_discovery` is set but the factory name is not found in the registry, gateway exits with `return 1`
+- Error message includes the missing name and suggests checking the linked libraries
+
+### R7: Bazel Extension Pattern
 - `node_discovery_interface` is a header-only target
 - Each implementation (static, etcd, etc.) is a separate `cc_library` + `proto_library`
 - User adds their extension to `gateway/BUILD.bazel` deps
@@ -55,28 +60,27 @@ Allow the gateway to discover node addresses from pluggable sources (static conf
 **When** `StaticNodeDiscoveryFactory::create()` is called
 **Then** an exception is thrown indicating addresses must not be empty
 
-### S3: Fallback to legacy node_connections
+### S3: Node discovery missing from config
 
 **Given** a `GatewayConfig` with no `node_discovery` field set
-**And** `node_connections` containing `[{ address: "10.0.0.1:9090" }, { address: "10.0.0.2:9090" }]`
 **When** gateway starts
-**Then** a `StaticNodeDiscovery` is created internally with those addresses
-**And** `start()` delivers those addresses via callback
+**Then** gateway logs an error: "node_discovery extension is required"
+**And** exits with status 1
 
-### S4: Config with both node_discovery and node_connections
-
-**Given** a `GatewayConfig` with `node_discovery` set to `{ name: "static", typed_config: { ... } }`
-**And** `node_connections` also populated
-**When** gateway starts
-**Then** the `node_discovery` extension is used
-**And** `node_connections` is ignored
-
-### S5: Unregistered discovery extension
+### S4: Unregistered discovery extension causes error
 
 **Given** a `GatewayConfig` with `node_discovery` set to `{ name: "nonexistent", typed_config: { ... } }`
 **When** gateway starts and looks up `"nonexistent"` in `Registry<NodeDiscoveryFactory>`
 **Then** the factory is not found
-**And** gateway falls back to `node_connections[]` if available
+**And** gateway logs an error: "'nonexistent' not found"
+**And** exits with status 1
+
+### S5: Validate-only catches missing node_discovery
+
+**Given** a `GatewayConfig` with no `node_discovery` field set
+**When** gateway starts with `--validate-only`
+**Then** gateway logs an error: "node_discovery extension is required"
+**And** exits with status 1
 
 ### S6: NodeDiscovery stop
 

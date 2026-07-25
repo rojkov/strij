@@ -119,7 +119,8 @@ message TlsConfig {
 1. If `tls.enabled == true`: `cert_file` and `key_file` must be non-empty
 2. If `logging.output == "file"`: `logging.file_path` must be non-empty
 3. `request_timeout >= connection_timeout` (or both use defaults)
-4. At least one `node_connection` must be configured (warn if empty)
+4. `node_discovery` extension MUST be configured (error if missing)
+5. `node_connections` field is ignored — retained for wire compatibility only
 
 ## Requirements
 - **REQ-GW-001**: Protobuf schema defines all gateway-configurable parameters
@@ -127,6 +128,7 @@ message TlsConfig {
 - **REQ-GW-003**: Default values allow gateway to run without config file (with warnings)
 - **REQ-GW-004**: Schema supports future TLS, metrics, rate limiting extensions
 - **REQ-GW-005**: Cross-field validation catches common misconfigurations
+- **REQ-GW-006**: Gateway exits with error if `node_discovery` is not configured
 
 ## Dependencies
 - `yaml-config-loader` capability (for loading)
@@ -134,9 +136,9 @@ message TlsConfig {
 - Custom options: `carrot/config/options.proto`
 
 ## Testing
-- Unit test: Load default config (no YAML) → valid with warnings
-- Unit test: Valid YAML with all fields → loads correctly
+- Unit test: Load default config (no YAML) → error (missing node_discovery)
+- Unit test: Valid YAML with all fields and node_discovery → loads correctly
 - Unit test: Invalid port → validation error
 - Unit test: TLS enabled without certs → validation error
-- Unit test: Empty node_connections → warning
+- Unit test: Config without node_discovery → validation error
 - Integration: Full load with env/CLI overrides

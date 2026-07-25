@@ -2,9 +2,10 @@
 #include <string>
 #include <vector>
 
+#include "src/extensions/node_discovery/node_discovery.hh"
+
 #include "absl/flags/flag.h"
 #include "absl/flags/parse.h"
-#include "google/protobuf/any.pb.h"
 #include "core/common/signal_monitor.hh"
 #include "core/config/config_loader.hh"
 #include "core/event/dispatcher_impl.hh"
@@ -19,8 +20,7 @@
 #include "core/io/tcp_listener.hh"
 #include "core/io/tlv_parser.hh"
 #include "core/logging/log.hh"
-#include "src/extensions/node_discovery/node_discovery.hh"
-#include "src/extensions/node_discovery/static/static_node_discovery.hh"
+#include "google/protobuf/any.pb.h"
 
 // Generated protobuf headers
 #include "gateway.pb.h"
@@ -32,7 +32,6 @@ ABSL_FLAG(uint32_t, http_port, 0, "Override HTTP listener port (0 = use config)"
 ABSL_FLAG(std::string, http_address, "", "Override HTTP listener address (empty = use config)");
 ABSL_FLAG(std::string, log_level, "", "Override log level (trace|debug|info|warn|error)");
 ABSL_FLAG(std::string, log_format, "", "Override log format (text|json)");
-ABSL_FLAG(std::string, node_address, "", "Add node connection address (repeatable)");
 // NOLINTEND
 
 auto main(int argc, char** argv) -> int {
@@ -54,6 +53,19 @@ auto main(int argc, char** argv) -> int {
     LOG_WARNING("Config warning: {}", warning);
   }
 
+  // Validate node_discovery extension is configured
+  if (!config.has_node_discovery()) {
+    LOG_ERROR("Config error: node_discovery extension is required. "
+              "Add a 'node_discovery' section to your config file, e.g.:\n"
+              "  node_discovery:\n"
+              "    name: \"static\"\n"
+              "    typed_config:\n"
+              "      \"@type\": \"type.googleapis.com/carrot.config."
+              "StaticNodeDiscoveryConfig\"\n"
+              "      addresses: [\"127.0.0.1:9090\"]");
+    return 1;
+  }
+
   if (absl::GetFlag(FLAGS_validate_only)) {
     LOG_INFO("Config validation passed");
     return 0;
@@ -72,11 +84,6 @@ auto main(int argc, char** argv) -> int {
   if (!absl::GetFlag(FLAGS_log_format).empty()) {
     config.mutable_logging()->set_format(absl::GetFlag(FLAGS_log_format));
   }
-  if (!absl::GetFlag(FLAGS_node_address).empty()) {
-    // Note: would need repeated flag support for multiple addresses
-    carrot::config::NodeConnection* node = config.add_node_connections();
-    node->set_address(absl::GetFlag(FLAGS_node_address));
-  }
 
   carrot::event::DispatcherSharedPtr dispatcher = std::make_shared<carrot::event::DispatcherImpl>();
   carrot::common::SignalMonitor signal_monitor(dispatcher);
@@ -94,36 +101,28 @@ auto main(int argc, char** argv) -> int {
   carrot::extensions::GatewayFactoryContext factory_context(dispatcher);
   std::unique_ptr<carrot::extensions::NodeDiscovery> node_discovery;
 
-  if (config.has_node_discovery()) {
-    const auto& ext = config.node_discovery();
-    auto* factory = carrot::extensions::Registry<carrot::extensions::NodeDiscoveryFactory>::instance()
-                        .GetFactory(ext.name());
-    if (factory) {
-      ::google::protobuf::Any unpacked;
-      unpacked.CopyFrom(ext.typed_config());
-      auto config_msg = factory->CreateEmptyConfigProto();
-      unpacked.UnpackTo(config_msg.get());
-      node_discovery = factory->Create(*config_msg, factory_context);
-      LOG_INFO("Node discovery extension '{}' loaded", ext.name());
-    } else {
-      LOG_WARNING("Node discovery extension '{}' not found, falling back to node_connections",
-                  ext.name());
-    }
+  const auto& ext = config.node_discovery();
+  auto* factory =
+      carrot::extensions::Registry<carrot::extensions::NodeDiscoveryFactory>::instance().GetFactory(
+          ext.name());
+  if (!factory) {
+    LOG_ERROR("Node discovery extension '{}' not found. "
+              "Ensure the extension library is linked and the name matches a "
+              "registered factory.",
+              ext.name());
+    return 1;
   }
 
-  // Fallback to legacy node_connections
-  if (!node_discovery) {
-    std::vector<std::string> node_addresses;
-    for (const auto& node : config.node_connections()) {
-      node_addresses.push_back(node.address());
-    }
-    if (node_addresses.empty()) {
-      node_addresses.push_back("127.0.0.1:9090"); // default fallback
-      LOG_WARNING("No node connections configured, using default: 127.0.0.1:9090");
-    }
-    node_discovery = std::make_unique<carrot::extensions::node_discovery::StaticNodeDiscovery>(
-        std::move(node_addresses));
+  ::google::protobuf::Any unpacked;
+  unpacked.CopyFrom(ext.typed_config());
+  auto config_msg = factory->CreateEmptyConfigProto();
+  if (!unpacked.UnpackTo(config_msg.get())) {
+    LOG_ERROR("Failed to unpack typed_config for extension '{}': unknown type '{}'",
+              ext.name(), unpacked.type_url());
+    return 1;
   }
+  node_discovery = factory->Create(*config_msg, factory_context);
+  LOG_INFO("Node discovery extension '{}' loaded", ext.name());
 
   // Node directory with async connect
   auto connection_factory =

@@ -19,6 +19,7 @@ carrot_cc_library(
     srcs = ["static_node_discovery.cc"],
     hdrs = ["static_node_discovery.hh"],
     visibility = ["//visibility:public"],
+    alwayslink = True,
     deps = [
         ":static_node_discovery_cc_proto",
         "//src/extensions/node_discovery:node_discovery_interface",
