@@ -8,6 +8,7 @@
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
 #include "gateway.pb.h"
+#include "google/protobuf/any.pb.h"
 #include "google/protobuf/descriptor.h"
 #include "google/protobuf/message.h"
 #include "google/protobuf/text_format.h"
@@ -25,6 +26,11 @@ void setFieldFromString(google::protobuf::Message* message,
                         const google::protobuf::Reflection* reflection, ConfigLoadResult& result);
 
 auto fileExists(const std::string& path) -> bool { return std::filesystem::exists(path); }
+
+// Resolve a proto message type by fully-qualified name from the global descriptor pool.
+auto resolveMessageType(const std::string& type_name) -> const google::protobuf::Descriptor* {
+  return google::protobuf::DescriptorPool::generated_pool()->FindMessageTypeByName(type_name);
+}
 
 auto parseYamlFile(const std::string& path, ConfigLoadResult& result) -> YAML::Node {
   try {
@@ -67,10 +73,12 @@ void mergeYamlIntoProto(const YAML::Node& yaml, google::protobuf::Message* messa
           if (!result.success) {
             return;
           }
+        } else if (field->cpp_type() == google::protobuf::FieldDescriptor::CPPTYPE_STRING) {
+          reflection->AddString(message, field, item.as<std::string>());
         } else {
           result.success = false;
           result.error_message =
-              absl::StrCat("Repeated field '", full_path, "' only supports message type");
+              absl::StrCat("Repeated field '", full_path, "' only supports message or string type");
           return;
         }
       }
@@ -80,10 +88,89 @@ void mergeYamlIntoProto(const YAML::Node& yaml, google::protobuf::Message* messa
         result.error_message = absl::StrCat("Field '", full_path, "' expected map");
         return;
       }
-      auto* sub_msg = reflection->MutableMessage(message, field);
-      mergeYamlIntoProto(kv.second, sub_msg, full_path, result);
-      if (!result.success) {
-        return;
+
+      // Handle google.protobuf.Any specially: look for @type annotation
+      const auto* field_msg_type = field->message_type();
+      if (field_msg_type != nullptr &&
+          field_msg_type->full_name() == "google.protobuf.Any") {
+        // Extract @type from YAML
+        const YAML::Node& any_yaml = kv.second;
+        if (!any_yaml["@type"]) {
+          result.success = false;
+          result.error_message =
+              absl::StrCat("Field '", full_path, "': google.protobuf.Any requires '@type' key");
+          return;
+        }
+
+        std::string type_url = any_yaml["@type"].as<std::string>();
+        // Strip the "type.googleapis.com/" prefix to get the full message name
+        std::string type_name = type_url;
+        const std::string prefix = "type.googleapis.com/";
+        if (type_name.starts_with(prefix)) {
+          type_name = type_name.substr(prefix.size());
+        }
+
+        const auto* actual_type = resolveMessageType(type_name);
+        if (actual_type == nullptr) {
+          result.success = false;
+          result.error_message =
+              absl::StrCat("Field '", full_path, "': unknown type '", type_name, "'");
+          return;
+        }
+
+        // Create a temporary message of the actual type, merge YAML into it, then pack into Any
+        google::protobuf::MessageFactory* msg_factory = google::protobuf::MessageFactory::generated_factory();
+        if (msg_factory == nullptr) {
+          result.success = false;
+          result.error_message =
+              absl::StrCat("Field '", full_path, "': could not get message factory");
+          return;
+        }
+
+        const google::protobuf::Message* prototype = msg_factory->GetPrototype(actual_type);
+        if (prototype == nullptr) {
+          result.success = false;
+          result.error_message =
+              absl::StrCat("Field '", full_path, "': could not get prototype for type '",
+                           type_name, "'");
+          return;
+        }
+
+        std::unique_ptr<google::protobuf::Message> owned_msg(prototype->New());
+        if (owned_msg == nullptr) {
+          result.success = false;
+          result.error_message =
+              absl::StrCat("Field '", full_path, "': could not create message for type '",
+                           type_name, "'");
+          return;
+        }
+
+        // Create a new YAML node without @type for merging into the actual message
+        YAML::Node inner_yaml;
+        for (const auto& kv_inner : any_yaml) {
+          std::string key = kv_inner.first.as<std::string>();
+          if (key != "@type") {
+            inner_yaml[key] = kv_inner.second;
+          }
+        }
+
+        mergeYamlIntoProto(inner_yaml, owned_msg.get(), full_path, result);
+        if (!result.success) {
+          return;
+        }
+
+        // Pack into Any
+        auto* any_field = reflection->MutableMessage(message, field);
+        auto* any_msg = dynamic_cast<::google::protobuf::Any*>(any_field);
+        if (any_msg != nullptr) {
+          any_msg->PackFrom(*owned_msg);
+        }
+      } else {
+        auto* sub_msg = reflection->MutableMessage(message, field);
+        mergeYamlIntoProto(kv.second, sub_msg, full_path, result);
+        if (!result.success) {
+          return;
+        }
       }
     } else {
       auto value_str = kv.second.as<std::string>();

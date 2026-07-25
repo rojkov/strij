@@ -4,9 +4,12 @@
 
 #include "absl/flags/flag.h"
 #include "absl/flags/parse.h"
+#include "google/protobuf/any.pb.h"
 #include "core/common/signal_monitor.hh"
 #include "core/config/config_loader.hh"
 #include "core/event/dispatcher_impl.hh"
+#include "core/extensions/extension_registry.hh"
+#include "core/extensions/factory_context.hh"
 #include "core/io/echo_result_receiver.hh"
 #include "core/io/gateway_http_handler.hh"
 #include "core/io/gateway_tlv_handler.hh"
@@ -16,6 +19,8 @@
 #include "core/io/tcp_listener.hh"
 #include "core/io/tlv_parser.hh"
 #include "core/logging/log.hh"
+#include "src/extensions/node_discovery/node_discovery.hh"
+#include "src/extensions/node_discovery/static/static_node_discovery.hh"
 
 // Generated protobuf headers
 #include "gateway.pb.h"
@@ -85,6 +90,41 @@ auto main(int argc, char** argv) -> int {
 
   carrot::io::ResultReceiverStorage storage;
 
+  // Node discovery via extension registry
+  carrot::extensions::GatewayFactoryContext factory_context(dispatcher);
+  std::unique_ptr<carrot::extensions::NodeDiscovery> node_discovery;
+
+  if (config.has_node_discovery()) {
+    const auto& ext = config.node_discovery();
+    auto* factory = carrot::extensions::Registry<carrot::extensions::NodeDiscoveryFactory>::instance()
+                        .GetFactory(ext.name());
+    if (factory) {
+      ::google::protobuf::Any unpacked;
+      unpacked.CopyFrom(ext.typed_config());
+      auto config_msg = factory->CreateEmptyConfigProto();
+      unpacked.UnpackTo(config_msg.get());
+      node_discovery = factory->Create(*config_msg, factory_context);
+      LOG_INFO("Node discovery extension '{}' loaded", ext.name());
+    } else {
+      LOG_WARNING("Node discovery extension '{}' not found, falling back to node_connections",
+                  ext.name());
+    }
+  }
+
+  // Fallback to legacy node_connections
+  if (!node_discovery) {
+    std::vector<std::string> node_addresses;
+    for (const auto& node : config.node_connections()) {
+      node_addresses.push_back(node.address());
+    }
+    if (node_addresses.empty()) {
+      node_addresses.push_back("127.0.0.1:9090"); // default fallback
+      LOG_WARNING("No node connections configured, using default: 127.0.0.1:9090");
+    }
+    node_discovery = std::make_unique<carrot::extensions::node_discovery::StaticNodeDiscovery>(
+        std::move(node_addresses));
+  }
+
   // Node directory with async connect
   auto connection_factory =
       [&storage](carrot::io::Connection& conn) -> std::unique_ptr<carrot::io::ProtocolParser> {
@@ -95,15 +135,12 @@ auto main(int argc, char** argv) -> int {
         });
   };
 
-  // Extract node addresses from config
   std::vector<std::string> node_addresses;
-  for (const auto& node : config.node_connections()) {
-    node_addresses.push_back(node.address());
-  }
-  if (node_addresses.empty()) {
-    node_addresses.push_back("127.0.0.1:9090"); // default fallback
-    LOG_WARNING("No node connections configured, using default: 127.0.0.1:9090");
-  }
+  node_discovery->Start([&node_addresses](std::vector<carrot::extensions::NodeInfo> nodes) {
+    for (auto& node : nodes) {
+      node_addresses.push_back(std::move(node.address));
+    }
+  });
 
   carrot::io::NodeDirectory node_directory{dispatcher, node_addresses,
                                            std::move(connection_factory)};

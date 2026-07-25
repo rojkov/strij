@@ -2,16 +2,14 @@ syntax = "proto3";
 
 package carrot.config;
 
+import "extensions.proto";
 import "options.proto";
 
 message GatewayConfig {
   HttpListener http_listener = 1;
   repeated NodeConnection node_connections = 2;
   Logging logging = 3;
-  // RESERVED for future (v2+): not used by gateway in v1
-  // google.protobuf.Duration connection_timeout = 4;
-  // google.protobuf.Duration request_timeout = 5;
-  // TlsConfig tls = 6;
+  ExtensionConfig node_discovery = 4;
 }
 
 message HttpListener {

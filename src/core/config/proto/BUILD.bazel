@@ -4,11 +4,13 @@ load("@protobuf//bazel:cc_proto_library.bzl", "cc_proto_library")
 proto_library(
     name = "config_proto",
     srcs = [
+        "extensions.proto",
         "gateway.proto",
         "nodeagent.proto",
         "options.proto",
     ],
     deps = [
+        "@protobuf//:any_proto",
         "@protobuf//:duration_proto",
         "@protobuf//:descriptor_proto",
     ],

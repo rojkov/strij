@@ -8,6 +8,8 @@ carrot_cc_binary(
         "//src/core/config:config_loader_lib",
         "//src/core/config/proto:config_cc_proto",
         "//src/core/event:dispatcher_impl_lib",
+        "//src/core/extensions:extension_registry_lib",
+        "//src/core/extensions:factory_context_lib",
         "//src/core/io:echo_result_receiver_lib",
         "//src/core/io:gateway_http_handler_lib",
         "//src/core/io:gateway_tlv_handler_lib",
@@ -16,6 +18,9 @@ carrot_cc_binary(
         "//src/core/io:tcp_listener_lib",
         "//src/core/io:tlv_parser_lib",
         "//src/core/logging:log_lib",
+        "//src/extensions/node_discovery:node_discovery_interface",
+        "//src/extensions/node_discovery/static:static_node_discovery_lib",
         "@abseil-cpp//absl/flags:parse",
+        "@protobuf//:protobuf",
     ],
 )

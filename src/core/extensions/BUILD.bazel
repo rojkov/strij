@@ -1,0 +1,18 @@
+load("//bazel:build_system.bzl", "carrot_cc_library")
+
+carrot_cc_library(
+    name = "extension_registry_lib",
+    hdrs = ["extension_registry.hh"],
+    visibility = ["//visibility:public"],
+)
+
+carrot_cc_library(
+    name = "factory_context_lib",
+    srcs = ["factory_context.cc"],
+    hdrs = ["factory_context.hh"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//include/carrot/event:dispatcher_interface",
+        "//src/core/logging:log_lib",
+    ],
+)

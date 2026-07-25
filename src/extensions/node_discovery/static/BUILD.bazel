@@ -1,0 +1,26 @@
+load("@rules_proto//proto:defs.bzl", "proto_library")
+load("@protobuf//bazel:cc_proto_library.bzl", "cc_proto_library")
+load("//bazel:build_system.bzl", "carrot_cc_library")
+
+proto_library(
+    name = "static_node_discovery_proto",
+    srcs = ["static_node_discovery.proto"],
+    visibility = ["//visibility:public"],
+)
+
+cc_proto_library(
+    name = "static_node_discovery_cc_proto",
+    deps = [":static_node_discovery_proto"],
+    visibility = ["//visibility:public"],
+)
+
+carrot_cc_library(
+    name = "static_node_discovery_lib",
+    srcs = ["static_node_discovery.cc"],
+    hdrs = ["static_node_discovery.hh"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":static_node_discovery_cc_proto",
+        "//src/extensions/node_discovery:node_discovery_interface",
+    ],
+)

@@ -1,0 +1,12 @@
+load("//bazel:build_system.bzl", "carrot_cc_library")
+
+carrot_cc_library(
+    name = "node_discovery_interface",
+    hdrs = ["node_discovery.hh"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//src/core/extensions:extension_registry_lib",
+        "//src/core/extensions:factory_context_lib",
+        "@protobuf//:protobuf",
+    ],
+)
