@@ -1,7 +1,7 @@
 # Carrot
 
 C++23 gateway server and distributed node agent servers `io_uring`-based (Linux) event loop. Bazel 9.0.1 build.
-No synchronous system calls. Use `io_uring` as much as possible.
+No synchronous system calls. Use `io_uring` as much as possible. Synchronous calls (e.g. `write(2)`) are acceptable when `io_uring` is not available (bootstrap and fallback paths).
 
 ## Commands (Makefile wrappers)
 

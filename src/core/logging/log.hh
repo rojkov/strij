@@ -1,10 +1,30 @@
 #pragma once
 
+#include <unistd.h>
+
 #include "core/logging/logger.hh"
 
 #define LOG_REGISTER_THREAD() carrot::logging::Logger::GetInstance().RegisterThread()
 
 namespace carrot::logging {
+
+template <typename... Args>
+inline void write_stderr_fallback(LogEntry::severity severity, std::source_location const& location,
+                                  const char* fmt_str, Args&&... args) {
+  auto now = std::chrono::system_clock::now();
+  auto time = std::chrono::system_clock::to_time_t(now);
+  auto local_time = *std::localtime(&time);
+  auto us = std::chrono::duration_cast<std::chrono::microseconds>(now.time_since_epoch()) % 1000000;
+
+  std::string msg = std::vformat(fmt_str, std::make_format_args(args...));
+
+  std::string buf = std::format("{} {:02}:{:02}:{:02}.{:06} {} [early] {}:{} {}\n",
+                                static_cast<char>(severity), local_time.tm_hour, local_time.tm_min,
+                                local_time.tm_sec, us.count(), gettid(), location.file_name(),
+                                location.line(), msg);
+
+  write(STDERR_FILENO, buf.data(), buf.size());
+}
 
 // Helper function that deduces argument types and logs them
 template <typename... Args>
@@ -22,9 +42,9 @@ inline void log_impl(LogEntry::severity severity, std::source_location&& locatio
     [[maybe_unused]] std::byte* ptr = entry.args_data_;
     (pack_arg(ptr, args), ...);
     carrot::logging::Logger::local_context_->Log(std::move(entry));
+  } else {
+    carrot::logging::write_stderr_fallback(severity, location, fmt_str, std::forward<Args>(args)...);
   }
-  // TODO: if there's no local context then log to stderr with a visual marker letting know that
-  // the logger thread isn't functional.
 }
 
 } // namespace carrot::logging

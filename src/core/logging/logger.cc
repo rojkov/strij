@@ -34,6 +34,7 @@ void Logger::Stop() {
     thread_.join();
     printf("Logger stopped.\n");
   }
+  local_context_ = nullptr;
 }
 
 } // namespace carrot::logging
