@@ -6,8 +6,11 @@
 #include <regex>
 #include <string_view>
 
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
+#include "core/logging/log.hh"
 #include "gateway.pb.h"
 #include "google/protobuf/any.pb.h"
 #include "google/protobuf/descriptor.h"
@@ -22,12 +25,13 @@ namespace carrot::config {
 namespace {
 
 // Forward declarations
-void setFieldFromString(google::protobuf::Message* message,
-                        const google::protobuf::FieldDescriptor* field, const std::string& value,
-                        const google::protobuf::Reflection* reflection, ConfigLoadResult& result);
+absl::Status setFieldFromString(google::protobuf::Message* message,
+                                const google::protobuf::FieldDescriptor* field,
+                                const std::string& value,
+                                const google::protobuf::Reflection* reflection);
 
-void mergeYamlIntoProto(const YAML::Node& yaml, google::protobuf::Message* message,
-                        const std::string& prefix, ConfigLoadResult& result);
+absl::Status mergeYamlIntoProto(const YAML::Node& yaml, google::protobuf::Message* message,
+                                const std::string& prefix);
 
 auto fileExists(const std::string& path) -> bool { return std::filesystem::exists(path); }
 
@@ -44,33 +48,27 @@ auto toUpper(std::string_view str) -> std::string {
   return result;
 }
 
-auto parseYamlFile(const std::string& path, ConfigLoadResult& result) -> YAML::Node {
+auto parseYamlFile(const std::string& path) -> absl::StatusOr<YAML::Node> {
   try {
     return YAML::LoadFile(path);
   } catch (const YAML::Exception& e) {
-    result.success_ = false;
-    result.error_message_ = absl::StrCat("YAML parse error: ", e.what());
-    result.error_file_ = path;
-    result.error_line_ = e.mark.line + 1;
-    result.error_column_ = e.mark.column + 1;
-    return YAML::Node();
+    return absl::InvalidArgumentError(absl::StrCat("YAML parse error in '", path, "' at line ",
+                                                   e.mark.line + 1, ", column ", e.mark.column + 1,
+                                                   ": ", e.what()));
   }
 }
 
-void mergeAnyYamlField(const YAML::Node& any_yaml, google::protobuf::Message* message,
-                       const google::protobuf::FieldDescriptor* field,
-                       const std::string& full_path, ConfigLoadResult& result) {
+absl::Status mergeAnyYamlField(const YAML::Node& any_yaml, google::protobuf::Message* message,
+                               const google::protobuf::FieldDescriptor* field,
+                               const std::string& full_path) {
   const auto* field_msg_type = field->message_type();
-  if (field_msg_type == nullptr ||
-      field_msg_type->full_name() != "google.protobuf.Any") {
-    return;
+  if (field_msg_type == nullptr || field_msg_type->full_name() != "google.protobuf.Any") {
+    return absl::OkStatus();
   }
 
   if (!any_yaml["@type"]) {
-    result.success_ = false;
-    result.error_message_ =
-        absl::StrCat("Field '", full_path, "': google.protobuf.Any requires '@type' key");
-    return;
+    return absl::InvalidArgumentError(
+        absl::StrCat("Field '", full_path, "': google.protobuf.Any requires '@type' key"));
   }
 
   std::string type_name = any_yaml["@type"].as<std::string>();
@@ -81,36 +79,26 @@ void mergeAnyYamlField(const YAML::Node& any_yaml, google::protobuf::Message* me
 
   const auto* actual_type = resolveMessageType(type_name);
   if (actual_type == nullptr) {
-    result.success_ = false;
-    result.error_message_ =
-        absl::StrCat("Field '", full_path, "': unknown type '", type_name, "'");
-    return;
+    return absl::InvalidArgumentError(
+        absl::StrCat("Field '", full_path, "': unknown type '", type_name, "'"));
   }
 
   auto* msg_factory = google::protobuf::MessageFactory::generated_factory();
   if (msg_factory == nullptr) {
-    result.success_ = false;
-    result.error_message_ =
-        absl::StrCat("Field '", full_path, "': could not get message factory");
-    return;
+    return absl::InternalError(
+        absl::StrCat("Field '", full_path, "': could not get message factory"));
   }
 
   const auto* prototype = msg_factory->GetPrototype(actual_type);
   if (prototype == nullptr) {
-    result.success_ = false;
-    result.error_message_ =
-        absl::StrCat("Field '", full_path, "': could not get prototype for type '",
-                     type_name, "'");
-    return;
+    return absl::InternalError(absl::StrCat(
+        "Field '", full_path, "': could not get prototype for type '", type_name, "'"));
   }
 
   std::unique_ptr<google::protobuf::Message> owned_msg(prototype->New());
   if (owned_msg == nullptr) {
-    result.success_ = false;
-    result.error_message_ =
-        absl::StrCat("Field '", full_path, "': could not create message for type '",
-                     type_name, "'");
-    return;
+    return absl::InternalError(absl::StrCat(
+        "Field '", full_path, "': could not create message for type '", type_name, "'"));
   }
 
   YAML::Node inner_yaml;
@@ -121,9 +109,9 @@ void mergeAnyYamlField(const YAML::Node& any_yaml, google::protobuf::Message* me
     }
   }
 
-  mergeYamlIntoProto(inner_yaml, owned_msg.get(), full_path, result);
-  if (!result.success_) {
-    return;
+  auto status = mergeYamlIntoProto(inner_yaml, owned_msg.get(), full_path);
+  if (!status.ok()) {
+    return status;
   }
 
   auto* reflection = message->GetReflection();
@@ -132,10 +120,12 @@ void mergeAnyYamlField(const YAML::Node& any_yaml, google::protobuf::Message* me
   if (any_msg != nullptr) {
     any_msg->PackFrom(*owned_msg);
   }
+
+  return absl::OkStatus();
 }
 
-void mergeYamlIntoProto(const YAML::Node& yaml, google::protobuf::Message* message,
-                        const std::string& prefix, ConfigLoadResult& result) {
+absl::Status mergeYamlIntoProto(const YAML::Node& yaml, google::protobuf::Message* message,
+                                const std::string& prefix) {
   const auto* descriptor = message->GetDescriptor();
   const auto* reflection = message->GetReflection();
 
@@ -145,66 +135,61 @@ void mergeYamlIntoProto(const YAML::Node& yaml, google::protobuf::Message* messa
 
     const auto* field = descriptor->FindFieldByName(key);
     if (field == nullptr) {
-      result.warnings_.push_back(absl::StrCat("Unknown field '", full_path, "' ignored"));
+      LOG_WARNING("Unknown field '{}' ignored", full_path);
       continue;
     }
 
     if (field->is_repeated()) {
       if (!kv.second.IsSequence()) {
-        result.success_ = false;
-        result.error_message_ = absl::StrCat("Field '", full_path, "' expected sequence");
-        return;
+        return absl::InvalidArgumentError(
+            absl::StrCat("Field '", full_path, "' expected sequence"));
       }
       for (const auto& item : kv.second) {
         if (field->cpp_type() == google::protobuf::FieldDescriptor::CPPTYPE_MESSAGE) {
           auto* sub_msg = reflection->AddMessage(message, field);
-          mergeYamlIntoProto(item, sub_msg, full_path, result);
-          if (!result.success_) {
-            return;
+          auto status = mergeYamlIntoProto(item, sub_msg, full_path);
+          if (!status.ok()) {
+            return status;
           }
         } else if (field->cpp_type() == google::protobuf::FieldDescriptor::CPPTYPE_STRING) {
           reflection->AddString(message, field, item.as<std::string>());
         } else {
-          result.success_ = false;
-          result.error_message_ = absl::StrCat(
-              "Repeated field '", full_path, "' only supports message or string type");
-          return;
+          return absl::InvalidArgumentError(absl::StrCat("Repeated field '", full_path,
+                                                         "' only supports message or string type"));
         }
       }
     } else if (field->cpp_type() == google::protobuf::FieldDescriptor::CPPTYPE_MESSAGE) {
       if (!kv.second.IsMap()) {
-        result.success_ = false;
-        result.error_message_ = absl::StrCat("Field '", full_path, "' expected map");
-        return;
+        return absl::InvalidArgumentError(absl::StrCat("Field '", full_path, "' expected map"));
       }
 
       const auto* field_msg_type = field->message_type();
-      if (field_msg_type != nullptr &&
-          field_msg_type->full_name() == "google.protobuf.Any") {
-        mergeAnyYamlField(kv.second, message, field, full_path, result);
-        if (!result.success_) {
-          return;
+      if (field_msg_type != nullptr && field_msg_type->full_name() == "google.protobuf.Any") {
+        auto status = mergeAnyYamlField(kv.second, message, field, full_path);
+        if (!status.ok()) {
+          return status;
         }
       } else {
         auto* sub_msg = reflection->MutableMessage(message, field);
-        mergeYamlIntoProto(kv.second, sub_msg, full_path, result);
-        if (!result.success_) {
-          return;
+        auto status = mergeYamlIntoProto(kv.second, sub_msg, full_path);
+        if (!status.ok()) {
+          return status;
         }
       }
     } else {
-      setFieldFromString(message, field, kv.second.as<std::string>(), reflection, result);
-      if (!result.success_) {
-        return;
+      auto status = setFieldFromString(message, field, kv.second.as<std::string>(), reflection);
+      if (!status.ok()) {
+        return status;
       }
     }
   }
+
+  return absl::OkStatus();
 }
 
-void discoverRepeatedEnvFields(google::protobuf::Message* message,
-                               const google::protobuf::FieldDescriptor* field,
-                               const std::string& env_prefix, const std::string& path,
-                               ConfigLoadResult& result) {
+absl::Status discoverRepeatedEnvFields(google::protobuf::Message* message,
+                                       const google::protobuf::FieldDescriptor* field,
+                                       const std::string& env_prefix, const std::string& path) {
   const auto* sub_descriptor = field->message_type();
   const auto* reflection = message->GetReflection();
 
@@ -229,7 +214,10 @@ void discoverRepeatedEnvFields(google::protobuf::Message* message,
         const auto* sub_reflection = sub_msg->GetReflection();
         const auto* actual_field = sub_descriptor->FindFieldByName(sub_field->name());
         if (actual_field != nullptr) {
-          setFieldFromString(sub_msg, actual_field, std::string(val), sub_reflection, result);
+          auto status = setFieldFromString(sub_msg, actual_field, std::string(val), sub_reflection);
+          if (!status.ok()) {
+            return status;
+          }
         }
       }
     }
@@ -237,84 +225,91 @@ void discoverRepeatedEnvFields(google::protobuf::Message* message,
       break;
     }
   }
+
+  return absl::OkStatus();
 }
 
-void discoverAndApplyEnvVars(google::protobuf::Message* message, const std::string& env_prefix,
-                             const std::string& upper_prefix, ConfigLoadResult& result) {
+absl::Status discoverAndApplyEnvVars(google::protobuf::Message* message,
+                                     const std::string& env_prefix,
+                                     const std::string& upper_prefix) {
   const auto* descriptor = message->GetDescriptor();
   const auto* reflection = message->GetReflection();
 
   for (int i = 0; i < descriptor->field_count(); ++i) {
     const auto* field = descriptor->field(i);
-    const std::string path = upper_prefix.empty()
-                                ? toUpper(field->name())
-                                : upper_prefix + "_" + toUpper(field->name());
+    const std::string path =
+        upper_prefix.empty() ? toUpper(field->name()) : upper_prefix + "_" + toUpper(field->name());
 
     if (field->cpp_type() == google::protobuf::FieldDescriptor::CPPTYPE_MESSAGE) {
       if (field->is_repeated()) {
-        discoverRepeatedEnvFields(message, field, env_prefix, path, result);
+        auto status = discoverRepeatedEnvFields(message, field, env_prefix, path);
+        if (!status.ok()) {
+          return status;
+        }
       } else {
-        discoverAndApplyEnvVars(reflection->MutableMessage(message, field), env_prefix, path,
-                                result);
+        auto status =
+            discoverAndApplyEnvVars(reflection->MutableMessage(message, field), env_prefix, path);
+        if (!status.ok()) {
+          return status;
+        }
       }
     } else {
       std::string env_name = env_prefix + path;
       const char* val = std::getenv(env_name.c_str());
       if (val != nullptr) {
-        setFieldFromString(message, field, std::string(val), reflection, result);
+        auto status = setFieldFromString(message, field, std::string(val), reflection);
+        if (!status.ok()) {
+          return status;
+        }
       }
     }
   }
+
+  return absl::OkStatus();
 }
 
-void applyEnvOverrides(google::protobuf::Message* message, const std::string& service_prefix,
-                       ConfigLoadResult& result) {
+absl::Status applyEnvOverrides(google::protobuf::Message* message,
+                               const std::string& service_prefix) {
   const std::string env_prefix = absl::StrCat("CARROT_", service_prefix, "_");
-  discoverAndApplyEnvVars(message, env_prefix, "", result);
+  return discoverAndApplyEnvVars(message, env_prefix, "");
 }
 
-void applyCliOverridePath(google::protobuf::Message* current,
-                          const google::protobuf::Descriptor* descriptor,
-                          const google::protobuf::Reflection* reflection,
-                          const std::vector<std::string>& parts, size_t depth,
-                          const std::string& value, const std::string& path,
-                          ConfigLoadResult& result) {
+absl::Status applyCliOverridePath(google::protobuf::Message* current,
+                                  const google::protobuf::Descriptor* descriptor,
+                                  const google::protobuf::Reflection* reflection,
+                                  const std::vector<std::string>& parts, size_t depth,
+                                  const std::string& value, const std::string& path) {
   if (depth >= parts.size()) {
-    return;
+    return absl::OkStatus();
   }
 
   const auto* field = descriptor->FindFieldByName(parts[depth]);
   if (field == nullptr) {
-    result.warnings_.push_back(
-        absl::StrCat("CLI override '", path, "': unknown field '", parts[depth], "'"));
-    return;
+    LOG_WARNING("CLI override '{}': unknown field '{}'", path, parts[depth]);
+    return absl::OkStatus();
   }
 
   if (depth + 1 == parts.size()) {
     if (field->is_repeated() &&
         field->cpp_type() == google::protobuf::FieldDescriptor::CPPTYPE_MESSAGE) {
-      result.warnings_.push_back(
-          absl::StrCat("CLI override for repeated message not supported: ", path));
-    } else {
-      setFieldFromString(current, field, value, reflection, result);
+      LOG_WARNING("CLI override for repeated message not supported: {}", path);
+      return absl::OkStatus();
     }
-    return;
+    return setFieldFromString(current, field, value, reflection);
   }
 
   if (field->cpp_type() != google::protobuf::FieldDescriptor::CPPTYPE_MESSAGE) {
-    result.warnings_.push_back(
-        absl::StrCat("CLI override '", path, "': expected message field at '", parts[depth], "'"));
-    return;
+    LOG_WARNING("CLI override '{}': expected message field at '{}'", path, parts[depth]);
+    return absl::OkStatus();
   }
 
   auto* sub_msg = reflection->MutableMessage(current, field);
-  applyCliOverridePath(sub_msg, sub_msg->GetDescriptor(), sub_msg->GetReflection(), parts,
-                       depth + 1, value, path, result);
+  return applyCliOverridePath(sub_msg, sub_msg->GetDescriptor(), sub_msg->GetReflection(), parts,
+                              depth + 1, value, path);
 }
 
-void applyCliOverridesInternal(google::protobuf::Message* message,
-                               const std::vector<std::string>& overrides,
-                               ConfigLoadResult& result) {
+absl::Status applyCliOverridesInternal(google::protobuf::Message* message,
+                                       const std::vector<std::string>& overrides) {
   for (const auto& override : overrides) {
     size_t eq_pos = override.find('=');
     if (eq_pos == std::string::npos) {
@@ -325,14 +320,20 @@ void applyCliOverridesInternal(google::protobuf::Message* message,
     std::string value = override.substr(eq_pos + 1);
     std::vector<std::string> parts = absl::StrSplit(path, ".");
 
-    applyCliOverridePath(message, message->GetDescriptor(), message->GetReflection(), parts, 0,
-                         value, path, result);
+    auto status = applyCliOverridePath(message, message->GetDescriptor(), message->GetReflection(),
+                                       parts, 0, value, path);
+    if (!status.ok()) {
+      return status;
+    }
   }
+
+  return absl::OkStatus();
 }
 
-void setFieldFromString(google::protobuf::Message* message,
-                        const google::protobuf::FieldDescriptor* field, const std::string& value,
-                        const google::protobuf::Reflection* reflection, ConfigLoadResult& result) {
+absl::Status setFieldFromString(google::protobuf::Message* message,
+                                const google::protobuf::FieldDescriptor* field,
+                                const std::string& value,
+                                const google::protobuf::Reflection* reflection) {
   switch (field->cpp_type()) {
   case google::protobuf::FieldDescriptor::CPPTYPE_INT32:
   case google::protobuf::FieldDescriptor::CPPTYPE_INT64:
@@ -358,11 +359,11 @@ void setFieldFromString(google::protobuf::Message* message,
     reflection->SetString(message, field, value);
     break;
   default:
-    result.success_ = false;
-    result.error_message_ =
-        absl::StrCat("Unsupported field type for CLI override: ", field->full_name());
-    break;
+    return absl::InvalidArgumentError(
+        absl::StrCat("Unsupported field type for CLI override: ", field->full_name()));
   }
+
+  return absl::OkStatus();
 }
 
 struct FieldValueInfo {
@@ -430,18 +431,13 @@ auto extractFieldValue(const google::protobuf::Message& message,
 }
 
 auto validateFieldValue(const FieldValueInfo& info, const std::string& field_path,
-                        const google::protobuf::FieldOptions& ext_opts) -> ConfigLoadResult {
-  ConfigLoadResult result;
-  result.success_ = true;
-
+                        const google::protobuf::FieldOptions& ext_opts) -> absl::Status {
   if (info.is_numeric && ext_opts.HasExtension(carrot::config::range_min)) {
     std::string min_str = ext_opts.GetExtension(carrot::config::range_min);
     uint64_t min_val = std::stoull(min_str);
     if (info.num_val < min_val) {
-      result.success_ = false;
-      result.error_message_ = absl::StrCat("Field '", field_path, "': value ", info.str_val,
-                                          " below minimum ", min_str);
-      return result;
+      return absl::InvalidArgumentError(absl::StrCat("Field '", field_path, "': value ",
+                                                     info.str_val, " below minimum ", min_str));
     }
   }
 
@@ -449,10 +445,8 @@ auto validateFieldValue(const FieldValueInfo& info, const std::string& field_pat
     std::string max_str = ext_opts.GetExtension(carrot::config::range_max);
     uint64_t max_val = std::stoull(max_str);
     if (info.num_val > max_val) {
-      result.success_ = false;
-      result.error_message_ = absl::StrCat("Field '", field_path, "': value ", info.str_val,
-                                          " exceeds maximum ", max_str);
-      return result;
+      return absl::InvalidArgumentError(absl::StrCat("Field '", field_path, "': value ",
+                                                     info.str_val, " exceeds maximum ", max_str));
     }
   }
 
@@ -471,10 +465,9 @@ auto validateFieldValue(const FieldValueInfo& info, const std::string& field_pat
       }
     }
     if (!valid) {
-      result.success_ = false;
-      result.error_message_ = absl::StrCat("Field '", field_path, "': value '", info.str_val,
-                                          "' not in allowed values: ", allowed_str);
-      return result;
+      return absl::InvalidArgumentError(absl::StrCat("Field '", field_path, "': value '",
+                                                     info.str_val,
+                                                     "' not in allowed values: ", allowed_str));
     }
   }
 
@@ -483,25 +476,20 @@ auto validateFieldValue(const FieldValueInfo& info, const std::string& field_pat
     try {
       std::regex regexp(pattern_str);
       if (!std::regex_match(info.str_val, regexp)) {
-        result.success_ = false;
-        result.error_message_ = absl::StrCat("Field '", field_path, "': value '", info.str_val,
-                                            "' does not match pattern '", pattern_str, "'");
-        return result;
+        return absl::InvalidArgumentError(absl::StrCat("Field '", field_path, "': value '",
+                                                       info.str_val, "' does not match pattern '",
+                                                       pattern_str, "'"));
       }
     } catch (const std::regex_error&) {
-      result.warnings_.push_back(
-          absl::StrCat("Invalid regex pattern for '", field_path, "': ", pattern_str));
+      LOG_WARNING("Invalid regex pattern for '{}': {}", field_path, pattern_str);
     }
   }
 
-  return result;
+  return absl::OkStatus();
 }
 
-ConfigLoadResult validateMessage(const google::protobuf::Message& message,
-                                 const std::string& prefix = {}) {
-  ConfigLoadResult result;
-  result.success_ = true;
-
+auto validateMessage(const google::protobuf::Message& message, const std::string& prefix = {})
+    -> absl::Status {
   const auto* descriptor = message.GetDescriptor();
   const auto* reflection = message.GetReflection();
 
@@ -518,17 +506,16 @@ ConfigLoadResult validateMessage(const google::protobuf::Message& message,
       if (field->is_repeated()) {
         int size = reflection->FieldSize(message, field);
         for (int j = 0; j < size; ++j) {
-          ConfigLoadResult sub_result =
+          auto status =
               validateMessage(reflection->GetRepeatedMessage(message, field, j), field_path);
-          if (!sub_result.success_) {
-            return sub_result;
+          if (!status.ok()) {
+            return status;
           }
         }
       } else {
-        ConfigLoadResult sub_result =
-            validateMessage(reflection->GetMessage(message, field), field_path);
-        if (!sub_result.success_) {
-          return sub_result;
+        auto status = validateMessage(reflection->GetMessage(message, field), field_path);
+        if (!status.ok()) {
+          return status;
         }
       }
       continue;
@@ -543,9 +530,8 @@ ConfigLoadResult validateMessage(const google::protobuf::Message& message,
 
     if (!has_value && ext_opts.HasExtension(carrot::config::required) &&
         ext_opts.GetExtension(carrot::config::required)) {
-      result.success_ = false;
-      result.error_message_ = absl::StrCat("Required field '", field_path, "' is not set");
-      return result;
+      return absl::InvalidArgumentError(
+          absl::StrCat("Required field '", field_path, "' is not set"));
     }
 
     if (!has_value) {
@@ -554,43 +540,38 @@ ConfigLoadResult validateMessage(const google::protobuf::Message& message,
 
     FieldValueInfo info = extractFieldValue(message, field, reflection);
 
-    ConfigLoadResult field_result = validateFieldValue(info, field_path, ext_opts);
-    if (!field_result.success_) {
-      return field_result;
+    auto status = validateFieldValue(info, field_path, ext_opts);
+    if (!status.ok()) {
+      return status;
     }
-    result.warnings_.insert(result.warnings_.end(), field_result.warnings_.begin(),
-                           field_result.warnings_.end());
   }
 
-  return result;
+  return absl::OkStatus();
 }
 
 } // namespace
 
 template <typename T>
-auto LoadConfig(const std::string& config_file_path, const std::vector<std::string>& cli_overrides,
-                T* output) -> ConfigLoadResult {
-  ConfigLoadResult result;
-  result.success_ = true;
-
+auto LoadConfig(const std::string& config_file_path, const std::vector<std::string>& cli_overrides)
+    -> absl::StatusOr<T> {
   T config = T::default_instance();
 
   if (!config_file_path.empty() && fileExists(config_file_path)) {
-    YAML::Node yaml = parseYamlFile(config_file_path, result);
-    if (!result.success_) {
-      return result;
+    auto yaml_result = parseYamlFile(config_file_path);
+    if (!yaml_result.ok()) {
+      return yaml_result.status();
     }
+
+    YAML::Node yaml = std::move(yaml_result).value();
 
     if (!yaml.IsMap()) {
-      result.success_ = false;
-      result.error_message_ = "Config file must be a YAML map";
-      result.error_file_ = config_file_path;
-      return result;
+      return absl::InvalidArgumentError(
+          absl::StrCat("Config file '", config_file_path, "' must be a YAML map"));
     }
 
-    mergeYamlIntoProto(yaml, &config, "", result);
-    if (!result.success_) {
-      return result;
+    auto status = mergeYamlIntoProto(yaml, &config, "");
+    if (!status.ok()) {
+      return status;
     }
   }
 
@@ -602,41 +583,34 @@ auto LoadConfig(const std::string& config_file_path, const std::vector<std::stri
   }
 
   if (!service_prefix.empty()) {
-    applyEnvOverrides(&config, service_prefix, result);
+    auto status = applyEnvOverrides(&config, service_prefix);
+    if (!status.ok()) {
+      return status;
+    }
   }
 
   if (!cli_overrides.empty()) {
-    applyCliOverridesInternal(&config, cli_overrides, result);
+    auto status = applyCliOverridesInternal(&config, cli_overrides);
+    if (!status.ok()) {
+      return status;
+    }
   }
 
-  ConfigLoadResult validation = validateMessage(config);
-  if (!validation.success_) {
-    result.success_ = false;
-    result.error_message_ = validation.error_message_;
-    result.error_file_ = validation.error_file_;
-    result.error_line_ = validation.error_line_;
-    result.error_column_ = validation.error_column_;
-    return result;
-  }
-  result.warnings_.insert(result.warnings_.end(), validation.warnings_.begin(),
-                         validation.warnings_.end());
-
-  if (output) {
-    *output = std::move(config);
+  auto status = validateMessage(config);
+  if (!status.ok()) {
+    return status;
   }
 
-  return result;
+  return config;
 }
 
-template <typename T> auto ValidateConfig(const T& config) -> ConfigLoadResult {
+template <typename T> auto ValidateConfig(const T& config) -> absl::Status {
   return validateMessage(config);
 }
 
 template <typename T>
-auto ApplyCliOverrides(T& config, const std::vector<std::string>& overrides) -> int {
-  ConfigLoadResult result;
-  applyCliOverridesInternal(&config, overrides, result);
-  return result.success_ ? 1 : 0;
+auto ApplyCliOverrides(T& config, const std::vector<std::string>& overrides) -> absl::Status {
+  return applyCliOverridesInternal(&config, overrides);
 }
 
 template <typename T> auto GetDefaultConfig() -> T { return T::default_instance(); }
@@ -647,19 +621,19 @@ template <typename T> auto ConfigToYaml(const T& config) -> std::string {
   return output;
 }
 
-template auto LoadConfig<GatewayConfig>(const std::string&, const std::vector<std::string>&,
-                                        GatewayConfig*) -> ConfigLoadResult;
+template auto LoadConfig<GatewayConfig>(const std::string&, const std::vector<std::string>&)
+    -> absl::StatusOr<GatewayConfig>;
 
-template auto LoadConfig<NodeAgentConfig>(const std::string&, const std::vector<std::string>&,
-                                          NodeAgentConfig*) -> ConfigLoadResult;
+template auto LoadConfig<NodeAgentConfig>(const std::string&, const std::vector<std::string>&)
+    -> absl::StatusOr<NodeAgentConfig>;
 
-template auto ValidateConfig<GatewayConfig>(const GatewayConfig&) -> ConfigLoadResult;
-template auto ValidateConfig<NodeAgentConfig>(const NodeAgentConfig&) -> ConfigLoadResult;
+template auto ValidateConfig<GatewayConfig>(const GatewayConfig&) -> absl::Status;
+template auto ValidateConfig<NodeAgentConfig>(const NodeAgentConfig&) -> absl::Status;
 
 template auto ApplyCliOverrides<GatewayConfig>(GatewayConfig&, const std::vector<std::string>&)
-    -> int;
+    -> absl::Status;
 template auto ApplyCliOverrides<NodeAgentConfig>(NodeAgentConfig&, const std::vector<std::string>&)
-    -> int;
+    -> absl::Status;
 
 template auto GetDefaultConfig<GatewayConfig>() -> GatewayConfig;
 template auto GetDefaultConfig<NodeAgentConfig>() -> NodeAgentConfig;

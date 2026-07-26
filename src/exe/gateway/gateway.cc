@@ -38,20 +38,16 @@ auto main(int argc, char** argv) -> int {
   absl::ParseCommandLine(argc, argv);
 
   // Load configuration
-  carrot::config::GatewayConfig config;
-  carrot::config::ConfigLoadResult result =
-      carrot::config::LoadConfig(absl::GetFlag(FLAGS_config_file), {}, &config);
+  auto config_result =
+      carrot::config::LoadConfig<carrot::config::GatewayConfig>(
+          absl::GetFlag(FLAGS_config_file));
 
-  if (!result.success_) {
-    LOG_ERROR("Config error: {} at {}:{}", result.error_message_, result.error_file_,
-              result.error_line_);
+  if (!config_result.ok()) {
+    LOG_ERROR("Config error: {}", config_result.status().message());
     return 1;
   }
 
-  // Print warnings
-  for (const auto& warning : result.warnings_) {
-    LOG_WARNING("Config warning: {}", warning);
-  }
+  carrot::config::GatewayConfig config = std::move(config_result).value();
 
   // Validate node_discovery extension is configured
   if (!config.has_node_discovery()) {

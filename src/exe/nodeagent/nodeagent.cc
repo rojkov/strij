@@ -24,20 +24,16 @@ auto main(int argc, char** argv) -> int {
   absl::ParseCommandLine(argc, argv);
 
   // Load configuration
-  carrot::config::NodeAgentConfig config;
-  carrot::config::ConfigLoadResult result =
-      carrot::config::LoadConfig(absl::GetFlag(FLAGS_config_file), {}, &config);
+  auto config_result =
+      carrot::config::LoadConfig<carrot::config::NodeAgentConfig>(
+          absl::GetFlag(FLAGS_config_file));
 
-  if (!result.success_) {
-    LOG_ERROR("Config error: {} at {}:{}", result.error_message_, result.error_file_,
-              result.error_line_);
+  if (!config_result.ok()) {
+    LOG_ERROR("Config error: {}", config_result.status().message());
     return 1;
   }
 
-  // Print warnings
-  for (const auto& warning : result.warnings_) {
-    LOG_WARNING("Config warning: {}", warning);
-  }
+  carrot::config::NodeAgentConfig config = std::move(config_result).value();
 
   if (absl::GetFlag(FLAGS_validate_only)) {
     LOG_INFO("Config validation passed");

@@ -6,9 +6,12 @@ carrot_cc_library(
     hdrs = ["config_loader.hh"],
     deps = [
         "//src/core/config/proto:config_cc_proto",
+        "//src/core/logging:log_lib",
         "@yaml_cpp//:yaml_cpp",
         "@abseil-cpp//absl/flags:parse",
         "@abseil-cpp//absl/flags:usage",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
         "@abseil-cpp//absl/strings",
         "@protobuf//:protobuf",
     ],
