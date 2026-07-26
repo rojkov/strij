@@ -45,7 +45,7 @@ logging:
 
   GatewayConfig config;
   ConfigLoadResult result = LoadConfig<GatewayConfig>(path, {}, &config);
-  EXPECT_TRUE(result.success) << result.error_message;
+  EXPECT_TRUE(result.success_) << result.error_message_;
   EXPECT_EQ(config.http_listener().address(), "0.0.0.0");
   EXPECT_EQ(config.http_listener().port(), 8081u);
   ASSERT_GE(config.node_connections_size(), 1);
@@ -73,7 +73,7 @@ logging:
 
   NodeAgentConfig config;
   ConfigLoadResult result = LoadConfig<NodeAgentConfig>(path, {}, &config);
-  EXPECT_TRUE(result.success) << result.error_message;
+  EXPECT_TRUE(result.success_) << result.error_message_;
   EXPECT_EQ(config.tlv_listener().address(), "0.0.0.0");
   EXPECT_EQ(config.tlv_listener().port(), 9090u);
   EXPECT_EQ(config.logging().level(), "debug");
@@ -94,9 +94,9 @@ http_listener:
 
   GatewayConfig config;
   ConfigLoadResult result = LoadConfig<GatewayConfig>(path, {}, &config);
-  EXPECT_FALSE(result.success);
-  EXPECT_TRUE(result.error_message.find("out of range") != std::string::npos ||
-              result.error_message.find("port") != std::string::npos);
+  EXPECT_FALSE(result.success_);
+  EXPECT_TRUE(result.error_message_.find("out of range") != std::string::npos ||
+              result.error_message_.find("port") != std::string::npos);
 
   std::filesystem::remove(path);
 }
@@ -114,8 +114,8 @@ http_listener:
 
   GatewayConfig config;
   ConfigLoadResult result = LoadConfig<GatewayConfig>(path, {}, &config);
-  EXPECT_FALSE(result.success);
-  EXPECT_TRUE(result.error_message.find("level") != std::string::npos);
+  EXPECT_FALSE(result.success_);
+  EXPECT_TRUE(result.error_message_.find("level") != std::string::npos);
 
   std::filesystem::remove(path);
 }
@@ -133,9 +133,9 @@ node_connections:
 
   GatewayConfig config;
   ConfigLoadResult result = LoadConfig<GatewayConfig>(path, {}, &config);
-  EXPECT_FALSE(result.success);
-  EXPECT_TRUE(result.error_message.find("address") != std::string::npos ||
-              result.error_message.find("pattern") != std::string::npos);
+  EXPECT_FALSE(result.success_);
+  EXPECT_TRUE(result.error_message_.find("address") != std::string::npos ||
+              result.error_message_.find("pattern") != std::string::npos);
 
   std::filesystem::remove(path);
 }
@@ -144,7 +144,7 @@ TEST(ConfigLoaderTest, CliOverrides) {
   GatewayConfig config;
   ConfigLoadResult result = LoadConfig<GatewayConfig>(
       "", {"http_listener.port=9090", "http_listener.address=10.0.0.1"}, &config);
-  EXPECT_TRUE(result.success) << result.error_message;
+  EXPECT_TRUE(result.success_) << result.error_message_;
   EXPECT_EQ(config.http_listener().port(), 9090u);
   EXPECT_EQ(config.http_listener().address(), "10.0.0.1");
 }
@@ -155,7 +155,7 @@ TEST(ConfigLoaderTest, EnvOverridesPort) {
 
   GatewayConfig config;
   ConfigLoadResult result = LoadConfig<GatewayConfig>("", {}, &config);
-  EXPECT_TRUE(result.success) << result.error_message;
+  EXPECT_TRUE(result.success_) << result.error_message_;
   EXPECT_EQ(config.http_listener().port(), 7070u);
   EXPECT_EQ(config.http_listener().address(), "10.0.0.1");
 
@@ -170,7 +170,7 @@ TEST(ConfigLoaderTest, EnvOverridesNodeAgent) {
 
   NodeAgentConfig config;
   ConfigLoadResult result = LoadConfig<NodeAgentConfig>("", {}, &config);
-  EXPECT_TRUE(result.success) << result.error_message;
+  EXPECT_TRUE(result.success_) << result.error_message_;
   EXPECT_EQ(config.tlv_listener().port(), 8080u);
   EXPECT_EQ(config.tlv_listener().address(), "0.0.0.0");
   EXPECT_EQ(config.logging().level(), "error");
@@ -188,7 +188,7 @@ TEST(ConfigLoaderTest, EnvOverridesArrayField) {
 
   GatewayConfig config;
   ConfigLoadResult result = LoadConfig<GatewayConfig>("", {}, &config);
-  EXPECT_TRUE(result.success) << result.error_message;
+  EXPECT_TRUE(result.success_) << result.error_message_;
   ASSERT_GE(config.node_connections_size(), 2);
   EXPECT_EQ(config.node_connections(0).address(), "10.0.0.1:9090");
   EXPECT_EQ(config.node_connections(1).address(), "10.0.0.2:9090");
@@ -206,7 +206,7 @@ TEST(ConfigLoaderTest, ValidateConfig) {
   config.mutable_logging()->set_level("info");
 
   ConfigLoadResult result = ValidateConfig(config);
-  EXPECT_TRUE(result.success);
+  EXPECT_TRUE(result.success_);
 }
 
 TEST(ConfigLoaderTest, ValidateConfigInvalidPort) {
@@ -215,7 +215,7 @@ TEST(ConfigLoaderTest, ValidateConfigInvalidPort) {
   config.mutable_http_listener()->set_port(99999);
 
   ConfigLoadResult result = ValidateConfig(config);
-  EXPECT_FALSE(result.success);
+  EXPECT_FALSE(result.success_);
 }
 
 TEST(ConfigLoaderTest, UnknownFieldWarning) {
@@ -230,10 +230,10 @@ unknown_field: "test"
 
   GatewayConfig config;
   ConfigLoadResult result = LoadConfig<GatewayConfig>(path, {}, &config);
-  EXPECT_TRUE(result.success) << result.error_message;
-  EXPECT_GE(result.warnings.size(), 1);
+  EXPECT_TRUE(result.success_) << result.error_message_;
+  EXPECT_GE(result.warnings_.size(), 1);
   bool found = false;
-  for (const auto& w : result.warnings) {
+  for (const auto& w : result.warnings_) {
     if (w.find("unknown_field") != std::string::npos) found = true;
   }
   EXPECT_TRUE(found);
@@ -244,14 +244,14 @@ unknown_field: "test"
 TEST(ConfigLoaderTest, MissingYamlFile) {
   GatewayConfig config;
   ConfigLoadResult result = LoadConfig<GatewayConfig>("/nonexistent/config.yaml", {}, &config);
-  EXPECT_FALSE(result.success);
+  EXPECT_FALSE(result.success_);
 }
 
 TEST(ConfigLoaderTest, NodeAgentCliOverrides) {
   NodeAgentConfig config;
   ConfigLoadResult result = LoadConfig<NodeAgentConfig>(
       "", {"tlv_listener.port=7070", "tlv_listener.address=0.0.0.0"}, &config);
-  EXPECT_TRUE(result.success) << result.error_message;
+  EXPECT_TRUE(result.success_) << result.error_message_;
   EXPECT_EQ(config.tlv_listener().port(), 7070u);
   EXPECT_EQ(config.tlv_listener().address(), "0.0.0.0");
 }

@@ -6,12 +6,12 @@
 namespace carrot::config {
 
 struct ConfigLoadResult {
-  bool success = false;
-  std::string error_message;
-  std::string error_file;
-  int error_line = 0;
-  int error_column = 0;
-  std::vector<std::string> warnings;
+  bool success_ = false;
+  std::string error_message_;
+  std::string error_file_;
+  int error_line_ = 0;
+  int error_column_ = 0;
+  std::vector<std::string> warnings_;
 };
 
 template <typename T>

@@ -42,14 +42,14 @@ auto main(int argc, char** argv) -> int {
   carrot::config::ConfigLoadResult result =
       carrot::config::LoadConfig(absl::GetFlag(FLAGS_config_file), {}, &config);
 
-  if (!result.success) {
-    LOG_ERROR("Config error: {} at {}:{}", result.error_message, result.error_file,
-              result.error_line);
+  if (!result.success_) {
+    LOG_ERROR("Config error: {} at {}:{}", result.error_message_, result.error_file_,
+              result.error_line_);
     return 1;
   }
 
   // Print warnings
-  for (const auto& warning : result.warnings) {
+  for (const auto& warning : result.warnings_) {
     LOG_WARNING("Config warning: {}", warning);
   }
 

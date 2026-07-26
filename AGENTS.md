@@ -28,6 +28,7 @@ No synchronous system calls. Use `io_uring` as much as possible.
 
 - **Headers:** `.hh`, **sources:** `.cc`, **header guards:** `#pragma once`
 - **Method names** are capitalized when public to distinguish them visually from private ones.
+- **Struct/class members** use trailing underscore suffix (`success_`, `error_message_`) to distinguish them from scoped local variables.
 - **Namespaces:** `carrot::common`, `carrot::event`, `carrot::io`, `carrot::logging`
 - **Format:** `.clang-format` — column 100, left-aligned pointers, grouped includes.
 - **Lint:** `.clang-tidy` with cppcoreguidelines/modernize/readability checks.

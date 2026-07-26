@@ -48,11 +48,11 @@ auto parseYamlFile(const std::string& path, ConfigLoadResult& result) -> YAML::N
   try {
     return YAML::LoadFile(path);
   } catch (const YAML::Exception& e) {
-    result.success = false;
-    result.error_message = absl::StrCat("YAML parse error: ", e.what());
-    result.error_file = path;
-    result.error_line = e.mark.line + 1;
-    result.error_column = e.mark.column + 1;
+    result.success_ = false;
+    result.error_message_ = absl::StrCat("YAML parse error: ", e.what());
+    result.error_file_ = path;
+    result.error_line_ = e.mark.line + 1;
+    result.error_column_ = e.mark.column + 1;
     return YAML::Node();
   }
 }
@@ -67,8 +67,8 @@ void mergeAnyYamlField(const YAML::Node& any_yaml, google::protobuf::Message* me
   }
 
   if (!any_yaml["@type"]) {
-    result.success = false;
-    result.error_message =
+    result.success_ = false;
+    result.error_message_ =
         absl::StrCat("Field '", full_path, "': google.protobuf.Any requires '@type' key");
     return;
   }
@@ -81,24 +81,24 @@ void mergeAnyYamlField(const YAML::Node& any_yaml, google::protobuf::Message* me
 
   const auto* actual_type = resolveMessageType(type_name);
   if (actual_type == nullptr) {
-    result.success = false;
-    result.error_message =
+    result.success_ = false;
+    result.error_message_ =
         absl::StrCat("Field '", full_path, "': unknown type '", type_name, "'");
     return;
   }
 
   auto* msg_factory = google::protobuf::MessageFactory::generated_factory();
   if (msg_factory == nullptr) {
-    result.success = false;
-    result.error_message =
+    result.success_ = false;
+    result.error_message_ =
         absl::StrCat("Field '", full_path, "': could not get message factory");
     return;
   }
 
   const auto* prototype = msg_factory->GetPrototype(actual_type);
   if (prototype == nullptr) {
-    result.success = false;
-    result.error_message =
+    result.success_ = false;
+    result.error_message_ =
         absl::StrCat("Field '", full_path, "': could not get prototype for type '",
                      type_name, "'");
     return;
@@ -106,8 +106,8 @@ void mergeAnyYamlField(const YAML::Node& any_yaml, google::protobuf::Message* me
 
   std::unique_ptr<google::protobuf::Message> owned_msg(prototype->New());
   if (owned_msg == nullptr) {
-    result.success = false;
-    result.error_message =
+    result.success_ = false;
+    result.error_message_ =
         absl::StrCat("Field '", full_path, "': could not create message for type '",
                      type_name, "'");
     return;
@@ -122,7 +122,7 @@ void mergeAnyYamlField(const YAML::Node& any_yaml, google::protobuf::Message* me
   }
 
   mergeYamlIntoProto(inner_yaml, owned_msg.get(), full_path, result);
-  if (!result.success) {
+  if (!result.success_) {
     return;
   }
 
@@ -145,36 +145,36 @@ void mergeYamlIntoProto(const YAML::Node& yaml, google::protobuf::Message* messa
 
     const auto* field = descriptor->FindFieldByName(key);
     if (field == nullptr) {
-      result.warnings.push_back(absl::StrCat("Unknown field '", full_path, "' ignored"));
+      result.warnings_.push_back(absl::StrCat("Unknown field '", full_path, "' ignored"));
       continue;
     }
 
     if (field->is_repeated()) {
       if (!kv.second.IsSequence()) {
-        result.success = false;
-        result.error_message = absl::StrCat("Field '", full_path, "' expected sequence");
+        result.success_ = false;
+        result.error_message_ = absl::StrCat("Field '", full_path, "' expected sequence");
         return;
       }
       for (const auto& item : kv.second) {
         if (field->cpp_type() == google::protobuf::FieldDescriptor::CPPTYPE_MESSAGE) {
           auto* sub_msg = reflection->AddMessage(message, field);
           mergeYamlIntoProto(item, sub_msg, full_path, result);
-          if (!result.success) {
+          if (!result.success_) {
             return;
           }
         } else if (field->cpp_type() == google::protobuf::FieldDescriptor::CPPTYPE_STRING) {
           reflection->AddString(message, field, item.as<std::string>());
         } else {
-          result.success = false;
-          result.error_message = absl::StrCat(
+          result.success_ = false;
+          result.error_message_ = absl::StrCat(
               "Repeated field '", full_path, "' only supports message or string type");
           return;
         }
       }
     } else if (field->cpp_type() == google::protobuf::FieldDescriptor::CPPTYPE_MESSAGE) {
       if (!kv.second.IsMap()) {
-        result.success = false;
-        result.error_message = absl::StrCat("Field '", full_path, "' expected map");
+        result.success_ = false;
+        result.error_message_ = absl::StrCat("Field '", full_path, "' expected map");
         return;
       }
 
@@ -182,19 +182,19 @@ void mergeYamlIntoProto(const YAML::Node& yaml, google::protobuf::Message* messa
       if (field_msg_type != nullptr &&
           field_msg_type->full_name() == "google.protobuf.Any") {
         mergeAnyYamlField(kv.second, message, field, full_path, result);
-        if (!result.success) {
+        if (!result.success_) {
           return;
         }
       } else {
         auto* sub_msg = reflection->MutableMessage(message, field);
         mergeYamlIntoProto(kv.second, sub_msg, full_path, result);
-        if (!result.success) {
+        if (!result.success_) {
           return;
         }
       }
     } else {
       setFieldFromString(message, field, kv.second.as<std::string>(), reflection, result);
-      if (!result.success) {
+      if (!result.success_) {
         return;
       }
     }
@@ -285,7 +285,7 @@ void applyCliOverridePath(google::protobuf::Message* current,
 
   const auto* field = descriptor->FindFieldByName(parts[depth]);
   if (field == nullptr) {
-    result.warnings.push_back(
+    result.warnings_.push_back(
         absl::StrCat("CLI override '", path, "': unknown field '", parts[depth], "'"));
     return;
   }
@@ -293,7 +293,7 @@ void applyCliOverridePath(google::protobuf::Message* current,
   if (depth + 1 == parts.size()) {
     if (field->is_repeated() &&
         field->cpp_type() == google::protobuf::FieldDescriptor::CPPTYPE_MESSAGE) {
-      result.warnings.push_back(
+      result.warnings_.push_back(
           absl::StrCat("CLI override for repeated message not supported: ", path));
     } else {
       setFieldFromString(current, field, value, reflection, result);
@@ -302,7 +302,7 @@ void applyCliOverridePath(google::protobuf::Message* current,
   }
 
   if (field->cpp_type() != google::protobuf::FieldDescriptor::CPPTYPE_MESSAGE) {
-    result.warnings.push_back(
+    result.warnings_.push_back(
         absl::StrCat("CLI override '", path, "': expected message field at '", parts[depth], "'"));
     return;
   }
@@ -358,8 +358,8 @@ void setFieldFromString(google::protobuf::Message* message,
     reflection->SetString(message, field, value);
     break;
   default:
-    result.success = false;
-    result.error_message =
+    result.success_ = false;
+    result.error_message_ =
         absl::StrCat("Unsupported field type for CLI override: ", field->full_name());
     break;
   }
@@ -432,14 +432,14 @@ auto extractFieldValue(const google::protobuf::Message& message,
 auto validateFieldValue(const FieldValueInfo& info, const std::string& field_path,
                         const google::protobuf::FieldOptions& ext_opts) -> ConfigLoadResult {
   ConfigLoadResult result;
-  result.success = true;
+  result.success_ = true;
 
   if (info.is_numeric && ext_opts.HasExtension(carrot::config::range_min)) {
     std::string min_str = ext_opts.GetExtension(carrot::config::range_min);
     uint64_t min_val = std::stoull(min_str);
     if (info.num_val < min_val) {
-      result.success = false;
-      result.error_message = absl::StrCat("Field '", field_path, "': value ", info.str_val,
+      result.success_ = false;
+      result.error_message_ = absl::StrCat("Field '", field_path, "': value ", info.str_val,
                                           " below minimum ", min_str);
       return result;
     }
@@ -449,8 +449,8 @@ auto validateFieldValue(const FieldValueInfo& info, const std::string& field_pat
     std::string max_str = ext_opts.GetExtension(carrot::config::range_max);
     uint64_t max_val = std::stoull(max_str);
     if (info.num_val > max_val) {
-      result.success = false;
-      result.error_message = absl::StrCat("Field '", field_path, "': value ", info.str_val,
+      result.success_ = false;
+      result.error_message_ = absl::StrCat("Field '", field_path, "': value ", info.str_val,
                                           " exceeds maximum ", max_str);
       return result;
     }
@@ -471,8 +471,8 @@ auto validateFieldValue(const FieldValueInfo& info, const std::string& field_pat
       }
     }
     if (!valid) {
-      result.success = false;
-      result.error_message = absl::StrCat("Field '", field_path, "': value '", info.str_val,
+      result.success_ = false;
+      result.error_message_ = absl::StrCat("Field '", field_path, "': value '", info.str_val,
                                           "' not in allowed values: ", allowed_str);
       return result;
     }
@@ -483,13 +483,13 @@ auto validateFieldValue(const FieldValueInfo& info, const std::string& field_pat
     try {
       std::regex regexp(pattern_str);
       if (!std::regex_match(info.str_val, regexp)) {
-        result.success = false;
-        result.error_message = absl::StrCat("Field '", field_path, "': value '", info.str_val,
+        result.success_ = false;
+        result.error_message_ = absl::StrCat("Field '", field_path, "': value '", info.str_val,
                                             "' does not match pattern '", pattern_str, "'");
         return result;
       }
     } catch (const std::regex_error&) {
-      result.warnings.push_back(
+      result.warnings_.push_back(
           absl::StrCat("Invalid regex pattern for '", field_path, "': ", pattern_str));
     }
   }
@@ -500,7 +500,7 @@ auto validateFieldValue(const FieldValueInfo& info, const std::string& field_pat
 ConfigLoadResult validateMessage(const google::protobuf::Message& message,
                                  const std::string& prefix = {}) {
   ConfigLoadResult result;
-  result.success = true;
+  result.success_ = true;
 
   const auto* descriptor = message.GetDescriptor();
   const auto* reflection = message.GetReflection();
@@ -520,14 +520,14 @@ ConfigLoadResult validateMessage(const google::protobuf::Message& message,
         for (int j = 0; j < size; ++j) {
           ConfigLoadResult sub_result =
               validateMessage(reflection->GetRepeatedMessage(message, field, j), field_path);
-          if (!sub_result.success) {
+          if (!sub_result.success_) {
             return sub_result;
           }
         }
       } else {
         ConfigLoadResult sub_result =
             validateMessage(reflection->GetMessage(message, field), field_path);
-        if (!sub_result.success) {
+        if (!sub_result.success_) {
           return sub_result;
         }
       }
@@ -543,8 +543,8 @@ ConfigLoadResult validateMessage(const google::protobuf::Message& message,
 
     if (!has_value && ext_opts.HasExtension(carrot::config::required) &&
         ext_opts.GetExtension(carrot::config::required)) {
-      result.success = false;
-      result.error_message = absl::StrCat("Required field '", field_path, "' is not set");
+      result.success_ = false;
+      result.error_message_ = absl::StrCat("Required field '", field_path, "' is not set");
       return result;
     }
 
@@ -555,11 +555,11 @@ ConfigLoadResult validateMessage(const google::protobuf::Message& message,
     FieldValueInfo info = extractFieldValue(message, field, reflection);
 
     ConfigLoadResult field_result = validateFieldValue(info, field_path, ext_opts);
-    if (!field_result.success) {
+    if (!field_result.success_) {
       return field_result;
     }
-    result.warnings.insert(result.warnings.end(), field_result.warnings.begin(),
-                           field_result.warnings.end());
+    result.warnings_.insert(result.warnings_.end(), field_result.warnings_.begin(),
+                           field_result.warnings_.end());
   }
 
   return result;
@@ -571,25 +571,25 @@ template <typename T>
 auto LoadConfig(const std::string& config_file_path, const std::vector<std::string>& cli_overrides,
                 T* output) -> ConfigLoadResult {
   ConfigLoadResult result;
-  result.success = true;
+  result.success_ = true;
 
   T config = T::default_instance();
 
   if (!config_file_path.empty() && fileExists(config_file_path)) {
     YAML::Node yaml = parseYamlFile(config_file_path, result);
-    if (!result.success) {
+    if (!result.success_) {
       return result;
     }
 
     if (!yaml.IsMap()) {
-      result.success = false;
-      result.error_message = "Config file must be a YAML map";
-      result.error_file = config_file_path;
+      result.success_ = false;
+      result.error_message_ = "Config file must be a YAML map";
+      result.error_file_ = config_file_path;
       return result;
     }
 
     mergeYamlIntoProto(yaml, &config, "", result);
-    if (!result.success) {
+    if (!result.success_) {
       return result;
     }
   }
@@ -610,16 +610,16 @@ auto LoadConfig(const std::string& config_file_path, const std::vector<std::stri
   }
 
   ConfigLoadResult validation = validateMessage(config);
-  if (!validation.success) {
-    result.success = false;
-    result.error_message = validation.error_message;
-    result.error_file = validation.error_file;
-    result.error_line = validation.error_line;
-    result.error_column = validation.error_column;
+  if (!validation.success_) {
+    result.success_ = false;
+    result.error_message_ = validation.error_message_;
+    result.error_file_ = validation.error_file_;
+    result.error_line_ = validation.error_line_;
+    result.error_column_ = validation.error_column_;
     return result;
   }
-  result.warnings.insert(result.warnings.end(), validation.warnings.begin(),
-                         validation.warnings.end());
+  result.warnings_.insert(result.warnings_.end(), validation.warnings_.begin(),
+                         validation.warnings_.end());
 
   if (output) {
     *output = std::move(config);
@@ -636,7 +636,7 @@ template <typename T>
 auto ApplyCliOverrides(T& config, const std::vector<std::string>& overrides) -> int {
   ConfigLoadResult result;
   applyCliOverridesInternal(&config, overrides, result);
-  return result.success ? 1 : 0;
+  return result.success_ ? 1 : 0;
 }
 
 template <typename T> auto GetDefaultConfig() -> T { return T::default_instance(); }
