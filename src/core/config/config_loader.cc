@@ -33,12 +33,15 @@ absl::Status setFieldFromString(google::protobuf::Message* message,
 absl::Status mergeYamlIntoProto(const YAML::Node& yaml, google::protobuf::Message* message,
                                 const std::string& prefix);
 
+/// Returns true if the given file path exists on disk.
 auto fileExists(const std::string& path) -> bool { return std::filesystem::exists(path); }
 
+/// Looks up a protobuf message type by its fully-qualified name in the generated descriptor pool.
 auto resolveMessageType(const std::string& type_name) -> const google::protobuf::Descriptor* {
   return google::protobuf::DescriptorPool::generated_pool()->FindMessageTypeByName(type_name);
 }
 
+/// Converts all characters in the string view to uppercase.
 auto toUpper(std::string_view str) -> std::string {
   std::string result;
   result.reserve(str.size());
@@ -48,6 +51,7 @@ auto toUpper(std::string_view str) -> std::string {
   return result;
 }
 
+/// Parses a YAML file at the given path and returns the root YAML node.
 auto parseYamlFile(const std::string& path) -> absl::StatusOr<YAML::Node> {
   try {
     return YAML::LoadFile(path);
@@ -58,9 +62,11 @@ auto parseYamlFile(const std::string& path) -> absl::StatusOr<YAML::Node> {
   }
 }
 
+/// Handles a YAML node representing a google.protobuf.Any field by resolving the @type,
+/// creating the concrete message, populating it from YAML, and packing it into the Any.
 absl::Status mergeAnyYamlField(const YAML::Node& any_yaml, google::protobuf::Message* message,
-                               const google::protobuf::FieldDescriptor* field,
-                               const std::string& full_path) {
+                                const google::protobuf::FieldDescriptor* field,
+                                const std::string& full_path) {
   const auto* field_msg_type = field->message_type();
   if (field_msg_type == nullptr || field_msg_type->full_name() != "google.protobuf.Any") {
     return absl::OkStatus();
@@ -124,6 +130,8 @@ absl::Status mergeAnyYamlField(const YAML::Node& any_yaml, google::protobuf::Mes
   return absl::OkStatus();
 }
 
+/// Recursively merges a YAML map into a protobuf message, handling nested messages,
+/// repeated fields, and google.protobuf.Any fields.
 absl::Status mergeYamlIntoProto(const YAML::Node& yaml, google::protobuf::Message* message,
                                 const std::string& prefix) {
   const auto* descriptor = message->GetDescriptor();
@@ -187,9 +195,11 @@ absl::Status mergeYamlIntoProto(const YAML::Node& yaml, google::protobuf::Messag
   return absl::OkStatus();
 }
 
+/// Discovers and applies environment variables for a repeated message field by iterating
+/// through indexed entries (e.g., PREFIX__0__FIELD, PREFIX__1__FIELD, ...).
 absl::Status discoverRepeatedEnvFields(google::protobuf::Message* message,
-                                       const google::protobuf::FieldDescriptor* field,
-                                       const std::string& env_prefix, const std::string& path) {
+                                        const google::protobuf::FieldDescriptor* field,
+                                        const std::string& env_prefix, const std::string& path) {
   const auto* sub_descriptor = field->message_type();
   const auto* reflection = message->GetReflection();
 
@@ -229,9 +239,11 @@ absl::Status discoverRepeatedEnvFields(google::protobuf::Message* message,
   return absl::OkStatus();
 }
 
+/// Recursively traverses a protobuf message's fields, discovering and applying environment
+/// variables that match the naming convention (e.g., CARROT_GATEWAY_FIELD_NAME).
 absl::Status discoverAndApplyEnvVars(google::protobuf::Message* message,
-                                     const std::string& env_prefix,
-                                     const std::string& upper_prefix) {
+                                      const std::string& env_prefix,
+                                      const std::string& upper_prefix) {
   const auto* descriptor = message->GetDescriptor();
   const auto* reflection = message->GetReflection();
 
@@ -268,17 +280,21 @@ absl::Status discoverAndApplyEnvVars(google::protobuf::Message* message,
   return absl::OkStatus();
 }
 
+/// Constructs the environment variable prefix for a service (e.g., CARROT_GATEWAY_) and
+/// triggers environment variable discovery and application.
 absl::Status applyEnvOverrides(google::protobuf::Message* message,
-                               const std::string& service_prefix) {
+                                const std::string& service_prefix) {
   const std::string env_prefix = absl::StrCat("CARROT_", service_prefix, "_");
   return discoverAndApplyEnvVars(message, env_prefix, "");
 }
 
+/// Recursively navigates into nested message fields using a dot-separated path and applies
+/// a CLI override value to the final field.
 absl::Status applyCliOverridePath(google::protobuf::Message* current,
-                                  const google::protobuf::Descriptor* descriptor,
-                                  const google::protobuf::Reflection* reflection,
-                                  const std::vector<std::string>& parts, size_t depth,
-                                  const std::string& value, const std::string& path) {
+                                   const google::protobuf::Descriptor* descriptor,
+                                   const google::protobuf::Reflection* reflection,
+                                   const std::vector<std::string>& parts, size_t depth,
+                                   const std::string& value, const std::string& path) {
   if (depth >= parts.size()) {
     return absl::OkStatus();
   }
@@ -308,8 +324,10 @@ absl::Status applyCliOverridePath(google::protobuf::Message* current,
                               depth + 1, value, path);
 }
 
+/// Parses a list of CLI override strings (in "field.path=value" format) and applies each
+/// one to the protobuf message.
 absl::Status applyCliOverridesInternal(google::protobuf::Message* message,
-                                       const std::vector<std::string>& overrides) {
+                                        const std::vector<std::string>& overrides) {
   for (const auto& override : overrides) {
     size_t eq_pos = override.find('=');
     if (eq_pos == std::string::npos) {
@@ -330,10 +348,12 @@ absl::Status applyCliOverridesInternal(google::protobuf::Message* message,
   return absl::OkStatus();
 }
 
+/// Sets a protobuf field's value from a string, handling type conversion for all supported
+/// field types (int32, uint32, int64, uint64, double, float, bool, string, enum).
 absl::Status setFieldFromString(google::protobuf::Message* message,
-                                const google::protobuf::FieldDescriptor* field,
-                                const std::string& value,
-                                const google::protobuf::Reflection* reflection) {
+                                 const google::protobuf::FieldDescriptor* field,
+                                 const std::string& value,
+                                 const google::protobuf::Reflection* reflection) {
   switch (field->cpp_type()) {
   case google::protobuf::FieldDescriptor::CPPTYPE_INT32:
   case google::protobuf::FieldDescriptor::CPPTYPE_INT64:
@@ -366,15 +386,18 @@ absl::Status setFieldFromString(google::protobuf::Message* message,
   return absl::OkStatus();
 }
 
+/// Holds the string representation and optional numeric value of a protobuf field for validation.
 struct FieldValueInfo {
   std::string str_val;
   bool is_numeric = false;
   uint64_t num_val = 0;
 };
 
+/// Extracts a field's value from a protobuf message, returning both its string representation
+/// and numeric value (if applicable) for validation purposes.
 auto extractFieldValue(const google::protobuf::Message& message,
-                       const google::protobuf::FieldDescriptor* field,
-                       const google::protobuf::Reflection* reflection) -> FieldValueInfo {
+                        const google::protobuf::FieldDescriptor* field,
+                        const google::protobuf::Reflection* reflection) -> FieldValueInfo {
   FieldValueInfo info;
   bool repeated = field->is_repeated();
 
@@ -430,6 +453,8 @@ auto extractFieldValue(const google::protobuf::Message& message,
   return info;
 }
 
+/// Validates a field value against constraint extensions (range_min, range_max, enum_values,
+/// pattern) defined in the field's options.
 auto validateFieldValue(const FieldValueInfo& info, const std::string& field_path,
                         const google::protobuf::FieldOptions& ext_opts) -> absl::Status {
   if (info.is_numeric && ext_opts.HasExtension(carrot::config::range_min)) {
@@ -488,6 +513,8 @@ auto validateFieldValue(const FieldValueInfo& info, const std::string& field_pat
   return absl::OkStatus();
 }
 
+/// Recursively validates a protobuf message and all its fields, checking required fields,
+/// value constraints, and nested message validation.
 auto validateMessage(const google::protobuf::Message& message, const std::string& prefix = {})
     -> absl::Status {
   const auto* descriptor = message.GetDescriptor();
