@@ -11,14 +11,16 @@
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
 #include "core/logging/log.hh"
-#include "gateway.pb.h"
 #include "google/protobuf/any.pb.h"
 #include "google/protobuf/descriptor.h"
 #include "google/protobuf/message.h"
 #include "google/protobuf/text_format.h"
-#include "nodeagent.pb.h"
-#include "options.pb.h"
 #include "yaml-cpp/yaml.h"
+
+// Generated protobuf headers
+#include "core/config/gateway.pb.h"
+#include "core/config/nodeagent.pb.h"
+#include "core/config/options.pb.h"
 
 namespace carrot::config {
 

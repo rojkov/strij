@@ -20,10 +20,10 @@
 #include "core/io/tcp_listener.hh"
 #include "core/io/tlv_parser.hh"
 #include "core/logging/log.hh"
-#include "google/protobuf/any.pb.h"
 
 // Generated protobuf headers
-#include "gateway.pb.h"
+#include "core/config/gateway.pb.h"
+#include "google/protobuf/any.pb.h"
 
 // NOLINTBEGIN
 ABSL_FLAG(std::string, config_file, "gateway.yaml", "Path to YAML config file");
@@ -39,8 +39,7 @@ auto main(int argc, char** argv) -> int {
 
   // Load configuration
   auto config_result =
-      carrot::config::LoadConfig<carrot::config::GatewayConfig>(
-          absl::GetFlag(FLAGS_config_file));
+      carrot::config::LoadConfig<carrot::config::GatewayConfig>(absl::GetFlag(FLAGS_config_file));
 
   if (!config_result.ok()) {
     LOG_ERROR("Config error: {}", config_result.status().message());
@@ -113,8 +112,8 @@ auto main(int argc, char** argv) -> int {
   unpacked.CopyFrom(ext.typed_config());
   auto config_msg = factory->CreateEmptyConfigProto();
   if (!unpacked.UnpackTo(config_msg.get())) {
-    LOG_ERROR("Failed to unpack typed_config for extension '{}': unknown type '{}'",
-              ext.name(), unpacked.type_url());
+    LOG_ERROR("Failed to unpack typed_config for extension '{}': unknown type '{}'", ext.name(),
+              unpacked.type_url());
     return 1;
   }
   node_discovery = factory->Create(*config_msg, factory_context);

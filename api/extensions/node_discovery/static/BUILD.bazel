@@ -1,0 +1,15 @@
+load("@protobuf//bazel:cc_proto_library.bzl", "cc_proto_library")
+load("@rules_proto//proto:defs.bzl", "proto_library")
+
+proto_library(
+    name = "static_node_discovery_proto",
+    srcs = ["static_node_discovery.proto"],
+    strip_import_prefix = "/api",
+    visibility = ["//visibility:public"],
+)
+
+cc_proto_library(
+    name = "static_node_discovery_cc_proto",
+    visibility = ["//visibility:public"],
+    deps = [":static_node_discovery_proto"],
+)

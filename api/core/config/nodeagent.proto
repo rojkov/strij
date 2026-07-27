@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package carrot.config;
 
-import "options.proto";
+import "core/config/options.proto";
 
 message NodeAgentConfig {
   TlvListener tlv_listener = 1;

@@ -9,7 +9,7 @@
 #include "core/logging/log.hh"
 
 // Generated protobuf headers
-#include "nodeagent.pb.h"
+#include "core/config/nodeagent.pb.h"
 
 // NOLINTBEGIN
 ABSL_FLAG(std::string, config_file, "nodeagent.yaml", "Path to YAML config file");
@@ -25,8 +25,7 @@ auto main(int argc, char** argv) -> int {
 
   // Load configuration
   auto config_result =
-      carrot::config::LoadConfig<carrot::config::NodeAgentConfig>(
-          absl::GetFlag(FLAGS_config_file));
+      carrot::config::LoadConfig<carrot::config::NodeAgentConfig>(absl::GetFlag(FLAGS_config_file));
 
   if (!config_result.ok()) {
     LOG_ERROR("Config error: {}", config_result.status().message());

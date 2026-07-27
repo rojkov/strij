@@ -1,10 +1,9 @@
-#include "src/extensions/node_discovery/static/static_node_discovery.hh"
+#include "extensions/node_discovery/static/static_node_discovery.hh"
 
 #include <stdexcept>
 
+#include "extensions/node_discovery/static/static_node_discovery.pb.h"
 #include "google/protobuf/any.pb.h"
-
-#include "src/extensions/node_discovery/static/static_node_discovery.pb.h"
 
 namespace carrot::extensions::node_discovery {
 
@@ -22,9 +21,7 @@ void StaticNodeDiscovery::Start(DiscoveryCallback callback) {
 
 void StaticNodeDiscovery::Stop() {}
 
-auto StaticNodeDiscoveryFactory::Name() const -> std::string {
-  return "static";
-}
+auto StaticNodeDiscoveryFactory::Name() const -> std::string { return "static"; }
 
 auto StaticNodeDiscoveryFactory::CreateEmptyConfigProto() -> MessagePtr {
   return std::make_unique<carrot::config::StaticNodeDiscoveryConfig>();
@@ -49,7 +46,6 @@ auto StaticNodeDiscoveryFactory::Create(const ::google::protobuf::Message& confi
 
 } // namespace carrot::extensions::node_discovery
 
-REGISTER_FACTORY_FULLY_QUALIFIED(
-    carrot::extensions::node_discovery::StaticNodeDiscoveryFactory,
-    carrot::extensions::NodeDiscoveryFactory,
-    static_node_discovery_registrar)
+REGISTER_FACTORY_FULLY_QUALIFIED(carrot::extensions::node_discovery::StaticNodeDiscoveryFactory,
+                                 carrot::extensions::NodeDiscoveryFactory,
+                                 static_node_discovery_registrar)

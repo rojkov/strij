@@ -1,13 +1,14 @@
+#include <unistd.h>
+
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
 #include <string>
-#include <unistd.h>
 #include <vector>
 
 #include "core/config/config_loader.hh"
-#include "gateway.pb.h"
-#include "nodeagent.pb.h"
+#include "core/config/gateway.pb.h"
+#include "core/config/nodeagent.pb.h"
 #include "gtest/gtest.h"
 
 namespace carrot::config {
@@ -20,7 +21,8 @@ std::string CreateTempFile(const std::string& content) {
   std::vector<char> buf(tmpl.begin(), tmpl.end());
   buf.push_back('\0');
   int fd = mkstemp(buf.data());
-  if (fd == -1) return "";
+  if (fd == -1)
+    return "";
   std::string result(buf.data());
   write(fd, content.data(), content.size());
   close(fd);
@@ -138,8 +140,8 @@ node_connections:
 }
 
 TEST(ConfigLoaderTest, CliOverrides) {
-  auto result = LoadConfig<GatewayConfig>(
-      "", {"http_listener.port=9090", "http_listener.address=10.0.0.1"});
+  auto result =
+      LoadConfig<GatewayConfig>("", {"http_listener.port=9090", "http_listener.address=10.0.0.1"});
   ASSERT_TRUE(result.ok()) << result.status().message();
   const auto& config = result.value();
   EXPECT_EQ(config.http_listener().port(), 9090u);
@@ -237,8 +239,8 @@ TEST(ConfigLoaderTest, MissingYamlFile) {
 }
 
 TEST(ConfigLoaderTest, NodeAgentCliOverrides) {
-  auto result = LoadConfig<NodeAgentConfig>(
-      "", {"tlv_listener.port=7070", "tlv_listener.address=0.0.0.0"});
+  auto result =
+      LoadConfig<NodeAgentConfig>("", {"tlv_listener.port=7070", "tlv_listener.address=0.0.0.0"});
   ASSERT_TRUE(result.ok()) << result.status().message();
   const auto& config = result.value();
   EXPECT_EQ(config.tlv_listener().port(), 7070u);

@@ -2,8 +2,8 @@ syntax = "proto3";
 
 package carrot.config;
 
-import "extensions.proto";
-import "options.proto";
+import "core/config/extensions.proto";
+import "core/config/options.proto";
 
 message GatewayConfig {
   HttpListener http_listener = 1;
