@@ -24,7 +24,7 @@ echo "Getting code coverage for directory..."
 
 while read -r DIRECTORY
 do
-  COVERAGE_VALUE=$(lcov -e ${COV_FILE} "${DIRECTORY}/*" -o /dev/null | grep line | cut -d ' ' -f 4)
+  COVERAGE_VALUE=$(lcov --ignore-errors empty -e ${COV_FILE} "${DIRECTORY}/*" -o /dev/null 2>/dev/null | grep line | cut -d ' ' -f 4)
   COVERAGE_VALUE=${COVERAGE_VALUE%?}
 
   if [[ $COVERAGE_VALUE =~ "n" ]]; then

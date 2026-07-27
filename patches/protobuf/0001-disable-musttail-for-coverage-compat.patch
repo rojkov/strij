@@ -1,0 +1,30 @@
+From 032926b072ec3df83d3cb107300fe6e82c50ace9 Mon Sep 17 00:00:00 2001
+From: Dmitry Rozhkov <dmitry.rojkov@gmail.com>
+Date: Mon, 27 Jul 2026 21:16:52 +0300
+Subject: [PATCH] conditionally disable musttail for coverage
+
+---
+ src/google/protobuf/port_def.inc | 7 ++++++-
+ 1 file changed, 6 insertions(+), 1 deletion(-)
+
+diff --git a/src/google/protobuf/port_def.inc b/src/google/protobuf/port_def.inc
+index b3b9cb1..f5c471d 100644
+--- a/src/google/protobuf/port_def.inc
++++ b/src/google/protobuf/port_def.inc
+@@ -258,7 +258,12 @@ static_assert(PROTOBUF_ABSL_MIN(20230125, 3),
+ #ifdef PROTOBUF_TAILCALL
+ #error PROTOBUF_TAILCALL was previously defined
+ #endif
+-#if ABSL_HAVE_CPP_ATTRIBUTE(clang::musttail) && (defined(__aarch64__) || \
++// CARROT: disable musttail when building with coverage instrumentation
++// (--coverage / -fprofile-arcs causes GCC to reject [[musttail]])
++#if defined(CARROT_COVERAGE)
++#define PROTOBUF_MUSTTAIL
++#define PROTOBUF_TAILCALL false
++#elif ABSL_HAVE_CPP_ATTRIBUTE(clang::musttail) && (defined(__aarch64__) || \
+     defined(__x86_64__) || defined(_M_X64))
+ // Compilation fails on ARM32: b/195943306
+ // Compilation fails on powerpc64le: b/187985113
+-- 
+2.55.0
+
