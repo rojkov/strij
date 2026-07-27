@@ -25,13 +25,12 @@ namespace carrot::config {
 namespace {
 
 // Forward declarations
-absl::Status setFieldFromString(google::protobuf::Message* message,
-                                const google::protobuf::FieldDescriptor* field,
-                                const std::string& value,
-                                const google::protobuf::Reflection* reflection);
+auto setFieldFromString(google::protobuf::Message* message,
+                        const google::protobuf::FieldDescriptor* field, const std::string& value,
+                        const google::protobuf::Reflection* reflection) -> absl::Status;
 
-absl::Status mergeYamlIntoProto(const YAML::Node& yaml, google::protobuf::Message* message,
-                                const std::string& prefix);
+auto mergeYamlIntoProto(const YAML::Node& yaml, google::protobuf::Message* message,
+                        const std::string& prefix) -> absl::Status;
 
 /// Returns true if the given file path exists on disk.
 auto fileExists(const std::string& path) -> bool { return std::filesystem::exists(path); }
@@ -64,9 +63,9 @@ auto parseYamlFile(const std::string& path) -> absl::StatusOr<YAML::Node> {
 
 /// Handles a YAML node representing a google.protobuf.Any field by resolving the @type,
 /// creating the concrete message, populating it from YAML, and packing it into the Any.
-absl::Status mergeAnyYamlField(const YAML::Node& any_yaml, google::protobuf::Message* message,
-                                const google::protobuf::FieldDescriptor* field,
-                                const std::string& full_path) {
+auto mergeAnyYamlField(const YAML::Node& any_yaml, google::protobuf::Message* message,
+                       const google::protobuf::FieldDescriptor* field, const std::string& full_path)
+    -> absl::Status {
   const auto* field_msg_type = field->message_type();
   if (field_msg_type == nullptr || field_msg_type->full_name() != "google.protobuf.Any") {
     return absl::OkStatus();
@@ -77,13 +76,13 @@ absl::Status mergeAnyYamlField(const YAML::Node& any_yaml, google::protobuf::Mes
         absl::StrCat("Field '", full_path, "': google.protobuf.Any requires '@type' key"));
   }
 
-  std::string type_name = any_yaml["@type"].as<std::string>();
+  auto type_name = any_yaml["@type"].as<std::string>();
   const std::string type_prefix = "type.googleapis.com/";
   if (type_name.starts_with(type_prefix)) {
     type_name = type_name.substr(type_prefix.size());
   }
 
-  const auto* actual_type = resolveMessageType(type_name);
+  const google::protobuf::Descriptor* actual_type = resolveMessageType(type_name);
   if (actual_type == nullptr) {
     return absl::InvalidArgumentError(
         absl::StrCat("Field '", full_path, "': unknown type '", type_name, "'"));
@@ -95,7 +94,7 @@ absl::Status mergeAnyYamlField(const YAML::Node& any_yaml, google::protobuf::Mes
         absl::StrCat("Field '", full_path, "': could not get message factory"));
   }
 
-  const auto* prototype = msg_factory->GetPrototype(actual_type);
+  const google::protobuf::Message* prototype = msg_factory->GetPrototype(actual_type);
   if (prototype == nullptr) {
     return absl::InternalError(absl::StrCat(
         "Field '", full_path, "': could not get prototype for type '", type_name, "'"));
@@ -109,7 +108,7 @@ absl::Status mergeAnyYamlField(const YAML::Node& any_yaml, google::protobuf::Mes
 
   YAML::Node inner_yaml;
   for (const auto& kv_inner : any_yaml) {
-    std::string key = kv_inner.first.as<std::string>();
+    auto key = kv_inner.first.as<std::string>();
     if (key != "@type") {
       inner_yaml[key] = kv_inner.second;
     }
@@ -120,7 +119,7 @@ absl::Status mergeAnyYamlField(const YAML::Node& any_yaml, google::protobuf::Mes
     return status;
   }
 
-  auto* reflection = message->GetReflection();
+  const auto* reflection = message->GetReflection();
   auto* any_field = reflection->MutableMessage(message, field);
   auto* any_msg = dynamic_cast<::google::protobuf::Any*>(any_field);
   if (any_msg != nullptr) {
@@ -132,13 +131,15 @@ absl::Status mergeAnyYamlField(const YAML::Node& any_yaml, google::protobuf::Mes
 
 /// Recursively merges a YAML map into a protobuf message, handling nested messages,
 /// repeated fields, and google.protobuf.Any fields.
-absl::Status mergeYamlIntoProto(const YAML::Node& yaml, google::protobuf::Message* message,
-                                const std::string& prefix) {
+// NOLINTNEXTLINE(readability-function-cognitive-complexity)
+auto mergeYamlIntoProto(const YAML::Node& yaml, google::protobuf::Message* message,
+                        const std::string& prefix) -> absl::Status {
   const auto* descriptor = message->GetDescriptor();
   const auto* reflection = message->GetReflection();
 
-  for (const auto& kv : yaml) {
-    const auto key = kv.first.as<std::string>();
+  for (const auto& key_value : yaml) {
+    const auto key = key_value.first.as<std::string>();
+    const auto& value = key_value.second;
     const std::string full_path = prefix.empty() ? key : absl::StrCat(prefix, ".", key);
 
     const auto* field = descriptor->FindFieldByName(key);
@@ -148,11 +149,11 @@ absl::Status mergeYamlIntoProto(const YAML::Node& yaml, google::protobuf::Messag
     }
 
     if (field->is_repeated()) {
-      if (!kv.second.IsSequence()) {
+      if (!value.IsSequence()) {
         return absl::InvalidArgumentError(
             absl::StrCat("Field '", full_path, "' expected sequence"));
       }
-      for (const auto& item : kv.second) {
+      for (const auto& item : value) {
         if (field->cpp_type() == google::protobuf::FieldDescriptor::CPPTYPE_MESSAGE) {
           auto* sub_msg = reflection->AddMessage(message, field);
           auto status = mergeYamlIntoProto(item, sub_msg, full_path);
@@ -167,25 +168,25 @@ absl::Status mergeYamlIntoProto(const YAML::Node& yaml, google::protobuf::Messag
         }
       }
     } else if (field->cpp_type() == google::protobuf::FieldDescriptor::CPPTYPE_MESSAGE) {
-      if (!kv.second.IsMap()) {
+      if (!value.IsMap()) {
         return absl::InvalidArgumentError(absl::StrCat("Field '", full_path, "' expected map"));
       }
 
       const auto* field_msg_type = field->message_type();
       if (field_msg_type != nullptr && field_msg_type->full_name() == "google.protobuf.Any") {
-        auto status = mergeAnyYamlField(kv.second, message, field, full_path);
+        auto status = mergeAnyYamlField(value, message, field, full_path);
         if (!status.ok()) {
           return status;
         }
       } else {
         auto* sub_msg = reflection->MutableMessage(message, field);
-        auto status = mergeYamlIntoProto(kv.second, sub_msg, full_path);
+        auto status = mergeYamlIntoProto(value, sub_msg, full_path);
         if (!status.ok()) {
           return status;
         }
       }
     } else {
-      auto status = setFieldFromString(message, field, kv.second.as<std::string>(), reflection);
+      auto status = setFieldFromString(message, field, value.as<std::string>(), reflection);
       if (!status.ok()) {
         return status;
       }
@@ -197,9 +198,10 @@ absl::Status mergeYamlIntoProto(const YAML::Node& yaml, google::protobuf::Messag
 
 /// Discovers and applies environment variables for a repeated message field by iterating
 /// through indexed entries (e.g., PREFIX__0__FIELD, PREFIX__1__FIELD, ...).
-absl::Status discoverRepeatedEnvFields(google::protobuf::Message* message,
-                                        const google::protobuf::FieldDescriptor* field,
-                                        const std::string& env_prefix, const std::string& path) {
+auto discoverRepeatedEnvFields(google::protobuf::Message* message,
+                               const google::protobuf::FieldDescriptor* field,
+                               const std::string& env_prefix, const std::string& path)
+    -> absl::Status {
   const auto* sub_descriptor = field->message_type();
   const auto* reflection = message->GetReflection();
 
@@ -213,6 +215,7 @@ absl::Status discoverRepeatedEnvFields(google::protobuf::Message* message,
       }
 
       std::string env_name = env_prefix + idx_prefix + toUpper(sub_field->name());
+      // NOLINTNEXTLINE(concurrency-mt-unsafe)
       const char* val = std::getenv(env_name.c_str());
       if (val != nullptr) {
         if (!any_found) {
@@ -241,9 +244,8 @@ absl::Status discoverRepeatedEnvFields(google::protobuf::Message* message,
 
 /// Recursively traverses a protobuf message's fields, discovering and applying environment
 /// variables that match the naming convention (e.g., CARROT_GATEWAY_FIELD_NAME).
-absl::Status discoverAndApplyEnvVars(google::protobuf::Message* message,
-                                      const std::string& env_prefix,
-                                      const std::string& upper_prefix) {
+auto discoverAndApplyEnvVars(google::protobuf::Message* message, const std::string& env_prefix,
+                             const std::string& upper_prefix) -> absl::Status {
   const auto* descriptor = message->GetDescriptor();
   const auto* reflection = message->GetReflection();
 
@@ -267,6 +269,7 @@ absl::Status discoverAndApplyEnvVars(google::protobuf::Message* message,
       }
     } else {
       std::string env_name = env_prefix + path;
+      // NOLINTNEXTLINE(concurrency-mt-unsafe)
       const char* val = std::getenv(env_name.c_str());
       if (val != nullptr) {
         auto status = setFieldFromString(message, field, std::string(val), reflection);
@@ -282,19 +285,19 @@ absl::Status discoverAndApplyEnvVars(google::protobuf::Message* message,
 
 /// Constructs the environment variable prefix for a service (e.g., CARROT_GATEWAY_) and
 /// triggers environment variable discovery and application.
-absl::Status applyEnvOverrides(google::protobuf::Message* message,
-                                const std::string& service_prefix) {
+auto applyEnvOverrides(google::protobuf::Message* message, const std::string& service_prefix)
+    -> absl::Status {
   const std::string env_prefix = absl::StrCat("CARROT_", service_prefix, "_");
   return discoverAndApplyEnvVars(message, env_prefix, "");
 }
 
 /// Recursively navigates into nested message fields using a dot-separated path and applies
 /// a CLI override value to the final field.
-absl::Status applyCliOverridePath(google::protobuf::Message* current,
-                                   const google::protobuf::Descriptor* descriptor,
-                                   const google::protobuf::Reflection* reflection,
-                                   const std::vector<std::string>& parts, size_t depth,
-                                   const std::string& value, const std::string& path) {
+auto applyCliOverridePath(google::protobuf::Message* current,
+                          const google::protobuf::Descriptor* descriptor,
+                          const google::protobuf::Reflection* reflection,
+                          const std::vector<std::string>& parts, size_t depth,
+                          const std::string& value, const std::string& path) -> absl::Status {
   if (depth >= parts.size()) {
     return absl::OkStatus();
   }
@@ -326,8 +329,8 @@ absl::Status applyCliOverridePath(google::protobuf::Message* current,
 
 /// Parses a list of CLI override strings (in "field.path=value" format) and applies each
 /// one to the protobuf message.
-absl::Status applyCliOverridesInternal(google::protobuf::Message* message,
-                                        const std::vector<std::string>& overrides) {
+auto applyCliOverridesInternal(google::protobuf::Message* message,
+                               const std::vector<std::string>& overrides) -> absl::Status {
   for (const auto& override : overrides) {
     size_t eq_pos = override.find('=');
     if (eq_pos == std::string::npos) {
@@ -350,10 +353,9 @@ absl::Status applyCliOverridesInternal(google::protobuf::Message* message,
 
 /// Sets a protobuf field's value from a string, handling type conversion for all supported
 /// field types (int32, uint32, int64, uint64, double, float, bool, string, enum).
-absl::Status setFieldFromString(google::protobuf::Message* message,
-                                 const google::protobuf::FieldDescriptor* field,
-                                 const std::string& value,
-                                 const google::protobuf::Reflection* reflection) {
+auto setFieldFromString(google::protobuf::Message* message,
+                        const google::protobuf::FieldDescriptor* field, const std::string& value,
+                        const google::protobuf::Reflection* reflection) -> absl::Status {
   switch (field->cpp_type()) {
   case google::protobuf::FieldDescriptor::CPPTYPE_INT32:
   case google::protobuf::FieldDescriptor::CPPTYPE_INT64:
@@ -388,90 +390,77 @@ absl::Status setFieldFromString(google::protobuf::Message* message,
 
 /// Holds the string representation and optional numeric value of a protobuf field for validation.
 struct FieldValueInfo {
-  std::string str_val;
-  bool is_numeric = false;
-  uint64_t num_val = 0;
+  std::string str_val_;
+  bool is_numeric_{false};
+  uint64_t num_val_{0};
 };
 
 /// Extracts a field's value from a protobuf message, returning both its string representation
 /// and numeric value (if applicable) for validation purposes.
 auto extractFieldValue(const google::protobuf::Message& message,
-                        const google::protobuf::FieldDescriptor* field,
-                        const google::protobuf::Reflection* reflection) -> FieldValueInfo {
-  FieldValueInfo info;
+                       const google::protobuf::FieldDescriptor* field,
+                       const google::protobuf::Reflection* reflection) -> FieldValueInfo {
   bool repeated = field->is_repeated();
 
   switch (field->cpp_type()) {
   case google::protobuf::FieldDescriptor::CPPTYPE_UINT32: {
     uint32_t val = repeated ? reflection->GetRepeatedUInt32(message, field, 0)
                             : reflection->GetUInt32(message, field);
-    info.str_val = std::to_string(val);
-    info.num_val = val;
-    info.is_numeric = true;
-    break;
+    return {.str_val_ = std::to_string(val), .is_numeric_ = true, .num_val_ = val};
   }
   case google::protobuf::FieldDescriptor::CPPTYPE_UINT64: {
     uint64_t val = repeated ? reflection->GetRepeatedUInt64(message, field, 0)
                             : reflection->GetUInt64(message, field);
-    info.str_val = std::to_string(val);
-    info.num_val = val;
-    info.is_numeric = true;
-    break;
+    return {.str_val_ = std::to_string(val), .is_numeric_ = true, .num_val_ = val};
   }
   case google::protobuf::FieldDescriptor::CPPTYPE_INT32:
   case google::protobuf::FieldDescriptor::CPPTYPE_INT64: {
     int64_t val = repeated ? reflection->GetRepeatedInt64(message, field, 0)
                            : reflection->GetInt64(message, field);
-    info.str_val = std::to_string(val);
-    info.num_val = static_cast<uint64_t>(val);
-    info.is_numeric = true;
-    break;
+    return {.str_val_ = std::to_string(val),
+            .is_numeric_ = true,
+            .num_val_ = static_cast<uint64_t>(val)};
   }
   case google::protobuf::FieldDescriptor::CPPTYPE_DOUBLE:
   case google::protobuf::FieldDescriptor::CPPTYPE_FLOAT: {
     double val = repeated ? reflection->GetRepeatedDouble(message, field, 0)
                           : reflection->GetDouble(message, field);
-    info.str_val = std::to_string(val);
-    break;
+    return {.str_val_ = std::to_string(val)};
   }
   case google::protobuf::FieldDescriptor::CPPTYPE_BOOL: {
     bool val = repeated ? reflection->GetRepeatedBool(message, field, 0)
                         : reflection->GetBool(message, field);
-    info.str_val = val ? "true" : "false";
-    break;
+    return {.str_val_ = val ? "true" : "false"};
   }
   case google::protobuf::FieldDescriptor::CPPTYPE_STRING:
   case google::protobuf::FieldDescriptor::CPPTYPE_ENUM: {
-    info.str_val = repeated ? reflection->GetRepeatedString(message, field, 0)
-                            : reflection->GetString(message, field);
-    break;
+    return {.str_val_ = repeated ? reflection->GetRepeatedString(message, field, 0)
+                                 : reflection->GetString(message, field)};
   }
   default:
-    break;
+    return {};
   }
-
-  return info;
 }
 
 /// Validates a field value against constraint extensions (range_min, range_max, enum_values,
 /// pattern) defined in the field's options.
 auto validateFieldValue(const FieldValueInfo& info, const std::string& field_path,
                         const google::protobuf::FieldOptions& ext_opts) -> absl::Status {
-  if (info.is_numeric && ext_opts.HasExtension(carrot::config::range_min)) {
+  if (info.is_numeric_ && ext_opts.HasExtension(carrot::config::range_min)) {
     std::string min_str = ext_opts.GetExtension(carrot::config::range_min);
     uint64_t min_val = std::stoull(min_str);
-    if (info.num_val < min_val) {
+    if (info.num_val_ < min_val) {
       return absl::InvalidArgumentError(absl::StrCat("Field '", field_path, "': value ",
-                                                     info.str_val, " below minimum ", min_str));
+                                                     info.str_val_, " below minimum ", min_str));
     }
   }
 
-  if (info.is_numeric && ext_opts.HasExtension(carrot::config::range_max)) {
+  if (info.is_numeric_ && ext_opts.HasExtension(carrot::config::range_max)) {
     std::string max_str = ext_opts.GetExtension(carrot::config::range_max);
     uint64_t max_val = std::stoull(max_str);
-    if (info.num_val > max_val) {
+    if (info.num_val_ > max_val) {
       return absl::InvalidArgumentError(absl::StrCat("Field '", field_path, "': value ",
-                                                     info.str_val, " exceeds maximum ", max_str));
+                                                     info.str_val_, " exceeds maximum ", max_str));
     }
   }
 
@@ -485,13 +474,13 @@ auto validateFieldValue(const FieldValueInfo& info, const std::string& field_pat
         allowed_str += ", ";
       }
       allowed_str += enum_val;
-      if (info.str_val == enum_val) {
+      if (info.str_val_ == enum_val) {
         valid = true;
       }
     }
     if (!valid) {
       return absl::InvalidArgumentError(absl::StrCat("Field '", field_path, "': value '",
-                                                     info.str_val,
+                                                     info.str_val_,
                                                      "' not in allowed values: ", allowed_str));
     }
   }
@@ -500,9 +489,9 @@ auto validateFieldValue(const FieldValueInfo& info, const std::string& field_pat
     std::string pattern_str = ext_opts.GetExtension(carrot::config::pattern);
     try {
       std::regex regexp(pattern_str);
-      if (!std::regex_match(info.str_val, regexp)) {
+      if (!std::regex_match(info.str_val_, regexp)) {
         return absl::InvalidArgumentError(absl::StrCat("Field '", field_path, "': value '",
-                                                       info.str_val, "' does not match pattern '",
+                                                       info.str_val_, "' does not match pattern '",
                                                        pattern_str, "'"));
       }
     } catch (const std::regex_error&) {
@@ -515,6 +504,7 @@ auto validateFieldValue(const FieldValueInfo& info, const std::string& field_pat
 
 /// Recursively validates a protobuf message and all its fields, checking required fields,
 /// value constraints, and nested message validation.
+// NOLINTNEXTLINE(readability-function-cognitive-complexity)
 auto validateMessage(const google::protobuf::Message& message, const std::string& prefix = {})
     -> absl::Status {
   const auto* descriptor = message.GetDescriptor();
