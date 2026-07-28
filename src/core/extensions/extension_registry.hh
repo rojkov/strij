@@ -46,13 +46,13 @@ private:
 // Usage: put this at namespace scope in your .cc file.
 //   REGISTER_FACTORY(MyFactory, MyInterface)
 //
-#define REGISTER_FACTORY(FactoryClass, FactoryInterface)                                              \
-  namespace {                                                                                         \
-  static void do_register_##FactoryClass() {                                                          \
-    ::carrot::extensions::Registry<FactoryInterface>::instance().RegisterFactory(                      \
-        FactoryClass().Name(), new FactoryClass());                                                   \
-  }                                                                                                   \
-  static bool registered_##FactoryClass = (do_register_##FactoryClass(), true);                       \
+#define REGISTER_FACTORY(FactoryClass, FactoryInterface)                                           \
+  namespace {                                                                                      \
+  static void do_register_##FactoryClass() {                                                       \
+    ::carrot::extensions::Registry<FactoryInterface>::instance().RegisterFactory(                  \
+        FactoryClass().Name(), new FactoryClass());                                                \
+  }                                                                                                \
+  static const bool registered_##FactoryClass = (do_register_##FactoryClass(), true);              \
   }
 
 // Register a factory when FactoryClass is namespace-qualified (contains "::").
@@ -65,11 +65,11 @@ private:
 //       carrot::extensions::NodeDiscoveryFactory,
 //       static_node_discovery_registrar)
 //
-#define REGISTER_FACTORY_FULLY_QUALIFIED(FactoryClass, FactoryInterface, RegistrarName)               \
-  namespace {                                                                                         \
-  static void do_register_##RegistrarName() {                                                        \
-    ::carrot::extensions::Registry<FactoryInterface>::instance().RegisterFactory(                      \
-        FactoryClass().Name(), new FactoryClass());                                                   \
-  }                                                                                                   \
-  static bool registered_##RegistrarName = (do_register_##RegistrarName(), true);                     \
+#define REGISTER_FACTORY_FULLY_QUALIFIED(FactoryClass, FactoryInterface, RegistrarName)            \
+  namespace {                                                                                      \
+  static void do_register_##RegistrarName() {                                                      \
+    ::carrot::extensions::Registry<FactoryInterface>::instance().RegisterFactory(                  \
+        FactoryClass().Name(), new FactoryClass());                                                \
+  }                                                                                                \
+  static const bool registered_##RegistrarName = (do_register_##RegistrarName(), true);            \
   }
