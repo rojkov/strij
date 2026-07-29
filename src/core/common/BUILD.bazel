@@ -6,8 +6,8 @@ carrot_cc_library(
     hdrs = ["signal_monitor.hh"],
     visibility = ["//visibility:public"],
     deps = [
+        "//include/carrot/event:completable_interface",
         "//include/carrot/event:dispatcher_interface",
-        "//include/carrot/event:io_object_interface",
         "//src/core/logging:log_lib",
     ],
 )

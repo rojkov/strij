@@ -2,18 +2,17 @@
 
 #include <sys/signalfd.h>
 
+#include "carrot/event/completable.hh"
 #include "carrot/event/dispatcher.hh"
-#include "carrot/event/io_object.hh"
 
 namespace carrot::common {
 
-class SignalMonitor : public event::IOObject {
+class SignalMonitor : public event::Completable {
 public:
   explicit SignalMonitor(event::DispatcherSharedPtr dispatcher);
 
-  // event::IOObject overrides
+  // event::Completable interface
   void HandleCompletion(uint8_t tag, int res, [[maybe_unused]] uint32_t flags) override;
-  void ProcessCommand(event::Command cmd) override;
 
 private:
   struct signalfd_siginfo fdsi_{};

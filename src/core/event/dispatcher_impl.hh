@@ -4,13 +4,14 @@
 
 #include <vector>
 
+#include "carrot/event/command_handler.hh"
+#include "carrot/event/completable.hh"
 #include "carrot/event/dispatcher.hh"
-#include "carrot/event/io_object.hh"
 #include "liburing.h"
 
 namespace carrot::event {
 
-class DispatcherImpl : public Dispatcher, public IOObject {
+class DispatcherImpl : public Dispatcher, public Completable, public CommandHandler {
 public:
   DispatcherImpl();
 
@@ -18,16 +19,17 @@ public:
   void Run() override;
   void Shutdown() override;
   void SubmitCommand(Command cmd) override;
-  void PrepareAcceptMultishot(IOObject* io_object, uint8_t tag, int fd) override;
-  void PrepareRead(IOObject* io_object, uint8_t tag, int fd, std::span<std::byte> buf,
+  void PrepareAcceptMultishot(Completable* io, uint8_t tag, int fd) override;
+  void PrepareRead(Completable* io, uint8_t tag, int fd, std::span<std::byte> buf,
                    off_t offset) override;
-  void PrepareWrite(IOObject* io_object, uint8_t tag, int fd, std::span<const std::byte> buf,
+  void PrepareWrite(Completable* io, uint8_t tag, int fd, std::span<const std::byte> buf,
                     off_t offset) override;
-  void PrepareConnect(IOObject* io_object, uint8_t tag, int fd, const struct sockaddr* addr,
+  void PrepareConnect(Completable* io, uint8_t tag, int fd, const struct sockaddr* addr,
                       socklen_t addrlen) override;
 
-  // IOObject interface
+  // Completable interface
   void HandleCompletion(uint8_t tag, int res, uint32_t flags) override;
+  // CommandHandler interface
   void ProcessCommand(Command cmd) override;
 
 private:

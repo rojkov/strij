@@ -9,8 +9,8 @@
 #include <tuple>
 #include <type_traits>
 
+#include "carrot/event/completable.hh"
 #include "carrot/event/dispatcher.hh"
-#include "carrot/event/io_object.hh"
 #include "rigtorp/SPSCQueue.h"
 
 namespace carrot::logging {
@@ -91,16 +91,15 @@ template <typename T> void pack_arg(std::byte*& ptr, const T& value) {
 void pack_arg(std::byte*& ptr, std::string_view sw);
 void pack_arg(std::byte*& ptr, const std::string& value);
 
-class LogFrontend : public event::IOObject {
+class LogFrontend : public event::Completable {
 public:
   explicit LogFrontend(event::DispatcherSharedPtr dispatcher);
   ~LogFrontend();
 
   void Log(LogEntry&& entry);
 
-  // event::IOObject interface
+  // event::Completable interface
   void HandleCompletion(uint8_t tag, int res, uint32_t flags) override;
-  void ProcessCommand(event::Command cmd) override;
 
 private:
   static constexpr std::size_t queue_size = 1024;

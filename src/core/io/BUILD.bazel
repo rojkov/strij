@@ -49,8 +49,9 @@ carrot_cc_library(
     hdrs = ["connection.hh"],
     deps = [
         ":protocol_parser",
+        "//include/carrot/event:command_handler_interface",
+        "//include/carrot/event:completable_interface",
         "//include/carrot/event:dispatcher_interface",
-        "//include/carrot/event:io_object_interface",
     ],
 )
 
@@ -127,8 +128,9 @@ carrot_cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":connection_lib",
+        "//include/carrot/event:command_handler_interface",
+        "//include/carrot/event:completable_interface",
         "//include/carrot/event:dispatcher_interface",
-        "//include/carrot/event:io_object_interface",
         "//src/core/logging:log_lib",
     ],
 )

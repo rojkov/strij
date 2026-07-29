@@ -3,11 +3,11 @@
 
 namespace carrot::event {
 
-class IOObject;
+class CommandHandler;
 
 struct Command {
   enum Type { ACTIVATE_READ, CLOSE_CONNECTION } type_{};
-  IOObject* destination_{nullptr};
+  CommandHandler* destination_{nullptr};
   void* args_{nullptr};
 };
 

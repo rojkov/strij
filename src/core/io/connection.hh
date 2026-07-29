@@ -7,8 +7,9 @@
 #include <utility>
 #include <vector>
 
+#include "carrot/event/completable.hh"
+#include "carrot/event/command_handler.hh"
 #include "carrot/event/dispatcher.hh"
-#include "carrot/event/io_object.hh"
 #include "core/io/protocol_parser.hh"
 
 namespace carrot::io {
@@ -17,10 +18,10 @@ class Connection;
 
 using ConnectionFactory = std::function<std::unique_ptr<ProtocolParser>(Connection& conn)>;
 
-class Connection final : public event::IOObject {
+class Connection final : public event::Completable {
 public:
-  Connection(int connection_fd, event::DispatcherSharedPtr dispatcher, event::IOObject* owner,
-             ConnectionFactory factory);
+  Connection(int connection_fd, event::DispatcherSharedPtr dispatcher,
+             event::CommandHandler* owner, ConnectionFactory factory);
   ~Connection() override = default;
 
   Connection(const Connection&) = delete;
@@ -28,9 +29,8 @@ public:
   Connection(Connection&&) noexcept = delete;
   auto operator=(Connection&&) noexcept -> Connection& = delete;
 
-  // IOObject interface
+  // Completable interface
   void HandleCompletion(uint8_t tag, int res, uint32_t flags) override;
-  void ProcessCommand(event::Command /*cmd*/) override {}
 
   void Write(std::span<const std::byte> data);
 
@@ -41,7 +41,7 @@ private:
 
   int fd_;
   event::DispatcherSharedPtr dispatcher_;
-  event::IOObject* owner_;
+  event::CommandHandler* owner_;
   std::unique_ptr<ProtocolParser> parser_;
   std::vector<std::byte> write_buf_;
   size_t write_offset_{0};

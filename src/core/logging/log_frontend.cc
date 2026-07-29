@@ -67,9 +67,4 @@ void LogFrontend::HandleCompletion(uint8_t tag, int res, uint32_t flags) {
                            std::as_writable_bytes(std::span<uint64_t, 1>{&event_fd_val_, 1}), 0);
 }
 
-void LogFrontend::ProcessCommand(event::Command cmd) {
-  // No commands expected for now
-  std::cerr << "Unexpected command received in LogFrontend" << std::endl;
-}
-
 } // namespace carrot::logging

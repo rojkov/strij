@@ -7,6 +7,7 @@
 #include <sys/socket.h>
 
 #include "carrot/common/pure.hh"
+#include "carrot/event/completable.hh"
 #include "carrot/event/command.hh"
 
 namespace carrot::event {
@@ -24,13 +25,13 @@ public:
   virtual void Run() PURE;
   virtual void Shutdown() PURE;
   virtual void SubmitCommand(Command cmd) PURE;
-  // tag is interpreted by the receiver IOObject.
-  virtual void PrepareAcceptMultishot(IOObject* io_object, uint8_t tag, int fd) PURE;
-  virtual void PrepareRead(IOObject* io_object, uint8_t tag, int fd, std::span<std::byte> buf,
+  // tag is interpreted by the receiver Completable.
+  virtual void PrepareAcceptMultishot(Completable* io, uint8_t tag, int fd) PURE;
+  virtual void PrepareRead(Completable* io, uint8_t tag, int fd, std::span<std::byte> buf,
                            off_t offset) PURE;
-  virtual void PrepareWrite(IOObject* io_object, uint8_t tag, int fd,
+  virtual void PrepareWrite(Completable* io, uint8_t tag, int fd,
                             std::span<const std::byte> buf, off_t offset) PURE;
-  virtual void PrepareConnect(IOObject* io_object, uint8_t tag, int fd,
+  virtual void PrepareConnect(Completable* io, uint8_t tag, int fd,
                               const struct sockaddr* addr, socklen_t addrlen) PURE;
 };
 

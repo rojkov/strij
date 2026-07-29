@@ -6,8 +6,8 @@ Manages a pool of `Node` instances that connect to nodeagent servers asynchronou
 
 ## Requirements
 
-### Requirement: Node is an IOObject that owns a Connection
-`Node` SHALL inherit from `event::IOObject` and implement `HandleCompletion` and `ProcessCommand`. A `Node` SHALL own a single `Connection` instance, created after the async connect succeeds. A `Node` SHALL track its status as one of `kInitial`, `kConnecting`, `kConnected`, or `kDisconnected`.
+### Requirement: Node implements Completable and CommandHandler
+`Node` SHALL implement `event::Completable` and `event::CommandHandler`. It SHALL override `HandleCompletion` for connect completions and `ProcessCommand` for lifecycle commands. A `Node` SHALL own a single `Connection` instance, created after the async connect succeeds. A `Node` SHALL track its status as one of `kInitial`, `kConnecting`, `kConnected`, or `kDisconnected`.
 
 #### Scenario: Node transitions from initial to connecting
 - **WHEN** `Node::StartConnect()` is called on a node with status `kInitial`

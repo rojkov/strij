@@ -6,8 +6,8 @@ carrot_cc_library(
     hdrs = ["log_frontend.hh"],
     visibility = ["//visibility:public"],
     deps = [
+        "//include/carrot/event:completable_interface",
         "//include/carrot/event:dispatcher_interface",
-        "//include/carrot/event:io_object_interface",
         "//rigtorp:spsc_queue_lib",
     ],
 )

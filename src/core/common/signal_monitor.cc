@@ -42,8 +42,4 @@ void SignalMonitor::HandleCompletion(uint8_t tag, int res, [[maybe_unused]] uint
   dispatcher_->Shutdown();
 }
 
-void SignalMonitor::ProcessCommand(event::Command cmd) {
-  assert(cmd.type_ == event::Command::ACTIVATE_READ);
-}
-
 } // namespace carrot::common

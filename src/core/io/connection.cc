@@ -7,7 +7,7 @@
 namespace carrot::io {
 
 Connection::Connection(int connection_fd, event::DispatcherSharedPtr dispatcher,
-                       event::IOObject* owner, ConnectionFactory factory)
+                       event::CommandHandler* owner, ConnectionFactory factory)
     : fd_{connection_fd}, dispatcher_{std::move(dispatcher)}, owner_{owner} {
   parser_ = factory(*this);
   dispatcher_->PrepareRead(this, kRead, fd_, parser_->GetReadBuffer(), 0);

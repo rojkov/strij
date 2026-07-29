@@ -7,7 +7,8 @@ carrot_cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//:liburing",
+        "//include/carrot/event:command_handler_interface",
+        "//include/carrot/event:completable_interface",
         "//include/carrot/event:dispatcher_interface",
-        "//include/carrot/event:io_object_interface",
     ],
 )

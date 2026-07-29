@@ -7,7 +7,7 @@
 
 #include "test/mocks/event/mocks.hh"
 
-#include "carrot/event/io_object.hh"
+#include "carrot/event/command_handler.hh"
 #include "core/io/connection.hh"
 #include "core/io/gateway_http_handler.hh"
 #include "core/io/gateway_tlv_handler.hh"
@@ -291,8 +291,7 @@ private:
   std::array<std::byte, 128> buf_{};
 };
 
-struct DummyOwner final : public carrot::event::IOObject {
-  void HandleCompletion(uint8_t /*tag*/, int /*res*/, uint32_t /*flags*/) override {}
+struct DummyOwner final : public carrot::event::CommandHandler {
   void ProcessCommand(carrot::event::Command /*cmd*/) override {}
 };
 

@@ -17,8 +17,17 @@ carrot_cc_library(
 )
 
 carrot_cc_library(
-    name = "io_object_interface",
-    hdrs = ["io_object.hh"],
+    name = "completable_interface",
+    hdrs = ["completable.hh"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//include/carrot/common:pure_lib",
+    ],
+)
+
+carrot_cc_library(
+    name = "command_handler_interface",
+    hdrs = ["command_handler.hh"],
     visibility = ["//visibility:public"],
     deps = [
         ":command_interface",

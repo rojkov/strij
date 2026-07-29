@@ -6,14 +6,15 @@
 
 #include <netinet/in.h>
 
+#include "carrot/event/command_handler.hh"
+#include "carrot/event/completable.hh"
 #include "carrot/event/dispatcher.hh"
-#include "carrot/event/io_object.hh"
 #include "core/io/connection.hh"
 
 namespace carrot::io {
 
 // TODO: Add reconnection logic for disconnected nodes.
-class Node : public event::IOObject {
+class Node : public event::Completable, public event::CommandHandler {
 public:
   enum class Status : uint8_t { kInitial, kConnecting, kConnected, kDisconnected };
 
@@ -27,8 +28,9 @@ public:
 
   void StartConnect();
 
-  // IOObject interface
+  // Completable interface
   void HandleCompletion(uint8_t tag, int res, uint32_t flags) override;
+  // CommandHandler interface
   void ProcessCommand(event::Command cmd) override;
 
   auto GetStatus() const -> Status { return status_; }
