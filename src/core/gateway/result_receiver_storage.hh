@@ -6,13 +6,15 @@
 #include <span>
 #include <unordered_map>
 
+#include "carrot/common/pure.hh"
+
 namespace carrot::gateway {
 
 class ResultReceiver {
 public:
   virtual ~ResultReceiver() = default;
 
-  virtual void Deliver(std::span<const std::byte> value) = 0;
+  virtual void Deliver(std::span<const std::byte> value) PURE;
 };
 
 using ResultReceiverPtr = std::unique_ptr<ResultReceiver>;
