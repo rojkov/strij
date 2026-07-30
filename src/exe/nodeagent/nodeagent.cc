@@ -3,7 +3,7 @@
 #include "core/common/signal_monitor.hh"
 #include "core/config/config_loader.hh"
 #include "core/event/dispatcher_impl.hh"
-#include "core/io/nodeagent_tlv_handler.hh"
+#include "core/nodeagent/nodeagent_tlv_handler.hh"
 #include "core/io/tcp_listener.hh"
 #include "core/io/tlv_parser.hh"
 #include "core/logging/log.hh"
@@ -65,7 +65,7 @@ auto main(int argc, char** argv) -> int {
   carrot::io::TcpListener listener{
       dispatcher, config.tlv_listener().port(),
       [](carrot::io::Connection& conn) -> std::unique_ptr<carrot::io::ProtocolParser> {
-        auto handler = std::make_unique<carrot::io::NodeagentTlvHandler>();
+        auto handler = std::make_unique<carrot::nodeagent::NodeagentTlvHandler>();
         return std::make_unique<carrot::io::TlvParser>(
             [hdl = std::move(handler), &conn](carrot::io::TlvFrame frame) -> void {
               hdl->HandleFrame(frame, conn);

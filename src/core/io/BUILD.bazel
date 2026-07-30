@@ -47,6 +47,7 @@ carrot_cc_library(
     name = "connection_lib",
     srcs = ["connection.cc"],
     hdrs = ["connection.hh"],
+    visibility = ["//visibility:public"],
     deps = [
         ":protocol_parser",
         "//include/carrot/event:command_handler_interface",
@@ -96,17 +97,6 @@ carrot_cc_library(
         ":result_receiver_storage",
         ":tlv_frame",
         "//src/core/logging:log_lib",
-    ],
-)
-
-carrot_cc_library(
-    name = "nodeagent_tlv_handler_lib",
-    srcs = ["nodeagent_tlv_handler.cc"],
-    hdrs = ["nodeagent_tlv_handler.hh"],
-    visibility = ["//visibility:public"],
-    deps = [
-        ":connection_lib",
-        ":tlv_frame",
     ],
 )
 

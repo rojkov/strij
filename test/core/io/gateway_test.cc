@@ -11,7 +11,6 @@
 #include "core/io/connection.hh"
 #include "core/io/gateway_http_handler.hh"
 #include "core/io/gateway_tlv_handler.hh"
-#include "core/io/nodeagent_tlv_handler.hh"
 #include "core/io/protocol_parser.hh"
 #include "core/io/result_receiver_storage.hh"
 #include "core/io/tlv_frame.hh"

@@ -16,7 +16,6 @@ carrot_cc_test(
     deps = [
         "//src/core/io:gateway_http_handler_lib",
         "//src/core/io:gateway_tlv_handler_lib",
-        "//src/core/io:nodeagent_tlv_handler_lib",
         "//src/core/io:result_receiver_storage",
         "//src/core/io:tlv_frame",
         "//src/core/io:tlv_parser_lib",

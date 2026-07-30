@@ -1,0 +1,12 @@
+load("//bazel:build_system.bzl", "carrot_cc_library")
+
+carrot_cc_library(
+    name = "nodeagent_tlv_handler_lib",
+    srcs = ["nodeagent_tlv_handler.cc"],
+    hdrs = ["nodeagent_tlv_handler.hh"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//src/core/io:connection_lib",
+        "//src/core/io:tlv_frame",
+    ],
+)
