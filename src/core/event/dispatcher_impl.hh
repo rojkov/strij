@@ -19,12 +19,12 @@ public:
   void Run() override;
   void Shutdown() override;
   void SubmitCommand(Command cmd) override;
-  void PrepareAcceptMultishot(Completable* io, uint8_t tag, int fd) override;
-  void PrepareRead(Completable* io, uint8_t tag, int fd, std::span<std::byte> buf,
+  void PrepareAcceptMultishot(Completable* receiver, uint8_t tag, int fdesc) override;
+  void PrepareRead(Completable* receiver, uint8_t tag, int fdesc, std::span<std::byte> buf,
                    off_t offset) override;
-  void PrepareWrite(Completable* io, uint8_t tag, int fd, std::span<const std::byte> buf,
+  void PrepareWrite(Completable* receiver, uint8_t tag, int fdesc, std::span<const std::byte> buf,
                     off_t offset) override;
-  void PrepareConnect(Completable* io, uint8_t tag, int fd, const struct sockaddr* addr,
+  void PrepareConnect(Completable* receiver, uint8_t tag, int fdesc, const struct sockaddr* addr,
                       socklen_t addrlen) override;
 
   // Completable interface
@@ -37,7 +37,7 @@ private:
   struct io_uring ring_{};
   std::vector<Command> command_queue_;
   bool is_finishing_{false};
-  int event_fd_{-1};
+  int event_fd_{-1}; //  for waking up the event loop
   uint64_t event_fd_val_{0};
 };
 

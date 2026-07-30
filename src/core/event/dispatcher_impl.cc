@@ -18,17 +18,17 @@ namespace {
 inline auto merge_with_tag(Completable* completable, uint8_t tag) -> void* {
   assert((tag & ~tag_mask) == 0);
 
+  // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast)
   return reinterpret_cast<void*>(reinterpret_cast<uintptr_t>(completable) | tag);
 }
 
 } // namespace
 
-DispatcherImpl::DispatcherImpl() {
+DispatcherImpl::DispatcherImpl() : event_fd_{eventfd(0, 0)} {
   io_uring_queue_init(entries_num_, &ring_, 0);
-  event_fd_ = eventfd(0, 0); // Create an eventfd for waking up the event loop
   if (event_fd_ == -1) {
     perror("eventfd");
-    exit(EXIT_FAILURE);
+    throw std::runtime_error("unable to open event fd");
   }
 
   PrepareRead(this, 0, event_fd_, std::as_writable_bytes(std::span<uint64_t, 1>{&event_fd_val_, 1}),
@@ -45,19 +45,17 @@ void DispatcherImpl::Run() {
       cmd.destination_->ProcessCommand(cmd);
     }
 
-    printf("Submitting and waiting for completions...\n");
     io_uring_submit_and_wait(&ring_, 1);
-    printf("Woke up, checking for completions...\n");
 
     // Process all completions in this tick.
     unsigned head{0};
     unsigned count{0};
     io_uring_for_each_cqe(&ring_, head, cqe) {
       count++;
-      printf("t:%d CQE received: res=%d, flags=%u count=%d\n", gettid(), cqe->res, cqe->flags,
-             count);
+      // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast)
       auto user_data = reinterpret_cast<uintptr_t>(io_uring_cqe_get_data(cqe));
       uint8_t tag = user_data & tag_mask;
+      // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast)
       auto* completable = reinterpret_cast<Completable*>(user_data & ~tag_mask);
       if (completable != nullptr) {
         completable->HandleCompletion(tag, cqe->res, cqe->flags);
@@ -66,7 +64,6 @@ void DispatcherImpl::Run() {
 
     io_uring_cq_advance(&ring_, count);
   }
-  printf("Exiting run loop, cleaning up io_uring... %p\n", this);
 
   io_uring_queue_exit(&ring_);
 }
@@ -78,8 +75,8 @@ void DispatcherImpl::Shutdown() {
 
 void DispatcherImpl::SubmitCommand(Command cmd) { command_queue_.push_back(cmd); }
 
-void DispatcherImpl::HandleCompletion(uint8_t tag, int res, uint32_t flags) {
-  printf("Dispatcher received completion: res=%d, flags=%u\n", res, flags);
+void DispatcherImpl::HandleCompletion([[maybe_unused]] uint8_t tag, [[maybe_unused]] int res,
+                                      [[maybe_unused]] uint32_t flags) {
   is_finishing_ = true;
   // We don't re-arm this event_fd_ after this point -> closing.
   close(event_fd_);
@@ -88,38 +85,37 @@ void DispatcherImpl::HandleCompletion(uint8_t tag, int res, uint32_t flags) {
 void DispatcherImpl::ProcessCommand(Command cmd) {
   // This is a simple example of processing a command for the dispatcher itself.
   // In a real implementation, you would likely have more complex logic here.
-  printf("Dispatcher received command: type=%d\n", cmd.type_);
 }
 
-void DispatcherImpl::PrepareAcceptMultishot(Completable* io, uint8_t tag, int fd) {
+void DispatcherImpl::PrepareAcceptMultishot(Completable* receiver, uint8_t tag, int fdesc) {
   auto* sqe = io_uring_get_sqe(&ring_);
   assert(sqe != nullptr);
-  io_uring_sqe_set_data(sqe, merge_with_tag(io, tag));
-  io_uring_prep_multishot_accept(sqe, fd, nullptr, nullptr, 0);
+  io_uring_sqe_set_data(sqe, merge_with_tag(receiver, tag));
+  io_uring_prep_multishot_accept(sqe, fdesc, nullptr, nullptr, 0);
 }
 
-void DispatcherImpl::PrepareRead(Completable* io, uint8_t tag, int fd, std::span<std::byte> buf,
-                                 off_t offset) {
+void DispatcherImpl::PrepareRead(Completable* receiver, uint8_t tag, int fdesc,
+                                 std::span<std::byte> buf, off_t offset) {
   auto* sqe = io_uring_get_sqe(&ring_);
   assert(sqe != nullptr);
-  io_uring_sqe_set_data(sqe, merge_with_tag(io, tag));
-  io_uring_prep_read(sqe, fd, buf.data(), buf.size(), offset);
+  io_uring_sqe_set_data(sqe, merge_with_tag(receiver, tag));
+  io_uring_prep_read(sqe, fdesc, buf.data(), buf.size(), offset);
 }
 
-void DispatcherImpl::PrepareWrite(Completable* io, uint8_t tag, int fd,
-                                   std::span<const std::byte> buf, off_t offset) {
+void DispatcherImpl::PrepareWrite(Completable* receiver, uint8_t tag, int fdesc,
+                                  std::span<const std::byte> buf, off_t offset) {
   auto* sqe = io_uring_get_sqe(&ring_);
   assert(sqe != nullptr);
-  io_uring_sqe_set_data(sqe, merge_with_tag(io, tag));
-  io_uring_prep_write(sqe, fd, buf.data(), buf.size(), offset);
+  io_uring_sqe_set_data(sqe, merge_with_tag(receiver, tag));
+  io_uring_prep_write(sqe, fdesc, buf.data(), buf.size(), offset);
 }
 
-void DispatcherImpl::PrepareConnect(Completable* io, uint8_t tag, int fd,
+void DispatcherImpl::PrepareConnect(Completable* receiver, uint8_t tag, int fdesc,
                                     const struct sockaddr* addr, socklen_t addrlen) {
   auto* sqe = io_uring_get_sqe(&ring_);
   assert(sqe != nullptr);
-  io_uring_sqe_set_data(sqe, merge_with_tag(io, tag));
-  io_uring_prep_connect(sqe, fd, addr, addrlen);
+  io_uring_sqe_set_data(sqe, merge_with_tag(receiver, tag));
+  io_uring_prep_connect(sqe, fdesc, addr, addrlen);
 }
 
 } // namespace carrot::event
