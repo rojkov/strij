@@ -4,6 +4,8 @@
 #include <memory>
 #include <span>
 
+#include "carrot/common/pure.hh"
+
 namespace carrot::io {
 
 class ProtocolParser {
@@ -22,7 +24,7 @@ public:
    * @brief Provide a writable buffer for io_uring to read into.
    * The returned span MUST remain valid until the next OnData() call.
    */
-  virtual auto GetReadBuffer() -> std::span<std::byte> = 0;
+  virtual auto GetReadBuffer() -> std::span<std::byte> PURE;
 
   /**
    * @brief Process bytes_read bytes that were written into GetReadBuffer().
@@ -30,7 +32,7 @@ public:
    * @return Action::NeedMoreData if more input is required,
    *         Action::MessageComplete if a complete message was assembled.
    */
-  virtual auto OnData(size_t bytes_read) -> Action = 0;
+  virtual auto OnData(size_t bytes_read) -> Action PURE;
 };
 
 using ProtocolParserPtr = std::unique_ptr<ProtocolParser>;

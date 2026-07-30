@@ -2,6 +2,7 @@
 
 #include <memory>
 
+#include "carrot/common/pure.hh"
 #include "carrot/event/dispatcher.hh"
 #include "core/logging/logger.hh"
 
@@ -11,8 +12,8 @@ class FactoryContext {
 public:
   virtual ~FactoryContext() = default;
 
-  virtual auto Dispatcher() -> event::Dispatcher& = 0;
-  virtual auto Logger() -> logging::Logger& = 0;
+  virtual auto Dispatcher() -> event::Dispatcher& PURE;
+  virtual auto Logger() -> logging::Logger& PURE;
 };
 
 using FactoryContextPtr = std::unique_ptr<FactoryContext>;
