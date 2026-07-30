@@ -11,9 +11,9 @@
 #include "core/event/dispatcher_impl.hh"
 #include "core/extensions/extension_registry.hh"
 #include "core/extensions/factory_context.hh"
-#include "core/gateway/http_result_receiver.hh"
 #include "core/gateway/gateway_http_handler.hh"
 #include "core/gateway/gateway_tlv_handler.hh"
+#include "core/gateway/http_result_receiver.hh"
 #include "core/gateway/node_directory.hh"
 #include "core/gateway/result_receiver_storage.hh"
 #include "core/io/llhttp_parser.hh"
@@ -100,7 +100,7 @@ auto main(int argc, char** argv) -> int {
   auto* factory =
       carrot::extensions::Registry<carrot::extensions::NodeDiscoveryFactory>::instance().GetFactory(
           ext.name());
-  if (!factory) {
+  if (factory == nullptr) {
     LOG_ERROR("Node discovery extension '{}' not found. "
               "Ensure the extension library is linked and the name matches a "
               "registered factory.",
@@ -130,14 +130,14 @@ auto main(int argc, char** argv) -> int {
   };
 
   std::vector<std::string> node_addresses;
-  node_discovery->Start([&node_addresses](std::vector<carrot::extensions::NodeInfo> nodes) {
+  node_discovery->Start([&node_addresses](std::vector<carrot::extensions::NodeInfo> nodes) -> void {
     for (auto& node : nodes) {
       node_addresses.push_back(std::move(node.address));
     }
   });
 
   carrot::gateway::NodeDirectory node_directory{dispatcher, node_addresses,
-                                           std::move(connection_factory)};
+                                                std::move(connection_factory)};
   node_directory.StartConnectAll();
 
   carrot::io::TcpListener http_listener{
