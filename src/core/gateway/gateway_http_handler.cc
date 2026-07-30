@@ -1,4 +1,4 @@
-#include "core/io/gateway_http_handler.hh"
+#include "core/gateway/gateway_http_handler.hh"
 
 #include <cstring>
 #include <format>
@@ -10,9 +10,10 @@
 #include "core/io/tlv_frame.hh"
 #include "core/logging/log.hh"
 
-namespace carrot::io {
+namespace carrot::gateway {
 
-void GatewayHttpHandler::HandleMessage(std::span<const std::byte> msg, Connection& conn) {
+void GatewayHttpHandler::HandleMessage(std::span<const std::byte> msg,
+                                       carrot::io::Connection& conn) {
   auto* node = node_directory_.GetNextNode();
   if (node == nullptr) {
     auto response = std::format("HTTP/1.1 503 Service Unavailable\r\nContent-Length: "
@@ -36,10 +37,10 @@ void GatewayHttpHandler::HandleMessage(std::span<const std::byte> msg, Connectio
   value.insert(value.end(), task_id_bytes, task_id_bytes + sizeof(uint64_t));
   value.insert(value.end(), msg.begin(), msg.end());
 
-  auto frame = SerializeTlvFrame(TlvFrame::kTaskSubmission, value);
+  auto frame = carrot::io::SerializeTlvFrame(carrot::io::TlvFrame::kTaskSubmission, value);
   nodeagent_conn->Write(frame);
 
   LOG_DEBUG("Submitted task {} to nodeagent", task_id);
 }
 
-} // namespace carrot::io
+} // namespace carrot::gateway

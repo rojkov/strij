@@ -1,11 +1,12 @@
-#include "core/io/node_directory.hh"
+#include "core/gateway/node_directory.hh"
 
 #include <algorithm>
 
-namespace carrot::io {
+namespace carrot::gateway {
 
 NodeDirectory::NodeDirectory(event::DispatcherSharedPtr dispatcher,
-                             std::vector<std::string> addresses, ConnectionFactory factory)
+                             std::vector<std::string> addresses,
+                             carrot::io::ConnectionFactory factory)
     : dispatcher_{std::move(dispatcher)}, factory_{std::move(factory)} {
   nodes_.reserve(addresses.size());
   for (auto& addr : addresses) {
@@ -42,4 +43,4 @@ auto NodeDirectory::GetAvailableCount() const -> size_t {
                     [](const auto& node) { return node->IsAvailable(); }));
 }
 
-} // namespace carrot::io
+} // namespace carrot::gateway

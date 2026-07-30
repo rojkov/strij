@@ -11,12 +11,12 @@
 #include "core/event/dispatcher_impl.hh"
 #include "core/extensions/extension_registry.hh"
 #include "core/extensions/factory_context.hh"
-#include "core/io/echo_result_receiver.hh"
-#include "core/io/gateway_http_handler.hh"
-#include "core/io/gateway_tlv_handler.hh"
+#include "core/gateway/http_result_receiver.hh"
+#include "core/gateway/gateway_http_handler.hh"
+#include "core/gateway/gateway_tlv_handler.hh"
+#include "core/gateway/node_directory.hh"
+#include "core/gateway/result_receiver_storage.hh"
 #include "core/io/llhttp_parser.hh"
-#include "core/io/node_directory.hh"
-#include "core/io/result_receiver_storage.hh"
 #include "core/io/tcp_listener.hh"
 #include "core/io/tlv_parser.hh"
 #include "core/logging/log.hh"
@@ -90,7 +90,7 @@ auto main(int argc, char** argv) -> int {
   // Set log level from config
   // Note: Logger::GetInstance().SetLogLevel(config.logging().level());  // if available
 
-  carrot::io::ResultReceiverStorage storage;
+  carrot::gateway::ResultReceiverStorage storage;
 
   // Node discovery via extension registry
   carrot::extensions::GatewayFactoryContext factory_context(dispatcher);
@@ -122,7 +122,7 @@ auto main(int argc, char** argv) -> int {
   // Node directory with async connect
   auto connection_factory =
       [&storage](carrot::io::Connection& conn) -> std::unique_ptr<carrot::io::ProtocolParser> {
-    auto handler = std::make_unique<carrot::io::GatewayTlvHandler>(storage);
+    auto handler = std::make_unique<carrot::gateway::GatewayTlvHandler>(storage);
     return std::make_unique<carrot::io::TlvParser>(
         [hdl = std::move(handler), &conn](carrot::io::TlvFrame frame) -> void {
           hdl->HandleFrame(frame, conn);
@@ -136,17 +136,17 @@ auto main(int argc, char** argv) -> int {
     }
   });
 
-  carrot::io::NodeDirectory node_directory{dispatcher, node_addresses,
+  carrot::gateway::NodeDirectory node_directory{dispatcher, node_addresses,
                                            std::move(connection_factory)};
   node_directory.StartConnectAll();
 
   carrot::io::TcpListener http_listener{
       dispatcher, config.http_listener().port(),
       [&](carrot::io::Connection& conn) -> std::unique_ptr<carrot::io::ProtocolParser> {
-        auto handler = std::make_unique<carrot::io::GatewayHttpHandler>(
+        auto handler = std::make_unique<carrot::gateway::GatewayHttpHandler>(
             node_directory, storage,
-            [](carrot::io::Connection& conn) -> std::unique_ptr<carrot::io::ResultReceiver> {
-              return std::make_unique<carrot::io::EchoResultReceiver>(conn);
+            [](carrot::io::Connection& conn) -> std::unique_ptr<carrot::gateway::ResultReceiver> {
+              return std::make_unique<carrot::gateway::HttpResultReceiver>(conn);
             });
         return std::make_unique<carrot::io::LlhttpParser>(
             [hdl = std::move(handler), &conn](std::span<const std::byte> msg) -> void {

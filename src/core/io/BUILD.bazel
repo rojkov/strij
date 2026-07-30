@@ -57,50 +57,6 @@ carrot_cc_library(
 )
 
 carrot_cc_library(
-    name = "result_receiver_storage",
-    hdrs = ["result_receiver_storage.hh"],
-    visibility = ["//visibility:public"],
-)
-
-carrot_cc_library(
-    name = "echo_result_receiver_lib",
-    srcs = ["echo_result_receiver.cc"],
-    hdrs = ["echo_result_receiver.hh"],
-    visibility = ["//visibility:public"],
-    deps = [
-        ":connection_lib",
-        ":result_receiver_storage",
-    ],
-)
-
-carrot_cc_library(
-    name = "gateway_http_handler_lib",
-    srcs = ["gateway_http_handler.cc"],
-    hdrs = ["gateway_http_handler.hh"],
-    visibility = ["//visibility:public"],
-    deps = [
-        ":connection_lib",
-        ":node_directory_lib",
-        ":result_receiver_storage",
-        ":tlv_frame",
-        "//src/core/logging:log_lib",
-    ],
-)
-
-carrot_cc_library(
-    name = "gateway_tlv_handler_lib",
-    srcs = ["gateway_tlv_handler.cc"],
-    hdrs = ["gateway_tlv_handler.hh"],
-    visibility = ["//visibility:public"],
-    deps = [
-        ":connection_lib",
-        ":result_receiver_storage",
-        ":tlv_frame",
-        "//src/core/logging:log_lib",
-    ],
-)
-
-carrot_cc_library(
     name = "tcp_listener_lib",
     srcs = ["tcp_listener.cc"],
     hdrs = ["tcp_listener.hh"],
@@ -111,28 +67,4 @@ carrot_cc_library(
     ],
 )
 
-carrot_cc_library(
-    name = "node_lib",
-    srcs = ["node.cc"],
-    hdrs = ["node.hh"],
-    visibility = ["//visibility:public"],
-    deps = [
-        ":connection_lib",
-        "//include/carrot/event:command_handler_interface",
-        "//include/carrot/event:completable_interface",
-        "//include/carrot/event:dispatcher_interface",
-        "//src/core/logging:log_lib",
-    ],
-)
 
-carrot_cc_library(
-    name = "node_directory_lib",
-    srcs = ["node_directory.cc"],
-    hdrs = ["node_directory.hh"],
-    visibility = ["//visibility:public"],
-    deps = [
-        ":connection_lib",
-        ":node_lib",
-        "//include/carrot/event:dispatcher_interface",
-    ],
-)

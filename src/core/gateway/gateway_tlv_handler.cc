@@ -1,16 +1,15 @@
-#include "core/io/gateway_tlv_handler.hh"
+#include "core/gateway/gateway_tlv_handler.hh"
 
 #include <cstring>
 
 #include "core/io/tlv_frame.hh"
 #include "core/logging/log.hh"
 
-namespace carrot::io {
+namespace carrot::gateway {
 
-void GatewayTlvHandler::HandleFrame(TlvFrame frame, Connection& /*conn*/) {
+void GatewayTlvHandler::HandleFrame(carrot::io::TlvFrame frame, carrot::io::Connection& /*conn*/) {
   switch (frame.type_id) {
-  case TlvFrame::kResult: {
-    // Result frame: value contains [task_id:8][payload:N]
+  case carrot::io::TlvFrame::kResult: {
     if (frame.value.size() < sizeof(uint64_t)) {
       LOG_WARNING("Result frame with undersized value");
       return;
@@ -30,7 +29,7 @@ void GatewayTlvHandler::HandleFrame(TlvFrame frame, Connection& /*conn*/) {
     }
     break;
   }
-  case TlvFrame::kHeartbeat: {
+  case carrot::io::TlvFrame::kHeartbeat: {
     LOG_DEBUG("Received heartbeat");
     break;
   }
@@ -40,4 +39,4 @@ void GatewayTlvHandler::HandleFrame(TlvFrame frame, Connection& /*conn*/) {
   }
 }
 
-} // namespace carrot::io
+} // namespace carrot::gateway

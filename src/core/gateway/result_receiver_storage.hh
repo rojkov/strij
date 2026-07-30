@@ -6,7 +6,7 @@
 #include <span>
 #include <unordered_map>
 
-namespace carrot::io {
+namespace carrot::gateway {
 
 class ResultReceiver {
 public:
@@ -37,4 +37,4 @@ private:
   std::unordered_map<uint64_t, ResultReceiverPtr> receivers_;
 };
 
-} // namespace carrot::io
+} // namespace carrot::gateway

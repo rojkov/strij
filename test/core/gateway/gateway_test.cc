@@ -8,11 +8,10 @@
 #include "test/mocks/event/mocks.hh"
 
 #include "carrot/event/command_handler.hh"
+#include "core/gateway/gateway_tlv_handler.hh"
+#include "core/gateway/result_receiver_storage.hh"
 #include "core/io/connection.hh"
-#include "core/io/gateway_http_handler.hh"
-#include "core/io/gateway_tlv_handler.hh"
 #include "core/io/protocol_parser.hh"
-#include "core/io/result_receiver_storage.hh"
 #include "core/io/tlv_frame.hh"
 #include "core/io/tlv_parser.hh"
 #include "gtest/gtest.h"
@@ -20,7 +19,7 @@
 namespace carrot::io {
 namespace {
 
-class MockReceiver : public ResultReceiver {
+class MockReceiver : public carrot::gateway::ResultReceiver {
 public:
   std::vector<std::byte> last_value;
 
@@ -101,8 +100,8 @@ TEST_F(SerializeTlvFrameTest, RoundTripsThroughTlvParser) {
 
 class GatewayTlvHandlerTest : public ::testing::Test {
 protected:
-  ResultReceiverStorage storage_;
-  GatewayTlvHandler handler_{storage_};
+  carrot::gateway::ResultReceiverStorage storage_;
+  carrot::gateway::GatewayTlvHandler handler_{storage_};
 };
 
 TEST_F(GatewayTlvHandlerTest, DispatchResultToReceiver) {
@@ -159,7 +158,7 @@ TEST_F(GatewayTlvHandlerTest, UndersizedFrameIgnored) { EXPECT_LT(2, 5U); }
 class ResultReceiverStorageTest : public ::testing::Test {};
 
 TEST_F(ResultReceiverStorageTest, PutGetErase) {
-  ResultReceiverStorage storage;
+  carrot::gateway::ResultReceiverStorage storage;
   auto mock = std::make_unique<MockReceiver>();
   auto* mock_ptr = mock.get();
   storage.put(1, std::move(mock));

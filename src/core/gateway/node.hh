@@ -11,14 +11,14 @@
 #include "carrot/event/dispatcher.hh"
 #include "core/io/connection.hh"
 
-namespace carrot::io {
+namespace carrot::gateway {
 
-// TODO: Add reconnection logic for disconnected nodes.
 class Node : public event::Completable, public event::CommandHandler {
 public:
   enum class Status : uint8_t { kInitial, kConnecting, kConnected, kDisconnected };
 
-  Node(std::string address, event::DispatcherSharedPtr dispatcher, ConnectionFactory factory);
+  Node(std::string address, event::DispatcherSharedPtr dispatcher,
+       carrot::io::ConnectionFactory factory);
   ~Node() override = default;
 
   Node(const Node&) = delete;
@@ -34,7 +34,7 @@ public:
   void ProcessCommand(event::Command cmd) override;
 
   auto GetStatus() const -> Status { return status_; }
-  auto GetConnection() -> Connection* { return connection_.get(); }
+  auto GetConnection() -> carrot::io::Connection* { return connection_.get(); }
   auto GetAddress() const -> const std::string& { return address_; }
   auto IsAvailable() const -> bool { return status_ == Status::kConnected; }
 
@@ -46,8 +46,8 @@ private:
   int fd_{-1};
   struct sockaddr_in connect_addr_{};
   event::DispatcherSharedPtr dispatcher_;
-  ConnectionFactory factory_;
-  std::unique_ptr<Connection> connection_;
+  carrot::io::ConnectionFactory factory_;
+  std::unique_ptr<carrot::io::Connection> connection_;
 };
 
-} // namespace carrot::io
+} // namespace carrot::gateway
