@@ -1,3 +1,11 @@
+# stderr-fallback-logging
+
+## Purpose
+
+Define how the logger falls back to direct stderr writes when the logger thread is unavailable (before startup or after shutdown), so log messages are never silently dropped.
+
+## Requirements
+
 ### Requirement: Fallback logging to stderr when logger thread is unavailable
 The system SHALL emit log messages to `STDERR_FILENO` via `write(2)` when `local_context_` is `nullptr`, indicating the logger thread is not running. Fallback log lines SHALL include a `[early]` marker after the thread ID to distinguish them from normal logger output.
 

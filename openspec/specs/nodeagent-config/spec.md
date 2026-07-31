@@ -1,9 +1,79 @@
 # NodeAgent Config Capability
 
-## Overview
-Protobuf schema and default configuration for the Carrot NodeAgent service.
+## Purpose
+
+Protobuf schema and default configuration for the Carrot NodeAgent service: defines all nodeagent-configurable parameters, their validation constraints and default values, plus cross-field rules such as heartbeat interval validation against the connection timeout.
+
+## Requirements
+
+### Requirement: NodeAgentConfig protobuf schema
+
+The system SHALL define a `NodeAgentConfig` protobuf message in `src/core/config/proto/nodeagent.proto` (package `carrot.config`) with `TlvListener tlv_listener`, `Logging logging`, and reserved-for-future fields `connection_timeout`, `heartbeat_interval`, and `TlsConfig tls`.
+
+#### Scenario: Listener and logging sections load into the message
+
+- **WHEN** a `NodeAgentConfig` is loaded from YAML with `tlv_listener` and `logging` sections
+- **THEN** the resulting message SHALL contain the corresponding `TlvListener` and `Logging` values
+
+#### Scenario: TLS fields are reserved for future use
+
+- **WHEN** a future release enables TLS on the nodeagent
+- **THEN** the reserved `TlsConfig tls` field SHALL carry cert/key/ca/verify-peer settings without a breaking schema change
+
+### Requirement: Field validation constraints
+
+All nodeagent config fields SHALL carry appropriate validation constraints via the custom options `(carrot.config.required)`, `(carrot.config.range_min)`, `(carrot.config.range_max)`, `(carrot.config.enum_values)`, and `(carrot.config.pattern)`.
+
+#### Scenario: Invalid port rejected
+
+- **WHEN** a YAML config sets `tlv_listener.port` to 70000
+- **THEN** loading SHALL fail with a validation error indicating the value exceeds the maximum 65535
+
+#### Scenario: TLS enabled without certificates
+
+- **WHEN** `tls.enabled` is true and `cert_file`/`key_file` are empty
+- **THEN** loading SHALL fail with a validation error
+
+### Requirement: Default values allow startup without a config file
+
+Default values SHALL allow the nodeagent to run without a config file (with warnings): `tlv_listener.address` defaults to `"0.0.0.0"`, `tlv_listener.port` to `9090`, `logging.level` to `"info"`, and `logging.format` to `"text"`.
+
+#### Scenario: Default port applied
+
+- **WHEN** a `NodeAgentConfig` is created with no explicit `tlv_listener.port`
+- **THEN** `tlv_listener.port` SHALL be `9090`
+
+#### Scenario: Default address applied
+
+- **WHEN** a `NodeAgentConfig` is created with no explicit `tlv_listener.address`
+- **THEN** `tlv_listener.address` SHALL be `"0.0.0.0"`
+
+### Requirement: Heartbeat interval validated against connection timeout
+
+The system SHALL validate that `heartbeat_interval <= connection_timeout` (a heartbeat must fire before the timeout). The system SHALL also warn if `read_buffer_size` is smaller than a typical TLV frame (below 16KB).
+
+#### Scenario: Heartbeat interval exceeds connection timeout
+
+- **WHEN** `heartbeat_interval` is greater than `connection_timeout`
+- **THEN** loading SHALL fail with a validation error
+
+#### Scenario: Small read buffer warns
+
+- **WHEN** `read_buffer_size` is set below 16KB
+- **THEN** loading SHALL succeed with a warning
+
+### Requirement: NodeAgentConfig is extensible
+
+The schema SHALL support future TLS, metrics, and other extensions through reserved fields, without redefining existing field numbers.
+
+#### Scenario: Future extensions use reserved fields
+
+- **WHEN** a new extension category is introduced
+- **THEN** it SHALL use a new reserved field number or the `ExtensionConfig` mechanism
+- **AND** existing fields SHALL keep their numbers and semantics
 
 ## Protobuf Schema
+
 File: `src/core/config/proto/nodeagent.proto`
 
 ```protobuf
@@ -80,6 +150,7 @@ message TlsConfig {
 ```
 
 ## Default Values (Protobuf Defaults)
+
 - `tlv_listener.address`: "0.0.0.0"
 - `tlv_listener.port`: 9090
 - `tlv_listener.max_connections`: 10000
@@ -95,28 +166,8 @@ message TlsConfig {
 - `tls.verify_peer`: true
 
 ## Cross-Field Validation Rules
+
 1. If `tls.enabled == true`: `cert_file` and `key_file` must be non-empty
 2. If `logging.output == "file"`: `logging.file_path` must be non-empty
 3. `heartbeat_interval <= connection_timeout` (heartbeat must fire before timeout)
-3. `read_buffer_size` should be >= typical TLV frame size (warn if < 16KB)
-
-## Requirements
-- **REQ-NA-001**: Protobuf schema defines all nodeagent-configurable parameters
-- **REQ-NA-002**: All fields have appropriate validation constraints
-- **REQ-NA-003**: Default values allow nodeagent to run without config file (with warnings)
-- **REQ-NA-004**: Schema supports future TLS, metrics extensions
-- **REQ-NA-005**: Heartbeat interval validated against connection timeout
-
-## Dependencies
-- `yaml-config-loader` capability (for loading)
-- `protobuf` with `google/protobuf/duration.proto`
-- Custom options: `carrot/config/options.proto`
-
-## Testing
-- Unit test: Load default config (no YAML) → valid with warnings
-- Unit test: Valid YAML with all fields → loads correctly
-- Unit test: Invalid port → validation error
-- Unit test: TLS enabled without certs → validation error
-- Unit test: heartbeat_interval > connection_timeout → validation error
-- Unit test: read_buffer_size too small → warning
-- Integration: Full load with env/CLI overrides
+4. `read_buffer_size` should be >= typical TLV frame size (warn if < 16KB)

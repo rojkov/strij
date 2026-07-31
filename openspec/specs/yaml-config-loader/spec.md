@@ -1,26 +1,95 @@
 # YAML Config Loader Capability
 
-## Overview
-Library for loading, validating, and merging YAML configuration files into protobuf-generated C++ structs with support for environment variable and CLI flag overrides.
+## Purpose
 
-## v1 Scope (Testable Now)
-- Parse YAML → protobuf message
-- Validate: required fields, ranges, enums, patterns
-- Merge layers: Defaults → YAML → Env vars → CLI flags
-- Clear error messages with file:line:column references
-- Thread-safe, no global state
+Library for loading, validating, and merging YAML configuration files into protobuf-generated C++ structs, with support for environment variable and CLI flag overrides and clear, position-aware error reporting.
 
-## Out of Scope (Future Work)
-- Config hot-reload (SIGHUP)
-- Config encryption/secrets
-- Remote config (etcd, Consul)
-- Config versioning/migration
-- Schema documentation generator
-- JSON config format
+## Requirements
+
+### Requirement: Load YAML into a protobuf message
+
+The system SHALL provide `LoadConfig<T>(config_file_path, cli_overrides, output)` that parses a YAML file into a protobuf message of type `T` and returns a `ConfigLoadResult`. On failure the result SHALL carry a human-readable `error_message`, the `error_file`, and 1-indexed `error_line`/`error_column`.
+
+#### Scenario: Valid YAML loads into config
+
+- **WHEN** `LoadConfig<GatewayConfig>("gateway.yaml")` is called with a well-formed YAML file
+- **THEN** the returned result has `success == true`
+- **AND** the output message SHALL contain the values from the YAML
+
+#### Scenario: Malformed YAML reports location
+
+- **WHEN** `LoadConfig` is called with a YAML file containing a syntax error at line 3, column 12
+- **THEN** the returned result has `success == false`
+- **AND** `error_file`, `error_line == 3`, and `error_column == 12` SHALL identify the location
+
+### Requirement: Config layer merging priority
+
+The system SHALL merge configuration layers in priority order: compile-time protobuf defaults, then YAML file, then environment variables, then CLI flags, with each layer overriding the previous.
+
+#### Scenario: CLI overrides YAML which overrides defaults
+
+- **WHEN** a YAML file sets `logging.level` to `"warn"` and the CLI passes `--log_level=debug` with the protobuf default `"info"`
+- **THEN** the final config SHALL have `logging.level == "debug"`
+
+### Requirement: Environment variable overrides
+
+The system SHALL support environment variables of the form `CARROT_<SERVICE>_<FIELD_PATH>` (with `_` as field separator and `__` for array indexes) overriding config values. Booleans SHALL accept `"true"`/`"false"`, `"1"`/`"0"`, `"yes"`/`"no"` (case-insensitive); durations SHALL accept ISO 8601 or integer seconds.
+
+#### Scenario: Environment variable overrides a field
+
+- **WHEN** `CARROT_GATEWAY_LOGGING_LEVEL=debug` is set and the gateway config is loaded
+- **THEN** the final config SHALL have `logging.level == "debug"`
+- **AND** `CARROT_GATEWAY_NODE_CONNECTIONS__0__ADDRESS=10.0.0.1:9090` SHALL set the first node connection address
+
+### Requirement: CLI flag overrides
+
+The system SHALL support CLI overrides of the form `--<field_path>=<value>` with `.` as the field path separator. Repeated fields SHALL be set by repeating the flag, booleans by `--flag=true`/`--flag=false`, and durations using the same formats as environment variables.
+
+#### Scenario: Repeated CLI flags populate a repeated field
+
+- **WHEN** `--node_address=10.0.0.1:9090 --node_address=10.0.0.2:9090` is passed
+- **THEN** the final config SHALL contain both addresses in order
+
+#### Scenario: Boolean CLI flag
+
+- **WHEN** `--tls_enabled=true` is passed
+- **THEN** the final config SHALL have `tls.enabled == true`
+
+### Requirement: Schema validation constraints
+
+The system SHALL validate fields against constraints declared via the custom protobuf options: `required`, `range_min`/`range_max`, `enum_values`, and `pattern`. Violations SHALL produce a `ConfigLoadResult` with `success == false` and a descriptive `error_message`.
+
+#### Scenario: Range violation rejected
+
+- **WHEN** a YAML file sets `http_listener.port` to 70000
+- **THEN** validation SHALL fail with an error message like `Field 'http_listener.port': value 70000 exceeds maximum 65535`
+
+#### Scenario: Invalid enum value rejected
+
+- **WHEN** a YAML file sets `logging.level` to `"verbose"`
+- **THEN** validation SHALL fail with an error message naming the invalid enum value
+
+### Requirement: Cross-field validation
+
+The system SHALL validate cross-field constraints: `heartbeat_interval <= connection_timeout`; `tls.enabled` implies non-empty `cert_file` and `key_file`; and `logging.output == "file"` implies non-empty `logging.file_path`.
+
+#### Scenario: TLS enabled without certificates
+
+- **WHEN** a config sets `tls.enabled == true` and leaves `cert_file`/`key_file` empty
+- **THEN** validation SHALL fail with an error
+
+### Requirement: Thread-safe and stateless loading
+
+The system SHALL perform config loading and validation without global state, so `LoadConfig` is safe to call concurrently. Generated protobuf messages SHALL be safe for read-only access after load.
+
+#### Scenario: Concurrent loads do not interfere
+
+- **WHEN** two threads call `LoadConfig` with different files concurrently
+- **THEN** both complete with results matching their respective inputs
 
 ## Public API
 
-### Header: `carrot/config/config_loader.hh`
+Header: `carrot/config/config_loader.hh`
 
 ```cpp
 #pragma once
@@ -90,6 +159,7 @@ std::string ConfigToYaml(const T& config);
 ```
 
 ## YAML Parsing Rules
+
 - Uses `yaml-cpp` library
 - Maps YAML scalars to protobuf fields by name (snake_case ↔ camelCase)
 - Repeated fields: YAML sequences → protobuf repeated fields
@@ -98,11 +168,13 @@ std::string ConfigToYaml(const T& config);
 - Enum fields: String values matching protobuf enum names (case-insensitive)
 
 ## Environment Variable Format
+
 ```
 CARROT_<SERVICE>_<FIELD_PATH>
 ```
 
 Rules:
+
 - Service: `GATEWAY` or `NODEAGENT` (uppercase)
 - Field path: protobuf field path with `_` as separator, `__` for array index
 - Boolean: "true"/"false", "1"/"0", "yes"/"no" (case-insensitive)
@@ -110,6 +182,7 @@ Rules:
 - Array index: `__0__`, `__1__`, etc.
 
 Examples:
+
 ```
 CARROT_GATEWAY_HTTP_LISTENER_PORT=8081
 CARROT_GATEWAY_NODE_CONNECTIONS__0__ADDRESS=10.0.0.1:9090
@@ -118,17 +191,20 @@ CARROT_NODEAGENT_TLV_LISTENER_PORT=9090
 ```
 
 ## CLI Override Format
+
 ```
 --<field_path>=<value>
 ```
 
 Rules:
+
 - Field path uses `.` as separator (matches protobuf)
 - Repeated fields: repeat flag (e.g., `--node_address=a --node_address=b`)
 - Boolean: `--flag=true` or `--flag=false` or just `--flag` (true)
 - Duration: same formats as env vars
 
 Examples:
+
 ```
 --http_port=8081
 --log_level=debug
@@ -138,11 +214,10 @@ Examples:
 
 ## Validation Rules
 
-### Required Fields
-- Marked with `option (carrot.config.required) = true` in protobuf (custom option)
-- Or: non-zero default for non-optional fields
+**Required fields:** marked with `option (carrot.config.required) = true` in protobuf (custom option), or non-zero default for non-optional fields.
 
-### Field Constraints
+**Field constraints:**
+
 | Constraint | Protobuf Option | Example |
 |------------|-----------------|---------|
 | Range (min/max) | `carrot.config.range = {min: 1, max: 65535}` | Port numbers |
@@ -150,14 +225,16 @@ Examples:
 | String pattern | `carrot.config.pattern = "^[a-z]+$"` | Identifiers |
 | Required | `carrot.config.required = true` | Node address |
 
-### Cross-Field Validation
+**Cross-field validation:**
+
 - `heartbeat_interval <= connection_timeout`
 - `tls.enabled → cert_file && key_file non-empty`
 - `logging.output == "file" → logging.file_path non-empty`
 
 ## Error Reporting
 
-### ConfigLoadResult Fields
+`ConfigLoadResult` fields:
+
 - `success`: false on any error
 - `error_message`: "Field 'port': value 70000 exceeds maximum 65535"
 - `error_file`: Path to YAML file (or "<env>" or "<cli>")
@@ -165,7 +242,8 @@ Examples:
 - `error_column`: Column number
 - `warnings`: ["Field 'deprecated_field' is deprecated"]
 
-### Example Errors
+Example:
+
 ```
 ConfigLoadResult{
   success=false,
@@ -179,13 +257,15 @@ ConfigLoadResult{
 
 ## Implementation Details
 
-### Dependencies
+**Dependencies:**
+
 - `yaml-cpp` (YAML parsing)
 - `absl/flags` (CLI parsing)
 - `google/protobuf` (message reflection, validation)
 - `absl/strings` (parsing helpers)
 
-### Files
+**Files:**
+
 ```
 src/core/config/
 ├── config_loader.hh      # Public API
@@ -201,7 +281,8 @@ src/core/config/
 └── duration_parser.hh    # ISO 8601 duration parsing
 ```
 
-### Protobuf Custom Options (in `carrot/config/options.proto`)
+**Protobuf custom options (in `carrot/config/options.proto`):**
+
 ```protobuf
 syntax = "proto3";
 package carrot.config;
@@ -218,7 +299,8 @@ extend google.protobuf.FieldOptions {
 }
 ```
 
-### Usage in .proto files
+**Usage in .proto files:**
+
 ```protobuf
 message HttpListener {
   string address = 1 [default = "0.0.0.0"];
@@ -241,14 +323,14 @@ ABSL_FLAG(uint32_t, http_port, 0, "Override HTTP listener port (0 = use config)"
 ABSL_FLAG(std::string, log_level, "", "Override log level");
 
 // After absl::ParseCommandLine()
-carrot::config::ConfigLoadResult result = 
+carrot::config::ConfigLoadResult result =
     carrot::config::LoadConfig<carrot::config::GatewayConfig>(
         absl::GetFlag(FLAGS_config_file),
         GetCliOverrides(),  // Convert absl flags to vector<string>
         &config);
 
 if (!result.success) {
-  LOG_ERROR() << "Config error: " << result.error_message 
+  LOG_ERROR() << "Config error: " << result.error_message
               << " at " << result.error_file << ":" << result.error_line;
   return 1;
 }
@@ -259,22 +341,11 @@ if (absl::GetFlag(FLAGS_validate_only)) {
 }
 ```
 
-## Testing Requirements
-- Unit tests for each parser (YAML, env, CLI)
-- Integration tests: layer merging priority
-- Validation tests: all constraint types
-- Error message format tests
-- Duration parsing tests (various formats)
-- Edge cases: empty arrays, missing files, malformed YAML
+## Out of Scope (Future Work)
 
-## Performance
-- Config loaded once at startup
-- No runtime overhead after load
-- YAML parsing: O(file size)
-- Validation: O(field count)
-- Memory: ~2x config size during load
-
-## Thread Safety
-- `LoadConfig` is thread-safe (no global state)
-- Generated protobuf messages are thread-safe for read-only access
-- Validation is pure function
+- Config hot-reload (SIGHUP)
+- Config encryption/secrets
+- Remote config (etcd, Consul)
+- Config versioning/migration
+- Schema documentation generator
+- JSON config format

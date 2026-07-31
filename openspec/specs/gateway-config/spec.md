@@ -1,9 +1,83 @@
 # Gateway Config Capability
 
-## Overview
-Protobuf schema and default configuration for the Carrot Gateway service.
+## Purpose
+
+Protobuf schema and default configuration for the Carrot Gateway service: defines all gateway-configurable parameters, their validation constraints and default values, plus cross-field rules such as requiring the `node_discovery` extension.
+
+## Requirements
+
+### Requirement: GatewayConfig protobuf schema
+
+The system SHALL define a `GatewayConfig` protobuf message in `src/core/config/proto/gateway.proto` (package `carrot.config`) with `HttpListener http_listener`, `repeated NodeConnection node_connections`, `Logging logging`, and reserved-for-future fields `connection_timeout`, `request_timeout`, and `TlsConfig tls`.
+
+#### Scenario: Listener and logging sections load into the message
+
+- **WHEN** a `GatewayConfig` is loaded from YAML with `http_listener` and `logging` sections
+- **THEN** the resulting message SHALL contain the corresponding `HttpListener` and `Logging` values
+
+#### Scenario: TLS fields are reserved for future use
+
+- **WHEN** a future release enables TLS on the gateway
+- **THEN** the reserved `TlsConfig tls` field SHALL carry cert/key/ca/verify-peer settings without a breaking schema change
+
+### Requirement: Field validation constraints
+
+All gateway config fields SHALL carry appropriate validation constraints via the custom options `(carrot.config.required)`, `(carrot.config.range_min)`, `(carrot.config.range_max)`, `(carrot.config.enum_values)`, and `(carrot.config.pattern)`.
+
+#### Scenario: Invalid port rejected
+
+- **WHEN** a YAML config sets `http_listener.port` to 70000
+- **THEN** loading SHALL fail with a validation error indicating the value exceeds the maximum 65535
+
+#### Scenario: Node address pattern enforced
+
+- **WHEN** a YAML config sets a `node_connection.address` that does not match `^[^:]+:\d+$`
+- **THEN** loading SHALL fail with a validation error
+
+### Requirement: Default values allow startup without a config file
+
+Default values SHALL allow the gateway to run without a config file (with warnings): `http_listener.address` defaults to `"0.0.0.0"`, `http_listener.port` to `8081`, `logging.level` to `"info"`, and `logging.format` to `"text"`.
+
+#### Scenario: Default port applied
+
+- **WHEN** a `GatewayConfig` is created with no explicit `http_listener.port`
+- **THEN** `http_listener.port` SHALL be `8081`
+
+#### Scenario: Default address applied
+
+- **WHEN** a `GatewayConfig` is created with no explicit `http_listener.address`
+- **THEN** `http_listener.address` SHALL be `"0.0.0.0"`
+
+### Requirement: Cross-field validation catches misconfiguration
+
+The system SHALL validate cross-field constraints: if `tls.enabled` is true then `cert_file` and `key_file` must be non-empty; if `logging.output == "file"` then `logging.file_path` must be non-empty; and `request_timeout` must be `>= connection_timeout` (or both use defaults).
+
+#### Scenario: TLS enabled without certificates
+
+- **WHEN** `tls.enabled` is true and `cert_file`/`key_file` are empty
+- **THEN** loading SHALL fail with a validation error
+
+### Requirement: node_discovery required
+
+The system SHALL require the `node_discovery` extension in `GatewayConfig`; the gateway SHALL exit with an error if it is absent. The `node_connections` field SHALL be retained for wire compatibility only and ignored at runtime.
+
+#### Scenario: Missing node_discovery fails validation
+
+- **WHEN** a `GatewayConfig` is loaded without a `node_discovery` section
+- **THEN** validation SHALL fail with an error indicating the extension is required
+
+### Requirement: GatewayConfig is extensible
+
+The schema SHALL support future TLS, metrics, and rate-limiting extensions through reserved fields and the extension mechanism, without redefining existing field numbers.
+
+#### Scenario: Future extensions use reserved fields
+
+- **WHEN** a new extension category is introduced
+- **THEN** it SHALL use a new reserved field number or the `ExtensionConfig` mechanism
+- **AND** existing fields SHALL keep their numbers and semantics
 
 ## Protobuf Schema
+
 File: `src/core/config/proto/gateway.proto`
 
 ```protobuf
@@ -99,6 +173,7 @@ message TlsConfig {
 ```
 
 ## Default Values (Protobuf Defaults)
+
 - `http_listener.address`: "0.0.0.0"
 - `http_listener.port`: 8081
 - `http_listener.max_connections`: 10000
@@ -116,29 +191,9 @@ message TlsConfig {
 - `tls.verify_peer`: true
 
 ## Cross-Field Validation Rules
+
 1. If `tls.enabled == true`: `cert_file` and `key_file` must be non-empty
 2. If `logging.output == "file"`: `logging.file_path` must be non-empty
 3. `request_timeout >= connection_timeout` (or both use defaults)
 4. `node_discovery` extension MUST be configured (error if missing)
 5. `node_connections` field is ignored — retained for wire compatibility only
-
-## Requirements
-- **REQ-GW-001**: Protobuf schema defines all gateway-configurable parameters
-- **REQ-GW-002**: All fields have appropriate validation constraints
-- **REQ-GW-003**: Default values allow gateway to run without config file (with warnings)
-- **REQ-GW-004**: Schema supports future TLS, metrics, rate limiting extensions
-- **REQ-GW-005**: Cross-field validation catches common misconfigurations
-- **REQ-GW-006**: Gateway exits with error if `node_discovery` is not configured
-
-## Dependencies
-- `yaml-config-loader` capability (for loading)
-- `protobuf` with `google/protobuf/duration.proto`
-- Custom options: `carrot/config/options.proto`
-
-## Testing
-- Unit test: Load default config (no YAML) → error (missing node_discovery)
-- Unit test: Valid YAML with all fields and node_discovery → loads correctly
-- Unit test: Invalid port → validation error
-- Unit test: TLS enabled without certs → validation error
-- Unit test: Config without node_discovery → validation error
-- Integration: Full load with env/CLI overrides

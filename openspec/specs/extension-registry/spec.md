@@ -6,72 +6,58 @@ Provide compile-time extension registration infrastructure for Carrot, following
 
 ## Requirements
 
-### R1: Registry Template
-- `Registry<FactoryInterface>` is a singleton per factory type
-- `registerFactory(name, factory)` stores a raw pointer (lifetime managed by static registration)
-- `getFactory(name)` returns `FactoryInterface*` or `nullptr`
-- `getRegisteredNames()` returns all registered names
+### Requirement: Registry template
 
-### R2: Registration Macro
-- `REGISTER_FACTORY(FactoryClass, FactoryInterface)` performs static initialization
-- The macro creates an anonymous-namespace struct whose constructor calls `Registry::registerFactory`
-- Registration happens before `main()` — no explicit init call needed
-- The factory object is heap-allocated via `new` and lives for the process lifetime
+The system SHALL provide a `Registry<FactoryInterface>` that is a singleton per factory type. It SHALL support `registerFactory(name, factory)` storing a raw pointer (lifetime managed by static registration), `getFactory(name)` returning `FactoryInterface*` or `nullptr`, and `getRegisteredNames()` returning all registered names.
 
-### R3: FactoryContext
-- Abstract `FactoryContext` interface with `dispatcher()` and `logger()` accessors
-- `GatewayFactoryContext` concrete implementation stores a `DispatcherSharedPtr`
-- Passed to every factory's `create()` method
+#### Scenario: Multiple factories of the same type
 
-### R4: ExtensionConfig Protobuf
-- `ExtensionConfig` message with `name` (string) and `typed_config` (`google.protobuf.Any`)
-- Used as the config type for each extension category field in `GatewayConfig`
+- **WHEN** two factory classes `AlphaFactory` and `BetaFactory` both implementing `SomeFactoryInterface` are registered via `REGISTER_FACTORY`
+- **AND** `Registry<SomeFactoryInterface>::instance().getRegisteredNames()` is queried
+- **THEN** the result contains both `"alpha"` and `"beta"`
 
-### R5: Bazel Integration
-- Header-only `extension_registry_lib` target (no runtime deps beyond standard library)
-- `factory_context_lib` target depends on `dispatcher_interface` and `log_lib`
-- Users add extension `.cc` files to `gateway/BUILD.bazel` deps to link them in
+#### Scenario: Unregistered factory lookup
 
-## Scenarios
+- **WHEN** `getFactory("nonexistent")` is called on a `Registry<SomeFactoryInterface>` with no factory named `"nonexistent"`
+- **THEN** the result is `nullptr`
 
-### S1: Factory registration via macro
+### Requirement: Registration macro
 
-**Given** a factory class `MyFactory` implementing `SomeFactoryInterface` with `name()` returning `"my_factory"`
-**And** a `REGISTER_FACTORY(MyFactory, SomeFactoryInterface)` invocation in a `.cc` file
-**When** the program starts (before `main()`)
-**Then** `Registry<SomeFactoryInterface>::instance().getFactory("my_factory")` returns a non-null pointer
-**And** the returned pointer's `name()` equals `"my_factory"`
+The system SHALL provide a `REGISTER_FACTORY(FactoryClass, FactoryInterface)` macro that performs static initialization by creating an anonymous-namespace struct whose constructor calls `Registry::registerFactory`. Registration SHALL happen before `main()` with no explicit init call, and the factory object SHALL be heap-allocated via `new` and live for the process lifetime.
 
-### S2: Multiple factories of the same type
+#### Scenario: Factory registration via macro
 
-**Given** two factory classes `AlphaFactory` and `BetaFactory` both implementing `SomeFactoryInterface`
-**And** both registered via `REGISTER_FACTORY`
-**When** querying `Registry<SomeFactoryInterface>::instance().getRegisteredNames()`
-**Then** the result contains both `"alpha"` and `"beta"`
+- **WHEN** a factory class `MyFactory` implementing `SomeFactoryInterface` with `name()` returning `"my_factory"` is registered via `REGISTER_FACTORY(MyFactory, SomeFactoryInterface)` in a `.cc` file
+- **AND** the program starts (before `main()`)
+- **THEN** `Registry<SomeFactoryInterface>::instance().getFactory("my_factory")` returns a non-null pointer
+- **AND** the returned pointer's `name()` equals `"my_factory"`
 
-### S3: Unregistered factory lookup
+### Requirement: FactoryContext
 
-**Given** a `Registry<SomeFactoryInterface>` with no factory named `"nonexistent"`
-**When** calling `getFactory("nonexistent")`
-**Then** the result is `nullptr`
+The system SHALL provide an abstract `FactoryContext` interface with `dispatcher()` and `logger()` accessors, and a `GatewayFactoryContext` concrete implementation storing a `DispatcherSharedPtr`. The context SHALL be passed to every factory's `create()` method.
 
-### S4: FactoryContext provides Dispatcher and Logger
+#### Scenario: FactoryContext provides dispatcher and logger
 
-**Given** a `GatewayFactoryContext` constructed with a valid `DispatcherSharedPtr`
-**When** calling `context.dispatcher()`
-**Then** a valid `event::Dispatcher&` is returned
-**When** calling `context.logger()`
-**Then** a valid `logging::Logger&` is returned
+- **WHEN** a `GatewayFactoryContext` is constructed with a valid `DispatcherSharedPtr`
+- **AND** `context.dispatcher()` is called
+- **THEN** a valid `event::Dispatcher&` is returned
+- **AND** when `context.logger()` is called, a valid `logging::Logger&` is returned
 
-### S5: ExtensionConfig protobuf round-trip
+### Requirement: ExtensionConfig protobuf
 
-**Given** an `ExtensionConfig` with `name = "etcd"` and a `typed_config` containing an `EtcdConfig` message
-**When** serializing to bytes and deserializing back
-**Then** `name` equals `"etcd"`
-**And** `typed_config` unpacks to the same `EtcdConfig` values
+The system SHALL define an `ExtensionConfig` message with `name` (string) and `typed_config` (`google.protobuf.Any`), used as the config type for each extension category field in `GatewayConfig`.
 
-### S6: Bazel targets compile
+#### Scenario: ExtensionConfig protobuf round-trip
 
-**Given** the `extension_registry_lib` and `factory_context_lib` Bazel targets
-**When** building `//src/core/extensions:all`
-**Then** the build succeeds with no errors
+- **WHEN** an `ExtensionConfig` with `name = "etcd"` and a `typed_config` containing an `EtcdConfig` message is serialized to bytes and deserialized back
+- **THEN** `name` equals `"etcd"`
+- **AND** `typed_config` unpacks to the same `EtcdConfig` values
+
+### Requirement: Bazel integration
+
+The system SHALL provide a header-only `extension_registry_lib` Bazel target (no runtime deps beyond standard library) and a `factory_context_lib` target depending on `dispatcher_interface` and `log_lib`. Users SHALL add extension `.cc` files to `gateway/BUILD.bazel` deps to link them in.
+
+#### Scenario: Bazel targets compile
+
+- **WHEN** building `//src/core/extensions:all`
+- **THEN** the build succeeds with no errors
