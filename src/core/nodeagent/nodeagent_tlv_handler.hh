@@ -12,4 +12,4 @@ public:
   void HandleFrame(carrot::io::TlvFrame frame, carrot::io::Connection& conn);
 };
 
-} // namespace carrot::io
+} // namespace carrot::nodeagent

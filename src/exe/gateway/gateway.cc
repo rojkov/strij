@@ -149,8 +149,8 @@ auto main(int argc, char** argv) -> int {
               return std::make_unique<carrot::gateway::HttpResultReceiver>(conn);
             });
         return std::make_unique<carrot::io::LlhttpParser>(
-            [hdl = std::move(handler), &conn](std::span<const std::byte> msg) -> void {
-              hdl->HandleMessage(msg, conn);
+            [hdl = std::move(handler), &conn](carrot::io::HttpRequest request) -> void {
+              hdl->HandleMessage(request, conn);
             });
       }};
 

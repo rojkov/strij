@@ -18,6 +18,8 @@ Bridges HTTP requests at the gateway to nodeagent task processing via TLV connec
 - **WHEN** `erase(42)` is called after `put(42, receiver)`
 - **THEN** `get(42)` SHALL return nullptr
 
+## MODIFIED Requirements
+
 ### Requirement: GatewayHttpHandler creates tasks from HTTP requests
 `GatewayHttpHandler` SHALL receive `HttpRequest` messages (path + body), generate a monotonic task_id, extract the task type from the URL path, query `NodeDirectory` for the next available node, create a result receiver, store it in `ResultReceiverStorage`, build a `Task` protobuf message, serialize it into a TLV frame via `SerializeTlvFrame()`, and submit the task by calling `Connection::Write()` on the selected node's connection.
 

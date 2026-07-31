@@ -4,28 +4,31 @@
 
 #include "core/io/tlv_frame.hh"
 #include "core/logging/log.hh"
+#include "core/task/task.pb.h"
 
 namespace carrot::gateway {
 
 void GatewayTlvHandler::HandleFrame(carrot::io::TlvFrame frame, carrot::io::Connection& /*conn*/) {
   switch (frame.type_id) {
   case carrot::io::TlvFrame::kResult: {
-    if (frame.value.size() < sizeof(uint64_t)) {
-      LOG_WARNING("Result frame with undersized value");
+    carrot::task::TaskResult result;
+    // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast)
+    if (!result.ParseFromArray(reinterpret_cast<const char*>(frame.value.data()),
+                               static_cast<int>(frame.value.size()))) {
+      LOG_WARNING("Malformed TaskResult frame dropped");
       return;
     }
 
-    uint64_t task_id{};
-    std::memcpy(&task_id, frame.value.data(), sizeof(uint64_t));
-    auto payload = frame.value.subspan(sizeof(uint64_t));
-
-    auto* receiver = storage_.get(task_id);
-    if (receiver) {
-      receiver->Deliver(payload);
-      storage_.erase(task_id);
-      LOG_DEBUG("Delivered result for task {}", task_id);
+    auto* receiver = storage_.get(result.id());
+    if (receiver != nullptr) {
+      // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast)
+      const auto* body_ptr = reinterpret_cast<const std::byte*>(result.body().data());
+      auto body = std::span<const std::byte>(body_ptr, result.body().size());
+      receiver->Deliver(body);
+      storage_.erase(result.id());
+      LOG_DEBUG("Delivered result for task {}", result.id());
     } else {
-      LOG_WARNING("No receiver for task {}", task_id);
+      LOG_WARNING("No receiver for task {}", result.id());
     }
     break;
   }

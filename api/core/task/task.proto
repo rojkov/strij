@@ -1,0 +1,14 @@
+syntax = "proto3";
+
+package carrot.task;
+
+message Task {
+  uint64 id = 1;
+  string type = 2;
+  bytes body = 3;
+}
+
+message TaskResult {
+  uint64 id = 1;
+  bytes body = 2;
+}

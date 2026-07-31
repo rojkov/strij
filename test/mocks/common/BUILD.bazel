@@ -1,0 +1,10 @@
+load("//bazel:build_system.bzl", "carrot_cc_test_library")
+
+carrot_cc_test_library(
+    name = "common_mocks_lib",
+    hdrs = ["common_mocks.hh"],
+    deps = [
+        "//include/carrot/event:command_handler_interface",
+        "//src/core/io:protocol_parser",
+    ],
+)

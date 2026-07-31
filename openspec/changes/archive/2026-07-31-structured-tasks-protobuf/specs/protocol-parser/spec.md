@@ -23,6 +23,8 @@ The system SHALL define a `ProtocolParser` abstract interface that all protocol 
 - **THEN** the parser SHALL return a writable `std::span<std::byte>` pointing to memory that remains valid until the next `OnData()` call
 - **AND** the buffer SHALL be suitable for io_uring to write into directly (zero-copy from kernel to parser)
 
+## MODIFIED Requirements
+
 ### Requirement: LlhttpParser implements ProtocolParser
 The existing `LlhttpParser` class SHALL implement the `ProtocolParser` interface. It SHALL NOT implement `event::Completable`. Its `GetReadBuffer()` SHALL return the writable span from its existing `Chunk` system (the `active_chunk_->WritableSpan()`). Its `OnData(size_t)` SHALL advance the chunk cursor, parse via `llhttp_execute`, and return the appropriate `Action`. The parser SHALL capture the request path via the llhttp `on_url` callback and SHALL deliver an `HttpRequest` struct containing the path and body to its callback. The existing HTTP parsing logic (llhttp integration, chunk management, body assembly) SHALL remain unchanged.
 

@@ -7,9 +7,10 @@
 
 namespace carrot::io {
 
-LlhttpParser::LlhttpParser(std::move_only_function<void(std::span<const std::byte>)>&& on_message)
+LlhttpParser::LlhttpParser(std::move_only_function<void(HttpRequest)>&& on_message)
     : on_message_{std::move(on_message)}, active_chunk_{std::make_unique<Chunk>()} {
   llhttp_settings_init(&settings_);
+  settings_.on_url = on_url;
   settings_.on_body = on_body;
   settings_.on_message_complete = on_message_complete;
   llhttp_init(&parser_, HTTP_REQUEST, &settings_);
@@ -48,7 +49,7 @@ void LlhttpParser::parse(const size_t offset, size_t length) {
 void LlhttpParser::finalizeMessage() {
   // No body data at all — deliver an empty request body.
   if (!active_chunk_->HasBodies() && body_chunks_.empty()) {
-    on_message_({});
+    on_message_({.path = path_, .body = {}});
     return;
   }
 
@@ -69,7 +70,9 @@ void LlhttpParser::finalizeMessage() {
   // pass it through without copying.
   if (body_chunks_.empty() && active_chunk_->GetBodies().size() == 1) {
     const auto& body_span = active_chunk_->GetBodies().front();
-    on_message_(std::as_bytes(active_chunk_->Data().subspan(body_span.start, body_span.size)));
+    on_message_({.path = path_,
+                 .body = std::as_bytes(
+                     active_chunk_->Data().subspan(body_span.start, body_span.size))});
     return;
   }
 
@@ -78,8 +81,9 @@ void LlhttpParser::finalizeMessage() {
   if (body_chunks_.size() == 1 && body_chunks_.front()->GetBodies().size() == 1 &&
       !active_chunk_->HasBodies()) {
     const auto& body_span = body_chunks_.front()->GetBodies().front();
-    on_message_(
-        std::as_bytes(body_chunks_.front()->Data().subspan(body_span.start, body_span.size)));
+    on_message_({.path = path_,
+                 .body = std::as_bytes(body_chunks_.front()->Data().subspan(
+                     body_span.start, body_span.size))});
     body_chunks_.clear();
     return;
   }
@@ -98,8 +102,14 @@ void LlhttpParser::finalizeMessage() {
       body.append_range(active_chunk_->Data().subspan(body_span.start, body_span.size));
     }
   }
-  on_message_(body);
+  on_message_({.path = path_, .body = body});
   body_chunks_.clear();
+}
+
+auto LlhttpParser::onUrl(llhttp_t* /*parser*/, const char* ptr, size_t length) -> int {
+  LOG_DEBUG("LlhttpParser::onUrl {}", std::string_view{ptr, length});
+  path_.append(ptr, length);
+  return 0;
 }
 
 auto LlhttpParser::onBody(llhttp_t* /*parser*/, const char* ptr, size_t length) -> int {
@@ -124,6 +134,12 @@ auto LlhttpParser::on_body(llhttp_t* parser, const char* ptr, size_t length) -> 
   auto* obj = static_cast<LlhttpParser*>(parser->data);
   assert(obj != nullptr);
   return obj->onBody(parser, ptr, length);
+}
+
+auto LlhttpParser::on_url(llhttp_t* parser, const char* ptr, size_t length) -> int {
+  auto* obj = static_cast<LlhttpParser*>(parser->data);
+  assert(obj != nullptr);
+  return obj->onUrl(parser, ptr, length);
 }
 
 auto LlhttpParser::on_message_complete(llhttp_t* parser) -> int {

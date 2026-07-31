@@ -13,6 +13,8 @@ The system SHALL define a `TlvFrame` struct containing `uint8_t type_id` and `st
 - **WHEN** a TLV frame is parsed from the wire
 - **THEN** the resulting `TlvFrame` SHALL contain the type_id byte and a span over the value bytes
 
+## MODIFIED Requirements
+
 ### Requirement: TLV wire format
 The TLV wire format SHALL encode `[type_id: 1 byte][length: 4 bytes][value: N bytes]`. The value content is type-specific: task-related frames carry the serialized protobuf message `Task` (TaskSubmission) or `TaskResult` (Result). Heartbeat frames carry no task payload.
 

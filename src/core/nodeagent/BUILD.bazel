@@ -6,7 +6,9 @@ carrot_cc_library(
     hdrs = ["nodeagent_tlv_handler.hh"],
     visibility = ["//visibility:public"],
     deps = [
+        "//api/core/task:task_cc_proto",
         "//src/core/io:connection_lib",
         "//src/core/io:tlv_frame",
+        "//src/core/logging:log_lib",
     ],
 )

@@ -51,7 +51,9 @@ carrot_cc_library(
     deps = [
         ":node_directory_lib",
         ":result_receiver_storage",
+        "//api/core/task:task_cc_proto",
         "//src/core/io:connection_lib",
+        "//src/core/io:llhttp_parser_lib",
         "//src/core/io:tlv_frame",
         "//src/core/logging:log_lib",
     ],
@@ -64,6 +66,7 @@ carrot_cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":result_receiver_storage",
+        "//api/core/task:task_cc_proto",
         "//src/core/io:connection_lib",
         "//src/core/io:tlv_frame",
         "//src/core/logging:log_lib",

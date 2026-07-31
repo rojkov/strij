@@ -9,38 +9,82 @@
 #include "core/io/connection.hh"
 #include "core/io/tlv_frame.hh"
 #include "core/logging/log.hh"
+#include "core/task/task.pb.h"
 
 namespace carrot::gateway {
 
-void GatewayHttpHandler::HandleMessage(std::span<const std::byte> msg,
+auto ParseTaskType(std::string_view path) -> std::optional<std::string_view> {
+  constexpr std::string_view kTasksPrefix = "/tasks/";
+  if (!path.starts_with(kTasksPrefix)) {
+    return std::nullopt;
+  }
+
+  auto type = path.substr(kTasksPrefix.size());
+  if (const auto query_pos = type.find('?'); query_pos != std::string_view::npos) {
+    type = type.substr(0, query_pos);
+  }
+  return type;
+}
+
+namespace {
+
+constexpr int kStatusBadRequest = 400;
+constexpr int kStatusNotFound = 404;
+constexpr int kStatusInternalServerError = 500;
+constexpr int kStatusServiceUnavailable = 503;
+
+void writeErrorResponse(carrot::io::Connection& conn, int status, std::string_view reason) {
+  auto response = std::format("HTTP/1.1 {} {}\r\nContent-Length: 0\r\nContent-Type: "
+                              "text/plain\r\nConnection: close\r\n\r\n",
+                              status, reason);
+  auto response_bytes = std::as_bytes(std::span(response.data(), response.size()));
+  conn.Write(response_bytes);
+}
+
+} // namespace
+
+void GatewayHttpHandler::HandleMessage(carrot::io::HttpRequest request,
                                        carrot::io::Connection& conn) {
-  auto* node = node_directory_.GetNextNode();
-  if (node == nullptr) {
-    auto response = std::format("HTTP/1.1 503 Service Unavailable\r\nContent-Length: "
-                                "0\r\nConnection: close\r\n\r\n");
-    auto response_bytes = std::as_bytes(std::span(response.data(), response.size()));
-    conn.Write(response_bytes);
+  auto task_type = ParseTaskType(request.path);
+  if (!task_type.has_value()) {
+    writeErrorResponse(conn, kStatusNotFound, "Not Found");
+    return;
+  }
+  if (task_type->empty()) {
+    writeErrorResponse(conn, kStatusBadRequest, "Bad Request");
     return;
   }
 
   auto task_id = next_task_id_++;
+  carrot::task::Task task;
+  task.set_id(task_id);
+  task.set_type(task_type->data(), task_type->size());
+  // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast)
+  task.set_body(reinterpret_cast<const char*>(request.body.data()), request.body.size());
+
+  std::string serialized;
+  if (!task.SerializeToString(&serialized)) {
+    writeErrorResponse(conn, kStatusInternalServerError, "Internal Failure");
+    return;
+  }
+
+  auto* node = node_directory_.GetNextNode();
+  if (node == nullptr) {
+    writeErrorResponse(conn, kStatusServiceUnavailable, "Service Unavailable");
+    return;
+  }
+
   auto* nodeagent_conn = node->GetConnection();
 
   auto receiver = make_receiver_(conn);
   storage_.put(task_id, std::move(receiver));
 
-  // Build value: [task_id:8][payload:N]
-  std::vector<std::byte> value;
-  value.reserve(sizeof(uint64_t) + msg.size());
-  // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast)
-  auto* task_id_bytes = reinterpret_cast<const std::byte*>(&task_id);
-  value.insert(value.end(), task_id_bytes, task_id_bytes + sizeof(uint64_t));
-  value.insert(value.end(), msg.begin(), msg.end());
-
-  auto frame = carrot::io::SerializeTlvFrame(carrot::io::TlvFrame::kTaskSubmission, value);
+  auto frame = carrot::io::SerializeTlvFrame(
+      carrot::io::TlvFrame::kTaskSubmission,
+      std::as_bytes(std::span(serialized.data(), serialized.size())));
   nodeagent_conn->Write(frame);
 
-  LOG_DEBUG("Submitted task {} to nodeagent", task_id);
+  LOG_DEBUG("Submitted task {} (type {}) to nodeagent", task_id, task_type.value());
 }
 
 } // namespace carrot::gateway

@@ -10,6 +10,7 @@ carrot_cc_library(
 carrot_cc_library(
     name = "protocol_parser",
     hdrs = ["protocol_parser.hh"],
+    visibility = ["//visibility:public"],
 )
 
 carrot_cc_library(
