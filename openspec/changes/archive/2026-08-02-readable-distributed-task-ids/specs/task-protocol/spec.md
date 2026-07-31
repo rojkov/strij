@@ -1,10 +1,4 @@
-# task-protocol
-
-## Purpose
-
-Defines the Protobuf message schemas used to carry tasks and results between gateway and nodeagent over TLV frames, giving tasks a structured, self-describing representation with `id`, `type`, and `body` fields.
-
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: Task message schema
 The system SHALL define a Protobuf message `Task` in package `carrot.task` with fields `string id = 1`, `string type = 2`, and `bytes body = 3`. The `id` SHALL be a human-readable, randomly generated string identifier (e.g., `happy_fox_runs_k7m2x9p4`) used to route results back to the originating HTTP client. The `type` SHALL identify the task handler intended to process the task. The `body` SHALL be the task payload.

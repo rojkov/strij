@@ -10,6 +10,7 @@
 #include "core/io/tlv_frame.hh"
 #include "core/logging/log.hh"
 #include "core/task/task.pb.h"
+#include "core/utils/task_id.hh"
 
 namespace carrot::gateway {
 
@@ -55,7 +56,7 @@ void GatewayHttpHandler::HandleMessage(carrot::io::HttpRequest request,
     return;
   }
 
-  auto task_id = next_task_id_++;
+  auto task_id = carrot::utils::GenerateTaskId();
   carrot::task::Task task;
   task.set_id(task_id);
   task.set_type(task_type->data(), task_type->size());

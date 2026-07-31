@@ -76,10 +76,10 @@ protected:
 
 TEST_F(GatewayTlvHandlerTest, DispatchResultToReceiver) {
   std::vector<std::byte> delivered;
-  storage_.put(42, std::make_unique<MockReceiver>(&delivered));
+  storage_.put("42", std::make_unique<MockReceiver>(&delivered));
 
   carrot::task::TaskResult result;
-  result.set_id(42);
+  result.set_id("42");
   result.set_body("CCDD");
   std::string serialized;
   result.SerializeToString(&serialized);
@@ -114,7 +114,7 @@ TEST_F(GatewayTlvHandlerTest, DispatchResultToReceiver) {
                                          std::byte{'D'}};
   ASSERT_EQ(delivered.size(), expected.size());
   EXPECT_TRUE(std::equal(delivered.begin(), delivered.end(), expected.begin()));
-  EXPECT_EQ(storage_.get(42), nullptr);
+  EXPECT_EQ(storage_.get("42"), nullptr);
 
   close(fds[0]);
   close(fds[1]);
@@ -122,10 +122,10 @@ TEST_F(GatewayTlvHandlerTest, DispatchResultToReceiver) {
 
 TEST_F(GatewayTlvHandlerTest, UnknownTaskIdDropsResult) {
   std::vector<std::byte> delivered;
-  storage_.put(1, std::make_unique<MockReceiver>(&delivered));
+  storage_.put("1", std::make_unique<MockReceiver>(&delivered));
 
   carrot::task::TaskResult result;
-  result.set_id(99);
+  result.set_id("99");
   result.set_body("data");
   std::string serialized;
   result.SerializeToString(&serialized);
@@ -156,7 +156,7 @@ TEST_F(GatewayTlvHandlerTest, UnknownTaskIdDropsResult) {
   handler_.HandleFrame(received_frames[0], conn);
 
   EXPECT_TRUE(delivered.empty());
-  EXPECT_NE(storage_.get(1), nullptr);
+  EXPECT_NE(storage_.get("1"), nullptr);
 
   close(fds[0]);
   close(fds[1]);
@@ -164,7 +164,7 @@ TEST_F(GatewayTlvHandlerTest, UnknownTaskIdDropsResult) {
 
 TEST_F(GatewayTlvHandlerTest, MalformedResultFrameIsDropped) {
   std::vector<std::byte> delivered;
-  storage_.put(7, std::make_unique<MockReceiver>(&delivered));
+  storage_.put("7", std::make_unique<MockReceiver>(&delivered));
 
   auto garbage = std::vector<std::byte>{std::byte{0xDE}, std::byte{0xAD}, std::byte{0xBE},
                                         std::byte{0xEF}};
@@ -193,7 +193,7 @@ TEST_F(GatewayTlvHandlerTest, MalformedResultFrameIsDropped) {
   handler_.HandleFrame(received_frames[0], conn);
 
   EXPECT_TRUE(delivered.empty());
-  EXPECT_NE(storage_.get(7), nullptr);
+  EXPECT_NE(storage_.get("7"), nullptr);
 
   close(fds[0]);
   close(fds[1]);

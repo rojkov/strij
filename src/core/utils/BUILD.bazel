@@ -1,0 +1,8 @@
+load("//bazel:build_system.bzl", "carrot_cc_library")
+
+carrot_cc_library(
+    name = "task_id_lib",
+    srcs = ["task_id.cc"],
+    hdrs = ["task_id.hh"],
+    visibility = ["//visibility:public"],
+)

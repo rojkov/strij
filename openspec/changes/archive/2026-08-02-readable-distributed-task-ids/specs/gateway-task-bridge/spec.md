@@ -1,10 +1,4 @@
-# Gateway Task Bridge
-
-## Purpose
-
-Bridges HTTP requests at the gateway to nodeagent task processing via TLV connections, managing task lifecycle from submission through result delivery.
-
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: ResultReceiverStorage maps task_ids to receivers
 `ResultReceiverStorage` SHALL be an associative container mapping `std::string` task_ids to result receiver objects. It SHALL support `put(task_id, receiver)`, `get(task_id)`, and `erase(task_id)` operations. The storage SHALL be thread-safe for concurrent access from HTTP and TLV handlers (if handlers run on different threads).

@@ -56,6 +56,7 @@ carrot_cc_library(
         "//src/core/io:llhttp_parser_lib",
         "//src/core/io:tlv_frame",
         "//src/core/logging:log_lib",
+        "//src/core/utils:task_id_lib",
     ],
 )
 

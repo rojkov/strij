@@ -60,7 +60,7 @@ protected:
 
 TEST_F(NodeagentTlvHandlerTest, EchoesTaskAsTaskResult) {
   carrot::task::Task task;
-  task.set_id(42);
+  task.set_id("42");
   task.set_type("echo");
   task.set_body("hello");
   std::string serialized;
@@ -93,7 +93,7 @@ TEST_F(NodeagentTlvHandlerTest, EchoesTaskAsTaskResult) {
 
   carrot::task::TaskResult result;
   ASSERT_TRUE(result.ParseFromArray(buf.data() + 5, static_cast<int>(n - 5)));
-  EXPECT_EQ(result.id(), 42U);
+  EXPECT_EQ(result.id(), "42");
   EXPECT_EQ(result.body(), "hello");
 }
 

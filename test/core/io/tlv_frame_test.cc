@@ -54,7 +54,7 @@ TEST_F(SerializeTlvFrameTest, SerializesEmptyValue) {
 
 TEST_F(SerializeTlvFrameTest, RoundTripsSerializedTaskThroughTlvParser) {
   carrot::task::Task task;
-  task.set_id(42);
+  task.set_id("42");
   task.set_type("echo");
   task.set_body("hello");
   std::string serialized;
@@ -78,7 +78,7 @@ TEST_F(SerializeTlvFrameTest, RoundTripsSerializedTaskThroughTlvParser) {
   carrot::task::Task parsed;
   ASSERT_TRUE(parsed.ParseFromArray(received_frames[0].value.data(),
                                     static_cast<int>(received_frames[0].value.size())));
-  EXPECT_EQ(parsed.id(), 42U);
+  EXPECT_EQ(parsed.id(), "42");
   EXPECT_EQ(parsed.type(), "echo");
   EXPECT_EQ(parsed.body(), "hello");
 }

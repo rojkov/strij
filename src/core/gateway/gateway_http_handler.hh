@@ -1,6 +1,5 @@
 #pragma once
 
-#include <cstdint>
 #include <memory>
 #include <optional>
 #include <span>
@@ -31,7 +30,6 @@ private:
   NodeDirectory& node_directory_;
   ResultReceiverStorage& storage_;
   std::unique_ptr<ResultReceiver> (*make_receiver_)(carrot::io::Connection& conn);
-  uint64_t next_task_id_{0};
 };
 
 } // namespace carrot::gateway
