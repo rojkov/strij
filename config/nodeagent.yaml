@@ -2,6 +2,11 @@ tlv_listener:
   address: "0.0.0.0"
   port: 9090
 
+task_handlers:
+  - name: "echo"
+    typed_config:
+      "@type": "type.googleapis.com/carrot.extensions.task_handlers.echo.EchoTaskHandlerConfig"
+
 logging:
   level: "debug"
   format: "text"

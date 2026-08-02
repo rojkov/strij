@@ -1,0 +1,10 @@
+load("//bazel:build_system.bzl", "carrot_cc_test_library")
+
+carrot_cc_test_library(
+    name = "extensions_mocks_lib",
+    hdrs = ["extensions_mocks.hh"],
+    deps = [
+        "//src/core/extensions:factory_context_lib",
+        "//src/extensions/task_handlers:task_handlers_interface",
+    ],
+)

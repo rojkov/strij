@@ -2,11 +2,13 @@ syntax = "proto3";
 
 package carrot.config;
 
+import "core/config/extensions.proto";
 import "core/config/options.proto";
 
 message NodeAgentConfig {
   TlvListener tlv_listener = 1;
   Logging logging = 2;
+  repeated ExtensionConfig task_handlers = 6;
   // RESERVED for future (v2+): not used by nodeagent in v1
   // google.protobuf.Duration connection_timeout = 3;
   // google.protobuf.Duration heartbeat_interval = 4;

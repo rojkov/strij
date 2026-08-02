@@ -1,9 +1,13 @@
+#include <memory>
+
 #include "absl/flags/flag.h"
 #include "absl/flags/parse.h"
 #include "core/common/signal_monitor.hh"
 #include "core/config/config_loader.hh"
 #include "core/event/dispatcher_impl.hh"
+#include "core/extensions/factory_context.hh"
 #include "core/nodeagent/nodeagent_tlv_handler.hh"
+#include "core/nodeagent/task_handler_manager.hh"
 #include "core/io/tcp_listener.hh"
 #include "core/io/tlv_parser.hh"
 #include "core/logging/log.hh"
@@ -34,6 +38,20 @@ auto main(int argc, char** argv) -> int {
 
   carrot::config::NodeAgentConfig config = std::move(config_result).value();
 
+  carrot::event::DispatcherSharedPtr dispatcher = std::make_shared<carrot::event::DispatcherImpl>();
+
+  // Build the task handler manager from config. This must run before the
+  // --validate_only short-circuit so that unknown handler names fail validation.
+  carrot::extensions::FactoryContextImpl factory_context(dispatcher);
+  auto manager_result = carrot::nodeagent::BuildTaskHandlerManager(config.task_handlers(),
+                                                                   factory_context);
+  if (!manager_result.ok()) {
+    LOG_ERROR("Task handler config error: {}", manager_result.status().message());
+    return 1;
+  }
+  std::shared_ptr<carrot::nodeagent::TaskHandlerManager> task_handler_manager =
+      std::move(manager_result).value();
+
   if (absl::GetFlag(FLAGS_validate_only)) {
     LOG_INFO("Config validation passed");
     return 0;
@@ -53,7 +71,6 @@ auto main(int argc, char** argv) -> int {
     config.mutable_logging()->set_format(absl::GetFlag(FLAGS_log_format));
   }
 
-  carrot::event::DispatcherSharedPtr dispatcher = std::make_shared<carrot::event::DispatcherImpl>();
   // Signal monitor must be activated before the logger thread, otherwise we might miss the signal.
   carrot::common::SignalMonitor signal_monitor(dispatcher);
 
@@ -64,8 +81,9 @@ auto main(int argc, char** argv) -> int {
 
   carrot::io::TcpListener listener{
       dispatcher, config.tlv_listener().port(),
-      [](carrot::io::Connection& conn) -> std::unique_ptr<carrot::io::ProtocolParser> {
-        auto handler = std::make_unique<carrot::nodeagent::NodeagentTlvHandler>();
+      [task_handler_manager](carrot::io::Connection& conn) -> std::unique_ptr<carrot::io::ProtocolParser> {
+        auto handler =
+            std::make_unique<carrot::nodeagent::NodeagentTlvHandler>(task_handler_manager);
         return std::make_unique<carrot::io::TlvParser>(
             [hdl = std::move(handler), &conn](carrot::io::TlvFrame frame) -> void {
               hdl->HandleFrame(frame, conn);

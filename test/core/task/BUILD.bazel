@@ -1,0 +1,10 @@
+load("//bazel:build_system.bzl", "carrot_cc_test")
+
+carrot_cc_test(
+    name = "task_protocol_test",
+    srcs = ["task_protocol_test.cc"],
+    deps = [
+        "//api/core/task:task_cc_proto",
+        "@googletest//:gtest_main",
+    ],
+)

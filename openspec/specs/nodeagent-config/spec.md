@@ -8,12 +8,17 @@ Protobuf schema and default configuration for the Carrot NodeAgent service: defi
 
 ### Requirement: NodeAgentConfig protobuf schema
 
-The system SHALL define a `NodeAgentConfig` protobuf message in `src/core/config/proto/nodeagent.proto` (package `carrot.config`) with `TlvListener tlv_listener`, `Logging logging`, and reserved-for-future fields `connection_timeout`, `heartbeat_interval`, and `TlsConfig tls`.
+The system SHALL define a `NodeAgentConfig` protobuf message in `api/core/config/nodeagent.proto` (package `carrot.config`) with `TlvListener tlv_listener`, `Logging logging`, `repeated ExtensionConfig task_handlers`, and reserved-for-future fields `connection_timeout`, `heartbeat_interval`, and `TlsConfig tls`.
 
 #### Scenario: Listener and logging sections load into the message
 
 - **WHEN** a `NodeAgentConfig` is loaded from YAML with `tlv_listener` and `logging` sections
 - **THEN** the resulting message SHALL contain the corresponding `TlvListener` and `Logging` values
+
+#### Scenario: Task handler sections load into the message
+
+- **WHEN** a `NodeAgentConfig` is loaded from YAML with a `task_handlers` list containing entries with `name` and `typed_config`
+- **THEN** the resulting message SHALL contain each `ExtensionConfig` entry with its `name` and packed `typed_config`
 
 #### Scenario: TLS fields are reserved for future use
 
@@ -74,7 +79,7 @@ The schema SHALL support future TLS, metrics, and other extensions through reser
 
 ## Protobuf Schema
 
-File: `src/core/config/proto/nodeagent.proto`
+File: `api/core/config/nodeagent.proto`
 
 ```protobuf
 syntax = "proto3";
@@ -82,6 +87,7 @@ syntax = "proto3";
 package carrot.config;
 
 import "google/protobuf/duration.proto";
+import "carrot/config/extensions.proto";
 import "carrot/config/options.proto";
 
 message NodeAgentConfig {
@@ -91,6 +97,7 @@ message NodeAgentConfig {
   google.protobuf.Duration connection_timeout = 3;
   google.protobuf.Duration heartbeat_interval = 4;
   TlsConfig tls = 5;
+  repeated ExtensionConfig task_handlers = 6;
 }
 
 message TlvListener {

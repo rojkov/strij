@@ -1,0 +1,5 @@
+syntax = "proto3";
+
+package carrot.extensions.task_handlers.echo;
+
+message EchoTaskHandlerConfig {}

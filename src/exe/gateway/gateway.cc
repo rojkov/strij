@@ -93,7 +93,7 @@ auto main(int argc, char** argv) -> int {
   carrot::gateway::ResultReceiverStorage storage;
 
   // Node discovery via extension registry
-  carrot::extensions::GatewayFactoryContext factory_context(dispatcher);
+  carrot::extensions::FactoryContextImpl factory_context(dispatcher);
   std::unique_ptr<carrot::extensions::NodeDiscovery> node_discovery;
 
   const auto& ext = config.node_discovery();

@@ -1,18 +1,21 @@
 #include "core/nodeagent/nodeagent_tlv_handler.hh"
 
-#include <string>
-#include <vector>
+#include <utility>
 
 #include "core/io/connection.hh"
 #include "core/io/tlv_frame.hh"
 #include "core/logging/log.hh"
+#include "core/nodeagent/result_sender.hh"
 #include "core/task/task.pb.h"
 
 namespace carrot::nodeagent {
 
+NodeagentTlvHandler::NodeagentTlvHandler(std::shared_ptr<TaskHandlerManager> manager)
+    : manager_(std::move(manager)) {}
+
 void NodeagentTlvHandler::HandleFrame(carrot::io::TlvFrame frame, carrot::io::Connection& conn) {
   if (frame.type_id != carrot::io::TlvFrame::kTaskSubmission) {
-    return; // Only handle task submissions
+    return;
   }
 
   carrot::task::Task task;
@@ -23,16 +26,14 @@ void NodeagentTlvHandler::HandleFrame(carrot::io::TlvFrame frame, carrot::io::Co
     return;
   }
 
-  carrot::task::TaskResult result;
-  result.set_id(task.id());
-  result.set_body(task.body());
+  carrot::extensions::TaskHandler* handler = manager_->GetHandler(task.type());
+  if (handler == nullptr) {
+    LOG_WARNING("No task handler for type '{}'", task.type());
+    return;
+  }
 
-  std::string serialized;
-  result.SerializeToString(&serialized);
-  auto response = carrot::io::SerializeTlvFrame(
-      carrot::io::TlvFrame::kResult,
-      std::as_bytes(std::span(serialized.data(), serialized.size())));
-  conn.Write(response);
+  ConnectionResultSender sender(conn);
+  handler->HandleTask(task, sender);
 }
 
 } // namespace carrot::nodeagent

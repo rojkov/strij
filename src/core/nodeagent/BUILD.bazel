@@ -10,5 +10,38 @@ carrot_cc_library(
         "//src/core/io:connection_lib",
         "//src/core/io:tlv_frame",
         "//src/core/logging:log_lib",
+        "//src/core/nodeagent:result_sender_lib",
+        "//src/core/nodeagent:task_handler_manager_lib",
+    ],
+)
+
+carrot_cc_library(
+    name = "result_sender_lib",
+    srcs = ["result_sender.cc"],
+    hdrs = ["result_sender.hh"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//api/core/task:task_cc_proto",
+        "//src/core/io:connection_lib",
+        "//src/core/io:tlv_frame",
+        "//src/extensions/task_handlers:task_handlers_interface",
+    ],
+)
+
+carrot_cc_library(
+    name = "task_handler_manager_lib",
+    srcs = ["task_handler_manager.cc"],
+    hdrs = ["task_handler_manager.hh"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//api/core/config:config_cc_proto",
+        "//src/core/extensions:extension_registry_lib",
+        "//src/core/extensions:factory_context_lib",
+        "//src/core/logging:log_lib",
+        "//src/extensions/task_handlers:task_handlers_interface",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@protobuf//:protobuf",
     ],
 )

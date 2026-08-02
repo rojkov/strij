@@ -15,7 +15,9 @@
 #include "core/io/tlv_frame.hh"
 #include "core/io/tlv_parser.hh"
 #include "core/nodeagent/nodeagent_tlv_handler.hh"
+#include "core/nodeagent/task_handler_manager.hh"
 #include "core/task/task.pb.h"
+#include "extensions/task_handlers/echo/echo_task_handler.hh"
 #include "gtest/gtest.h"
 
 namespace carrot::nodeagent {
@@ -42,6 +44,13 @@ protected:
     conn_.reset();
     close(fds_[0]);
     close(fds_[1]);
+  }
+
+  auto MakeEchoManager() -> std::shared_ptr<TaskHandlerManager> {
+    auto manager = std::make_shared<TaskHandlerManager>();
+    manager->AddHandler(
+        "echo", std::make_unique<carrot::extensions::task_handlers::EchoTaskHandler>());
+    return manager;
   }
 
   // Reads up to `size` bytes written by the handler into `buf`.
@@ -75,7 +84,7 @@ TEST_F(NodeagentTlvHandlerTest, EchoesTaskAsTaskResult) {
           [this](carrot::event::Completable*, uint8_t, int, std::span<const std::byte> buf,
                  off_t) { ::write(fds_[0], buf.data(), buf.size()); }));
 
-  NodeagentTlvHandler handler;
+  NodeagentTlvHandler handler(MakeEchoManager());
   handler.HandleFrame(
       {.type_id = carrot::io::TlvFrame::kTaskSubmission,
        .value = std::as_bytes(std::span(serialized))},
@@ -105,7 +114,7 @@ TEST_F(NodeagentTlvHandlerTest, DropsMalformedTask) {
   EXPECT_CALL(*dispatcher_, PrepareWrite(::testing::_, ::testing::_, ::testing::_, ::testing::_, 0))
       .Times(0);
 
-  NodeagentTlvHandler handler;
+  NodeagentTlvHandler handler(std::make_shared<TaskHandlerManager>());
   handler.HandleFrame(
       {.type_id = carrot::io::TlvFrame::kTaskSubmission, .value = garbage}, *conn_);
 
@@ -113,6 +122,29 @@ TEST_F(NodeagentTlvHandlerTest, DropsMalformedTask) {
   EXPECT_EQ(ReadWritten(buf), -1);
   // errno should be EAGAIN/EWOULDBLOCK when nothing was written.
   EXPECT_TRUE(errno == EAGAIN || errno == EWOULDBLOCK);
+}
+
+TEST_F(NodeagentTlvHandlerTest, DropsTaskWithNoRegisteredHandler) {
+  carrot::task::Task task;
+  task.set_id("7");
+  task.set_type("unknown");
+  task.set_body("x");
+  std::string serialized;
+  task.SerializeToString(&serialized);
+  auto wire = carrot::io::SerializeTlvFrame(carrot::io::TlvFrame::kTaskSubmission,
+                                std::as_bytes(std::span(serialized.data(), serialized.size())));
+
+  EXPECT_CALL(*dispatcher_, PrepareWrite(::testing::_, ::testing::_, ::testing::_, ::testing::_, 0))
+      .Times(0);
+
+  NodeagentTlvHandler handler(MakeEchoManager());
+  handler.HandleFrame(
+      {.type_id = carrot::io::TlvFrame::kTaskSubmission,
+       .value = std::as_bytes(std::span(serialized))},
+      *conn_);
+
+  std::array<std::byte, 16> buf{};
+  EXPECT_EQ(ReadWritten(buf), -1);
 }
 
 // NOLINTEND(modernize-use-trailing-return-type)

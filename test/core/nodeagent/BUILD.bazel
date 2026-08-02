@@ -9,8 +9,24 @@ carrot_cc_test(
         "//src/core/io:tlv_frame",
         "//src/core/io:tlv_parser_lib",
         "//src/core/nodeagent:nodeagent_tlv_handler_lib",
+        "//src/core/nodeagent:task_handler_manager_lib",
+        "//src/extensions/task_handlers/echo:echo_task_handler_lib",
         "//test/mocks/common:common_mocks_lib",
         "//test/mocks/event:event_mocks_lib",
         "@googletest//:gtest_main",
+    ],
+)
+
+carrot_cc_test(
+    name = "task_handler_manager_test",
+    srcs = ["task_handler_manager_test.cc"],
+    deps = [
+        "//api/core/config:config_cc_proto",
+        "//api/extensions/task_handlers/echo:echo_task_handler_cc_proto",
+        "//src/core/extensions:extension_registry_lib",
+        "//src/core/nodeagent:task_handler_manager_lib",
+        "//test/mocks/extensions:extensions_mocks_lib",
+        "@googletest//:gtest_main",
+        "@protobuf//:protobuf",
     ],
 )

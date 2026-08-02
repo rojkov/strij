@@ -1,0 +1,13 @@
+load("//bazel:build_system.bzl", "carrot_cc_library")
+
+carrot_cc_library(
+    name = "echo_task_handler_lib",
+    srcs = ["echo_task_handler.cc"],
+    hdrs = ["echo_task_handler.hh"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//api/extensions/task_handlers/echo:echo_task_handler_cc_proto",
+        "//src/extensions/task_handlers:task_handlers_interface",
+    ],
+    alwayslink = True,
+)

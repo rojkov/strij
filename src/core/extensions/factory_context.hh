@@ -18,9 +18,9 @@ public:
 
 using FactoryContextPtr = std::unique_ptr<FactoryContext>;
 
-class GatewayFactoryContext : public FactoryContext {
+class FactoryContextImpl : public FactoryContext {
 public:
-  explicit GatewayFactoryContext(event::DispatcherSharedPtr dispatcher);
+  explicit FactoryContextImpl(event::DispatcherSharedPtr dispatcher);
 
   auto Dispatcher() -> event::Dispatcher& override;
   auto Logger() -> logging::Logger& override;

@@ -11,4 +11,8 @@ message Task {
 message TaskResult {
   string id = 1;
   bytes body = 2;
+  // Absence means final. proto3 forbids explicit defaults on optional
+  // fields, so consumers must treat `!has_is_final() || is_final()` as
+  // final; producers of single-shot results may leave it unset.
+  optional bool is_final = 3;
 }

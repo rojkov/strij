@@ -9,10 +9,13 @@ carrot_cc_binary(
         "//api/core/config:config_cc_proto",
         "//api/core/task:task_cc_proto",
         "//src/core/event:dispatcher_impl_lib",
+        "//src/core/extensions:factory_context_lib",
         "//src/core/nodeagent:nodeagent_tlv_handler_lib",
+        "//src/core/nodeagent:task_handler_manager_lib",
         "//src/core/io:tcp_listener_lib",
         "//src/core/io:tlv_parser_lib",
         "//src/core/logging:log_lib",
+        "//src/extensions/task_handlers/echo:echo_task_handler_lib",
         "@abseil-cpp//absl/flags:parse",
     ],
 )
