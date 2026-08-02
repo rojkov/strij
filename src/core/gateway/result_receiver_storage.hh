@@ -36,6 +36,8 @@ public:
   auto size() const -> size_t { return receivers_.size(); }
 
 private:
+  // TODO: how to clean up the storage when connections get dropped? Don't forget about asynchronous
+  // tasks.
   std::unordered_map<std::string, ResultReceiverPtr> receivers_;
 };
 

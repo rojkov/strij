@@ -13,6 +13,7 @@ public:
   virtual ~FactoryContext() = default;
 
   virtual auto Dispatcher() -> event::Dispatcher& PURE;
+  // TODO: Is Logger() really needed?
   virtual auto Logger() -> logging::Logger& PURE;
 };
 
