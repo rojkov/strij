@@ -8,7 +8,7 @@ Checks:
   - 'modernize-*'
   - 'misc-*'
   - '-misc-no-recursion'
-  - 'perforamnce-*'
+  - 'performance-*'
   - 'portability-*'
   - 'readability-*'
 CheckOptions:
