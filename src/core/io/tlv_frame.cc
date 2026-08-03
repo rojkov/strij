@@ -4,7 +4,7 @@
 
 #include <cstring>
 
-namespace carrot::io {
+namespace strij::io {
 
 auto SerializeTlvFrame(uint8_t type_id, std::span<const std::byte> value)
     -> std::vector<std::byte> {
@@ -25,4 +25,4 @@ auto SerializeTlvFrame(uint8_t type_id, std::span<const std::byte> value)
   return frame;
 }
 
-} // namespace carrot::io
+} // namespace strij::io

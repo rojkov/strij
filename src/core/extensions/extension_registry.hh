@@ -4,7 +4,7 @@
 #include <unordered_map>
 #include <vector>
 
-namespace carrot::extensions {
+namespace strij::extensions {
 
 template <typename FactoryInterface> class Registry {
 public:
@@ -36,7 +36,7 @@ private:
   std::unordered_map<std::string, FactoryInterface*> factories_;
 };
 
-} // namespace carrot::extensions
+} // namespace strij::extensions
 
 // Register a factory using static initialization.
 // Use when FactoryClass is a simple name (not namespace-qualified).
@@ -49,7 +49,7 @@ private:
 #define REGISTER_FACTORY(FactoryClass, FactoryInterface)                                           \
   namespace {                                                                                      \
   static void do_register_##FactoryClass() {                                                       \
-    ::carrot::extensions::Registry<FactoryInterface>::instance().RegisterFactory(                  \
+    ::strij::extensions::Registry<FactoryInterface>::instance().RegisterFactory(                  \
         FactoryClass().Name(), new FactoryClass());                                                \
   }                                                                                                \
   static const bool registered_##FactoryClass = (do_register_##FactoryClass(), true);              \
@@ -61,14 +61,14 @@ private:
 //
 // Usage: pass a unique simple name as RegistrarName.
 //   REGISTER_FACTORY_FULLY_QUALIFIED(
-//       carrot::extensions::node_discovery::StaticNodeDiscoveryFactory,
-//       carrot::extensions::NodeDiscoveryFactory,
+//       strij::extensions::node_discovery::StaticNodeDiscoveryFactory,
+//       strij::extensions::NodeDiscoveryFactory,
 //       static_node_discovery_registrar)
 //
 #define REGISTER_FACTORY_FULLY_QUALIFIED(FactoryClass, FactoryInterface, RegistrarName)            \
   namespace {                                                                                      \
   static void do_register_##RegistrarName() {                                                      \
-    ::carrot::extensions::Registry<FactoryInterface>::instance().RegisterFactory(                  \
+    ::strij::extensions::Registry<FactoryInterface>::instance().RegisterFactory(                  \
         FactoryClass().Name(), new FactoryClass());                                                \
   }                                                                                                \
   static const bool registered_##RegistrarName = (do_register_##RegistrarName(), true);            \

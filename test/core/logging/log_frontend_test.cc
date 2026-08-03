@@ -3,7 +3,7 @@
 #include "core/logging/log_frontend.hh"
 #include "gtest/gtest.h"
 
-namespace carrot::logging {
+namespace strij::logging {
 namespace {
 
 using ::testing::_;
@@ -90,4 +90,4 @@ TEST(LogFrontendTest, unpack) {
 }
 
 } // namespace
-} // namespace carrot::logging
+} // namespace strij::logging

@@ -1,12 +1,12 @@
-load("//bazel:build_system.bzl", "carrot_cc_library")
+load("//bazel:build_system.bzl", "strij_cc_library")
 
-carrot_cc_library(
+strij_cc_library(
     name = "result_receiver_storage",
     hdrs = ["result_receiver_storage.hh"],
     visibility = ["//visibility:public"],
 )
 
-carrot_cc_library(
+strij_cc_library(
     name = "http_result_receiver_lib",
     srcs = ["http_result_receiver.cc"],
     hdrs = ["http_result_receiver.hh"],
@@ -17,21 +17,21 @@ carrot_cc_library(
     ],
 )
 
-carrot_cc_library(
+strij_cc_library(
     name = "node_lib",
     srcs = ["node.cc"],
     hdrs = ["node.hh"],
     visibility = ["//visibility:public"],
     deps = [
         "//src/core/io:connection_lib",
-        "//include/carrot/event:command_handler_interface",
-        "//include/carrot/event:completable_interface",
-        "//include/carrot/event:dispatcher_interface",
+        "//include/strij/event:command_handler_interface",
+        "//include/strij/event:completable_interface",
+        "//include/strij/event:dispatcher_interface",
         "//src/core/logging:log_lib",
     ],
 )
 
-carrot_cc_library(
+strij_cc_library(
     name = "node_directory_lib",
     srcs = ["node_directory.cc"],
     hdrs = ["node_directory.hh"],
@@ -39,11 +39,11 @@ carrot_cc_library(
     deps = [
         ":node_lib",
         "//src/core/io:connection_lib",
-        "//include/carrot/event:dispatcher_interface",
+        "//include/strij/event:dispatcher_interface",
     ],
 )
 
-carrot_cc_library(
+strij_cc_library(
     name = "gateway_http_handler_lib",
     srcs = ["gateway_http_handler.cc"],
     hdrs = ["gateway_http_handler.hh"],
@@ -60,7 +60,7 @@ carrot_cc_library(
     ],
 )
 
-carrot_cc_library(
+strij_cc_library(
     name = "gateway_tlv_handler_lib",
     srcs = ["gateway_tlv_handler.cc"],
     hdrs = ["gateway_tlv_handler.hh"],

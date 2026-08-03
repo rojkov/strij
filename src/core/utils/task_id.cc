@@ -6,7 +6,7 @@
 #include <string>
 #include <string_view>
 
-namespace carrot::utils {
+namespace strij::utils {
 namespace {
 
 using namespace std::string_view_literals;
@@ -88,7 +88,7 @@ constexpr std::array kNouns{
     "butter"sv,    "button"sv,    "cabin"sv,     "cable"sv,     "cactus"sv,
     "cafe"sv,      "cage"sv,      "cake"sv,      "camel"sv,     "camera"sv,
     "camp"sv,      "canal"sv,     "candle"sv,    "canyon"sv,    "cargo"sv,
-    "caribou"sv,   "carpet"sv,    "carrot"sv,    "cascade"sv,   "castle"sv,
+    "caribou"sv,   "carpet"sv,    "strij"sv,    "cascade"sv,   "castle"sv,
     "catfish"sv,   "cavern"sv,    "caviar"sv,    "cedar"sv,     "cellar"sv,
     "cello"sv,     "census"sv,    "chalet"sv,    "chalk"sv,     "chamber"sv,
     "champ"sv,     "channel"sv,   "chapel"sv,    "charmer"sv,   "cheese"sv,
@@ -395,4 +395,4 @@ auto GenerateTaskId() -> std::string {
        + randomSuffix();
 }
 
-} // namespace carrot::utils
+} // namespace strij::utils

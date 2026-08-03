@@ -7,12 +7,12 @@
 #include <utility>
 #include <vector>
 
-#include "carrot/event/completable.hh"
-#include "carrot/event/command_handler.hh"
-#include "carrot/event/dispatcher.hh"
+#include "strij/event/completable.hh"
+#include "strij/event/command_handler.hh"
+#include "strij/event/dispatcher.hh"
 #include "core/io/protocol_parser.hh"
 
-namespace carrot::io {
+namespace strij::io {
 
 class Connection;
 
@@ -47,4 +47,4 @@ private:
   size_t write_offset_{0};
 };
 
-} // namespace carrot::io
+} // namespace strij::io

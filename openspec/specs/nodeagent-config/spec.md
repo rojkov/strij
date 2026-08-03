@@ -2,13 +2,13 @@
 
 ## Purpose
 
-Protobuf schema and default configuration for the Carrot NodeAgent service: defines all nodeagent-configurable parameters, their validation constraints and default values, plus cross-field rules such as heartbeat interval validation against the connection timeout.
+Protobuf schema and default configuration for the Strij NodeAgent service: defines all nodeagent-configurable parameters, their validation constraints and default values, plus cross-field rules such as heartbeat interval validation against the connection timeout.
 
 ## Requirements
 
 ### Requirement: NodeAgentConfig protobuf schema
 
-The system SHALL define a `NodeAgentConfig` protobuf message in `api/core/config/nodeagent.proto` (package `carrot.config`) with `TlvListener tlv_listener`, `Logging logging`, `repeated ExtensionConfig task_handlers`, and reserved-for-future fields `connection_timeout`, `heartbeat_interval`, and `TlsConfig tls`.
+The system SHALL define a `NodeAgentConfig` protobuf message in `api/core/config/nodeagent.proto` (package `strij.config`) with `TlvListener tlv_listener`, `Logging logging`, `repeated ExtensionConfig task_handlers`, and reserved-for-future fields `connection_timeout`, `heartbeat_interval`, and `TlsConfig tls`.
 
 #### Scenario: Listener and logging sections load into the message
 
@@ -27,7 +27,7 @@ The system SHALL define a `NodeAgentConfig` protobuf message in `api/core/config
 
 ### Requirement: Field validation constraints
 
-All nodeagent config fields SHALL carry appropriate validation constraints via the custom options `(carrot.config.required)`, `(carrot.config.range_min)`, `(carrot.config.range_max)`, `(carrot.config.enum_values)`, and `(carrot.config.pattern)`.
+All nodeagent config fields SHALL carry appropriate validation constraints via the custom options `(strij.config.required)`, `(strij.config.range_min)`, `(strij.config.range_max)`, `(strij.config.enum_values)`, and `(strij.config.pattern)`.
 
 #### Scenario: Invalid port rejected
 
@@ -84,11 +84,11 @@ File: `api/core/config/nodeagent.proto`
 ```protobuf
 syntax = "proto3";
 
-package carrot.config;
+package strij.config;
 
 import "google/protobuf/duration.proto";
-import "carrot/config/extensions.proto";
-import "carrot/config/options.proto";
+import "strij/config/extensions.proto";
+import "strij/config/options.proto";
 
 message NodeAgentConfig {
   TlvListener tlv_listener = 1;
@@ -104,42 +104,42 @@ message TlvListener {
   string address = 1 [default = "0.0.0.0"];
   uint32 port = 2 [
     default = 9090,
-    (carrot.config.required) = true,
-    (carrot.config.range_min) = "1",
-    (carrot.config.range_max) = "65535"
+    (strij.config.required) = true,
+    (strij.config.range_min) = "1",
+    (strij.config.range_max) = "65535"
   ];
   // RESERVED for future (v2+)
   uint32 max_connections = 3 [
     default = 10000,
-    (carrot.config.range_min) = "1",
-    (carrot.config.range_max) = "1000000"
+    (strij.config.range_min) = "1",
+    (strij.config.range_max) = "1000000"
   ];
   bool reuse_port = 4 [default = true];
   uint32 read_buffer_size = 5 [
     default = 65536,
-    (carrot.config.range_min) = "4096",
-    (carrot.config.range_max) = "1048576"
+    (strij.config.range_min) = "4096",
+    (strij.config.range_max) = "1048576"
   ];
 }
 
 message Logging {
   string level = 1 [
     default = "info",
-    (carrot.config.enum_values) = "trace",
-    (carrot.config.enum_values) = "debug",
-    (carrot.config.enum_values) = "info",
-    (carrot.config.enum_values) = "warn",
-    (carrot.config.enum_values) = "error"
+    (strij.config.enum_values) = "trace",
+    (strij.config.enum_values) = "debug",
+    (strij.config.enum_values) = "info",
+    (strij.config.enum_values) = "warn",
+    (strij.config.enum_values) = "error"
   ];
   string format = 2 [
     default = "text",
-    (carrot.config.enum_values) = "text",
-    (carrot.config.enum_values) = "json"
+    (strij.config.enum_values) = "text",
+    (strij.config.enum_values) = "json"
   ];
   string output = 3 [
     default = "stdout",
-    (carrot.config.enum_values) = "stdout",
-    (carrot.config.enum_values) = "stderr"
+    (strij.config.enum_values) = "stdout",
+    (strij.config.enum_values) = "stderr"
     // "file" reserved for future
   ];
   string file_path = 4;  // Required if output="file" (future)

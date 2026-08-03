@@ -1,29 +1,29 @@
 syntax = "proto3";
 
-package carrot.config;
+package strij.config;
 
 import "google/protobuf/descriptor.proto";
 
 // Shared logging configuration message
 message Logging {
-  string level = 1 [(carrot.config.enum_values) = "trace",
-                    (carrot.config.enum_values) = "debug",
-                    (carrot.config.enum_values) = "info",
-                    (carrot.config.enum_values) = "warn",
-                    (carrot.config.enum_values) = "error"];
-  string format = 2 [(carrot.config.enum_values) = "text",
-                     (carrot.config.enum_values) = "json"];
-  string output = 3 [(carrot.config.enum_values) = "stdout",
-                     (carrot.config.enum_values) = "stderr"];
+  string level = 1 [(strij.config.enum_values) = "trace",
+                    (strij.config.enum_values) = "debug",
+                    (strij.config.enum_values) = "info",
+                    (strij.config.enum_values) = "warn",
+                    (strij.config.enum_values) = "error"];
+  string format = 2 [(strij.config.enum_values) = "text",
+                     (strij.config.enum_values) = "json"];
+  string output = 3 [(strij.config.enum_values) = "stdout",
+                     (strij.config.enum_values) = "stderr"];
   // RESERVED for future: string file_path = 4;  // Required if output="file" (future)
   bool include_source_location = 5;
 }
 
 // Custom validation options for protobuf config fields.
 // Usage:
-//   uint32 port = 1 [(carrot.config.required) = true,
-//                    (carrot.config.range_min) = "1",
-//                    (carrot.config.range_max) = "65535"];
+//   uint32 port = 1 [(strij.config.required) = true,
+//                    (strij.config.range_min) = "1",
+//                    (strij.config.range_max) = "65535"];
 extend google.protobuf.FieldOptions {
   bool required = 50000;
   string range_min = 50001;

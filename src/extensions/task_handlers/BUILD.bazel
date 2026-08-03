@@ -1,6 +1,6 @@
-load("//bazel:build_system.bzl", "carrot_cc_library")
+load("//bazel:build_system.bzl", "strij_cc_library")
 
-carrot_cc_library(
+strij_cc_library(
     name = "task_handlers_interface",
     hdrs = ["task_handlers.hh"],
     visibility = ["//visibility:public"],

@@ -1,9 +1,9 @@
 #pragma once
 
-#include "carrot/common/pure.hh"
-#include "carrot/event/command.hh"
+#include "strij/common/pure.hh"
+#include "strij/event/command.hh"
 
-namespace carrot::event {
+namespace strij::event {
 
 class CommandHandler {
 public:
@@ -18,4 +18,4 @@ public:
   virtual void ProcessCommand(Command cmd) PURE;
 };
 
-} // namespace carrot::event
+} // namespace strij::event

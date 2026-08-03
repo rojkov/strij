@@ -8,17 +8,17 @@
 #include "core/nodeagent/result_sender.hh"
 #include "core/task/task.pb.h"
 
-namespace carrot::nodeagent {
+namespace strij::nodeagent {
 
 NodeagentTlvHandler::NodeagentTlvHandler(std::shared_ptr<TaskHandlerManager> manager)
     : manager_(std::move(manager)) {}
 
-void NodeagentTlvHandler::HandleFrame(carrot::io::TlvFrame frame, carrot::io::Connection& conn) {
-  if (frame.type_id != carrot::io::TlvFrame::kTaskSubmission) {
+void NodeagentTlvHandler::HandleFrame(strij::io::TlvFrame frame, strij::io::Connection& conn) {
+  if (frame.type_id != strij::io::TlvFrame::kTaskSubmission) {
     return;
   }
 
-  carrot::task::Task task;
+  strij::task::Task task;
   // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast)
   if (!task.ParseFromArray(reinterpret_cast<const char*>(frame.value.data()),
                            static_cast<int>(frame.value.size()))) {
@@ -26,7 +26,7 @@ void NodeagentTlvHandler::HandleFrame(carrot::io::TlvFrame frame, carrot::io::Co
     return;
   }
 
-  carrot::extensions::TaskHandler* handler = manager_->GetHandler(task.type());
+  strij::extensions::TaskHandler* handler = manager_->GetHandler(task.type());
   if (handler == nullptr) {
     LOG_WARNING("No task handler for type '{}'", task.type());
     return;
@@ -36,4 +36,4 @@ void NodeagentTlvHandler::HandleFrame(carrot::io::TlvFrame frame, carrot::io::Co
   handler->HandleTask(task, sender);
 }
 
-} // namespace carrot::nodeagent
+} // namespace strij::nodeagent

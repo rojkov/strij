@@ -1,6 +1,6 @@
 ## Why
 
-Carrot's gateway currently reads a static list of node addresses from `node_connections[]` in the config file. This hardcodes node discovery — there is no way to add dynamic sources (etcd, Consul, mDNS, DNS SRV) without forking the code. Users also cannot plug in custom discovery logic. The project needs an Envoy-style extension registry: a compile-time factory pattern with protobuf `Any` config, where users add their own `.cc` files and link them via Bazel.
+Strij's gateway currently reads a static list of node addresses from `node_connections[]` in the config file. This hardcodes node discovery — there is no way to add dynamic sources (etcd, Consul, mDNS, DNS SRV) without forking the code. Users also cannot plug in custom discovery logic. The project needs an Envoy-style extension registry: a compile-time factory pattern with protobuf `Any` config, where users add their own `.cc` files and link them via Bazel.
 
 ## What Changes
 

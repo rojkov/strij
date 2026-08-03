@@ -12,10 +12,10 @@
 
 #include "core/logging/log.hh"
 
-namespace carrot::gateway {
+namespace strij::gateway {
 
 Node::Node(std::string address, event::DispatcherSharedPtr dispatcher,
-           carrot::io::ConnectionFactory factory)
+           strij::io::ConnectionFactory factory)
     : address_{std::move(address)}, dispatcher_{std::move(dispatcher)}, factory_{std::move(factory)} {}
 
 void Node::StartConnect() {
@@ -54,7 +54,7 @@ void Node::StartConnect() {
 void Node::HandleCompletion(uint8_t tag, int res, uint32_t /*flags*/) {
   if (tag == kConnect) {
     if (res == 0) {
-      connection_ = std::make_unique<carrot::io::Connection>(fd_, dispatcher_, this, std::move(factory_));
+      connection_ = std::make_unique<strij::io::Connection>(fd_, dispatcher_, this, std::move(factory_));
       fd_ = -1;
       status_ = Status::kConnected;
       LOG_INFO("Connected to {}", address_);
@@ -74,4 +74,4 @@ void Node::ProcessCommand(event::Command cmd) {
   }
 }
 
-} // namespace carrot::gateway
+} // namespace strij::gateway

@@ -6,7 +6,7 @@
 #include "core/io/protocol_parser.hh"
 #include "core/io/tlv_frame.hh"
 
-namespace carrot::io {
+namespace strij::io {
 
 const size_t kBufferSize{4096};
 
@@ -38,4 +38,4 @@ private:
   std::unique_ptr<std::vector<std::byte>> accumulated_value_{nullptr};
 };
 
-} // namespace carrot::io
+} // namespace strij::io

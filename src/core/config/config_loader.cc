@@ -22,7 +22,7 @@
 #include "core/config/nodeagent.pb.h"
 #include "core/config/options.pb.h"
 
-namespace carrot::config {
+namespace strij::config {
 
 namespace {
 
@@ -245,7 +245,7 @@ auto discoverRepeatedEnvFields(google::protobuf::Message* message,
 }
 
 /// Recursively traverses a protobuf message's fields, discovering and applying environment
-/// variables that match the naming convention (e.g., CARROT_GATEWAY_FIELD_NAME).
+/// variables that match the naming convention (e.g., STRIJ_GATEWAY_FIELD_NAME).
 auto discoverAndApplyEnvVars(google::protobuf::Message* message, const std::string& env_prefix,
                              const std::string& upper_prefix) -> absl::Status {
   const auto* descriptor = message->GetDescriptor();
@@ -285,11 +285,11 @@ auto discoverAndApplyEnvVars(google::protobuf::Message* message, const std::stri
   return absl::OkStatus();
 }
 
-/// Constructs the environment variable prefix for a service (e.g., CARROT_GATEWAY_) and
+/// Constructs the environment variable prefix for a service (e.g., STRIJ_GATEWAY_) and
 /// triggers environment variable discovery and application.
 auto applyEnvOverrides(google::protobuf::Message* message, const std::string& service_prefix)
     -> absl::Status {
-  const std::string env_prefix = absl::StrCat("CARROT_", service_prefix, "_");
+  const std::string env_prefix = absl::StrCat("STRIJ_", service_prefix, "_");
   return discoverAndApplyEnvVars(message, env_prefix, "");
 }
 
@@ -448,8 +448,8 @@ auto extractFieldValue(const google::protobuf::Message& message,
 /// pattern) defined in the field's options.
 auto validateFieldValue(const FieldValueInfo& info, const std::string& field_path,
                         const google::protobuf::FieldOptions& ext_opts) -> absl::Status {
-  if (info.is_numeric_ && ext_opts.HasExtension(carrot::config::range_min)) {
-    std::string min_str = ext_opts.GetExtension(carrot::config::range_min);
+  if (info.is_numeric_ && ext_opts.HasExtension(strij::config::range_min)) {
+    std::string min_str = ext_opts.GetExtension(strij::config::range_min);
     uint64_t min_val = std::stoull(min_str);
     if (info.num_val_ < min_val) {
       return absl::InvalidArgumentError(absl::StrCat("Field '", field_path, "': value ",
@@ -457,8 +457,8 @@ auto validateFieldValue(const FieldValueInfo& info, const std::string& field_pat
     }
   }
 
-  if (info.is_numeric_ && ext_opts.HasExtension(carrot::config::range_max)) {
-    std::string max_str = ext_opts.GetExtension(carrot::config::range_max);
+  if (info.is_numeric_ && ext_opts.HasExtension(strij::config::range_max)) {
+    std::string max_str = ext_opts.GetExtension(strij::config::range_max);
     uint64_t max_val = std::stoull(max_str);
     if (info.num_val_ > max_val) {
       return absl::InvalidArgumentError(absl::StrCat("Field '", field_path, "': value ",
@@ -466,12 +466,12 @@ auto validateFieldValue(const FieldValueInfo& info, const std::string& field_pat
     }
   }
 
-  int enum_count = ext_opts.ExtensionSize(carrot::config::enum_values);
+  int enum_count = ext_opts.ExtensionSize(strij::config::enum_values);
   if (enum_count > 0) {
     bool valid = false;
     std::string allowed_str;
     for (int ei = 0; ei < enum_count; ++ei) {
-      std::string enum_val = ext_opts.GetExtension(carrot::config::enum_values, ei);
+      std::string enum_val = ext_opts.GetExtension(strij::config::enum_values, ei);
       if (ei > 0) {
         allowed_str += ", ";
       }
@@ -487,8 +487,8 @@ auto validateFieldValue(const FieldValueInfo& info, const std::string& field_pat
     }
   }
 
-  if (ext_opts.HasExtension(carrot::config::pattern)) {
-    std::string pattern_str = ext_opts.GetExtension(carrot::config::pattern);
+  if (ext_opts.HasExtension(strij::config::pattern)) {
+    std::string pattern_str = ext_opts.GetExtension(strij::config::pattern);
     try {
       std::regex regexp(pattern_str);
       if (!std::regex_match(info.str_val_, regexp)) {
@@ -547,8 +547,8 @@ auto validateMessage(const google::protobuf::Message& message, const std::string
 
     const auto& ext_opts = field->options();
 
-    if (!has_value && ext_opts.HasExtension(carrot::config::required) &&
-        ext_opts.GetExtension(carrot::config::required)) {
+    if (!has_value && ext_opts.HasExtension(strij::config::required) &&
+        ext_opts.GetExtension(strij::config::required)) {
       return absl::InvalidArgumentError(
           absl::StrCat("Required field '", field_path, "' is not set"));
     }
@@ -595,9 +595,9 @@ auto LoadConfig(const std::string& config_file_path, const std::vector<std::stri
   }
 
   std::string service_prefix;
-  if constexpr (std::is_same_v<T, carrot::config::GatewayConfig>) {
+  if constexpr (std::is_same_v<T, strij::config::GatewayConfig>) {
     service_prefix = "GATEWAY";
-  } else if constexpr (std::is_same_v<T, carrot::config::NodeAgentConfig>) {
+  } else if constexpr (std::is_same_v<T, strij::config::NodeAgentConfig>) {
     service_prefix = "NODEAGENT";
   }
 
@@ -660,4 +660,4 @@ template auto GetDefaultConfig<NodeAgentConfig>() -> NodeAgentConfig;
 template auto ConfigToYaml<GatewayConfig>(const GatewayConfig&) -> std::string;
 template auto ConfigToYaml<NodeAgentConfig>(const NodeAgentConfig&) -> std::string;
 
-} // namespace carrot::config
+} // namespace strij::config

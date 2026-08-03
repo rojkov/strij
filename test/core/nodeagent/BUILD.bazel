@@ -1,6 +1,6 @@
-load("//bazel:build_system.bzl", "carrot_cc_test")
+load("//bazel:build_system.bzl", "strij_cc_test")
 
-carrot_cc_test(
+strij_cc_test(
     name = "nodeagent_tlv_handler_test",
     srcs = ["nodeagent_tlv_handler_test.cc"],
     deps = [
@@ -17,7 +17,7 @@ carrot_cc_test(
     ],
 )
 
-carrot_cc_test(
+strij_cc_test(
     name = "task_handler_manager_test",
     srcs = ["task_handler_manager_test.cc"],
     deps = [

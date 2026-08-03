@@ -8,7 +8,7 @@
 #include "core/io/tlv_parser.hh"
 #include "gtest/gtest.h"
 
-namespace carrot::io {
+namespace strij::io {
 namespace {
 
 auto make_wire_frame(uint8_t type, std::span<const std::byte> value) -> std::vector<std::byte> {
@@ -276,4 +276,4 @@ TEST_F(TlvParserTest, MultipleFramesByteByByte) {
 // NOLINTEND(modernize-use-trailing-return-type)
 
 } // namespace
-} // namespace carrot::io
+} // namespace strij::io

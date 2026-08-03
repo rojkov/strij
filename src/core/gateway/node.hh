@@ -6,19 +6,19 @@
 
 #include <netinet/in.h>
 
-#include "carrot/event/command_handler.hh"
-#include "carrot/event/completable.hh"
-#include "carrot/event/dispatcher.hh"
+#include "strij/event/command_handler.hh"
+#include "strij/event/completable.hh"
+#include "strij/event/dispatcher.hh"
 #include "core/io/connection.hh"
 
-namespace carrot::gateway {
+namespace strij::gateway {
 
 class Node : public event::Completable, public event::CommandHandler {
 public:
   enum class Status : uint8_t { kInitial, kConnecting, kConnected, kDisconnected };
 
   Node(std::string address, event::DispatcherSharedPtr dispatcher,
-       carrot::io::ConnectionFactory factory);
+       strij::io::ConnectionFactory factory);
   ~Node() override = default;
 
   Node(const Node&) = delete;
@@ -34,7 +34,7 @@ public:
   void ProcessCommand(event::Command cmd) override;
 
   auto GetStatus() const -> Status { return status_; }
-  auto GetConnection() -> carrot::io::Connection* { return connection_.get(); }
+  auto GetConnection() -> strij::io::Connection* { return connection_.get(); }
   auto GetAddress() const -> const std::string& { return address_; }
   auto IsAvailable() const -> bool { return status_ == Status::kConnected; }
 
@@ -46,8 +46,8 @@ private:
   int fd_{-1};
   struct sockaddr_in connect_addr_{};
   event::DispatcherSharedPtr dispatcher_;
-  carrot::io::ConnectionFactory factory_;
-  std::unique_ptr<carrot::io::Connection> connection_;
+  strij::io::ConnectionFactory factory_;
+  std::unique_ptr<strij::io::Connection> connection_;
 };
 
-} // namespace carrot::gateway
+} // namespace strij::gateway

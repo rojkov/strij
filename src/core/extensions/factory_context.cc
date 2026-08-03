@@ -1,6 +1,6 @@
 #include "core/extensions/factory_context.hh"
 
-namespace carrot::extensions {
+namespace strij::extensions {
 
 FactoryContextImpl::FactoryContextImpl(event::DispatcherSharedPtr dispatcher)
     : dispatcher_(std::move(dispatcher)) {}
@@ -13,4 +13,4 @@ auto FactoryContextImpl::Logger() -> logging::Logger& {
   return logging::Logger::GetInstance();
 }
 
-} // namespace carrot::extensions
+} // namespace strij::extensions

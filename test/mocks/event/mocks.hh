@@ -1,10 +1,10 @@
 #pragma once
 
-#include "carrot/event/completable.hh"
-#include "carrot/event/dispatcher.hh"
+#include "strij/event/completable.hh"
+#include "strij/event/dispatcher.hh"
 #include "gmock/gmock.h"
 
-namespace carrot::event {
+namespace strij::event {
 
 class MockDispatcher : public Dispatcher {
 public:
@@ -25,4 +25,4 @@ public:
               (override));
 };
 
-} // namespace carrot::event
+} // namespace strij::event

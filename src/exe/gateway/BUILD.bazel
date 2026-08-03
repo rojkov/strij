@@ -1,6 +1,6 @@
-load("//bazel:build_system.bzl", "carrot_cc_binary")
+load("//bazel:build_system.bzl", "strij_cc_binary")
 
-carrot_cc_binary(
+strij_cc_binary(
     name = "gateway",
     srcs = ["gateway.cc"],
     deps = [

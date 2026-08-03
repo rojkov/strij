@@ -4,9 +4,9 @@
 #include <memory>
 #include <span>
 
-#include "carrot/common/pure.hh"
+#include "strij/common/pure.hh"
 
-namespace carrot::io {
+namespace strij::io {
 
 class ProtocolParser {
 public:
@@ -37,4 +37,4 @@ public:
 
 using ProtocolParserPtr = std::unique_ptr<ProtocolParser>;
 
-} // namespace carrot::io
+} // namespace strij::io

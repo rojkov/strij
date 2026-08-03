@@ -9,7 +9,7 @@
 #include "core/task/task.pb.h"
 #include "gtest/gtest.h"
 
-namespace carrot::io {
+namespace strij::io {
 namespace {
 
 class SerializeTlvFrameTest : public ::testing::Test {};
@@ -53,7 +53,7 @@ TEST_F(SerializeTlvFrameTest, SerializesEmptyValue) {
 }
 
 TEST_F(SerializeTlvFrameTest, RoundTripsSerializedTaskThroughTlvParser) {
-  carrot::task::Task task;
+  strij::task::Task task;
   task.set_id("42");
   task.set_type("echo");
   task.set_body("hello");
@@ -75,7 +75,7 @@ TEST_F(SerializeTlvFrameTest, RoundTripsSerializedTaskThroughTlvParser) {
   EXPECT_EQ(received_frames[0].type_id, TlvFrame::kTaskSubmission);
   EXPECT_EQ(received_frames[0].value.size(), serialized.size());
 
-  carrot::task::Task parsed;
+  strij::task::Task parsed;
   ASSERT_TRUE(parsed.ParseFromArray(received_frames[0].value.data(),
                                     static_cast<int>(received_frames[0].value.size())));
   EXPECT_EQ(parsed.id(), "42");
@@ -86,4 +86,4 @@ TEST_F(SerializeTlvFrameTest, RoundTripsSerializedTaskThroughTlvParser) {
 // NOLINTEND(modernize-use-trailing-return-type)
 
 } // namespace
-} // namespace carrot::io
+} // namespace strij::io

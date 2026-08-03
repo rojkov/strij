@@ -3,12 +3,12 @@
 #include <memory>
 #include <vector>
 
-#include "carrot/event/command_handler.hh"
-#include "carrot/event/completable.hh"
-#include "carrot/event/dispatcher.hh"
+#include "strij/event/command_handler.hh"
+#include "strij/event/completable.hh"
+#include "strij/event/dispatcher.hh"
 #include "core/io/connection.hh"
 
-namespace carrot::io {
+namespace strij::io {
 
 class TcpListener : public event::Completable, public event::CommandHandler {
 public:
@@ -26,4 +26,4 @@ private:
   std::vector<std::unique_ptr<Connection>> owned_connections_;
 };
 
-} // namespace carrot::io
+} // namespace strij::io

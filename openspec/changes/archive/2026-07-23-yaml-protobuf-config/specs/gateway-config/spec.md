@@ -1,7 +1,7 @@
 # Gateway Config Capability
 
 ## Overview
-Protobuf schema and default configuration for the Carrot Gateway service.
+Protobuf schema and default configuration for the Strij Gateway service.
 
 ## Protobuf Schema
 File: `src/core/config/proto/gateway.proto`
@@ -9,10 +9,10 @@ File: `src/core/config/proto/gateway.proto`
 ```protobuf
 syntax = "proto3";
 
-package carrot.config;
+package strij.config;
 
 import "google/protobuf/duration.proto";
-import "carrot/config/options.proto";
+import "strij/config/options.proto";
 
 message GatewayConfig {
   HttpListener http_listener = 1;
@@ -28,60 +28,60 @@ message HttpListener {
   string address = 1 [default = "0.0.0.0"];
   uint32 port = 2 [
     default = 8081,
-    (carrot.config.required) = true,
-    (carrot.config.range_min) = "1",
-    (carrot.config.range_max) = "65535"
+    (strij.config.required) = true,
+    (strij.config.range_min) = "1",
+    (strij.config.range_max) = "65535"
   ];
   // RESERVED for future (v2+)
   uint32 max_connections = 3 [
     default = 10000,
-    (carrot.config.range_min) = "1",
-    (carrot.config.range_max) = "1000000"
+    (strij.config.range_min) = "1",
+    (strij.config.range_max) = "1000000"
   ];
   bool reuse_port = 4 [default = true];
 }
 
 message NodeConnection {
   string address = 1 [
-    (carrot.config.required) = true,
-    (carrot.config.pattern) = "^[^:]+:\\d+$"
+    (strij.config.required) = true,
+    (strij.config.pattern) = "^[^:]+:\\d+$"
   ];
   // RESERVED for future (v2+): NodeDirectory doesn't use these yet
   uint32 connect_timeout_ms = 2 [
     default = 5000,
-    (carrot.config.range_min) = "100",
-    (carrot.config.range_max) = "300000"
+    (strij.config.range_min) = "100",
+    (strij.config.range_max) = "300000"
   ];
   uint32 max_reconnect_attempts = 3 [
     default = 3,
-    (carrot.config.range_min) = "0",
-    (carrot.config.range_max) = "100"
+    (strij.config.range_min) = "0",
+    (strij.config.range_max) = "100"
   ];
   uint32 reconnect_backoff_ms = 4 [
     default = 1000,
-    (carrot.config.range_min) = "100",
-    (carrot.config.range_max) = "60000"
+    (strij.config.range_min) = "100",
+    (strij.config.range_max) = "60000"
   ];
 }
 
 message Logging {
   string level = 1 [
     default = "info",
-    (carrot.config.enum_values) = "trace",
-    (carrot.config.enum_values) = "debug",
-    (carrot.config.enum_values) = "info",
-    (carrot.config.enum_values) = "warn",
-    (carrot.config.enum_values) = "error"
+    (strij.config.enum_values) = "trace",
+    (strij.config.enum_values) = "debug",
+    (strij.config.enum_values) = "info",
+    (strij.config.enum_values) = "warn",
+    (strij.config.enum_values) = "error"
   ];
   string format = 2 [
     default = "text",
-    (carrot.config.enum_values) = "text",
-    (carrot.config.enum_values) = "json"
+    (strij.config.enum_values) = "text",
+    (strij.config.enum_values) = "json"
   ];
   string output = 3 [
     default = "stdout",
-    (carrot.config.enum_values) = "stdout",
-    (carrot.config.enum_values) = "stderr"
+    (strij.config.enum_values) = "stdout",
+    (strij.config.enum_values) = "stderr"
     // "file" reserved for future
   ];
   string file_path = 4;  // Required if output="file" (future)
@@ -131,7 +131,7 @@ message TlsConfig {
 ## Dependencies
 - `yaml-config-loader` capability (for loading)
 - `protobuf` with `google/protobuf/duration.proto`
-- Custom options: `carrot/config/options.proto`
+- Custom options: `strij/config/options.proto`
 
 ## Testing
 - Unit test: Load default config (no YAML) → valid with warnings

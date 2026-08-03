@@ -5,10 +5,10 @@
 
 #include "absl/base/thread_annotations.h"
 #include "absl/synchronization/mutex.h"
-#include "carrot/event/dispatcher.hh"
+#include "strij/event/dispatcher.hh"
 #include "core/logging/log_frontend.hh"
 
-namespace carrot::logging {
+namespace strij::logging {
 
 class Logger {
 public:
@@ -31,4 +31,4 @@ private:
 
 inline thread_local LogFrontend* Logger::local_context_ = nullptr;
 
-} // namespace carrot::logging
+} // namespace strij::logging

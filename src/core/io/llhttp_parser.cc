@@ -5,7 +5,7 @@
 
 #include "core/logging/log.hh"
 
-namespace carrot::io {
+namespace strij::io {
 
 LlhttpParser::LlhttpParser(std::move_only_function<void(HttpRequest)>&& on_message)
     : on_message_{std::move(on_message)}, active_chunk_{std::make_unique<Chunk>()} {
@@ -148,4 +148,4 @@ auto LlhttpParser::on_message_complete(llhttp_t* parser) -> int {
   return obj->onMessageComplete(parser);
 }
 
-} // namespace carrot::io
+} // namespace strij::io

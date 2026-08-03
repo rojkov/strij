@@ -32,7 +32,7 @@ src/core/config/proto/
 #include <unordered_map>
 #include <vector>
 
-namespace carrot::extensions {
+namespace strij::extensions {
 
 template <typename FactoryInterface>
 class Registry {
@@ -65,7 +65,7 @@ private:
   std::unordered_map<std::string, FactoryInterface*> factories_;
 };
 
-} // namespace carrot::extensions
+} // namespace strij::extensions
 ```
 
 ## Registration Macro
@@ -76,7 +76,7 @@ private:
   namespace {                                                                     \
   static struct FactoryClass##_Registrar {                                        \
     FactoryClass##_Registrar() {                                                  \
-      ::carrot::extensions::Registry<FactoryInterface>::instance().registerFactory( \
+      ::strij::extensions::Registry<FactoryInterface>::instance().registerFactory( \
           FactoryClass().name(), new FactoryClass());                             \
     }                                                                             \
   } registrar_##FactoryClass;                                                     \
@@ -91,10 +91,10 @@ Static initialization registers each factory into the singleton registry at prog
 // src/core/extensions/factory_context.hh
 #pragma once
 
-#include "include/carrot/event/dispatcher.hh"
+#include "include/strij/event/dispatcher.hh"
 #include "src/core/logging/logger.hh"
 
-namespace carrot::extensions {
+namespace strij::extensions {
 
 class FactoryContext {
 public:
@@ -113,7 +113,7 @@ private:
   event::DispatcherSharedPtr dispatcher_;
 };
 
-} // namespace carrot::extensions
+} // namespace strij::extensions
 ```
 
 ## ExtensionConfig Protobuf
@@ -121,7 +121,7 @@ private:
 ```protobuf
 // src/core/config/proto/extensions.proto
 syntax = "proto3";
-package carrot.config;
+package strij.config;
 
 import "google/protobuf/any.proto";
 
@@ -159,7 +159,7 @@ message GatewayConfig {
 #include "src/core/extensions/factory_context.hh"
 #include "src/core/extensions/extension_registry.hh"
 
-namespace carrot::extensions {
+namespace strij::extensions {
 
 struct NodeInfo {
   std::string address;
@@ -182,7 +182,7 @@ public:
                       FactoryContext& context) -> std::unique_ptr<NodeDiscovery> = 0;
 };
 
-} // namespace carrot::extensions
+} // namespace strij::extensions
 ```
 
 ## StaticNodeDiscovery (built-in)
@@ -193,7 +193,7 @@ public:
 
 #include "src/extensions/node_discovery/node_discovery.hh"
 
-namespace carrot::extensions::node_discovery {
+namespace strij::extensions::node_discovery {
 
 class StaticNodeDiscovery : public NodeDiscovery {
 public:
@@ -212,7 +212,7 @@ public:
               FactoryContext& context) -> std::unique_ptr<NodeDiscovery> override;
 };
 
-} // namespace carrot::extensions::node_discovery
+} // namespace strij::extensions::node_discovery
 ```
 
 The factory unpacks `StaticNodeDiscoveryConfig` from the `google.protobuf.Any`, validates that `addresses` is non-empty, and returns a `StaticNodeDiscovery`. On `start()`, it immediately invokes the callback with the configured addresses.

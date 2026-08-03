@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Provide compile-time extension registration infrastructure for Carrot, following the Envoy proxy pattern. Extensions are registered via a static macro, looked up by name from a typed registry, and configured via protobuf `Any`.
+Provide compile-time extension registration infrastructure for Strij, following the Envoy proxy pattern. Extensions are registered via a static macro, looked up by name from a typed registry, and configured via protobuf `Any`.
 
 ## MODIFIED Requirements
 

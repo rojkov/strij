@@ -1,25 +1,25 @@
-load("//bazel:build_system.bzl", "carrot_cc_library")
+load("//bazel:build_system.bzl", "strij_cc_library")
 
-carrot_cc_library(
+strij_cc_library(
     name = "tlv_frame",
     srcs = ["tlv_frame.cc"],
     hdrs = ["tlv_frame.hh"],
     visibility = ["//visibility:public"],
 )
 
-carrot_cc_library(
+strij_cc_library(
     name = "protocol_parser",
     hdrs = ["protocol_parser.hh"],
     visibility = ["//visibility:public"],
 )
 
-carrot_cc_library(
+strij_cc_library(
     name = "chunk_lib",
     srcs = ["chunk.cc"],
     hdrs = ["chunk.hh"],
 )
 
-carrot_cc_library(
+strij_cc_library(
     name = "llhttp_parser_lib",
     srcs = ["llhttp_parser.cc"],
     hdrs = ["llhttp_parser.hh"],
@@ -32,7 +32,7 @@ carrot_cc_library(
     ],
 )
 
-carrot_cc_library(
+strij_cc_library(
     name = "tlv_parser_lib",
     srcs = ["tlv_parser.cc"],
     hdrs = ["tlv_parser.hh"],
@@ -44,20 +44,20 @@ carrot_cc_library(
     ],
 )
 
-carrot_cc_library(
+strij_cc_library(
     name = "connection_lib",
     srcs = ["connection.cc"],
     hdrs = ["connection.hh"],
     visibility = ["//visibility:public"],
     deps = [
         ":protocol_parser",
-        "//include/carrot/event:command_handler_interface",
-        "//include/carrot/event:completable_interface",
-        "//include/carrot/event:dispatcher_interface",
+        "//include/strij/event:command_handler_interface",
+        "//include/strij/event:completable_interface",
+        "//include/strij/event:dispatcher_interface",
     ],
 )
 
-carrot_cc_library(
+strij_cc_library(
     name = "tcp_listener_lib",
     srcs = ["tcp_listener.cc"],
     hdrs = ["tcp_listener.hh"],

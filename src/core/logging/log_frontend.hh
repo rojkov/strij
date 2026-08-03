@@ -9,11 +9,11 @@
 #include <tuple>
 #include <type_traits>
 
-#include "carrot/event/completable.hh"
-#include "carrot/event/dispatcher.hh"
+#include "strij/event/completable.hh"
+#include "strij/event/dispatcher.hh"
 #include "rigtorp/SPSCQueue.h"
 
-namespace carrot::logging {
+namespace strij::logging {
 
 struct LogEntry {
   void (*format_fn_)(const char* fmt_str, const std::byte* data, std::string& out);
@@ -109,4 +109,4 @@ private:
   event::DispatcherSharedPtr dispatcher_;
 };
 
-} // namespace carrot::logging
+} // namespace strij::logging

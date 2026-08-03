@@ -3,10 +3,10 @@
 #include <array>
 #include <cstddef>
 
-#include "carrot/event/command_handler.hh"
+#include "strij/event/command_handler.hh"
 #include "core/io/protocol_parser.hh"
 
-namespace carrot::io {
+namespace strij::io {
 
 class TrivialParser final : public ProtocolParser {
 public:
@@ -19,12 +19,12 @@ private:
   std::array<std::byte, 128> buf_{};
 };
 
-} // namespace carrot::io
+} // namespace strij::io
 
-namespace carrot::event {
+namespace strij::event {
 
 struct DummyOwner final : public CommandHandler {
   void ProcessCommand(Command /*cmd*/) override {}
 };
 
-} // namespace carrot::event
+} // namespace strij::event

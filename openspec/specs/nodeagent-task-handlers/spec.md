@@ -7,7 +7,7 @@ Defines the pluggable task handler extension category for the nodeagent: the `Ta
 ## Requirements
 
 ### Requirement: TaskHandler interface
-The system SHALL define an abstract `TaskHandler` interface in the `carrot::extensions` namespace with a single pure virtual `HandleTask(const carrot::task::Task& task, ResultSender& sender)`. The handler SHALL process the task and deliver zero or more `TaskResult` messages to the originating connection through the provided `ResultSender`. A synchronous handler SHALL deliver its result before `HandleTask` returns.
+The system SHALL define an abstract `TaskHandler` interface in the `strij::extensions` namespace with a single pure virtual `HandleTask(const strij::task::Task& task, ResultSender& sender)`. The handler SHALL process the task and deliver zero or more `TaskResult` messages to the originating connection through the provided `ResultSender`. A synchronous handler SHALL deliver its result before `HandleTask` returns.
 
 #### Scenario: Echo handler delivers a result synchronously
 - **WHEN** `HandleTask(task, sender)` is called on a task handler

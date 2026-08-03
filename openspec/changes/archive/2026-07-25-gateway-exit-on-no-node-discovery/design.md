@@ -52,4 +52,4 @@ if (!config.has_node_discovery()) {
 
 - **Breaking change**: Existing configs using only `node_connections` will fail to start. Users must add a `node_discovery` section. Mitigation: clear error message with example config snippet.
 - **`--node_address` flag removal**: Scripts and deployments using this flag will break. Mitigation: flag already had a note saying "would need repeated flag support" — unlikely to be heavily used. Document in release notes.
-- **`gateway.yaml` in repo root**: The default dev config uses legacy `node_connections` — must be updated to use `node_discovery: { name: "static", ... }` so `carrot` still works out of the box.
+- **`gateway.yaml` in repo root**: The default dev config uses legacy `node_connections` — must be updated to use `node_discovery: { name: "static", ... }` so `strij` still works out of the box.

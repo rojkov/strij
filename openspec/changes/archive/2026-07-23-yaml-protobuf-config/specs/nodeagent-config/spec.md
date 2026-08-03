@@ -1,7 +1,7 @@
 # NodeAgent Config Capability
 
 ## Overview
-Protobuf schema and default configuration for the Carrot NodeAgent service.
+Protobuf schema and default configuration for the Strij NodeAgent service.
 
 ## Protobuf Schema
 File: `src/core/config/proto/nodeagent.proto`
@@ -9,10 +9,10 @@ File: `src/core/config/proto/nodeagent.proto`
 ```protobuf
 syntax = "proto3";
 
-package carrot.config;
+package strij.config;
 
 import "google/protobuf/duration.proto";
-import "carrot/config/options.proto";
+import "strij/config/options.proto";
 
 message NodeAgentConfig {
   TlvListener tlv_listener = 1;
@@ -27,42 +27,42 @@ message TlvListener {
   string address = 1 [default = "0.0.0.0"];
   uint32 port = 2 [
     default = 9090,
-    (carrot.config.required) = true,
-    (carrot.config.range_min) = "1",
-    (carrot.config.range_max) = "65535"
+    (strij.config.required) = true,
+    (strij.config.range_min) = "1",
+    (strij.config.range_max) = "65535"
   ];
   // RESERVED for future (v2+)
   uint32 max_connections = 3 [
     default = 10000,
-    (carrot.config.range_min) = "1",
-    (carrot.config.range_max) = "1000000"
+    (strij.config.range_min) = "1",
+    (strij.config.range_max) = "1000000"
   ];
   bool reuse_port = 4 [default = true];
   uint32 read_buffer_size = 5 [
     default = 65536,
-    (carrot.config.range_min) = "4096",
-    (carrot.config.range_max) = "1048576"
+    (strij.config.range_min) = "4096",
+    (strij.config.range_max) = "1048576"
   ];
 }
 
 message Logging {
   string level = 1 [
     default = "info",
-    (carrot.config.enum_values) = "trace",
-    (carrot.config.enum_values) = "debug",
-    (carrot.config.enum_values) = "info",
-    (carrot.config.enum_values) = "warn",
-    (carrot.config.enum_values) = "error"
+    (strij.config.enum_values) = "trace",
+    (strij.config.enum_values) = "debug",
+    (strij.config.enum_values) = "info",
+    (strij.config.enum_values) = "warn",
+    (strij.config.enum_values) = "error"
   ];
   string format = 2 [
     default = "text",
-    (carrot.config.enum_values) = "text",
-    (carrot.config.enum_values) = "json"
+    (strij.config.enum_values) = "text",
+    (strij.config.enum_values) = "json"
   ];
   string output = 3 [
     default = "stdout",
-    (carrot.config.enum_values) = "stdout",
-    (carrot.config.enum_values) = "stderr"
+    (strij.config.enum_values) = "stdout",
+    (strij.config.enum_values) = "stderr"
     // "file" reserved for future
   ];
   string file_path = 4;  // Required if output="file" (future)
@@ -110,7 +110,7 @@ message TlsConfig {
 ## Dependencies
 - `yaml-config-loader` capability (for loading)
 - `protobuf` with `google/protobuf/duration.proto`
-- Custom options: `carrot/config/options.proto`
+- Custom options: `strij/config/options.proto`
 
 ## Testing
 - Unit test: Load default config (no YAML) → valid with warnings

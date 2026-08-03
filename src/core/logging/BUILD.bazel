@@ -1,18 +1,18 @@
-load("//bazel:build_system.bzl", "carrot_cc_library")
+load("//bazel:build_system.bzl", "strij_cc_library")
 
-carrot_cc_library(
+strij_cc_library(
     name = "log_frontend_lib",
     srcs = ["log_frontend.cc"],
     hdrs = ["log_frontend.hh"],
     visibility = ["//visibility:public"],
     deps = [
-        "//include/carrot/event:completable_interface",
-        "//include/carrot/event:dispatcher_interface",
+        "//include/strij/event:completable_interface",
+        "//include/strij/event:dispatcher_interface",
         "//rigtorp:spsc_queue_lib",
     ],
 )
 
-carrot_cc_library(
+strij_cc_library(
     name = "logger_lib",
     srcs = ["logger.cc"],
     hdrs = ["logger.hh"],
@@ -24,7 +24,7 @@ carrot_cc_library(
     ],
 )
 
-carrot_cc_library(
+strij_cc_library(
     name = "log_lib",
     hdrs = ["log.hh"],
     visibility = ["//visibility:public"],

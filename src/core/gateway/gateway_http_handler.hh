@@ -10,7 +10,7 @@
 #include "core/io/connection.hh"
 #include "core/io/llhttp_parser.hh"
 
-namespace carrot::gateway {
+namespace strij::gateway {
 
 // Parses a task type from a request path of the form "/tasks/{type}".
 // Returns std::nullopt if the path does not start with "/tasks/".
@@ -21,15 +21,15 @@ auto ParseTaskType(std::string_view path) -> std::optional<std::string_view>;
 class GatewayHttpHandler {
 public:
   GatewayHttpHandler(NodeDirectory& node_directory, ResultReceiverStorage& storage,
-                     std::unique_ptr<ResultReceiver> (*make_receiver)(carrot::io::Connection& conn))
+                     std::unique_ptr<ResultReceiver> (*make_receiver)(strij::io::Connection& conn))
       : node_directory_{node_directory}, storage_{storage}, make_receiver_{make_receiver} {}
 
-  void HandleMessage(carrot::io::HttpRequest request, carrot::io::Connection& conn);
+  void HandleMessage(strij::io::HttpRequest request, strij::io::Connection& conn);
 
 private:
   NodeDirectory& node_directory_;
   ResultReceiverStorage& storage_;
-  std::unique_ptr<ResultReceiver> (*make_receiver_)(carrot::io::Connection& conn);
+  std::unique_ptr<ResultReceiver> (*make_receiver_)(strij::io::Connection& conn);
 };
 
-} // namespace carrot::gateway
+} // namespace strij::gateway

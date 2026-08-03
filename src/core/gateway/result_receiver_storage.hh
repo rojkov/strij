@@ -6,9 +6,9 @@
 #include <string>
 #include <unordered_map>
 
-#include "carrot/common/pure.hh"
+#include "strij/common/pure.hh"
 
-namespace carrot::gateway {
+namespace strij::gateway {
 
 class ResultReceiver {
 public:
@@ -41,4 +41,4 @@ private:
   std::unordered_map<std::string, ResultReceiverPtr> receivers_;
 };
 
-} // namespace carrot::gateway
+} // namespace strij::gateway

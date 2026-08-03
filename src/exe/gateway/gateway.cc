@@ -39,14 +39,14 @@ auto main(int argc, char** argv) -> int {
 
   // Load configuration
   auto config_result =
-      carrot::config::LoadConfig<carrot::config::GatewayConfig>(absl::GetFlag(FLAGS_config_file));
+      strij::config::LoadConfig<strij::config::GatewayConfig>(absl::GetFlag(FLAGS_config_file));
 
   if (!config_result.ok()) {
     LOG_ERROR("Config error: {}", config_result.status().message());
     return 1;
   }
 
-  carrot::config::GatewayConfig config = std::move(config_result).value();
+  strij::config::GatewayConfig config = std::move(config_result).value();
 
   // Validate node_discovery extension is configured
   if (!config.has_node_discovery()) {
@@ -55,7 +55,7 @@ auto main(int argc, char** argv) -> int {
               "  node_discovery:\n"
               "    name: \"static\"\n"
               "    typed_config:\n"
-              "      \"@type\": \"type.googleapis.com/carrot.config."
+              "      \"@type\": \"type.googleapis.com/strij.config."
               "StaticNodeDiscoveryConfig\"\n"
               "      addresses: [\"127.0.0.1:9090\"]");
     return 1;
@@ -80,25 +80,25 @@ auto main(int argc, char** argv) -> int {
     config.mutable_logging()->set_format(absl::GetFlag(FLAGS_log_format));
   }
 
-  carrot::event::DispatcherSharedPtr dispatcher = std::make_shared<carrot::event::DispatcherImpl>();
-  carrot::common::SignalMonitor signal_monitor(dispatcher);
+  strij::event::DispatcherSharedPtr dispatcher = std::make_shared<strij::event::DispatcherImpl>();
+  strij::common::SignalMonitor signal_monitor(dispatcher);
 
-  auto& logger = carrot::logging::Logger::GetInstance();
+  auto& logger = strij::logging::Logger::GetInstance();
   logger.Run();
   LOG_REGISTER_THREAD();
 
   // Set log level from config
   // Note: Logger::GetInstance().SetLogLevel(config.logging().level());  // if available
 
-  carrot::gateway::ResultReceiverStorage storage;
+  strij::gateway::ResultReceiverStorage storage;
 
   // Node discovery via extension registry
-  carrot::extensions::FactoryContextImpl factory_context(dispatcher);
-  std::unique_ptr<carrot::extensions::NodeDiscovery> node_discovery;
+  strij::extensions::FactoryContextImpl factory_context(dispatcher);
+  std::unique_ptr<strij::extensions::NodeDiscovery> node_discovery;
 
   const auto& ext = config.node_discovery();
   auto* factory =
-      carrot::extensions::Registry<carrot::extensions::NodeDiscoveryFactory>::instance().GetFactory(
+      strij::extensions::Registry<strij::extensions::NodeDiscoveryFactory>::instance().GetFactory(
           ext.name());
   if (factory == nullptr) {
     LOG_ERROR("Node discovery extension '{}' not found. "
@@ -121,35 +121,35 @@ auto main(int argc, char** argv) -> int {
 
   // Node directory with async connect
   auto connection_factory =
-      [&storage](carrot::io::Connection& conn) -> std::unique_ptr<carrot::io::ProtocolParser> {
-    auto handler = std::make_unique<carrot::gateway::GatewayTlvHandler>(storage);
-    return std::make_unique<carrot::io::TlvParser>(
-        [hdl = std::move(handler), &conn](carrot::io::TlvFrame frame) -> void {
+      [&storage](strij::io::Connection& conn) -> std::unique_ptr<strij::io::ProtocolParser> {
+    auto handler = std::make_unique<strij::gateway::GatewayTlvHandler>(storage);
+    return std::make_unique<strij::io::TlvParser>(
+        [hdl = std::move(handler), &conn](strij::io::TlvFrame frame) -> void {
           hdl->HandleFrame(frame, conn);
         });
   };
 
   std::vector<std::string> node_addresses;
-  node_discovery->Start([&node_addresses](std::vector<carrot::extensions::NodeInfo> nodes) -> void {
+  node_discovery->Start([&node_addresses](std::vector<strij::extensions::NodeInfo> nodes) -> void {
     for (auto& node : nodes) {
       node_addresses.push_back(std::move(node.address));
     }
   });
 
-  carrot::gateway::NodeDirectory node_directory{dispatcher, node_addresses,
+  strij::gateway::NodeDirectory node_directory{dispatcher, node_addresses,
                                                 std::move(connection_factory)};
   node_directory.StartConnectAll();
 
-  carrot::io::TcpListener http_listener{
+  strij::io::TcpListener http_listener{
       dispatcher, config.http_listener().port(),
-      [&](carrot::io::Connection& conn) -> std::unique_ptr<carrot::io::ProtocolParser> {
-        auto handler = std::make_unique<carrot::gateway::GatewayHttpHandler>(
+      [&](strij::io::Connection& conn) -> std::unique_ptr<strij::io::ProtocolParser> {
+        auto handler = std::make_unique<strij::gateway::GatewayHttpHandler>(
             node_directory, storage,
-            [](carrot::io::Connection& conn) -> std::unique_ptr<carrot::gateway::ResultReceiver> {
-              return std::make_unique<carrot::gateway::HttpResultReceiver>(conn);
+            [](strij::io::Connection& conn) -> std::unique_ptr<strij::gateway::ResultReceiver> {
+              return std::make_unique<strij::gateway::HttpResultReceiver>(conn);
             });
-        return std::make_unique<carrot::io::LlhttpParser>(
-            [hdl = std::move(handler), &conn](carrot::io::HttpRequest request) -> void {
+        return std::make_unique<strij::io::LlhttpParser>(
+            [hdl = std::move(handler), &conn](strij::io::HttpRequest request) -> void {
               hdl->HandleMessage(request, conn);
             });
       }};

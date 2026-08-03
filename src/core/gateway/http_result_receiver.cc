@@ -4,7 +4,7 @@
 #include <string>
 #include <string_view>
 
-namespace carrot::gateway {
+namespace strij::gateway {
 
 void HttpResultReceiver::Deliver(std::span<const std::byte> value) {
   // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast)
@@ -16,4 +16,4 @@ void HttpResultReceiver::Deliver(std::span<const std::byte> value) {
   conn_.Write(response_bytes);
 }
 
-} // namespace carrot::gateway
+} // namespace strij::gateway

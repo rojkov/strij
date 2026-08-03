@@ -4,7 +4,7 @@
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│                        CARROT CONFIG LAYER                          │
+│                        STRIJ CONFIG LAYER                          │
 ├─────────────────────────────────────────────────────────────────────┤
 │                                                                     │
 │  ┌──────────────┐    ┌──────────────┐    ┌────────────────────┐   │
@@ -34,7 +34,7 @@
 │              │  Merged Config (priority order)│                  │
 │              │  1. Defaults (compile-time)    │                  │
 │              │  2. YAML file                  │                  │
-│              │  3. Env vars (CARROT_*)        │                  │
+│              │  3. Env vars (STRIJ_*)        │                  │
 │              │  4. CLI flags (--field=value)  │                  │
 │              └────────────────────────────────┘                  │
 │                                                                     │
@@ -48,7 +48,7 @@
 ```protobuf
 syntax = "proto3";
 
-package carrot.config;
+package strij.config;
 
 import "google/protobuf/duration.proto";
 
@@ -108,7 +108,7 @@ message Logging {
 ```protobuf
 syntax = "proto3";
 
-package carrot.config;
+package strij.config;
 
 import "google/protobuf/duration.proto";
 
@@ -206,7 +206,7 @@ logging:
 #include "gateway.pb.h"
 #include "nodeagent.pb.h"
 
-namespace carrot::config {
+namespace strij::config {
 
 struct LoadOptions {
   std::string config_file_path;
@@ -218,11 +218,11 @@ class ConfigLoader {
 public:
   // Load GatewayConfig from YAML file with overrides
   static auto LoadGatewayConfig(const LoadOptions& opts)
-      -> std::expected<carrot::config::GatewayConfig, std::string>;
+      -> std::expected<strij::config::GatewayConfig, std::string>;
 
   // Load NodeAgentConfig from YAML file with overrides
   static auto LoadNodeAgentConfig(const LoadOptions& opts)
-      -> std::expected<carrot::config::NodeAgentConfig, std::string>;
+      -> std::expected<strij::config::NodeAgentConfig, std::string>;
 
 private:
   // Internal: merge YAML → protobuf with priority handling
@@ -242,7 +242,7 @@ Config LoadConfig(opts):
     yaml = ParseYaml(opts.config_file_path)
     MergeYamlIntoProto(yaml, msg)          // 2. YAML file
   if opts.allow_env_overrides:
-    MergeEnvVarsIntoProto(msg)             // 3. CARROT_* env vars
+    MergeEnvVarsIntoProto(msg)             // 3. STRIJ_* env vars
   if opts.allow_cli_overrides:
     MergeCliFlagsIntoProto(msg)            // 4. Abseil flags
   Validate(msg)                            // Required fields, ranges
@@ -261,9 +261,9 @@ ABSL_FLAG(uint32_t, http_port, 0, "Override HTTP listener port (0 = use config)"
 ```
 
 Env var mapping (auto-generated from flag names):
-- `--config_file` → `CARROT_CONFIG_FILE`
-- `--http_port` → `CARROT_HTTP_PORT`
-- `--log_level` → `CARROT_LOG_LEVEL`
+- `--config_file` → `STRIJ_CONFIG_FILE`
+- `--http_port` → `STRIJ_HTTP_PORT`
+- `--log_level` → `STRIJ_LOG_LEVEL`
 
 ## Bazel Build Integration
 
@@ -316,7 +316,7 @@ cc_library(
 ### Config library BUILD.bazel
 
 ```python
-carrot_cc_library(
+strij_cc_library(
     name = "config_loader_lib",
     srcs = ["config_loader.cc"],
     hdrs = ["config_loader.hh"],
@@ -356,11 +356,11 @@ auto main(int argc, char** argv) -> int {
   }
   
   // Use config values
-  carrot::io::TcpListener http_listener{
+  strij::io::TcpListener http_listener{
       dispatcher, config.http_listener().port(),
       /* handler factory */};
   
-  carrot::io::NodeDirectory node_directory{
+  strij::io::NodeDirectory node_directory{
       dispatcher, 
       ExtractAddresses(config.node_connections()),
       connection_factory};
@@ -401,5 +401,5 @@ Error loading gateway.yaml:
 
 1. **Config hot-reload** - SIGHUP triggers reload, applies to logging level, timeouts (not listener ports)
 2. **Config via TLV** - Gateway pushes config to nodeagents over existing TLV connection
-3. **Config versioning** - Protobuf `package carrot.config.v1`; add `v2` when breaking changes needed
+3. **Config versioning** - Protobuf `package strij.config.v1`; add `v2` when breaking changes needed
 4. **Secrets integration** - `value_from: "env:SECRET_KEY"` or `file:/run/secrets/tls.key` in YAML

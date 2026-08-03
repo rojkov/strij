@@ -6,12 +6,12 @@
 #include "core/logging/log.hh"
 #include "core/task/task.pb.h"
 
-namespace carrot::gateway {
+namespace strij::gateway {
 
-void GatewayTlvHandler::HandleFrame(carrot::io::TlvFrame frame, carrot::io::Connection& /*conn*/) {
+void GatewayTlvHandler::HandleFrame(strij::io::TlvFrame frame, strij::io::Connection& /*conn*/) {
   switch (frame.type_id) {
-  case carrot::io::TlvFrame::kResult: {
-    carrot::task::TaskResult result;
+  case strij::io::TlvFrame::kResult: {
+    strij::task::TaskResult result;
     // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast)
     if (!result.ParseFromArray(reinterpret_cast<const char*>(frame.value.data()),
                                static_cast<int>(frame.value.size()))) {
@@ -32,7 +32,7 @@ void GatewayTlvHandler::HandleFrame(carrot::io::TlvFrame frame, carrot::io::Conn
     }
     break;
   }
-  case carrot::io::TlvFrame::kHeartbeat: {
+  case strij::io::TlvFrame::kHeartbeat: {
     LOG_DEBUG("Received heartbeat");
     break;
   }
@@ -42,4 +42,4 @@ void GatewayTlvHandler::HandleFrame(carrot::io::TlvFrame frame, carrot::io::Conn
   }
 }
 
-} // namespace carrot::gateway
+} // namespace strij::gateway

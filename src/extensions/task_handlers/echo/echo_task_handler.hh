@@ -5,11 +5,11 @@
 
 #include "extensions/task_handlers/task_handlers.hh"
 
-namespace carrot::extensions::task_handlers {
+namespace strij::extensions::task_handlers {
 
 class EchoTaskHandler final : public TaskHandler {
 public:
-  void HandleTask(const carrot::task::Task& task, ResultSender& sender) override;
+  void HandleTask(const strij::task::Task& task, ResultSender& sender) override;
 };
 
 class EchoTaskHandlerFactory final : public TaskHandlerFactory {
@@ -20,4 +20,4 @@ public:
       -> std::unique_ptr<TaskHandler> override;
 };
 
-} // namespace carrot::extensions::task_handlers
+} // namespace strij::extensions::task_handlers

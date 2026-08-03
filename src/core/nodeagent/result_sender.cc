@@ -7,17 +7,17 @@
 #include "core/io/tlv_frame.hh"
 #include "core/task/task.pb.h"
 
-namespace carrot::nodeagent {
+namespace strij::nodeagent {
 
-ConnectionResultSender::ConnectionResultSender(carrot::io::Connection& conn) : conn_(conn) {}
+ConnectionResultSender::ConnectionResultSender(strij::io::Connection& conn) : conn_(conn) {}
 
-void ConnectionResultSender::Send(carrot::task::TaskResult result) {
+void ConnectionResultSender::Send(strij::task::TaskResult result) {
   std::string serialized;
   result.SerializeToString(&serialized);
-  auto frame = carrot::io::SerializeTlvFrame(
-      carrot::io::TlvFrame::kResult,
+  auto frame = strij::io::SerializeTlvFrame(
+      strij::io::TlvFrame::kResult,
       std::as_bytes(std::span(serialized.data(), serialized.size())));
   conn_.Write(frame);
 }
 
-} // namespace carrot::nodeagent
+} // namespace strij::nodeagent

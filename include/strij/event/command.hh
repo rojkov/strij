@@ -1,7 +1,7 @@
 
 #pragma once
 
-namespace carrot::event {
+namespace strij::event {
 
 class CommandHandler;
 
@@ -11,4 +11,4 @@ struct Command {
   void* args_{nullptr};
 };
 
-} // namespace carrot::event
+} // namespace strij::event

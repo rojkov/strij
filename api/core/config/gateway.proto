@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-package carrot.config;
+package strij.config;
 
 import "core/config/extensions.proto";
 import "core/config/options.proto";
@@ -14,17 +14,17 @@ message GatewayConfig {
 
 message HttpListener {
   string address = 1;
-  uint32 port = 2 [(carrot.config.required) = true,
-                   (carrot.config.range_min) = "1",
-                   (carrot.config.range_max) = "65535"];
+  uint32 port = 2 [(strij.config.required) = true,
+                   (strij.config.range_min) = "1",
+                   (strij.config.range_max) = "65535"];
   // RESERVED for future (v2+)
   // uint32 max_connections = 3;
   // bool reuse_port = 4;
 }
 
 message NodeConnection {
-  string address = 1 [(carrot.config.required) = true,
-                      (carrot.config.pattern) = "^[^:]+:\\d+$"];
+  string address = 1 [(strij.config.required) = true,
+                      (strij.config.pattern) = "^[^:]+:\\d+$"];
   // RESERVED for future (v2+): NodeDirectory doesn't use these yet
   // uint32 connect_timeout_ms = 2;
   // uint32 max_reconnect_attempts = 3;

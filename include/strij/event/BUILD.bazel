@@ -1,36 +1,36 @@
-load("//bazel:build_system.bzl", "carrot_cc_library")
+load("//bazel:build_system.bzl", "strij_cc_library")
 
-carrot_cc_library(
+strij_cc_library(
     name = "command_interface",
     hdrs = ["command.hh"],
     visibility = ["//visibility:public"],
 )
 
-carrot_cc_library(
+strij_cc_library(
     name = "dispatcher_interface",
     hdrs = ["dispatcher.hh"],
     visibility = ["//visibility:public"],
     deps = [
         ":command_interface",
-        "//include/carrot/common:pure_lib",
+        "//include/strij/common:pure_lib",
     ],
 )
 
-carrot_cc_library(
+strij_cc_library(
     name = "completable_interface",
     hdrs = ["completable.hh"],
     visibility = ["//visibility:public"],
     deps = [
-        "//include/carrot/common:pure_lib",
+        "//include/strij/common:pure_lib",
     ],
 )
 
-carrot_cc_library(
+strij_cc_library(
     name = "command_handler_interface",
     hdrs = ["command_handler.hh"],
     visibility = ["//visibility:public"],
     deps = [
         ":command_interface",
-        "//include/carrot/common:pure_lib",
+        "//include/strij/common:pure_lib",
     ],
 )

@@ -9,7 +9,7 @@
 
 #include "core/logging/log.hh"
 
-namespace carrot::common {
+namespace strij::common {
 
 SignalMonitor::SignalMonitor(event::DispatcherSharedPtr dispatcher)
     : dispatcher_(std::move(dispatcher)) {
@@ -42,4 +42,4 @@ void SignalMonitor::HandleCompletion(uint8_t tag, int res, [[maybe_unused]] uint
   dispatcher_->Shutdown();
 }
 
-} // namespace carrot::common
+} // namespace strij::common

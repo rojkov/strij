@@ -13,7 +13,7 @@
 #include "core/io/protocol_parser.hh"
 #include "gtest/gtest.h"
 
-namespace carrot::io {
+namespace strij::io {
 namespace {
 
 class ConnectionPartialWriteTest : public ::testing::Test {
@@ -37,8 +37,8 @@ protected:
 // NOLINTBEGIN(modernize-use-trailing-return-type)
 
 TEST_F(ConnectionPartialWriteTest, PartialWriteResubmitsRemaining) {
-  auto dispatcher = std::make_shared<carrot::event::MockDispatcher>();
-  carrot::event::DummyOwner owner;
+  auto dispatcher = std::make_shared<strij::event::MockDispatcher>();
+  strij::event::DummyOwner owner;
 
   // Suppress uninteresting PrepareRead call from Connection constructor
   EXPECT_CALL(*dispatcher,
@@ -73,8 +73,8 @@ TEST_F(ConnectionPartialWriteTest, PartialWriteResubmitsRemaining) {
 }
 
 TEST_F(ConnectionPartialWriteTest, CompleteWriteClearsBuffer) {
-  auto dispatcher = std::make_shared<carrot::event::MockDispatcher>();
-  carrot::event::DummyOwner owner;
+  auto dispatcher = std::make_shared<strij::event::MockDispatcher>();
+  strij::event::DummyOwner owner;
 
   // Suppress uninteresting PrepareRead call from Connection constructor
   EXPECT_CALL(*dispatcher,
@@ -103,4 +103,4 @@ TEST_F(ConnectionPartialWriteTest, CompleteWriteClearsBuffer) {
 // NOLINTEND(modernize-use-trailing-return-type)
 
 } // namespace
-} // namespace carrot::io
+} // namespace strij::io

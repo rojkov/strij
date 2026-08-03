@@ -7,16 +7,16 @@
 #include "extensions/task_handlers/task_handlers.hh"
 #include "gmock/gmock.h"
 
-namespace carrot::extensions {
+namespace strij::extensions {
 
 class MockResultSender final : public ResultSender {
 public:
-  MOCK_METHOD(void, Send, (carrot::task::TaskResult result), (override));
+  MOCK_METHOD(void, Send, (strij::task::TaskResult result), (override));
 };
 
 class MockTaskHandler final : public TaskHandler {
 public:
-  MOCK_METHOD(void, HandleTask, (const carrot::task::Task& task, ResultSender& sender),
+  MOCK_METHOD(void, HandleTask, (const strij::task::Task& task, ResultSender& sender),
               (override));
 };
 
@@ -34,4 +34,4 @@ public:
   MOCK_METHOD(logging::Logger&, Logger, (), (override));
 };
 
-} // namespace carrot::extensions
+} // namespace strij::extensions

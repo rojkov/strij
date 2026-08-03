@@ -2,8 +2,8 @@
 
 #include <string>
 
-namespace carrot::utils {
+namespace strij::utils {
 
 auto GenerateTaskId() -> std::string;
 
-} // namespace carrot::utils
+} // namespace strij::utils

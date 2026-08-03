@@ -6,7 +6,7 @@
 #include <span>
 #include <vector>
 
-namespace carrot::io {
+namespace strij::io {
 
 const static size_t CHUNK_SIZE{4096};
 
@@ -38,4 +38,4 @@ private:
 
 using ChunkPtr = std::unique_ptr<Chunk>;
 
-} // namespace carrot::io
+} // namespace strij::io

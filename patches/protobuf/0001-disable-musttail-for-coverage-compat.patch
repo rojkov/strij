@@ -16,9 +16,9 @@ index b3b9cb1..f5c471d 100644
  #error PROTOBUF_TAILCALL was previously defined
  #endif
 -#if ABSL_HAVE_CPP_ATTRIBUTE(clang::musttail) && (defined(__aarch64__) || \
-+// CARROT: disable musttail when building with coverage instrumentation
++// STRIJ: disable musttail when building with coverage instrumentation
 +// (--coverage / -fprofile-arcs causes GCC to reject [[musttail]])
-+#if defined(CARROT_COVERAGE)
++#if defined(STRIJ_COVERAGE)
 +#define PROTOBUF_MUSTTAIL
 +#define PROTOBUF_TAILCALL false
 +#elif ABSL_HAVE_CPP_ATTRIBUTE(clang::musttail) && (defined(__aarch64__) || \

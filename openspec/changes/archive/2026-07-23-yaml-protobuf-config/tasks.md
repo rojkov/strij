@@ -79,7 +79,7 @@
 ### Task 3.3: Implement Environment Variable Parser
 - [x] Create `src/core/config/env_parser.hh/cc`:
   - `GetEnvOverrides(prefix)` → map of field paths to values
-  - Prefix convention: `CARROT_GATEWAY_` / `CARROT_NODEAGENT_`
+  - Prefix convention: `STRIJ_GATEWAY_` / `STRIJ_NODEAGENT_`
   - Nested field mapping: `HTTP_LISTENER__PORT` → `http_listener.port`
   - Repeated field indexing: `NODE_CONNECTIONS__0__ADDRESS` → `node_connections[0].address`
   - Type conversion: string → protobuf field type
@@ -93,10 +93,10 @@
 ### Task 3.5: Implement Validation Engine
 - [x] Implement in `config_loader.cc`:
   - `ValidateMessage()` using protobuf reflection + custom protobuf options
-  - Required field checks (from `(carrot.config.required)` option)
-  - Range validation (from `(carrot.config.range_min)` / `(carrot.config.range_max)` options)
-  - Enum value validation (from `(carrot.config.enum_values)` option)
-  - Regex pattern validation (from `(carrot.config.pattern)` option)
+  - Required field checks (from `(strij.config.required)` option)
+  - Range validation (from `(strij.config.range_min)` / `(strij.config.range_max)` options)
+  - Enum value validation (from `(strij.config.enum_values)` option)
+  - Regex pattern validation (from `(strij.config.pattern)` option)
   - Collect all errors, return structured result
 
 ### Task 3.6: Implement Config Loader Integration
@@ -108,7 +108,7 @@
 
 ### Task 3.7: Create Config Loader BUILD Rule
 - [x] Create `src/core/config/BUILD.bazel`:
-  - `carrot_cc_library` for `config_loader_lib`
+  - `strij_cc_library` for `config_loader_lib`
   - Dependencies: protobuf CC libs, yaml-cpp, absl/flags, absl/strings
   - Visibility for gateway and nodeagent targets
 

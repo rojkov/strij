@@ -13,7 +13,7 @@
 #include "core/logging/log.hh"
 #include "liburing.h"
 
-namespace carrot::io {
+namespace strij::io {
 
 TcpListener::TcpListener(event::DispatcherSharedPtr dispatcher, uint32_t port,
                          ConnectionFactory factory)
@@ -71,4 +71,4 @@ void TcpListener::ProcessCommand(event::Command cmd) {
   }
 }
 
-} // namespace carrot::io
+} // namespace strij::io

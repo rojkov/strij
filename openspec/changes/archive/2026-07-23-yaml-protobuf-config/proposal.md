@@ -58,6 +58,6 @@ The gateway and nodeagent currently have all configuration hardcoded (ports, add
 **Runtime behavior:**
 - Gateway/nodeagent fail fast with clear errors if config invalid
 - Config file path via `--config_file` flag (default: `gateway.yaml` / `nodeagent.yaml`)
-- Env var overrides: `CARROT_GATEWAY_HTTP_PORT=8081`
+- Env var overrides: `STRIJ_GATEWAY_HTTP_PORT=8081`
 - CLI overrides: `--gateway.http_port=8081`
 - TLS/timeout fields parsed and validated but **not used** at runtime (reserved for future)

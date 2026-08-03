@@ -2,13 +2,13 @@
 
 ## Purpose
 
-Protobuf schema and default configuration for the Carrot NodeAgent service: defines all nodeagent-configurable parameters, their validation constraints and default values, plus cross-field rules such as heartbeat interval validation against the connection timeout.
+Protobuf schema and default configuration for the Strij NodeAgent service: defines all nodeagent-configurable parameters, their validation constraints and default values, plus cross-field rules such as heartbeat interval validation against the connection timeout.
 
 ## MODIFIED Requirements
 
 ### Requirement: NodeAgentConfig protobuf schema
 
-The system SHALL define a `NodeAgentConfig` protobuf message in `api/core/config/nodeagent.proto` (package `carrot.config`) with `TlvListener tlv_listener`, `Logging logging`, `repeated ExtensionConfig task_handlers`, and reserved-for-future fields `connection_timeout`, `heartbeat_interval`, and `TlsConfig tls`.
+The system SHALL define a `NodeAgentConfig` protobuf message in `api/core/config/nodeagent.proto` (package `strij.config`) with `TlvListener tlv_listener`, `Logging logging`, `repeated ExtensionConfig task_handlers`, and reserved-for-future fields `connection_timeout`, `heartbeat_interval`, and `TlsConfig tls`.
 
 #### Scenario: Listener and logging sections load into the message
 

@@ -5,7 +5,7 @@ tlv_listener:
 task_handlers:
   - name: "echo"
     typed_config:
-      "@type": "type.googleapis.com/carrot.extensions.task_handlers.echo.EchoTaskHandlerConfig"
+      "@type": "type.googleapis.com/strij.extensions.task_handlers.echo.EchoTaskHandlerConfig"
 
 logging:
   level: "debug"

@@ -4,7 +4,7 @@
 
 #include <cassert>
 
-namespace carrot::io {
+namespace strij::io {
 
 Connection::Connection(int connection_fd, event::DispatcherSharedPtr dispatcher,
                        event::CommandHandler* owner, ConnectionFactory factory)
@@ -58,4 +58,4 @@ void Connection::onEndOfStream() {
       {.type_ = event::Command::CLOSE_CONNECTION, .destination_ = owner_, .args_ = this});
 }
 
-} // namespace carrot::io
+} // namespace strij::io

@@ -20,7 +20,7 @@
 #include "core/task/task.pb.h"
 #include "gtest/gtest.h"
 
-namespace carrot::gateway {
+namespace strij::gateway {
 namespace {
 
 class MockReceiver : public ResultReceiver {
@@ -78,31 +78,31 @@ TEST_F(GatewayTlvHandlerTest, DispatchResultToReceiver) {
   std::vector<std::byte> delivered;
   storage_.put("42", std::make_unique<MockReceiver>(&delivered));
 
-  carrot::task::TaskResult result;
+  strij::task::TaskResult result;
   result.set_id("42");
   result.set_body("CCDD");
   std::string serialized;
   result.SerializeToString(&serialized);
-  auto wire = carrot::io::SerializeTlvFrame(
-      carrot::io::TlvFrame::kResult,
+  auto wire = strij::io::SerializeTlvFrame(
+      strij::io::TlvFrame::kResult,
       std::as_bytes(std::span(serialized.data(), serialized.size())));
 
   int fds[2];
   ASSERT_EQ(0, socketpair(AF_UNIX, SOCK_STREAM, 0, fds));
-  auto dispatcher = std::make_shared<carrot::event::MockDispatcher>();
-  carrot::event::DummyOwner owner;
+  auto dispatcher = std::make_shared<strij::event::MockDispatcher>();
+  strij::event::DummyOwner owner;
   EXPECT_CALL(*dispatcher,
               PrepareRead(::testing::_, ::testing::_, ::testing::_, ::testing::_, ::testing::_))
       .WillOnce(::testing::Return());
-  carrot::io::Connection conn(fds[0], dispatcher, &owner,
-                              [](carrot::io::Connection&) -> std::unique_ptr<carrot::io::ProtocolParser> {
-                                return std::make_unique<carrot::io::TrivialParser>();
+  strij::io::Connection conn(fds[0], dispatcher, &owner,
+                              [](strij::io::Connection&) -> std::unique_ptr<strij::io::ProtocolParser> {
+                                return std::make_unique<strij::io::TrivialParser>();
                               });
 
   // Reconstruct the frame from wire bytes and deliver through the handler
-  std::vector<carrot::io::TlvFrame> received_frames;
-  carrot::io::TlvParser parser(
-      [&received_frames](carrot::io::TlvFrame frame) { received_frames.push_back(frame); });
+  std::vector<strij::io::TlvFrame> received_frames;
+  strij::io::TlvParser parser(
+      [&received_frames](strij::io::TlvFrame frame) { received_frames.push_back(frame); });
   auto read_buf = parser.GetReadBuffer();
   std::memcpy(read_buf.data(), wire.data(), wire.size());
   parser.OnData(wire.size());
@@ -124,30 +124,30 @@ TEST_F(GatewayTlvHandlerTest, UnknownTaskIdDropsResult) {
   std::vector<std::byte> delivered;
   storage_.put("1", std::make_unique<MockReceiver>(&delivered));
 
-  carrot::task::TaskResult result;
+  strij::task::TaskResult result;
   result.set_id("99");
   result.set_body("data");
   std::string serialized;
   result.SerializeToString(&serialized);
-  auto wire = carrot::io::SerializeTlvFrame(
-      carrot::io::TlvFrame::kResult,
+  auto wire = strij::io::SerializeTlvFrame(
+      strij::io::TlvFrame::kResult,
       std::as_bytes(std::span(serialized.data(), serialized.size())));
 
   int fds[2];
   ASSERT_EQ(0, socketpair(AF_UNIX, SOCK_STREAM, 0, fds));
-  auto dispatcher = std::make_shared<carrot::event::MockDispatcher>();
-  carrot::event::DummyOwner owner;
+  auto dispatcher = std::make_shared<strij::event::MockDispatcher>();
+  strij::event::DummyOwner owner;
   EXPECT_CALL(*dispatcher,
               PrepareRead(::testing::_, ::testing::_, ::testing::_, ::testing::_, ::testing::_))
       .WillOnce(::testing::Return());
-  carrot::io::Connection conn(fds[0], dispatcher, &owner,
-                              [](carrot::io::Connection&) -> std::unique_ptr<carrot::io::ProtocolParser> {
-                                return std::make_unique<carrot::io::TrivialParser>();
+  strij::io::Connection conn(fds[0], dispatcher, &owner,
+                              [](strij::io::Connection&) -> std::unique_ptr<strij::io::ProtocolParser> {
+                                return std::make_unique<strij::io::TrivialParser>();
                               });
 
-  std::vector<carrot::io::TlvFrame> received_frames;
-  carrot::io::TlvParser parser(
-      [&received_frames](carrot::io::TlvFrame frame) { received_frames.push_back(frame); });
+  std::vector<strij::io::TlvFrame> received_frames;
+  strij::io::TlvParser parser(
+      [&received_frames](strij::io::TlvFrame frame) { received_frames.push_back(frame); });
   auto read_buf = parser.GetReadBuffer();
   std::memcpy(read_buf.data(), wire.data(), wire.size());
   parser.OnData(wire.size());
@@ -168,23 +168,23 @@ TEST_F(GatewayTlvHandlerTest, MalformedResultFrameIsDropped) {
 
   auto garbage = std::vector<std::byte>{std::byte{0xDE}, std::byte{0xAD}, std::byte{0xBE},
                                         std::byte{0xEF}};
-  auto wire = carrot::io::SerializeTlvFrame(carrot::io::TlvFrame::kResult, garbage);
+  auto wire = strij::io::SerializeTlvFrame(strij::io::TlvFrame::kResult, garbage);
 
   int fds[2];
   ASSERT_EQ(0, socketpair(AF_UNIX, SOCK_STREAM, 0, fds));
-  auto dispatcher = std::make_shared<carrot::event::MockDispatcher>();
-  carrot::event::DummyOwner owner;
+  auto dispatcher = std::make_shared<strij::event::MockDispatcher>();
+  strij::event::DummyOwner owner;
   EXPECT_CALL(*dispatcher,
               PrepareRead(::testing::_, ::testing::_, ::testing::_, ::testing::_, ::testing::_))
       .WillOnce(::testing::Return());
-  carrot::io::Connection conn(fds[0], dispatcher, &owner,
-                              [](carrot::io::Connection&) -> std::unique_ptr<carrot::io::ProtocolParser> {
-                                return std::make_unique<carrot::io::TrivialParser>();
+  strij::io::Connection conn(fds[0], dispatcher, &owner,
+                              [](strij::io::Connection&) -> std::unique_ptr<strij::io::ProtocolParser> {
+                                return std::make_unique<strij::io::TrivialParser>();
                               });
 
-  std::vector<carrot::io::TlvFrame> received_frames;
-  carrot::io::TlvParser parser(
-      [&received_frames](carrot::io::TlvFrame frame) { received_frames.push_back(frame); });
+  std::vector<strij::io::TlvFrame> received_frames;
+  strij::io::TlvParser parser(
+      [&received_frames](strij::io::TlvFrame frame) { received_frames.push_back(frame); });
   auto read_buf = parser.GetReadBuffer();
   std::memcpy(read_buf.data(), wire.data(), wire.size());
   parser.OnData(wire.size());
@@ -202,4 +202,4 @@ TEST_F(GatewayTlvHandlerTest, MalformedResultFrameIsDropped) {
 // NOLINTEND(modernize-use-trailing-return-type)
 
 } // namespace
-} // namespace carrot::gateway
+} // namespace strij::gateway

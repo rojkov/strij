@@ -1,6 +1,6 @@
 ## Context
 
-The carrot gateway server currently has two independent echo servers: `gateway` (HTTP on port 8081) and `nodeagent` (TLV on port 9090). Both use the same `ProtocolParser` → `MessageHandler` pipeline, but parsers discard protocol metadata (HTTP headers, TLV type_id) before delivering raw bytes to handlers.
+The strij gateway server currently has two independent echo servers: `gateway` (HTTP on port 8081) and `nodeagent` (TLV on port 9090). Both use the same `ProtocolParser` → `MessageHandler` pipeline, but parsers discard protocol metadata (HTTP headers, TLV type_id) before delivering raw bytes to handlers.
 
 The gateway needs to become a protocol bridge: receive HTTP requests containing computation tasks, forward them to nodeagents via TLV, and deliver results back as HTTP replies. The TLV wire format needs a task_id for correlation. Both parsers need to deliver structured data instead of raw bytes.
 

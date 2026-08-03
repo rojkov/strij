@@ -23,7 +23,7 @@ This change replaces the opaque task value with a Protobuf-encoded `Task { id, t
 
 ### 1. Protobuf message schemas
 
-`api/core/task/task.proto`, package `carrot.task`:
+`api/core/task/task.proto`, package `strij.task`:
 
 ```protobuf
 message Task {
@@ -67,8 +67,8 @@ struct HttpRequest {
 Keep `TlvFrame`, `SerializeTlvFrame`, `TlvParser`, and the type constants unchanged. Only the value content changes:
 
 ```
-kTaskSubmission (0): [type:1][len:4][ serialized carrot.task.Task  ]
-kResult         (1): [type:1][len:4][ serialized carrot.task.TaskResult ]
+kTaskSubmission (0): [type:1][len:4][ serialized strij.task.Task  ]
+kResult         (1): [type:1][len:4][ serialized strij.task.TaskResult ]
 kHeartbeat      (2): [type:1][len:4][ empty ]
 ```
 

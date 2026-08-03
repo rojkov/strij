@@ -4,12 +4,12 @@
 
 #include <vector>
 
-#include "carrot/event/command_handler.hh"
-#include "carrot/event/completable.hh"
-#include "carrot/event/dispatcher.hh"
+#include "strij/event/command_handler.hh"
+#include "strij/event/completable.hh"
+#include "strij/event/dispatcher.hh"
 #include "liburing.h"
 
-namespace carrot::event {
+namespace strij::event {
 
 class DispatcherImpl : public Dispatcher, public Completable, public CommandHandler {
 public:
@@ -41,4 +41,4 @@ private:
   uint64_t event_fd_val_{0};
 };
 
-} // namespace carrot::event
+} // namespace strij::event

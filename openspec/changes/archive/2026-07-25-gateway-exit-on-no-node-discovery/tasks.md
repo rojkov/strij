@@ -6,7 +6,7 @@
 - [x] 1.4 Remove `#include "src/extensions/node_discovery/static/static_node_discovery.hh"` (no longer directly instantiated)
 - [x] 1.5 Remove `--node_address` CLI flag and related code that appends to `node_connections`
 - [x] 1.6 Check `UnpackTo` return value and error on failure (pre-existing gap exposed by removing fallback)
-- [x] 1.7 Fix linker stripping: add `alwayslink` to `carrot_cc_library` macro and set `alwayslink = True` on `static_node_discovery_lib`
+- [x] 1.7 Fix linker stripping: add `alwayslink` to `strij_cc_library` macro and set `alwayslink = True` on `static_node_discovery_lib`
 
 ## 2. Config validation — validate-only catches missing node_discovery
 

@@ -7,11 +7,11 @@
 
 #include "google/protobuf/message.h"
 
-#include "carrot/common/pure.hh"
+#include "strij/common/pure.hh"
 #include "core/extensions/factory_context.hh"
 #include "core/extensions/extension_registry.hh"
 
-namespace carrot::extensions {
+namespace strij::extensions {
 
 struct NodeInfo {
   std::string address;
@@ -37,4 +37,4 @@ public:
       -> std::unique_ptr<NodeDiscovery> PURE;
 };
 
-} // namespace carrot::extensions
+} // namespace strij::extensions

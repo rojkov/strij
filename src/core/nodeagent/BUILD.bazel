@@ -1,6 +1,6 @@
-load("//bazel:build_system.bzl", "carrot_cc_library")
+load("//bazel:build_system.bzl", "strij_cc_library")
 
-carrot_cc_library(
+strij_cc_library(
     name = "nodeagent_tlv_handler_lib",
     srcs = ["nodeagent_tlv_handler.cc"],
     hdrs = ["nodeagent_tlv_handler.hh"],
@@ -15,7 +15,7 @@ carrot_cc_library(
     ],
 )
 
-carrot_cc_library(
+strij_cc_library(
     name = "result_sender_lib",
     srcs = ["result_sender.cc"],
     hdrs = ["result_sender.hh"],
@@ -28,7 +28,7 @@ carrot_cc_library(
     ],
 )
 
-carrot_cc_library(
+strij_cc_library(
     name = "task_handler_manager_lib",
     srcs = ["task_handler_manager.cc"],
     hdrs = ["task_handler_manager.hh"],

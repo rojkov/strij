@@ -6,7 +6,7 @@
 #include "core/io/llhttp_parser.hh"
 #include "gtest/gtest.h"
 
-namespace carrot::io {
+namespace strij::io {
 namespace {
 
 struct CapturedRequest {
@@ -148,4 +148,4 @@ TEST_F(LlhttpParserTest, BodySplitAcrossReads) {
 // NOLINTEND(modernize-use-trailing-return-type)
 
 } // namespace
-} // namespace carrot::io
+} // namespace strij::io

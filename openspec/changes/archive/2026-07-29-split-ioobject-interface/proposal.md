@@ -26,9 +26,9 @@
 
 ## Impact
 
-- `include/carrot/event/io_object.hh` — replaced by `completable.hh` and `command_handler.hh`
-- `include/carrot/event/command.hh` — `destination_` type changes to `CommandHandler*`
-- `include/carrot/event/dispatcher.hh` — `Prepare*` and `SubmitCommand` signatures change
+- `include/strij/event/io_object.hh` — replaced by `completable.hh` and `command_handler.hh`
+- `include/strij/event/command.hh` — `destination_` type changes to `CommandHandler*`
+- `include/strij/event/dispatcher.hh` — `Prepare*` and `SubmitCommand` signatures change
 - `src/core/event/dispatcher_impl.{hh,cc}` — dispatch loop updated
 - `src/core/io/connection.{hh,cc}` — removes `ProcessCommand`, implements `Completable` only
 - `src/core/io/tcp_listener.{hh,cc}` — implements both interfaces

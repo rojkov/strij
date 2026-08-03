@@ -2,10 +2,10 @@
 
 #include <sys/signalfd.h>
 
-#include "carrot/event/completable.hh"
-#include "carrot/event/dispatcher.hh"
+#include "strij/event/completable.hh"
+#include "strij/event/dispatcher.hh"
 
-namespace carrot::common {
+namespace strij::common {
 
 class SignalMonitor : public event::Completable {
 public:
@@ -20,4 +20,4 @@ private:
   int sfd_;
 };
 
-} // namespace carrot::common
+} // namespace strij::common

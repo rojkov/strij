@@ -25,7 +25,7 @@
 
 ## 5. Gateway entrypoint
 
-- [x] 5.1 Update `gateway.cc`: store `std::vector<carrot::io::Connection*>` instead of `std::vector<carrot::io::TlvSenderPtr>`.
+- [x] 5.1 Update `gateway.cc`: store `std::vector<strij::io::Connection*>` instead of `std::vector<strij::io::TlvSenderPtr>`.
 - [x] 5.2 Update `gateway.cc`: call `connector.Connect()` and store the returned `Connection*`.
 - [x] 5.3 Update `gateway.cc`: pass `nodeagent_conns` to `GatewayHttpHandler` constructor.
 

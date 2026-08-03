@@ -1,13 +1,13 @@
-load("//bazel:build_system.bzl", "carrot_cc_library")
+load("//bazel:build_system.bzl", "strij_cc_library")
 
-carrot_cc_library(
+strij_cc_library(
     name = "signal_monitor_lib",
     srcs = ["signal_monitor.cc"],
     hdrs = ["signal_monitor.hh"],
     visibility = ["//visibility:public"],
     deps = [
-        "//include/carrot/event:completable_interface",
-        "//include/carrot/event:dispatcher_interface",
+        "//include/strij/event:completable_interface",
+        "//include/strij/event:dispatcher_interface",
         "//src/core/logging:log_lib",
     ],
 )

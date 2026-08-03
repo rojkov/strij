@@ -33,13 +33,13 @@ The system SHALL merge configuration layers in priority order: compile-time prot
 
 ### Requirement: Environment variable overrides
 
-The system SHALL support environment variables of the form `CARROT_<SERVICE>_<FIELD_PATH>` (with `_` as field separator and `__` for array indexes) overriding config values. Booleans SHALL accept `"true"`/`"false"`, `"1"`/`"0"`, `"yes"`/`"no"` (case-insensitive); durations SHALL accept ISO 8601 or integer seconds.
+The system SHALL support environment variables of the form `STRIJ_<SERVICE>_<FIELD_PATH>` (with `_` as field separator and `__` for array indexes) overriding config values. Booleans SHALL accept `"true"`/`"false"`, `"1"`/`"0"`, `"yes"`/`"no"` (case-insensitive); durations SHALL accept ISO 8601 or integer seconds.
 
 #### Scenario: Environment variable overrides a field
 
-- **WHEN** `CARROT_GATEWAY_LOGGING_LEVEL=debug` is set and the gateway config is loaded
+- **WHEN** `STRIJ_GATEWAY_LOGGING_LEVEL=debug` is set and the gateway config is loaded
 - **THEN** the final config SHALL have `logging.level == "debug"`
-- **AND** `CARROT_GATEWAY_NODE_CONNECTIONS__0__ADDRESS=10.0.0.1:9090` SHALL set the first node connection address
+- **AND** `STRIJ_GATEWAY_NODE_CONNECTIONS__0__ADDRESS=10.0.0.1:9090` SHALL set the first node connection address
 
 ### Requirement: CLI flag overrides
 
@@ -89,7 +89,7 @@ The system SHALL perform config loading and validation without global state, so 
 
 ## Public API
 
-Header: `carrot/config/config_loader.hh`
+Header: `strij/config/config_loader.hh`
 
 ```cpp
 #pragma once
@@ -99,7 +99,7 @@ Header: `carrot/config/config_loader.hh`
 #include <vector>
 #include "google/protobuf/message.h"
 
-namespace carrot::config {
+namespace strij::config {
 
 // Result of config loading
 struct ConfigLoadResult {
@@ -137,7 +137,7 @@ T GetDefaultConfig();
 template <typename T>
 std::string ConfigToYaml(const T& config);
 
-} // namespace carrot::config
+} // namespace strij::config
 ```
 
 ## Configuration Layers (Priority Order)
@@ -149,7 +149,7 @@ std::string ConfigToYaml(const T& config);
 2. YAML File (--config_file or default path)
        │
        ▼
-3. Environment Variables (CARROT_<SERVICE>_<FIELD_PATH>)
+3. Environment Variables (STRIJ_<SERVICE>_<FIELD_PATH>)
        │
        ▼
 4. CLI Flags (--field=value)
@@ -170,7 +170,7 @@ std::string ConfigToYaml(const T& config);
 ## Environment Variable Format
 
 ```
-CARROT_<SERVICE>_<FIELD_PATH>
+STRIJ_<SERVICE>_<FIELD_PATH>
 ```
 
 Rules:
@@ -184,10 +184,10 @@ Rules:
 Examples:
 
 ```
-CARROT_GATEWAY_HTTP_LISTENER_PORT=8081
-CARROT_GATEWAY_NODE_CONNECTIONS__0__ADDRESS=10.0.0.1:9090
-CARROT_GATEWAY_LOGGING_LEVEL=debug
-CARROT_NODEAGENT_TLV_LISTENER_PORT=9090
+STRIJ_GATEWAY_HTTP_LISTENER_PORT=8081
+STRIJ_GATEWAY_NODE_CONNECTIONS__0__ADDRESS=10.0.0.1:9090
+STRIJ_GATEWAY_LOGGING_LEVEL=debug
+STRIJ_NODEAGENT_TLV_LISTENER_PORT=9090
 ```
 
 ## CLI Override Format
@@ -214,16 +214,16 @@ Examples:
 
 ## Validation Rules
 
-**Required fields:** marked with `option (carrot.config.required) = true` in protobuf (custom option), or non-zero default for non-optional fields.
+**Required fields:** marked with `option (strij.config.required) = true` in protobuf (custom option), or non-zero default for non-optional fields.
 
 **Field constraints:**
 
 | Constraint | Protobuf Option | Example |
 |------------|-----------------|---------|
-| Range (min/max) | `carrot.config.range = {min: 1, max: 65535}` | Port numbers |
-| Enum values | `carrot.config.enum_values = ["trace", "debug", "info"]` | Log levels |
-| String pattern | `carrot.config.pattern = "^[a-z]+$"` | Identifiers |
-| Required | `carrot.config.required = true` | Node address |
+| Range (min/max) | `strij.config.range = {min: 1, max: 65535}` | Port numbers |
+| Enum values | `strij.config.enum_values = ["trace", "debug", "info"]` | Log levels |
+| String pattern | `strij.config.pattern = "^[a-z]+$"` | Identifiers |
+| Required | `strij.config.required = true` | Node address |
 
 **Cross-field validation:**
 
@@ -281,11 +281,11 @@ src/core/config/
 └── duration_parser.hh    # ISO 8601 duration parsing
 ```
 
-**Protobuf custom options (in `carrot/config/options.proto`):**
+**Protobuf custom options (in `strij/config/options.proto`):**
 
 ```protobuf
 syntax = "proto3";
-package carrot.config;
+package strij.config;
 
 import "google/protobuf/descriptor.proto";
 
@@ -306,9 +306,9 @@ message HttpListener {
   string address = 1 [default = "0.0.0.0"];
   uint32 port = 2 [
     default = 8081,
-    (carrot.config.required) = true,
-    (carrot.config.range_min) = "1",
-    (carrot.config.range_max) = "65535"
+    (strij.config.required) = true,
+    (strij.config.range_min) = "1",
+    (strij.config.range_max) = "65535"
   ];
 }
 ```
@@ -323,8 +323,8 @@ ABSL_FLAG(uint32_t, http_port, 0, "Override HTTP listener port (0 = use config)"
 ABSL_FLAG(std::string, log_level, "", "Override log level");
 
 // After absl::ParseCommandLine()
-carrot::config::ConfigLoadResult result =
-    carrot::config::LoadConfig<carrot::config::GatewayConfig>(
+strij::config::ConfigLoadResult result =
+    strij::config::LoadConfig<strij::config::GatewayConfig>(
         absl::GetFlag(FLAGS_config_file),
         GetCliOverrides(),  // Convert absl flags to vector<string>
         &config);

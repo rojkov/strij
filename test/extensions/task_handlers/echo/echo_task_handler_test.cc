@@ -7,18 +7,18 @@
 #include "gtest/gtest.h"
 #include "test/mocks/extensions/extensions_mocks.hh"
 
-namespace carrot::extensions::task_handlers {
+namespace strij::extensions::task_handlers {
 namespace {
 
 // NOLINTBEGIN(modernize-use-trailing-return-type)
 
 TEST(EchoTaskHandlerTest, DeliversTaskResultWithMatchingIdBodyAndFinalFlag) {
-  carrot::task::Task task;
+  strij::task::Task task;
   task.set_id("42");
   task.set_body("hello");
 
   MockResultSender sender;
-  carrot::task::TaskResult sent;
+  strij::task::TaskResult sent;
   EXPECT_CALL(sender, Send(::testing::_)).WillOnce(::testing::SaveArg<0>(&sent));
 
   EchoTaskHandler handler;
@@ -32,4 +32,4 @@ TEST(EchoTaskHandlerTest, DeliversTaskResultWithMatchingIdBodyAndFinalFlag) {
 // NOLINTEND(modernize-use-trailing-return-type)
 
 } // namespace
-} // namespace carrot::extensions::task_handlers
+} // namespace strij::extensions::task_handlers

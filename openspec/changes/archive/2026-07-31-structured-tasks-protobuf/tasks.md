@@ -1,6 +1,6 @@
 ## 1. Task proto package
 
-- [x] 1.1 Create `api/core/task/task.proto` with `Task { uint64 id = 1; string type = 2; bytes body = 3; }` and `TaskResult { uint64 id = 1; bytes body = 2; }` in package `carrot.task`
+- [x] 1.1 Create `api/core/task/task.proto` with `Task { uint64 id = 1; string type = 2; bytes body = 3; }` and `TaskResult { uint64 id = 1; bytes body = 2; }` in package `strij.task`
 - [x] 1.2 Create `api/core/task/BUILD.bazel` with `proto_library` and `cc_proto_library` targets (mirroring `api/core/config/BUILD.bazel`)
 
 ## 2. LlhttpParser request awareness

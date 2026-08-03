@@ -11,7 +11,7 @@
 #include "gtest/gtest.h"
 #include "test/mocks/extensions/extensions_mocks.hh"
 
-namespace carrot::nodeagent {
+namespace strij::nodeagent {
 namespace {
 
 using ::testing::Return;
@@ -21,7 +21,7 @@ using ::testing::_;
 
 TEST(TaskHandlerManagerTest, GetHandlerReturnsRegisteredHandler) {
   TaskHandlerManager manager;
-  auto handler = std::make_unique<carrot::extensions::MockTaskHandler>();
+  auto handler = std::make_unique<strij::extensions::MockTaskHandler>();
   auto* raw = handler.get();
   manager.AddHandler("echo", std::move(handler));
 
@@ -32,8 +32,8 @@ TEST(TaskHandlerManagerTest, GetHandlerReturnsRegisteredHandler) {
 
 TEST(TaskHandlerManagerTest, AddHandlerOverwritesSameType) {
   TaskHandlerManager manager;
-  auto first = std::make_unique<carrot::extensions::MockTaskHandler>();
-  auto second = std::make_unique<carrot::extensions::MockTaskHandler>();
+  auto first = std::make_unique<strij::extensions::MockTaskHandler>();
+  auto second = std::make_unique<strij::extensions::MockTaskHandler>();
   auto* raw = second.get();
 
   manager.AddHandler("echo", std::move(first));
@@ -44,7 +44,7 @@ TEST(TaskHandlerManagerTest, AddHandlerOverwritesSameType) {
 
 TEST(TaskHandlerManagerTest, RemoveHandlerErasesType) {
   TaskHandlerManager manager;
-  manager.AddHandler("echo", std::make_unique<carrot::extensions::MockTaskHandler>());
+  manager.AddHandler("echo", std::make_unique<strij::extensions::MockTaskHandler>());
 
   manager.RemoveHandler("echo");
 
@@ -53,8 +53,8 @@ TEST(TaskHandlerManagerTest, RemoveHandlerErasesType) {
 }
 
 TEST(TaskHandlerManagerTest, EmptyListBuildsEmptyManager) {
-  carrot::extensions::MockFactoryContext context;
-  ::google::protobuf::RepeatedPtrField<carrot::config::ExtensionConfig> configs;
+  strij::extensions::MockFactoryContext context;
+  ::google::protobuf::RepeatedPtrField<strij::config::ExtensionConfig> configs;
 
   auto result = BuildTaskHandlerManager(configs, context);
 
@@ -63,8 +63,8 @@ TEST(TaskHandlerManagerTest, EmptyListBuildsEmptyManager) {
 }
 
 TEST(TaskHandlerManagerTest, UnknownHandlerNameReturnsError) {
-  carrot::extensions::MockFactoryContext context;
-  ::google::protobuf::RepeatedPtrField<carrot::config::ExtensionConfig> configs;
+  strij::extensions::MockFactoryContext context;
+  ::google::protobuf::RepeatedPtrField<strij::config::ExtensionConfig> configs;
   auto* ext = configs.Add();
   ext->set_name("no_such_handler");
 
@@ -75,22 +75,22 @@ TEST(TaskHandlerManagerTest, UnknownHandlerNameReturnsError) {
 }
 
 TEST(TaskHandlerManagerTest, BuildInstantiatesHandlerFromConfig) {
-  auto factory = std::make_unique<carrot::extensions::MockTaskHandlerFactory>();
+  auto factory = std::make_unique<strij::extensions::MockTaskHandlerFactory>();
   EXPECT_CALL(*factory, Name()).WillRepeatedly(Return("mock"));
   EXPECT_CALL(*factory, CreateEmptyConfigProto())
-      .WillOnce(Return(std::make_unique<carrot::extensions::task_handlers::echo::EchoTaskHandlerConfig>()));
+      .WillOnce(Return(std::make_unique<strij::extensions::task_handlers::echo::EchoTaskHandlerConfig>()));
   EXPECT_CALL(*factory, Create(_, _))
-      .WillOnce(Return(std::make_unique<carrot::extensions::MockTaskHandler>()));
+      .WillOnce(Return(std::make_unique<strij::extensions::MockTaskHandler>()));
   // The singleton registry owns the factory for the program lifetime.
   ::testing::Mock::AllowLeak(factory.get());
-  carrot::extensions::Registry<carrot::extensions::TaskHandlerFactory>::instance().RegisterFactory(
+  strij::extensions::Registry<strij::extensions::TaskHandlerFactory>::instance().RegisterFactory(
       "mock", factory.release());
 
-  carrot::extensions::MockFactoryContext context;
-  ::google::protobuf::RepeatedPtrField<carrot::config::ExtensionConfig> configs;
+  strij::extensions::MockFactoryContext context;
+  ::google::protobuf::RepeatedPtrField<strij::config::ExtensionConfig> configs;
   auto* ext = configs.Add();
   ext->set_name("mock");
-  carrot::extensions::task_handlers::echo::EchoTaskHandlerConfig typed;
+  strij::extensions::task_handlers::echo::EchoTaskHandlerConfig typed;
   ext->mutable_typed_config()->PackFrom(typed);
 
   auto result = BuildTaskHandlerManager(configs, context);
@@ -103,4 +103,4 @@ TEST(TaskHandlerManagerTest, BuildInstantiatesHandlerFromConfig) {
 // NOLINTEND(modernize-use-trailing-return-type)
 
 } // namespace
-} // namespace carrot::nodeagent
+} // namespace strij::nodeagent

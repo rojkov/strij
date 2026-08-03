@@ -1,4 +1,4 @@
-# Scaffold for C++ projects using Bazel as the main build system.
+# Strij
 
 Given you've got a fresh VM or a new Linux PC with Docker installed
 for development just type in:
@@ -82,7 +82,7 @@ Quick start:
 ./gateway --config_file config/gateway.yaml --validate_only
 
 # Start with environment variable override
-CARROT_GATEWAY_HTTP_LISTENER_PORT=9090 ./gateway
+STRIJ_GATEWAY_HTTP_LISTENER_PORT=9090 ./gateway
 
 # Start with CLI flag override
 ./gateway --http_port=9090 --log_level=debug

@@ -2,9 +2,9 @@
 
 #include <cstdint>
 
-#include "carrot/common/pure.hh"
+#include "strij/common/pure.hh"
 
-namespace carrot::event {
+namespace strij::event {
 
 class Completable {
 public:
@@ -19,4 +19,4 @@ public:
   virtual void HandleCompletion(uint8_t tag, int res, uint32_t flags) PURE;
 };
 
-} // namespace carrot::event
+} // namespace strij::event

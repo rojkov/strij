@@ -6,7 +6,7 @@ Gateway and NodeAgent use YAML configuration files with protobuf-defined schemas
 
 1. **Compile-time defaults** — protobuf field defaults
 2. **YAML file** — path specified via `--config_file` (default: `gateway.yaml` / `nodeagent.yaml`)
-3. **Environment variables** — `CARROT_<SERVICE>_<FIELD_PATH>`
+3. **Environment variables** — `STRIJ_<SERVICE>_<FIELD_PATH>`
 4. **CLI flags** — `--<field>=<value>`
 
 Higher layers override lower ones.
@@ -46,14 +46,14 @@ logging:
 
 | Variable | Description |
 |----------|-------------|
-| `CARROT_GATEWAY_HTTP_LISTENER_PORT` | Override HTTP listener port |
-| `CARROT_GATEWAY_HTTP_LISTENER_ADDRESS` | Override HTTP listener address |
-| `CARROT_GATEWAY_NODE_CONNECTIONS__0__ADDRESS` | Set first node connection address |
-| `CARROT_GATEWAY_NODE_CONNECTIONS__1__ADDRESS` | Set second node connection address |
-| `CARROT_GATEWAY_LOGGING_LEVEL` | Override log level |
-| `CARROT_GATEWAY_LOGGING_FORMAT` | Override log format |
-| `CARROT_GATEWAY_LOGGING_OUTPUT` | Override log output |
-| `CARROT_GATEWAY_LOGGING_INCLUDE_SOURCE_LOCATION` | Override include source location |
+| `STRIJ_GATEWAY_HTTP_LISTENER_PORT` | Override HTTP listener port |
+| `STRIJ_GATEWAY_HTTP_LISTENER_ADDRESS` | Override HTTP listener address |
+| `STRIJ_GATEWAY_NODE_CONNECTIONS__0__ADDRESS` | Set first node connection address |
+| `STRIJ_GATEWAY_NODE_CONNECTIONS__1__ADDRESS` | Set second node connection address |
+| `STRIJ_GATEWAY_LOGGING_LEVEL` | Override log level |
+| `STRIJ_GATEWAY_LOGGING_FORMAT` | Override log format |
+| `STRIJ_GATEWAY_LOGGING_OUTPUT` | Override log output |
+| `STRIJ_GATEWAY_LOGGING_INCLUDE_SOURCE_LOCATION` | Override include source location |
 
 Array indices are specified with double underscores: `__N__`.
 
@@ -88,11 +88,11 @@ logging:
 
 | Variable | Description |
 |----------|-------------|
-| `CARROT_NODEAGENT_TLV_LISTENER_PORT` | Override TLV listener port |
-| `CARROT_NODEAGENT_TLV_LISTENER_ADDRESS` | Override TLV listener address |
-| `CARROT_NODEAGENT_LOGGING_LEVEL` | Override log level |
-| `CARROT_NODEAGENT_LOGGING_FORMAT` | Override log format |
-| `CARROT_NODEAGENT_LOGGING_OUTPUT` | Override log output |
+| `STRIJ_NODEAGENT_TLV_LISTENER_PORT` | Override TLV listener port |
+| `STRIJ_NODEAGENT_TLV_LISTENER_ADDRESS` | Override TLV listener address |
+| `STRIJ_NODEAGENT_LOGGING_LEVEL` | Override log level |
+| `STRIJ_NODEAGENT_LOGGING_FORMAT` | Override log format |
+| `STRIJ_NODEAGENT_LOGGING_OUTPUT` | Override log output |
 
 ## Validation
 

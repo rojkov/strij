@@ -5,7 +5,7 @@
 
 #include "extensions/node_discovery/node_discovery.hh"
 
-namespace carrot::extensions::node_discovery {
+namespace strij::extensions::node_discovery {
 
 class StaticNodeDiscovery : public NodeDiscovery {
 public:
@@ -26,4 +26,4 @@ public:
       -> std::unique_ptr<NodeDiscovery> override;
 };
 
-} // namespace carrot::extensions::node_discovery
+} // namespace strij::extensions::node_discovery

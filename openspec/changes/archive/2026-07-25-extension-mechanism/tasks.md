@@ -5,7 +5,7 @@
 - [x] 1.1 Create `src/core/extensions/extension_registry.hh`
   - Header-only `Registry<FactoryInterface>` template
   - `REGISTER_FACTORY` and `REGISTER_FACTORY_FULLY_QUALIFIED` macros
-  - Namespace: `carrot::extensions`
+  - Namespace: `strij::extensions`
 - [x] 1.2 Create `src/core/extensions/factory_context.hh`
   - `FactoryContext` abstract class with `Dispatcher()` and `Logger()` pure virtuals
   - `GatewayFactoryContext` concrete class storing `DispatcherSharedPtr`
@@ -53,7 +53,7 @@
 - [x] 5.4 Create `src/extensions/node_discovery/static/BUILD.bazel`
   - `static_node_discovery_proto` proto_library
   - `static_node_discovery_cc_proto` cc_proto_library
-  - `static_node_discovery_lib` carrot_cc_library
+  - `static_node_discovery_lib` strij_cc_library
 
 ## 6. Gateway Wiring
 

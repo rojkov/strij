@@ -4,7 +4,7 @@
 #include "core/utils/task_id.hh"
 #include "gtest/gtest.h"
 
-namespace carrot::utils {
+namespace strij::utils {
 namespace {
 
 // NOLINTBEGIN(modernize-use-trailing-return-type)
@@ -43,4 +43,4 @@ TEST(GenerateTaskIdTest, ProducesDifferentIds) {
 // NOLINTEND(modernize-use-trailing-return-type)
 
 } // namespace
-} // namespace carrot::utils
+} // namespace strij::utils

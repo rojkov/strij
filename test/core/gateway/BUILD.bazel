@@ -1,6 +1,6 @@
-load("//bazel:build_system.bzl", "carrot_cc_test")
+load("//bazel:build_system.bzl", "strij_cc_test")
 
-carrot_cc_test(
+strij_cc_test(
     name = "gateway_test",
     srcs = ["gateway_test.cc"],
     deps = [

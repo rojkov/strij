@@ -9,7 +9,7 @@
 #include "core/io/protocol_parser.hh"
 #include "llhttp.h"
 
-namespace carrot::io {
+namespace strij::io {
 
 struct HttpRequest {
   std::string_view path;
@@ -51,4 +51,4 @@ private:
   std::string path_;
 };
 
-} // namespace carrot::io
+} // namespace strij::io

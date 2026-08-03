@@ -6,16 +6,16 @@
 #include "core/io/tlv_frame.hh"
 #include "core/nodeagent/task_handler_manager.hh"
 
-namespace carrot::nodeagent {
+namespace strij::nodeagent {
 
 class NodeagentTlvHandler {
 public:
   explicit NodeagentTlvHandler(std::shared_ptr<TaskHandlerManager> manager);
 
-  void HandleFrame(carrot::io::TlvFrame frame, carrot::io::Connection& conn);
+  void HandleFrame(strij::io::TlvFrame frame, strij::io::Connection& conn);
 
 private:
   std::shared_ptr<TaskHandlerManager> manager_;
 };
 
-} // namespace carrot::nodeagent
+} // namespace strij::nodeagent

@@ -5,16 +5,16 @@
 #include <string>
 #include <vector>
 
-#include "carrot/event/dispatcher.hh"
+#include "strij/event/dispatcher.hh"
 #include "core/io/connection.hh"
 #include "core/gateway/node.hh"
 
-namespace carrot::gateway {
+namespace strij::gateway {
 
 class NodeDirectory {
 public:
   NodeDirectory(event::DispatcherSharedPtr dispatcher, std::vector<std::string> addresses,
-                carrot::io::ConnectionFactory factory);
+                strij::io::ConnectionFactory factory);
 
   void StartConnectAll();
 
@@ -24,9 +24,9 @@ public:
 
 private:
   event::DispatcherSharedPtr dispatcher_;
-  carrot::io::ConnectionFactory factory_;
+  strij::io::ConnectionFactory factory_;
   std::vector<std::unique_ptr<Node>> nodes_;
   size_t next_node_index_{0};
 };
 
-} // namespace carrot::gateway
+} // namespace strij::gateway

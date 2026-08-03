@@ -6,10 +6,10 @@
 #include <cassert>
 #include <cstdint>
 
-#include "carrot/event/completable.hh"
-#include "include/carrot/event/completable.hh"
+#include "strij/event/completable.hh"
+#include "include/strij/event/completable.hh"
 
-namespace carrot::event {
+namespace strij::event {
 
 const uintptr_t tag_mask{7};
 
@@ -118,4 +118,4 @@ void DispatcherImpl::PrepareConnect(Completable* receiver, uint8_t tag, int fdes
   io_uring_prep_connect(sqe, fdesc, addr, addrlen);
 }
 
-} // namespace carrot::event
+} // namespace strij::event

@@ -12,7 +12,7 @@
 #include "core/task/task.pb.h"
 #include "core/utils/task_id.hh"
 
-namespace carrot::gateway {
+namespace strij::gateway {
 
 auto ParseTaskType(std::string_view path) -> std::optional<std::string_view> {
   constexpr std::string_view kTasksPrefix = "/tasks/";
@@ -34,7 +34,7 @@ constexpr int kStatusNotFound = 404;
 constexpr int kStatusInternalServerError = 500;
 constexpr int kStatusServiceUnavailable = 503;
 
-void writeErrorResponse(carrot::io::Connection& conn, int status, std::string_view reason) {
+void writeErrorResponse(strij::io::Connection& conn, int status, std::string_view reason) {
   auto response = std::format("HTTP/1.1 {} {}\r\nContent-Length: 0\r\nContent-Type: "
                               "text/plain\r\nConnection: close\r\n\r\n",
                               status, reason);
@@ -44,8 +44,8 @@ void writeErrorResponse(carrot::io::Connection& conn, int status, std::string_vi
 
 } // namespace
 
-void GatewayHttpHandler::HandleMessage(carrot::io::HttpRequest request,
-                                       carrot::io::Connection& conn) {
+void GatewayHttpHandler::HandleMessage(strij::io::HttpRequest request,
+                                       strij::io::Connection& conn) {
   auto task_type = ParseTaskType(request.path);
   if (!task_type.has_value()) {
     writeErrorResponse(conn, kStatusNotFound, "Not Found");
@@ -56,8 +56,8 @@ void GatewayHttpHandler::HandleMessage(carrot::io::HttpRequest request,
     return;
   }
 
-  auto task_id = carrot::utils::GenerateTaskId();
-  carrot::task::Task task;
+  auto task_id = strij::utils::GenerateTaskId();
+  strij::task::Task task;
   task.set_id(task_id);
   task.set_type(task_type->data(), task_type->size());
   // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast)
@@ -80,12 +80,12 @@ void GatewayHttpHandler::HandleMessage(carrot::io::HttpRequest request,
   auto receiver = make_receiver_(conn);
   storage_.put(task_id, std::move(receiver));
 
-  auto frame = carrot::io::SerializeTlvFrame(
-      carrot::io::TlvFrame::kTaskSubmission,
+  auto frame = strij::io::SerializeTlvFrame(
+      strij::io::TlvFrame::kTaskSubmission,
       std::as_bytes(std::span(serialized.data(), serialized.size())));
   nodeagent_conn->Write(frame);
 
   LOG_DEBUG("Submitted task {} (type {}) to nodeagent", task_id, task_type.value());
 }
 
-} // namespace carrot::gateway
+} // namespace strij::gateway

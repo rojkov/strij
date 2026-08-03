@@ -5,12 +5,12 @@
 
 #include "google/protobuf/message.h"
 
-#include "carrot/common/pure.hh"
+#include "strij/common/pure.hh"
 #include "core/extensions/factory_context.hh"
 #include "core/extensions/extension_registry.hh"
 #include "core/task/task.pb.h"
 
-namespace carrot::extensions {
+namespace strij::extensions {
 
 /**
  * @brief Delivers task results back to the originating connection.
@@ -28,7 +28,7 @@ namespace carrot::extensions {
 class ResultSender {
 public:
   virtual ~ResultSender() = default;
-  virtual void Send(carrot::task::TaskResult result) PURE;
+  virtual void Send(strij::task::TaskResult result) PURE;
 };
 
 /**
@@ -42,7 +42,7 @@ public:
 class TaskHandler {
 public:
   virtual ~TaskHandler() = default;
-  virtual void HandleTask(const carrot::task::Task& task, ResultSender& sender) PURE;
+  virtual void HandleTask(const strij::task::Task& task, ResultSender& sender) PURE;
 };
 
 class TaskHandlerFactory {
@@ -56,4 +56,4 @@ public:
       -> std::unique_ptr<TaskHandler> PURE;
 };
 
-} // namespace carrot::extensions
+} // namespace strij::extensions

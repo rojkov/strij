@@ -11,16 +11,16 @@
 #include "google/protobuf/any.pb.h"
 #include "google/protobuf/message.h"
 
-namespace carrot::nodeagent {
+namespace strij::nodeagent {
 
 auto TaskHandlerManager::GetHandler(const std::string& type) const
-    -> carrot::extensions::TaskHandler* {
+    -> strij::extensions::TaskHandler* {
   auto it = handlers_.find(type);
   return it != handlers_.end() ? it->second.get() : nullptr;
 }
 
 void TaskHandlerManager::AddHandler(std::string type,
-                                    std::unique_ptr<carrot::extensions::TaskHandler> handler) {
+                                    std::unique_ptr<strij::extensions::TaskHandler> handler) {
   handlers_.insert_or_assign(std::move(type), std::move(handler));
 }
 
@@ -29,8 +29,8 @@ void TaskHandlerManager::RemoveHandler(const std::string& type) { handlers_.eras
 bool TaskHandlerManager::empty() const { return handlers_.empty(); }
 
 auto BuildTaskHandlerManager(
-    const ::google::protobuf::RepeatedPtrField<carrot::config::ExtensionConfig>& configs,
-    carrot::extensions::FactoryContext& context)
+    const ::google::protobuf::RepeatedPtrField<strij::config::ExtensionConfig>& configs,
+    strij::extensions::FactoryContext& context)
     -> absl::StatusOr<std::shared_ptr<TaskHandlerManager>> {
   auto manager = std::make_shared<TaskHandlerManager>();
 
@@ -39,7 +39,7 @@ auto BuildTaskHandlerManager(
     return manager;
   }
 
-  auto& registry = carrot::extensions::Registry<carrot::extensions::TaskHandlerFactory>::instance();
+  auto& registry = strij::extensions::Registry<strij::extensions::TaskHandlerFactory>::instance();
   for (const auto& ext : configs) {
     auto* factory = registry.GetFactory(ext.name());
     if (factory == nullptr) {
@@ -65,4 +65,4 @@ auto BuildTaskHandlerManager(
   return manager;
 }
 
-} // namespace carrot::nodeagent
+} // namespace strij::nodeagent

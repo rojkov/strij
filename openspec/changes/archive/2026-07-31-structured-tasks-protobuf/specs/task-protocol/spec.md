@@ -7,14 +7,14 @@ Defines the Protobuf message schemas used to carry tasks and results between gat
 ## ADDED Requirements
 
 ### Requirement: Task message schema
-The system SHALL define a Protobuf message `Task` in package `carrot.task` with fields `uint64 id = 1`, `string type = 2`, and `bytes body = 3`. The `id` SHALL be the gateway-assigned task identifier used to route results back to the originating HTTP client. The `type` SHALL identify the task handler intended to process the task. The `body` SHALL be the task payload.
+The system SHALL define a Protobuf message `Task` in package `strij.task` with fields `uint64 id = 1`, `string type = 2`, and `bytes body = 3`. The `id` SHALL be the gateway-assigned task identifier used to route results back to the originating HTTP client. The `type` SHALL identify the task handler intended to process the task. The `body` SHALL be the task payload.
 
 #### Scenario: Task carries id, type, and body
 - **WHEN** a task with id=42, type="echo", and body "hello" is serialized
 - **THEN** the serialized bytes SHALL parse back into a `Task` with id=42, type="echo", and body "hello"
 
 ### Requirement: TaskResult message schema
-The system SHALL define a Protobuf message `TaskResult` in package `carrot.task` with fields `uint64 id = 1` and `bytes body = 2`. The `id` SHALL match the originating `Task.id`. The `body` SHALL be the result payload.
+The system SHALL define a Protobuf message `TaskResult` in package `strij.task` with fields `uint64 id = 1` and `bytes body = 2`. The `id` SHALL match the originating `Task.id`. The `body` SHALL be the result payload.
 
 #### Scenario: TaskResult carries the originating task id
 - **WHEN** a result for task 42 with body "hello" is serialized

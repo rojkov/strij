@@ -7,7 +7,7 @@
 
 #include "core/logging/log.hh"
 
-namespace carrot::io {
+namespace strij::io {
 
 TlvParser::TlvParser(std::move_only_function<void(TlvFrame)>&& on_message)
     : on_message_{std::move(on_message)} {}
@@ -183,4 +183,4 @@ void TlvParser::setState(state new_state) {
   state_ = new_state;
 }
 
-} // namespace carrot::io
+} // namespace strij::io

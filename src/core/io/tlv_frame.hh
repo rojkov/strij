@@ -5,7 +5,7 @@
 #include <span>
 #include <vector>
 
-namespace carrot::io {
+namespace strij::io {
 
 struct TlvFrame {
   uint8_t type_id;
@@ -19,4 +19,4 @@ struct TlvFrame {
 auto SerializeTlvFrame(uint8_t type_id, std::span<const std::byte> value)
     -> std::vector<std::byte>;
 
-} // namespace carrot::io
+} // namespace strij::io

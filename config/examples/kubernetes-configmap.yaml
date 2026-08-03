@@ -1,9 +1,9 @@
-# Kubernetes ConfigMap example for Carrot Gateway
+# Kubernetes ConfigMap example for Strij Gateway
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: carrot-gateway-config
-  namespace: carrot
+  name: strij-gateway-config
+  namespace: strij
 data:
   gateway.yaml: |
     http_listener:
@@ -11,19 +11,19 @@ data:
       port: 8081
 
     node_connections:
-      - address: "nodeagent-0.carrot.svc.cluster.local:9090"
+      - address: "nodeagent-0.strij.svc.cluster.local:9090"
 
     logging:
       level: "info"
       format: "json"
       output: "stdout"
 ---
-# Kubernetes ConfigMap example for Carrot NodeAgent
+# Kubernetes ConfigMap example for Strij NodeAgent
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: carrot-nodeagent-config
-  namespace: carrot
+  name: strij-nodeagent-config
+  namespace: strij
 data:
   nodeagent.yaml: |
     tlv_listener:
@@ -41,8 +41,8 @@ data:
 #     - name: gateway
 #       volumeMounts:
 #         - name: config
-#           mountPath: /etc/carrot
+#           mountPath: /etc/strij
 #   volumes:
 #     - name: config
 #       configMap:
-#         name: carrot-gateway-config
+#         name: strij-gateway-config

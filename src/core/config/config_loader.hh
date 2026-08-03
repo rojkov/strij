@@ -6,7 +6,7 @@
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 
-namespace carrot::config {
+namespace strij::config {
 
 template <typename T>
 auto LoadConfig(const std::string& config_file_path,
@@ -22,4 +22,4 @@ template <typename T> auto GetDefaultConfig() -> T;
 
 template <typename T> auto ConfigToYaml(const T& config) -> std::string;
 
-} // namespace carrot::config
+} // namespace strij::config

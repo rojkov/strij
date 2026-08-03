@@ -4,9 +4,9 @@
 
 #include "core/logging/logger.hh"
 
-#define LOG_REGISTER_THREAD() carrot::logging::Logger::GetInstance().RegisterThread()
+#define LOG_REGISTER_THREAD() strij::logging::Logger::GetInstance().RegisterThread()
 
-namespace carrot::logging {
+namespace strij::logging {
 
 template <typename... Args>
 inline void write_stderr_fallback(LogEntry::severity severity, std::source_location const& location,
@@ -30,8 +30,8 @@ inline void write_stderr_fallback(LogEntry::severity severity, std::source_locat
 template <typename... Args>
 inline void log_impl(LogEntry::severity severity, std::source_location&& location,
                      const char* fmt_str, Args&&... args) {
-  if (carrot::logging::Logger::local_context_ != nullptr) {
-    carrot::logging::LogEntry entry;
+  if (strij::logging::Logger::local_context_ != nullptr) {
+    strij::logging::LogEntry entry;
     entry.severity_ = severity;
     entry.timestamp_ = std::chrono::system_clock::now();
     entry.thread_id_ = gettid();
@@ -41,16 +41,16 @@ inline void log_impl(LogEntry::severity severity, std::source_location&& locatio
     // This ptr may be unused if Args are empty.
     [[maybe_unused]] std::byte* ptr = entry.args_data_;
     (pack_arg(ptr, args), ...);
-    carrot::logging::Logger::local_context_->Log(std::move(entry));
+    strij::logging::Logger::local_context_->Log(std::move(entry));
   } else {
-    carrot::logging::write_stderr_fallback(severity, location, fmt_str, std::forward<Args>(args)...);
+    strij::logging::write_stderr_fallback(severity, location, fmt_str, std::forward<Args>(args)...);
   }
 }
 
-} // namespace carrot::logging
+} // namespace strij::logging
 
 #define LOG(s, format, ...)                                                                        \
-  carrot::logging::log_impl(carrot::logging::LogEntry::s, std::source_location::current(), format, \
+  strij::logging::log_impl(strij::logging::LogEntry::s, std::source_location::current(), format, \
                             ##__VA_ARGS__)
 
 #define LOG_DEBUG(format, ...) LOG(DEBUG, format, ##__VA_ARGS__)

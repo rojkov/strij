@@ -3,7 +3,7 @@
 #include "core/task/task.pb.h"
 #include "gtest/gtest.h"
 
-namespace carrot::task {
+namespace strij::task {
 namespace {
 
 // Consumers treat absence of is_final as final (proposal: absence ⇒ final).
@@ -61,4 +61,4 @@ TEST(TaskResultTest, ExplicitIsFinalTrueRoundTrips) {
 // NOLINTEND(modernize-use-trailing-return-type)
 
 } // namespace
-} // namespace carrot::task
+} // namespace strij::task

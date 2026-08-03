@@ -3,7 +3,7 @@
 #include "core/io/connection.hh"
 #include "extensions/task_handlers/task_handlers.hh"
 
-namespace carrot::nodeagent {
+namespace strij::nodeagent {
 
 /**
  * @brief Binds a ResultSender to a live Connection for synchronous delivery.
@@ -18,14 +18,14 @@ namespace carrot::nodeagent {
  * a connection-owned mailbox that is dropped on close; that is a separate
  * change.
  */
-class ConnectionResultSender final : public carrot::extensions::ResultSender {
+class ConnectionResultSender final : public strij::extensions::ResultSender {
 public:
-  explicit ConnectionResultSender(carrot::io::Connection& conn);
+  explicit ConnectionResultSender(strij::io::Connection& conn);
 
-  void Send(carrot::task::TaskResult result) override;
+  void Send(strij::task::TaskResult result) override;
 
 private:
-  carrot::io::Connection& conn_;
+  strij::io::Connection& conn_;
 };
 
-} // namespace carrot::nodeagent
+} // namespace strij::nodeagent

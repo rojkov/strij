@@ -1,6 +1,6 @@
 ## Context
 
-Carrot's event loop dispatches two kinds of events: I/O completions from io_uring (delivered via `HandleCompletion`) and inter-object messages (delivered via `ProcessCommand`). Currently both are bundled into `event::IOObject`, forcing every participant in the event loop to implement both, even when one is a no-op.
+Strij's event loop dispatches two kinds of events: I/O completions from io_uring (delivered via `HandleCompletion`) and inter-object messages (delivered via `ProcessCommand`). Currently both are bundled into `event::IOObject`, forcing every participant in the event loop to implement both, even when one is a no-op.
 
 ```
 Current:
@@ -35,7 +35,7 @@ As the system grows, command-only objects are expected (service coordinators, li
 
 ### Decision: Name the interfaces `Completable` and `CommandHandler`
 
-Names describe the role: "something that can complete I/O" and "something that can handle commands". Avoids confusion with the old `IOObject`. No `I` prefix — Carrot uses abstract classes as interfaces without marking them in names.
+Names describe the role: "something that can complete I/O" and "something that can handle commands". Avoids confusion with the old `IOObject`. No `I` prefix — Strij uses abstract classes as interfaces without marking them in names.
 
 **Alternatives considered:**
 - `CompletionHandler` / `CommandReceiver` — more verbose, less grep-friendly
@@ -46,7 +46,7 @@ Names describe the role: "something that can complete I/O" and "something that c
 
 ```cpp
 // completable.hh
-namespace carrot::event {
+namespace strij::event {
 
 class Completable {
 public:
@@ -60,12 +60,12 @@ public:
   virtual void HandleCompletion(uint8_t tag, int res, uint32_t flags) PURE;
 };
 
-} // namespace carrot::event
+} // namespace strij::event
 ```
 
 ```cpp
 // command_handler.hh
-namespace carrot::event {
+namespace strij::event {
 
 class CommandHandler {
 public:
@@ -79,7 +79,7 @@ public:
   virtual void ProcessCommand(Command cmd) PURE;
 };
 
-} // namespace carrot::event
+} // namespace strij::event
 ```
 
 ### Decision: Dispatcher `Prepare*` methods take `Completable*`, `SubmitCommand` takes `CommandHandler*`

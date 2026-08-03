@@ -4,16 +4,16 @@
 #include "core/io/connection.hh"
 #include "core/io/tlv_frame.hh"
 
-namespace carrot::gateway {
+namespace strij::gateway {
 
 class GatewayTlvHandler {
 public:
   explicit GatewayTlvHandler(ResultReceiverStorage& storage) : storage_{storage} {}
 
-  void HandleFrame(carrot::io::TlvFrame frame, carrot::io::Connection& conn);
+  void HandleFrame(strij::io::TlvFrame frame, strij::io::Connection& conn);
 
 private:
   ResultReceiverStorage& storage_;
 };
 
-} // namespace carrot::gateway
+} // namespace strij::gateway

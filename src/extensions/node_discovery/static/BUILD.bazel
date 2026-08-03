@@ -1,6 +1,6 @@
-load("//bazel:build_system.bzl", "carrot_cc_library")
+load("//bazel:build_system.bzl", "strij_cc_library")
 
-carrot_cc_library(
+strij_cc_library(
     name = "static_node_discovery_lib",
     srcs = ["static_node_discovery.cc"],
     hdrs = ["static_node_discovery.hh"],

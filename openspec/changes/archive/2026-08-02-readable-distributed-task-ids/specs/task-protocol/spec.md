@@ -1,14 +1,14 @@
 ## MODIFIED Requirements
 
 ### Requirement: Task message schema
-The system SHALL define a Protobuf message `Task` in package `carrot.task` with fields `string id = 1`, `string type = 2`, and `bytes body = 3`. The `id` SHALL be a human-readable, randomly generated string identifier (e.g., `happy_fox_runs_k7m2x9p4`) used to route results back to the originating HTTP client. The `type` SHALL identify the task handler intended to process the task. The `body` SHALL be the task payload.
+The system SHALL define a Protobuf message `Task` in package `strij.task` with fields `string id = 1`, `string type = 2`, and `bytes body = 3`. The `id` SHALL be a human-readable, randomly generated string identifier (e.g., `happy_fox_runs_k7m2x9p4`) used to route results back to the originating HTTP client. The `type` SHALL identify the task handler intended to process the task. The `body` SHALL be the task payload.
 
 #### Scenario: Task carries string id, type, and body
 - **WHEN** a task with id="happy_fox_runs_k7m2x9p4", type="echo", and body "hello" is serialized
 - **THEN** the serialized bytes SHALL parse back into a `Task` with id="happy_fox_runs_k7m2x9p4", type="echo", and body "hello"
 
 ### Requirement: TaskResult message schema
-The system SHALL define a Protobuf message `TaskResult` in package `carrot.task` with fields `string id = 1` and `bytes body = 2`. The `id` SHALL match the originating `Task.id` as a string. The `body` SHALL be the result payload.
+The system SHALL define a Protobuf message `TaskResult` in package `strij.task` with fields `string id = 1` and `bytes body = 2`. The `id` SHALL match the originating `Task.id` as a string. The `body` SHALL be the result payload.
 
 #### Scenario: TaskResult carries the originating string task id
 - **WHEN** a result for task "happy_fox_runs_k7m2x9p4" with body "hello" is serialized

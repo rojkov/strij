@@ -2,11 +2,11 @@
 
 #include <algorithm>
 
-namespace carrot::gateway {
+namespace strij::gateway {
 
 NodeDirectory::NodeDirectory(event::DispatcherSharedPtr dispatcher,
                              std::vector<std::string> addresses,
-                             carrot::io::ConnectionFactory factory)
+                             strij::io::ConnectionFactory factory)
     : dispatcher_{std::move(dispatcher)}, factory_{std::move(factory)} {
   nodes_.reserve(addresses.size());
   for (auto& addr : addresses) {
@@ -43,4 +43,4 @@ auto NodeDirectory::GetAvailableCount() const -> size_t {
                     [](const auto& node) { return node->IsAvailable(); }));
 }
 
-} // namespace carrot::gateway
+} // namespace strij::gateway

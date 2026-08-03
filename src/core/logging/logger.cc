@@ -4,7 +4,7 @@
 
 #include "core/event/dispatcher_impl.hh"
 
-namespace carrot::logging {
+namespace strij::logging {
 
 Logger::Logger() : dispatcher_{std::make_shared<event::DispatcherImpl>()} {}
 
@@ -37,4 +37,4 @@ void Logger::Stop() {
   local_context_ = nullptr;
 }
 
-} // namespace carrot::logging
+} // namespace strij::logging

@@ -29,27 +29,27 @@ auto main(int argc, char** argv) -> int {
 
   // Load configuration
   auto config_result =
-      carrot::config::LoadConfig<carrot::config::NodeAgentConfig>(absl::GetFlag(FLAGS_config_file));
+      strij::config::LoadConfig<strij::config::NodeAgentConfig>(absl::GetFlag(FLAGS_config_file));
 
   if (!config_result.ok()) {
     LOG_ERROR("Config error: {}", config_result.status().message());
     return 1;
   }
 
-  carrot::config::NodeAgentConfig config = std::move(config_result).value();
+  strij::config::NodeAgentConfig config = std::move(config_result).value();
 
-  carrot::event::DispatcherSharedPtr dispatcher = std::make_shared<carrot::event::DispatcherImpl>();
+  strij::event::DispatcherSharedPtr dispatcher = std::make_shared<strij::event::DispatcherImpl>();
 
   // Build the task handler manager from config. This must run before the
   // --validate_only short-circuit so that unknown handler names fail validation.
-  carrot::extensions::FactoryContextImpl factory_context(dispatcher);
-  auto manager_result = carrot::nodeagent::BuildTaskHandlerManager(config.task_handlers(),
+  strij::extensions::FactoryContextImpl factory_context(dispatcher);
+  auto manager_result = strij::nodeagent::BuildTaskHandlerManager(config.task_handlers(),
                                                                    factory_context);
   if (!manager_result.ok()) {
     LOG_ERROR("Task handler config error: {}", manager_result.status().message());
     return 1;
   }
-  std::shared_ptr<carrot::nodeagent::TaskHandlerManager> task_handler_manager =
+  std::shared_ptr<strij::nodeagent::TaskHandlerManager> task_handler_manager =
       std::move(manager_result).value();
 
   if (absl::GetFlag(FLAGS_validate_only)) {
@@ -72,20 +72,20 @@ auto main(int argc, char** argv) -> int {
   }
 
   // Signal monitor must be activated before the logger thread, otherwise we might miss the signal.
-  carrot::common::SignalMonitor signal_monitor(dispatcher);
+  strij::common::SignalMonitor signal_monitor(dispatcher);
 
-  auto& logger = carrot::logging::Logger::GetInstance();
+  auto& logger = strij::logging::Logger::GetInstance();
   logger.Run();
 
   LOG_REGISTER_THREAD();
 
-  carrot::io::TcpListener listener{
+  strij::io::TcpListener listener{
       dispatcher, config.tlv_listener().port(),
-      [task_handler_manager](carrot::io::Connection& conn) -> std::unique_ptr<carrot::io::ProtocolParser> {
+      [task_handler_manager](strij::io::Connection& conn) -> std::unique_ptr<strij::io::ProtocolParser> {
         auto handler =
-            std::make_unique<carrot::nodeagent::NodeagentTlvHandler>(task_handler_manager);
-        return std::make_unique<carrot::io::TlvParser>(
-            [hdl = std::move(handler), &conn](carrot::io::TlvFrame frame) -> void {
+            std::make_unique<strij::nodeagent::NodeagentTlvHandler>(task_handler_manager);
+        return std::make_unique<strij::io::TlvParser>(
+            [hdl = std::move(handler), &conn](strij::io::TlvFrame frame) -> void {
               hdl->HandleFrame(frame, conn);
             });
       }};

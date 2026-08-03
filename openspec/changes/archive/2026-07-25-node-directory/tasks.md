@@ -1,6 +1,6 @@
 ## 1. Dispatcher: Add PrepareConnect
 
-- [x] 1.1 Add `PrepareConnect` pure virtual method to `include/carrot/event/dispatcher.hh`
+- [x] 1.1 Add `PrepareConnect` pure virtual method to `include/strij/event/dispatcher.hh`
 - [x] 1.2 Declare `PrepareConnect` override in `src/core/event/dispatcher_impl.hh`
 - [x] 1.3 Implement `PrepareConnect` in `src/core/event/dispatcher_impl.cc` using `io_uring_prep_connect`
 
@@ -8,13 +8,13 @@
 
 - [x] 2.1 Create `src/core/io/node.hh` with `Node` class: `IOObject` subclass, `Status` enum, `StartConnect()`, `HandleCompletion()`, `ProcessCommand()`, `GetConnection()`, `IsAvailable()`, `GetAddress()`
 - [x] 2.2 Create `src/core/io/node.cc` with `Node` implementation: socket creation, `PrepareConnect` submission, connect completion handling (create `Connection` on success, close fd on failure), `CLOSE_CONNECTION` command handling
-- [x] 2.3 Add `carrot_cc_library` target `node_lib` in `src/core/io/BUILD.bazel`
+- [x] 2.3 Add `strij_cc_library` target `node_lib` in `src/core/io/BUILD.bazel`
 
 ## 3. NodeDirectory class
 
 - [x] 3.1 Create `src/core/io/node_directory.hh` with `NodeDirectory` class: owns `vector<unique_ptr<Node>>`, `StartConnectAll()`, `GetNextNode()`, `GetNodeCount()`, `GetAvailableCount()`
 - [x] 3.2 Create `src/core/io/node_directory.cc` with `NodeDirectory` implementation: address parsing, node creation, round-robin selection among available nodes
-- [x] 3.3 Add `carrot_cc_library` target `node_directory_lib` in `src/core/io/BUILD.bazel`
+- [x] 3.3 Add `strij_cc_library` target `node_directory_lib` in `src/core/io/BUILD.bazel`
 
 ## 4. Update GatewayHttpHandler
 

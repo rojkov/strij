@@ -11,12 +11,12 @@
 #include "core/config/nodeagent.pb.h"
 #include "gtest/gtest.h"
 
-namespace carrot::config {
+namespace strij::config {
 namespace {
 
 std::string CreateTempFile(const std::string& content) {
   auto dir = std::filesystem::temp_directory_path();
-  auto path = dir / "carrot_config_test_XXXXXX";
+  auto path = dir / "strij_config_test_XXXXXX";
   std::string tmpl = path.string();
   std::vector<char> buf(tmpl.begin(), tmpl.end());
   buf.push_back('\0');
@@ -149,8 +149,8 @@ TEST(ConfigLoaderTest, CliOverrides) {
 }
 
 TEST(ConfigLoaderTest, EnvOverridesPort) {
-  setenv("CARROT_GATEWAY_HTTP_LISTENER_PORT", "7070", 1);
-  setenv("CARROT_GATEWAY_HTTP_LISTENER_ADDRESS", "10.0.0.1", 1);
+  setenv("STRIJ_GATEWAY_HTTP_LISTENER_PORT", "7070", 1);
+  setenv("STRIJ_GATEWAY_HTTP_LISTENER_ADDRESS", "10.0.0.1", 1);
 
   auto result = LoadConfig<GatewayConfig>("");
   ASSERT_TRUE(result.ok()) << result.status().message();
@@ -158,14 +158,14 @@ TEST(ConfigLoaderTest, EnvOverridesPort) {
   EXPECT_EQ(config.http_listener().port(), 7070u);
   EXPECT_EQ(config.http_listener().address(), "10.0.0.1");
 
-  unsetenv("CARROT_GATEWAY_HTTP_LISTENER_PORT");
-  unsetenv("CARROT_GATEWAY_HTTP_LISTENER_ADDRESS");
+  unsetenv("STRIJ_GATEWAY_HTTP_LISTENER_PORT");
+  unsetenv("STRIJ_GATEWAY_HTTP_LISTENER_ADDRESS");
 }
 
 TEST(ConfigLoaderTest, EnvOverridesNodeAgent) {
-  setenv("CARROT_NODEAGENT_TLV_LISTENER_PORT", "8080", 1);
-  setenv("CARROT_NODEAGENT_TLV_LISTENER_ADDRESS", "0.0.0.0", 1);
-  setenv("CARROT_NODEAGENT_LOGGING_LEVEL", "error", 1);
+  setenv("STRIJ_NODEAGENT_TLV_LISTENER_PORT", "8080", 1);
+  setenv("STRIJ_NODEAGENT_TLV_LISTENER_ADDRESS", "0.0.0.0", 1);
+  setenv("STRIJ_NODEAGENT_LOGGING_LEVEL", "error", 1);
 
   auto result = LoadConfig<NodeAgentConfig>("");
   ASSERT_TRUE(result.ok()) << result.status().message();
@@ -174,16 +174,16 @@ TEST(ConfigLoaderTest, EnvOverridesNodeAgent) {
   EXPECT_EQ(config.tlv_listener().address(), "0.0.0.0");
   EXPECT_EQ(config.logging().level(), "error");
 
-  unsetenv("CARROT_NODEAGENT_TLV_LISTENER_PORT");
-  unsetenv("CARROT_NODEAGENT_TLV_LISTENER_ADDRESS");
-  unsetenv("CARROT_NODEAGENT_LOGGING_LEVEL");
+  unsetenv("STRIJ_NODEAGENT_TLV_LISTENER_PORT");
+  unsetenv("STRIJ_NODEAGENT_TLV_LISTENER_ADDRESS");
+  unsetenv("STRIJ_NODEAGENT_LOGGING_LEVEL");
 }
 
 TEST(ConfigLoaderTest, EnvOverridesArrayField) {
-  setenv("CARROT_GATEWAY_HTTP_LISTENER_ADDRESS", "0.0.0.0", 1);
-  setenv("CARROT_GATEWAY_HTTP_LISTENER_PORT", "8081", 1);
-  setenv("CARROT_GATEWAY_NODE_CONNECTIONS__0__ADDRESS", "10.0.0.1:9090", 1);
-  setenv("CARROT_GATEWAY_NODE_CONNECTIONS__1__ADDRESS", "10.0.0.2:9090", 1);
+  setenv("STRIJ_GATEWAY_HTTP_LISTENER_ADDRESS", "0.0.0.0", 1);
+  setenv("STRIJ_GATEWAY_HTTP_LISTENER_PORT", "8081", 1);
+  setenv("STRIJ_GATEWAY_NODE_CONNECTIONS__0__ADDRESS", "10.0.0.1:9090", 1);
+  setenv("STRIJ_GATEWAY_NODE_CONNECTIONS__1__ADDRESS", "10.0.0.2:9090", 1);
 
   auto result = LoadConfig<GatewayConfig>("");
   ASSERT_TRUE(result.ok()) << result.status().message();
@@ -192,10 +192,10 @@ TEST(ConfigLoaderTest, EnvOverridesArrayField) {
   EXPECT_EQ(config.node_connections(0).address(), "10.0.0.1:9090");
   EXPECT_EQ(config.node_connections(1).address(), "10.0.0.2:9090");
 
-  unsetenv("CARROT_GATEWAY_HTTP_LISTENER_ADDRESS");
-  unsetenv("CARROT_GATEWAY_HTTP_LISTENER_PORT");
-  unsetenv("CARROT_GATEWAY_NODE_CONNECTIONS__0__ADDRESS");
-  unsetenv("CARROT_GATEWAY_NODE_CONNECTIONS__1__ADDRESS");
+  unsetenv("STRIJ_GATEWAY_HTTP_LISTENER_ADDRESS");
+  unsetenv("STRIJ_GATEWAY_HTTP_LISTENER_PORT");
+  unsetenv("STRIJ_GATEWAY_NODE_CONNECTIONS__0__ADDRESS");
+  unsetenv("STRIJ_GATEWAY_NODE_CONNECTIONS__1__ADDRESS");
 }
 
 TEST(ConfigLoaderTest, ValidateConfig) {
@@ -253,4 +253,4 @@ TEST(ConfigLoaderTest, GetDefaultConfig) {
 }
 
 } // namespace
-} // namespace carrot::config
+} // namespace strij::config

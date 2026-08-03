@@ -26,5 +26,5 @@
 
 - **Files removed**: `src/core/io/tcp_connector.hh`, `src/core/io/tcp_connector.cc`
 - **Files added**: `src/core/io/node_directory.hh`, `src/core/io/node_directory.cc`, `src/core/io/node.hh`, `src/core/io/node.cc`
-- **Files modified**: `include/carrot/event/dispatcher.hh`, `src/core/event/dispatcher_impl.hh`, `src/core/event/dispatcher_impl.cc`, `src/core/io/gateway_http_handler.hh`, `src/core/io/gateway_http_handler.cc`, `src/exe/gateway/gateway.cc`, `src/core/io/BUILD.bazel`, `src/exe/gateway/BUILD.bazel`
+- **Files modified**: `include/strij/event/dispatcher.hh`, `src/core/event/dispatcher_impl.hh`, `src/core/event/dispatcher_impl.cc`, `src/core/io/gateway_http_handler.hh`, `src/core/io/gateway_http_handler.cc`, `src/exe/gateway/gateway.cc`, `src/core/io/BUILD.bazel`, `src/exe/gateway/BUILD.bazel`
 - **External dependencies**: None new — `io_uring_prep_connect` is already available in the bundled liburing.

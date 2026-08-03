@@ -1,14 +1,14 @@
 """
-This file contains common build rules for the Carrot project.
+This file contains common build rules for the Strij project.
 """
 
 load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
 load("@rules_cc//cc:defs.bzl", "cc_library", "cc_test")
 
-# Transform the package path (e.g. include/carrot/common) into a path for
-# the include prefix (e.g. carrot/common). This allows us to
-# write #include "carrot/common/pure.hh" instead of #include "include/carrot/common/pure.hh".
-def carrot_include_prefix(path):
+# Transform the package path (e.g. include/strij/common) into a path for
+# the include prefix (e.g. strij/common). This allows us to
+# write #include "strij/common/pure.hh" instead of #include "include/strij/common/pure.hh".
+def strij_include_prefix(path):
     if path.startswith("include/") or path.startswith("src/"):
         return "/".join(path.split("/")[1:])
     return None
@@ -18,7 +18,7 @@ def visibility_for_tests(path):
         return ["//test/" + "/".join(path.split("/")[1:]) + ":__pkg__"]
     return []
 
-def carrot_cc_binary(
+def strij_cc_binary(
         name,
         srcs = [],
         deps = [],
@@ -30,7 +30,7 @@ def carrot_cc_binary(
         visibility = visibility,
     )
 
-def carrot_cc_library(
+def strij_cc_library(
         name,
         srcs = [],
         hdrs = [],
@@ -43,11 +43,11 @@ def carrot_cc_library(
         hdrs = hdrs,
         deps = deps,
         visibility = visibility + visibility_for_tests(native.package_name()),
-        include_prefix = carrot_include_prefix(native.package_name()),
+        include_prefix = strij_include_prefix(native.package_name()),
         alwayslink = alwayslink,
     )
 
-def carrot_cc_test_library(
+def strij_cc_test_library(
         name,
         srcs = [],
         hdrs = [],
@@ -61,7 +61,7 @@ def carrot_cc_test_library(
         visibility = visibility,
     )
 
-def carrot_cc_test(
+def strij_cc_test(
         name,
         srcs = [],
         deps = []):

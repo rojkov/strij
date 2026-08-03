@@ -7,7 +7,7 @@
 
 #include "src/core/logging/log_frontend.hh"
 
-namespace carrot::logging {
+namespace strij::logging {
 
 void pack_arg(std::byte*& ptr, std::string_view sw) {
   size_t len = sw.size();
@@ -67,4 +67,4 @@ void LogFrontend::HandleCompletion(uint8_t tag, int res, uint32_t flags) {
                            std::as_writable_bytes(std::span<uint64_t, 1>{&event_fd_val_, 1}), 0);
 }
 
-} // namespace carrot::logging
+} // namespace strij::logging

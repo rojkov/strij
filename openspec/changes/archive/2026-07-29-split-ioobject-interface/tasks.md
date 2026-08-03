@@ -1,10 +1,10 @@
 ## 1. Core interface replacements
 
-- [x] 1.1 Create `include/carrot/event/completable.hh` with `Completable` interface
-- [x] 1.2 Create `include/carrot/event/command_handler.hh` with `CommandHandler` interface
-- [x] 1.3 Remove `include/carrot/event/io_object.hh` — interfaces absorbed by the two new headers
-- [x] 1.4 Update `include/carrot/event/command.hh`: `destination_` type changes from `IOObject*` to `CommandHandler*`
-- [x] 1.5 Update `include/carrot/event/dispatcher.hh`: `Prepare*` methods take `Completable*`, `SubmitCommand` takes `CommandHandler*` (via Command struct)
+- [x] 1.1 Create `include/strij/event/completable.hh` with `Completable` interface
+- [x] 1.2 Create `include/strij/event/command_handler.hh` with `CommandHandler` interface
+- [x] 1.3 Remove `include/strij/event/io_object.hh` — interfaces absorbed by the two new headers
+- [x] 1.4 Update `include/strij/event/command.hh`: `destination_` type changes from `IOObject*` to `CommandHandler*`
+- [x] 1.5 Update `include/strij/event/dispatcher.hh`: `Prepare*` methods take `Completable*`, `SubmitCommand` takes `CommandHandler*` (via Command struct)
 
 ## 2. Update core Dispatcher implementation
 

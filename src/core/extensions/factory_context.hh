@@ -2,11 +2,11 @@
 
 #include <memory>
 
-#include "carrot/common/pure.hh"
-#include "carrot/event/dispatcher.hh"
+#include "strij/common/pure.hh"
+#include "strij/event/dispatcher.hh"
 #include "core/logging/logger.hh"
 
-namespace carrot::extensions {
+namespace strij::extensions {
 
 class FactoryContext {
 public:
@@ -30,4 +30,4 @@ private:
   event::DispatcherSharedPtr dispatcher_;
 };
 
-} // namespace carrot::extensions
+} // namespace strij::extensions

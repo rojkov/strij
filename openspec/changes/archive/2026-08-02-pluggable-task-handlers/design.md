@@ -26,13 +26,13 @@ This change applies the same pattern to nodeagent task processing, with a `TaskH
 class ResultSender {
 public:
   virtual ~ResultSender() = default;
-  virtual void Send(carrot::task::TaskResult result) PURE;
+  virtual void Send(strij::task::TaskResult result) PURE;
 };
 
 class TaskHandler {
 public:
   virtual ~TaskHandler() = default;
-  virtual void HandleTask(const carrot::task::Task& task, ResultSender& sender) PURE;
+  virtual void HandleTask(const strij::task::Task& task, ResultSender& sender) PURE;
 };
 ```
 
@@ -47,10 +47,10 @@ Concrete sender (nodeagent side, binds the connection):
 // src/core/nodeagent/result_sender.hh
 class ConnectionResultSender final : public ResultSender {
 public:
-  explicit ConnectionResultSender(carrot::io::Connection& conn);
-  void Send(carrot::task::TaskResult result) override;  // serialize + SerializeTlvFrame(kResult) + conn.Write
+  explicit ConnectionResultSender(strij::io::Connection& conn);
+  void Send(strij::task::TaskResult result) override;  // serialize + SerializeTlvFrame(kResult) + conn.Write
 private:
-  carrot::io::Connection& conn_;
+  strij::io::Connection& conn_;
 };
 ```
 
@@ -74,7 +74,7 @@ private:
 
 // Free builder (also in task_handler_manager module)
 auto BuildTaskHandlerManager(
-    const ::google::protobuf::RepeatedPtrField<carrot::config::ExtensionConfig>& configs,
+    const ::google::protobuf::RepeatedPtrField<strij::config::ExtensionConfig>& configs,
     FactoryContext& context) -> absl::StatusOr<std::shared_ptr<TaskHandlerManager>>;
 ```
 
@@ -107,7 +107,7 @@ Example YAML (also reflected in `config/examples/nodeagent.yaml`):
 task_handlers:
   - name: "echo"
     typed_config:
-      "@type": "type.googleapis.com/carrot.extensions.task_handlers.echo.EchoTaskHandlerConfig"
+      "@type": "type.googleapis.com/strij.extensions.task_handlers.echo.EchoTaskHandlerConfig"
 ```
 
 `EchoTaskHandlerConfig` is an empty proto (any `Any` round-trip needs a concrete type).

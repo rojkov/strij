@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-package carrot.config;
+package strij.config;
 
 message StaticNodeDiscoveryConfig {
   repeated string addresses = 1;

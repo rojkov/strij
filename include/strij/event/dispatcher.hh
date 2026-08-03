@@ -6,11 +6,11 @@
 
 #include <sys/socket.h>
 
-#include "carrot/common/pure.hh"
-#include "carrot/event/completable.hh"
-#include "carrot/event/command.hh"
+#include "strij/common/pure.hh"
+#include "strij/event/completable.hh"
+#include "strij/event/command.hh"
 
-namespace carrot::event {
+namespace strij::event {
 
 class Dispatcher {
 public:
@@ -37,4 +37,4 @@ public:
 
 using DispatcherSharedPtr = std::shared_ptr<Dispatcher>;
 
-} // namespace carrot::event
+} // namespace strij::event

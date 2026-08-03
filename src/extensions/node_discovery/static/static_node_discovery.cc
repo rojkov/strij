@@ -5,7 +5,7 @@
 #include "extensions/node_discovery/static/static_node_discovery.pb.h"
 #include "google/protobuf/any.pb.h"
 
-namespace carrot::extensions::node_discovery {
+namespace strij::extensions::node_discovery {
 
 StaticNodeDiscovery::StaticNodeDiscovery(std::vector<std::string> addresses)
     : addresses_(std::move(addresses)) {}
@@ -24,13 +24,13 @@ void StaticNodeDiscovery::Stop() {}
 auto StaticNodeDiscoveryFactory::Name() const -> std::string { return "static"; }
 
 auto StaticNodeDiscoveryFactory::CreateEmptyConfigProto() -> MessagePtr {
-  return std::make_unique<carrot::config::StaticNodeDiscoveryConfig>();
+  return std::make_unique<strij::config::StaticNodeDiscoveryConfig>();
 }
 
 auto StaticNodeDiscoveryFactory::Create(const ::google::protobuf::Message& config,
                                         FactoryContext& /*context*/)
     -> std::unique_ptr<NodeDiscovery> {
-  const auto& typed = dynamic_cast<const carrot::config::StaticNodeDiscoveryConfig&>(config);
+  const auto& typed = dynamic_cast<const strij::config::StaticNodeDiscoveryConfig&>(config);
 
   if (typed.addresses().empty()) {
     throw std::runtime_error("StaticNodeDiscoveryConfig: addresses must not be empty");
@@ -44,8 +44,8 @@ auto StaticNodeDiscoveryFactory::Create(const ::google::protobuf::Message& confi
   return std::make_unique<StaticNodeDiscovery>(std::move(addresses));
 }
 
-} // namespace carrot::extensions::node_discovery
+} // namespace strij::extensions::node_discovery
 
-REGISTER_FACTORY_FULLY_QUALIFIED(carrot::extensions::node_discovery::StaticNodeDiscoveryFactory,
-                                 carrot::extensions::NodeDiscoveryFactory,
+REGISTER_FACTORY_FULLY_QUALIFIED(strij::extensions::node_discovery::StaticNodeDiscoveryFactory,
+                                 strij::extensions::NodeDiscoveryFactory,
                                  static_node_discovery_registrar)
