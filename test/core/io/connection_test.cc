@@ -12,6 +12,7 @@
 #include "core/io/connection.hh"
 #include "core/io/protocol_parser.hh"
 #include "gtest/gtest.h"
+#include "strij/event/command.hh"
 
 namespace strij::io {
 namespace {
@@ -98,6 +99,158 @@ TEST_F(ConnectionPartialWriteTest, CompleteWriteClearsBuffer) {
   EXPECT_CALL(*dispatcher, PrepareWrite(::testing::_, ::testing::_, ::testing::_, ::testing::_, 0))
       .Times(1);
   conn.Write(data);
+}
+
+TEST_F(ConnectionPartialWriteTest, QueuedWritesSubmitOnlyAfterPreviousCompletes) {
+  auto dispatcher = std::make_shared<strij::event::MockDispatcher>();
+  strij::event::DummyOwner owner;
+
+  // Suppress uninteresting PrepareRead call from Connection constructor
+  EXPECT_CALL(*dispatcher,
+              PrepareRead(::testing::_, ::testing::_, ::testing::_, ::testing::_, ::testing::_))
+      .WillOnce(::testing::Return());
+
+  Connection conn(write_fd_, dispatcher, &owner,
+                  [](Connection&) -> std::unique_ptr<ProtocolParser> {
+                    return std::make_unique<TrivialParser>();
+                  });
+
+  // Write A submits immediately; Write B (while A in-flight) only queues; the
+  // next submission happens after A's completion and carries B's bytes.
+  {
+    ::testing::InSequence seq;
+    EXPECT_CALL(*dispatcher, PrepareWrite(::testing::_, ::testing::_, ::testing::_,
+                                          ::testing::Truly([](std::span<const std::byte> s) {
+                                            return s.size() == 5 && s[0] == std::byte{0xAA} &&
+                                                   s[4] == std::byte{0xAA};
+                                          }),
+                                          0))
+        .Times(1);
+    EXPECT_CALL(*dispatcher, PrepareWrite(::testing::_, ::testing::_, ::testing::_,
+                                          ::testing::Truly([](std::span<const std::byte> s) {
+                                            return s.size() == 3 && s[0] == std::byte{0xBB} &&
+                                                   s[2] == std::byte{0xBB};
+                                          }),
+                                          0))
+        .Times(1);
+  }
+
+  auto a = std::vector<std::byte>(5, std::byte{0xAA});
+  auto b = std::vector<std::byte>(3, std::byte{0xBB});
+  conn.Write(a);
+  conn.Write(b);
+
+  // A completes: B is submitted and drains.
+  conn.HandleCompletion(1 /*kWrite*/, 5, 0);
+  conn.HandleCompletion(1 /*kWrite*/, 3, 0);
+}
+
+TEST_F(ConnectionPartialWriteTest, PartialFrontWriteThenQueuedDrain) {
+  auto dispatcher = std::make_shared<strij::event::MockDispatcher>();
+  strij::event::DummyOwner owner;
+
+  EXPECT_CALL(*dispatcher,
+              PrepareRead(::testing::_, ::testing::_, ::testing::_, ::testing::_, ::testing::_))
+      .WillOnce(::testing::Return());
+
+  Connection conn(write_fd_, dispatcher, &owner,
+                  [](Connection&) -> std::unique_ptr<ProtocolParser> {
+                    return std::make_unique<TrivialParser>();
+                  });
+
+  {
+    ::testing::InSequence seq;
+    // Front buffer submitted initially (100 bytes).
+    EXPECT_CALL(*dispatcher, PrepareWrite(::testing::_, ::testing::_, ::testing::_,
+                                          ::testing::Truly([](std::span<const std::byte> s) {
+                                            return s.size() == 100;
+                                          }),
+                                          0))
+        .Times(1);
+    // 40-byte partial write → resubmit 60 remaining bytes of the same buffer.
+    EXPECT_CALL(*dispatcher, PrepareWrite(::testing::_, ::testing::_, ::testing::_,
+                                          ::testing::Truly([](std::span<const std::byte> s) {
+                                            return s.size() == 60;
+                                          }),
+                                          0))
+        .Times(1);
+    // Front completes → next queued buffer is submitted.
+    EXPECT_CALL(*dispatcher, PrepareWrite(::testing::_, ::testing::_, ::testing::_,
+                                          ::testing::Truly([](std::span<const std::byte> s) {
+                                            return s.size() == 7;
+                                          }),
+                                          0))
+        .Times(1);
+  }
+
+  auto a = std::vector<std::byte>(100, std::byte{0x42});
+  auto b = std::vector<std::byte>(7, std::byte{0x24});
+  conn.Write(a);
+  conn.Write(b);
+
+  conn.HandleCompletion(1 /*kWrite*/, 40, 0); // partial write of the front
+  conn.HandleCompletion(1 /*kWrite*/, 60, 0); // front done, B drains
+  conn.HandleCompletion(1 /*kWrite*/, 7, 0);
+}
+
+TEST_F(ConnectionPartialWriteTest, WriteErrorDropsQueuedWrites) {
+  auto dispatcher = std::make_shared<strij::event::MockDispatcher>();
+  strij::event::DummyOwner owner;
+
+  EXPECT_CALL(*dispatcher,
+              PrepareRead(::testing::_, ::testing::_, ::testing::_, ::testing::_, ::testing::_))
+      .WillOnce(::testing::Return());
+
+  Connection conn(write_fd_, dispatcher, &owner,
+                  [](Connection&) -> std::unique_ptr<ProtocolParser> {
+                    return std::make_unique<TrivialParser>();
+                  });
+
+  EXPECT_CALL(*dispatcher, PrepareWrite(::testing::_, ::testing::_, ::testing::_, ::testing::_, 0))
+      .Times(1);
+  auto data = std::vector<std::byte>(4, std::byte{0x01});
+  conn.Write(data);
+
+  // A second write is queued while the first is in-flight.
+  conn.Write(data);
+
+  // Error completion drops the whole queue.
+  conn.HandleCompletion(1 /*kWrite*/, -1, 0);
+
+  // The queue is empty again: a fresh write submits immediately.
+  EXPECT_CALL(*dispatcher, PrepareWrite(::testing::_, ::testing::_, ::testing::_, ::testing::_, 0))
+      .Times(1);
+  conn.Write(data);
+}
+
+TEST_F(ConnectionPartialWriteTest, EndOfStreamClosesMailboxAndSubmitsCloseCommand) {
+  auto dispatcher = std::make_shared<strij::event::MockDispatcher>();
+  strij::event::DummyOwner owner;
+
+  // Suppress uninteresting PrepareRead call from Connection constructor.
+  EXPECT_CALL(*dispatcher,
+              PrepareRead(::testing::_, ::testing::_, ::testing::_, ::testing::_, ::testing::_))
+      .WillOnce(::testing::Return());
+
+  EXPECT_CALL(*dispatcher, SubmitCommand(::testing::AllOf(
+                               ::testing::Field(&strij::event::Command::type_,
+                                                strij::event::Command::CLOSE_CONNECTION),
+                               ::testing::Field(&strij::event::Command::destination_, &owner))))
+      .Times(1);
+
+  Connection conn(write_fd_, dispatcher, &owner,
+                  [](Connection&) -> std::unique_ptr<ProtocolParser> {
+                    return std::make_unique<TrivialParser>();
+                  });
+
+  int fired = 0;
+  conn.Mailbox()->RegisterOnClose([&fired] { ++fired; });
+
+  // End-of-stream read completion closes the fd and the mailbox.
+  conn.HandleCompletion(0 /*kRead*/, 0, 0);
+  write_fd_ = -1; // onEndOfStream already closed it; avoid double-close.
+
+  EXPECT_EQ(fired, 1);
 }
 
 // NOLINTEND(modernize-use-trailing-return-type)

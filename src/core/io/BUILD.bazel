@@ -46,14 +46,15 @@ strij_cc_library(
 
 strij_cc_library(
     name = "connection_lib",
-    srcs = ["connection.cc"],
-    hdrs = ["connection.hh"],
+    srcs = ["connection.cc", "outbound_mailbox.cc"],
+    hdrs = ["connection.hh", "outbound_mailbox.hh"],
     visibility = ["//visibility:public"],
     deps = [
         ":protocol_parser",
         "//include/strij/event:command_handler_interface",
         "//include/strij/event:completable_interface",
         "//include/strij/event:dispatcher_interface",
+        "//src/core/logging:log_lib",
     ],
 )
 

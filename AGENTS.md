@@ -33,8 +33,9 @@ No synchronous system calls. Use `io_uring` as much as possible. Synchronous cal
 - **Headers:** `.hh`, **sources:** `.cc`, **header guards:** `#pragma once`
 - **Method names** are capitalized when public to distinguish them visually from private ones.
 - **Private methods** are lowercase.
+- **Constructors/destructors:** adhere to the C++ Rule of Five. Explicitly delete copy and move ctors if not needed to avoid unintended copies.
 - **Struct/class members** use trailing underscore suffix (`success_`, `error_message_`) to distinguish them from scoped local variables.
-- **Namespaces:** `strij::common`, `strij::event`, `strij::io`, `strij::logging`, `strij::gateway`, `strij::nodeagent`, `strij::config`, `strij::utils`, `strij::extensions`
+- **Namespaces:** `strij::common`, `strij::event`, `strij::io`, `strij::logging`, `strij::gateway`, `strij::nodeagent`, `strij::config`, `strij::utils`, `strij::extensions`. Use relative namespace prefixes, eg. `event::Dispatcher` to reference `strij::event::Dispatcher` when inside `strij::io` namespace.
 - **Format:** `.clang-format` — column 100, left-aligned pointers, grouped includes (std, system, "src", "exe", "test", rest).
 - **Lint:** `.clang-tidy` with cppcoreguidelines/modernize/readability checks.
 - **Tag dispatch:** classes that implement `Completable` use `private enum Tags : uint8_t { kX = 0, kY = 1 }` for tag constants.

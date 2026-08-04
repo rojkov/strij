@@ -1,16 +1,17 @@
 #pragma once
 
 #include <cstddef>
+#include <deque>
 #include <functional>
 #include <memory>
 #include <span>
-#include <utility>
 #include <vector>
 
-#include "strij/event/completable.hh"
-#include "strij/event/command_handler.hh"
-#include "strij/event/dispatcher.hh"
+#include "core/io/outbound_mailbox.hh"
 #include "core/io/protocol_parser.hh"
+#include "strij/event/command_handler.hh"
+#include "strij/event/completable.hh"
+#include "strij/event/dispatcher.hh"
 
 namespace strij::io {
 
@@ -20,9 +21,9 @@ using ConnectionFactory = std::function<std::unique_ptr<ProtocolParser>(Connecti
 
 class Connection final : public event::Completable {
 public:
-  Connection(int connection_fd, event::DispatcherSharedPtr dispatcher,
-             event::CommandHandler* owner, ConnectionFactory factory);
-  ~Connection() override = default;
+  Connection(int connection_fd, event::DispatcherSharedPtr dispatcher, event::CommandHandler* owner,
+             const ConnectionFactory& factory);
+  ~Connection() override;
 
   Connection(const Connection&) = delete;
   auto operator=(const Connection&) -> Connection& = delete;
@@ -33,6 +34,7 @@ public:
   void HandleCompletion(uint8_t tag, int res, uint32_t flags) override;
 
   void Write(std::span<const std::byte> data);
+  auto Mailbox() -> std::shared_ptr<OutboundMailbox>;
 
 private:
   enum Tags : uint8_t { kRead = 0, kWrite = 1 };
@@ -43,7 +45,8 @@ private:
   event::DispatcherSharedPtr dispatcher_;
   event::CommandHandler* owner_;
   std::unique_ptr<ProtocolParser> parser_;
-  std::vector<std::byte> write_buf_;
+  std::shared_ptr<OutboundMailbox> mailbox_;
+  std::deque<std::vector<std::byte>> write_queue_;
   size_t write_offset_{0};
 };
 

@@ -13,12 +13,12 @@ namespace strij::nodeagent {
 NodeagentTlvHandler::NodeagentTlvHandler(std::shared_ptr<TaskHandlerManager> manager)
     : manager_(std::move(manager)) {}
 
-void NodeagentTlvHandler::HandleFrame(strij::io::TlvFrame frame, strij::io::Connection& conn) {
-  if (frame.type_id != strij::io::TlvFrame::kTaskSubmission) {
+void NodeagentTlvHandler::HandleFrame(io::TlvFrame frame, io::Connection& conn) {
+  if (frame.type_id != io::TlvFrame::kTaskSubmission) {
     return;
   }
 
-  strij::task::Task task;
+  task::Task task;
   // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast)
   if (!task.ParseFromArray(reinterpret_cast<const char*>(frame.value.data()),
                            static_cast<int>(frame.value.size()))) {
@@ -26,13 +26,13 @@ void NodeagentTlvHandler::HandleFrame(strij::io::TlvFrame frame, strij::io::Conn
     return;
   }
 
-  strij::extensions::TaskHandler* handler = manager_->GetHandler(task.type());
+  extensions::TaskHandler* handler = manager_->GetHandler(task.type());
   if (handler == nullptr) {
     LOG_WARNING("No task handler for type '{}'", task.type());
     return;
   }
 
-  ConnectionResultSender sender(conn);
+  ConnectionResultSender sender(conn.Mailbox());
   handler->HandleTask(task, sender);
 }
 

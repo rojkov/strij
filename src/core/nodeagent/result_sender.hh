@@ -1,31 +1,32 @@
 #pragma once
 
-#include "core/io/connection.hh"
+#include <cstddef>
+#include <functional>
+#include <memory>
+
+#include "core/io/outbound_mailbox.hh"
 #include "extensions/task_handlers/task_handlers.hh"
 
 namespace strij::nodeagent {
 
 /**
- * @brief Binds a ResultSender to a live Connection for synchronous delivery.
+ * @brief ResultSender bound to a Connection's outbound mailbox.
  *
- * SAFETY: holds a raw Connection&. It is only safe to call Send() while the
- * connection is alive, which today holds only inside
- * NodeagentTlvHandler::HandleFrame on the event-loop thread (the connection
- * is owned by TcpListener and cannot be torn down mid-call). Senders must
- * therefore never outlive the HandleTask() invocation they were created for.
- *
- * Async delivery (holding a sender past HandleTask) requires moving writes to
- * a connection-owned mailbox that is dropped on close; that is a separate
- * change.
+ * Holds a shared_ptr to the connection-owned OutboundMailbox, so a copy may be
+ * retained past HandleTask() and past the connection's lifetime. Sends after
+ * the connection is torn down are dropped (the mailbox is closed); the
+ * lifecycle hooks forward to the mailbox.
  */
-class ConnectionResultSender final : public strij::extensions::ResultSender {
+class ConnectionResultSender final : public extensions::ResultSender {
 public:
-  explicit ConnectionResultSender(strij::io::Connection& conn);
+  explicit ConnectionResultSender(std::shared_ptr<io::OutboundMailbox> mailbox);
 
-  void Send(strij::task::TaskResult result) override;
+  void Send(task::TaskResult result) override;
+  auto RegisterOnClose(std::move_only_function<void()> close_cb) -> std::size_t override;
+  void UnregisterOnClose(std::size_t token) override;
 
 private:
-  strij::io::Connection& conn_;
+  std::shared_ptr<strij::io::OutboundMailbox> mailbox_;
 };
 
 } // namespace strij::nodeagent
