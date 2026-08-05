@@ -6,11 +6,11 @@
 #include "core/config/config_loader.hh"
 #include "core/event/dispatcher_impl.hh"
 #include "core/extensions/factory_context.hh"
-#include "core/nodeagent/nodeagent_tlv_handler.hh"
-#include "core/nodeagent/task_handler_manager.hh"
 #include "core/io/tcp_listener.hh"
 #include "core/io/tlv_parser.hh"
 #include "core/logging/log.hh"
+#include "core/nodeagent/nodeagent_tlv_handler.hh"
+#include "core/nodeagent/task_handler_manager.hh"
 
 // Generated protobuf headers
 #include "core/config/nodeagent.pb.h"
@@ -36,21 +36,22 @@ auto main(int argc, char** argv) -> int {
     return 1;
   }
 
-  strij::config::NodeAgentConfig config = std::move(config_result).value();
+  strij::config::NodeAgentConfig config = config_result.value();
 
-  strij::event::DispatcherSharedPtr dispatcher = std::make_shared<strij::event::DispatcherImpl>();
+  const strij::event::DispatcherSharedPtr dispatcher =
+      std::make_shared<strij::event::DispatcherImpl>();
 
   // Build the task handler manager from config. This must run before the
   // --validate_only short-circuit so that unknown handler names fail validation.
   strij::extensions::FactoryContextImpl factory_context(dispatcher);
-  auto manager_result = strij::nodeagent::BuildTaskHandlerManager(config.task_handlers(),
-                                                                   factory_context);
+  auto manager_result =
+      strij::nodeagent::BuildTaskHandlerManager(config.task_handlers(), factory_context);
   if (!manager_result.ok()) {
     LOG_ERROR("Task handler config error: {}", manager_result.status().message());
     return 1;
   }
-  std::shared_ptr<strij::nodeagent::TaskHandlerManager> task_handler_manager =
-      std::move(manager_result).value();
+  const std::shared_ptr<strij::nodeagent::TaskHandlerManager>& task_handler_manager =
+      manager_result.value();
 
   if (absl::GetFlag(FLAGS_validate_only)) {
     LOG_INFO("Config validation passed");
@@ -72,16 +73,17 @@ auto main(int argc, char** argv) -> int {
   }
 
   // Signal monitor must be activated before the logger thread, otherwise we might miss the signal.
-  strij::common::SignalMonitor signal_monitor(dispatcher);
+  const strij::common::SignalMonitor signal_monitor(dispatcher);
 
-  auto& logger = strij::logging::Logger::GetInstance();
+  strij::logging::Logger& logger = strij::logging::Logger::GetInstance();
   logger.Run();
 
   LOG_REGISTER_THREAD();
 
   strij::io::TcpListener listener{
       dispatcher, config.tlv_listener().port(),
-      [task_handler_manager](strij::io::Connection& conn) -> std::unique_ptr<strij::io::ProtocolParser> {
+      [task_handler_manager](
+          strij::io::Connection& conn) -> std::unique_ptr<strij::io::ProtocolParser> {
         auto handler =
             std::make_unique<strij::nodeagent::NodeagentTlvHandler>(task_handler_manager);
         return std::make_unique<strij::io::TlvParser>(

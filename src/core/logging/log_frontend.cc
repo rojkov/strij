@@ -3,9 +3,17 @@
 #include <sys/eventfd.h>
 #include <unistd.h>
 
+#include <chrono>
+#include <cstdint>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <format>
 #include <iostream>
-
-#include "src/core/logging/log_frontend.hh"
+#include <span>
+#include <string>
+#include <string_view>
+#include <utility>
 
 namespace strij::logging {
 

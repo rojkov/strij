@@ -1,6 +1,10 @@
 #include "extensions/node_discovery/static/static_node_discovery.hh"
 
+#include <memory>
 #include <stdexcept>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "extensions/node_discovery/static/static_node_discovery.pb.h"
 #include "google/protobuf/any.pb.h"

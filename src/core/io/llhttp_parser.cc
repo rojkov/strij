@@ -1,7 +1,16 @@
 #include "src/core/io/llhttp_parser.hh"
 
 #include <bit>
+#include <cassert>
+#include <cstddef>
+#include <functional>
+#include <iterator>
+#include <memory>
+#include <span>
+#include <string>
 #include <string_view>
+#include <utility>
+#include <vector>
 
 #include "core/logging/log.hh"
 
@@ -70,9 +79,9 @@ void LlhttpParser::finalizeMessage() {
   // pass it through without copying.
   if (body_chunks_.empty() && active_chunk_->GetBodies().size() == 1) {
     const auto& body_span = active_chunk_->GetBodies().front();
-    on_message_({.path = path_,
-                 .body = std::as_bytes(
-                     active_chunk_->Data().subspan(body_span.start, body_span.size))});
+    on_message_(
+        {.path = path_,
+         .body = std::as_bytes(active_chunk_->Data().subspan(body_span.start, body_span.size))});
     return;
   }
 
@@ -82,8 +91,8 @@ void LlhttpParser::finalizeMessage() {
       !active_chunk_->HasBodies()) {
     const auto& body_span = body_chunks_.front()->GetBodies().front();
     on_message_({.path = path_,
-                 .body = std::as_bytes(body_chunks_.front()->Data().subspan(
-                     body_span.start, body_span.size))});
+                 .body = std::as_bytes(
+                     body_chunks_.front()->Data().subspan(body_span.start, body_span.size))});
     body_chunks_.clear();
     return;
   }

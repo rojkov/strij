@@ -3,15 +3,14 @@
 #include <chrono>
 #include <cstring>
 #include <format>
-#include <iostream>
 #include <source_location>
 #include <string>
 #include <tuple>
 #include <type_traits>
 
+#include "rigtorp/SPSCQueue.h"
 #include "strij/event/completable.hh"
 #include "strij/event/dispatcher.hh"
-#include "rigtorp/SPSCQueue.h"
 
 namespace strij::logging {
 

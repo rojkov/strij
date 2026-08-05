@@ -5,18 +5,23 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
-#include <cerrno>
-#include <cstring>
+#include <cassert>
+#include <cstdint>
 #include <format>
+#include <memory>
 #include <stdexcept>
+#include <string>
+#include <utility>
 
 #include "core/logging/log.hh"
+#include "core/utils/errors.hh"
 
 namespace strij::gateway {
 
 Node::Node(std::string address, event::DispatcherSharedPtr dispatcher,
            strij::io::ConnectionFactory factory)
-    : address_{std::move(address)}, dispatcher_{std::move(dispatcher)}, factory_{std::move(factory)} {}
+    : address_{std::move(address)}, dispatcher_{std::move(dispatcher)},
+      factory_{std::move(factory)} {}
 
 void Node::StartConnect() {
   assert(status_ == Status::kInitial);
@@ -44,6 +49,7 @@ void Node::StartConnect() {
   }
 
   dispatcher_->PrepareConnect(this, kConnect, fd_,
+                              // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast)
                               reinterpret_cast<struct sockaddr*>(&connect_addr_),
                               sizeof(connect_addr_));
   status_ = Status::kConnecting;
@@ -54,12 +60,13 @@ void Node::StartConnect() {
 void Node::HandleCompletion(uint8_t tag, int res, uint32_t /*flags*/) {
   if (tag == kConnect) {
     if (res == 0) {
-      connection_ = std::make_unique<strij::io::Connection>(fd_, dispatcher_, this, std::move(factory_));
+      connection_ =
+          std::make_unique<strij::io::Connection>(fd_, dispatcher_, this, std::move(factory_));
       fd_ = -1;
       status_ = Status::kConnected;
       LOG_INFO("Connected to {}", address_);
     } else {
-      LOG_WARNING("Failed to connect to {}: {}", address_, std::strerror(-res));
+      LOG_WARNING("Failed to connect to {}: {}", address_, utils::GetErrorString(-res));
       ::close(fd_);
       fd_ = -1;
       status_ = Status::kDisconnected;

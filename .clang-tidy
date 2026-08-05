@@ -1,5 +1,7 @@
 SystemHeaders: false
-HeaderFilterRegex: '.*src'
+# Only report diagnostics for project headers under these directories.
+# Matches paths starting with src/, include/, or test/.
+HeaderFilterRegex: '^(src/|include/|test/)'
 Checks:
   - '-*'
   - 'clang-analyzer-*'
@@ -8,6 +10,7 @@ Checks:
   - 'modernize-*'
   - 'misc-*'
   - '-misc-no-recursion'
+  - '-misc-static-assert'
   - 'performance-*'
   - 'portability-*'
   - 'readability-*'

@@ -1,5 +1,6 @@
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "src/extensions/node_discovery/node_discovery.hh"
@@ -16,10 +17,15 @@
 #include "core/gateway/http_result_receiver.hh"
 #include "core/gateway/node_directory.hh"
 #include "core/gateway/result_receiver_storage.hh"
+#include "core/io/connection.hh"
 #include "core/io/llhttp_parser.hh"
+#include "core/io/protocol_parser.hh"
 #include "core/io/tcp_listener.hh"
+#include "core/io/tlv_frame.hh"
 #include "core/io/tlv_parser.hh"
 #include "core/logging/log.hh"
+#include "core/logging/logger.hh"
+#include "strij/event/dispatcher.hh"
 
 // Generated protobuf headers
 #include "core/config/gateway.pb.h"
@@ -46,7 +52,7 @@ auto main(int argc, char** argv) -> int {
     return 1;
   }
 
-  strij::config::GatewayConfig config = std::move(config_result).value();
+  strij::config::GatewayConfig config = config_result.value();
 
   // Validate node_discovery extension is configured
   if (!config.has_node_discovery()) {
@@ -80,10 +86,11 @@ auto main(int argc, char** argv) -> int {
     config.mutable_logging()->set_format(absl::GetFlag(FLAGS_log_format));
   }
 
-  strij::event::DispatcherSharedPtr dispatcher = std::make_shared<strij::event::DispatcherImpl>();
-  strij::common::SignalMonitor signal_monitor(dispatcher);
+  const strij::event::DispatcherSharedPtr dispatcher =
+      std::make_shared<strij::event::DispatcherImpl>();
+  const strij::common::SignalMonitor signal_monitor(dispatcher);
 
-  auto& logger = strij::logging::Logger::GetInstance();
+  strij::logging::Logger& logger = strij::logging::Logger::GetInstance();
   logger.Run();
   LOG_REGISTER_THREAD();
 
@@ -123,6 +130,7 @@ auto main(int argc, char** argv) -> int {
   auto connection_factory =
       [&storage](strij::io::Connection& conn) -> std::unique_ptr<strij::io::ProtocolParser> {
     auto handler = std::make_unique<strij::gateway::GatewayTlvHandler>(storage);
+    // Move the handler into the parser's callback via a named capture.
     return std::make_unique<strij::io::TlvParser>(
         [hdl = std::move(handler), &conn](strij::io::TlvFrame frame) -> void {
           hdl->HandleFrame(frame, conn);
@@ -130,17 +138,20 @@ auto main(int argc, char** argv) -> int {
   };
 
   std::vector<std::string> node_addresses;
-  node_discovery->Start([&node_addresses](std::vector<strij::extensions::NodeInfo> nodes) -> void {
-    for (auto& node : nodes) {
-      node_addresses.push_back(std::move(node.address));
-    }
-  });
+  node_discovery->Start(
+      [&node_addresses](const std::vector<strij::extensions::NodeInfo>& nodes) -> void {
+        node_addresses.clear();
+        node_addresses.reserve(nodes.size());
+        for (const auto& node : nodes) {
+          node_addresses.emplace_back(node.address);
+        }
+      });
 
   strij::gateway::NodeDirectory node_directory{dispatcher, node_addresses,
-                                                std::move(connection_factory)};
+                                               std::move(connection_factory)};
   node_directory.StartConnectAll();
 
-  strij::io::TcpListener http_listener{
+  const strij::io::TcpListener http_listener{
       dispatcher, config.http_listener().port(),
       [&](strij::io::Connection& conn) -> std::unique_ptr<strij::io::ProtocolParser> {
         auto handler = std::make_unique<strij::gateway::GatewayHttpHandler>(

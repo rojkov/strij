@@ -23,11 +23,12 @@ strij_cc_library(
     hdrs = ["node.hh"],
     visibility = ["//visibility:public"],
     deps = [
-        "//src/core/io:connection_lib",
         "//include/strij/event:command_handler_interface",
         "//include/strij/event:completable_interface",
         "//include/strij/event:dispatcher_interface",
+        "//src/core/io:connection_lib",
         "//src/core/logging:log_lib",
+        "//src/core/utils:errors_lib",
     ],
 )
 
@@ -38,8 +39,8 @@ strij_cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":node_lib",
-        "//src/core/io:connection_lib",
         "//include/strij/event:dispatcher_interface",
+        "//src/core/io:connection_lib",
     ],
 )
 

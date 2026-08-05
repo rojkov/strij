@@ -1,6 +1,13 @@
 load("//bazel:build_system.bzl", "strij_cc_library")
 
 strij_cc_library(
+    name = "errors_lib",
+    srcs = ["errors.cc"],
+    hdrs = ["errors.hh"],
+    visibility = ["//visibility:public"],
+)
+
+strij_cc_library(
     name = "task_id_lib",
     srcs = ["task_id.cc"],
     hdrs = ["task_id.hh"],

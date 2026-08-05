@@ -37,6 +37,8 @@ auto TlvParser::GetReadBuffer() -> std::span<std::byte> {
     return {std::next(buffer_.data(), static_cast<ssize_t>(cursor_)), buffer_.size() - cursor_};
   }
   }
+
+  return {};
 }
 
 auto TlvParser::OnData(size_t bytes_read) -> Action {
@@ -151,17 +153,17 @@ void TlvParser::setState(state new_state) {
     assert(state_ == type_read || state_ == length_read || state_ == value_partially_copied);
     if (state_ == type_read) {
       // Zero-length value: deliver TlvFrame with empty value
-      on_message_(TlvFrame{frame_.type_id_, std::span<const std::byte>{}});
+      on_message_(TlvFrame{.type_id = frame_.type_id_, .value = std::span<const std::byte>{}});
     } else if (state_ == length_read) {
       // Value fits in buffer: deliver TlvFrame with span over buffer
       auto value = std::span<const std::byte>(
           std::next(buffer_.data(), static_cast<ssize_t>(cursor_)), frame_.length_);
-      on_message_(TlvFrame{frame_.type_id_, value});
+      on_message_(TlvFrame{.type_id = frame_.type_id_, .value = value});
     } else if (state_ == value_partially_copied) {
       // Value was accumulated in a vector: deliver TlvFrame with span over accumulated
       assert(accumulated_value_ != nullptr);
-      on_message_(
-          TlvFrame{frame_.type_id_, std::span<const std::byte>(accumulated_value_->data(),
+      on_message_(TlvFrame{.type_id = frame_.type_id_,
+                           .value = std::span<const std::byte>(accumulated_value_->data(),
                                                                accumulated_value_->size())});
       accumulated_value_.reset(nullptr);
     }

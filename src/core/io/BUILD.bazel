@@ -46,8 +46,14 @@ strij_cc_library(
 
 strij_cc_library(
     name = "connection_lib",
-    srcs = ["connection.cc", "outbound_mailbox.cc"],
-    hdrs = ["connection.hh", "outbound_mailbox.hh"],
+    srcs = [
+        "connection.cc",
+        "outbound_mailbox.cc",
+    ],
+    hdrs = [
+        "connection.hh",
+        "outbound_mailbox.hh",
+    ],
     visibility = ["//visibility:public"],
     deps = [
         ":protocol_parser",
@@ -66,7 +72,6 @@ strij_cc_library(
     deps = [
         ":connection_lib",
         "//src/core/logging:log_lib",
+        "//src/core/utils:errors_lib",
     ],
 )
-
-

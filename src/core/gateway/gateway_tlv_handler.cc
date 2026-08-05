@@ -1,6 +1,7 @@
 #include "core/gateway/gateway_tlv_handler.hh"
 
-#include <cstring>
+#include <cstddef>
+#include <span>
 
 #include "core/io/tlv_frame.hh"
 #include "core/logging/log.hh"
@@ -8,10 +9,10 @@
 
 namespace strij::gateway {
 
-void GatewayTlvHandler::HandleFrame(strij::io::TlvFrame frame, strij::io::Connection& /*conn*/) {
+void GatewayTlvHandler::HandleFrame(io::TlvFrame frame, io::Connection& /*conn*/) {
   switch (frame.type_id) {
-  case strij::io::TlvFrame::kResult: {
-    strij::task::TaskResult result;
+  case io::TlvFrame::kResult: {
+    task::TaskResult result;
     // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast)
     if (!result.ParseFromArray(reinterpret_cast<const char*>(frame.value.data()),
                                static_cast<int>(frame.value.size()))) {
@@ -32,7 +33,7 @@ void GatewayTlvHandler::HandleFrame(strij::io::TlvFrame frame, strij::io::Connec
     }
     break;
   }
-  case strij::io::TlvFrame::kHeartbeat: {
+  case io::TlvFrame::kHeartbeat: {
     LOG_DEBUG("Received heartbeat");
     break;
   }

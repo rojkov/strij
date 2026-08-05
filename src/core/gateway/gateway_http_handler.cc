@@ -1,12 +1,14 @@
 #include "core/gateway/gateway_http_handler.hh"
 
-#include <cstring>
 #include <format>
+#include <optional>
+#include <span>
 #include <string>
 #include <string_view>
-#include <vector>
+#include <utility>
 
 #include "core/io/connection.hh"
+#include "core/io/llhttp_parser.hh"
 #include "core/io/tlv_frame.hh"
 #include "core/logging/log.hh"
 #include "core/task/task.pb.h"
@@ -80,9 +82,9 @@ void GatewayHttpHandler::HandleMessage(strij::io::HttpRequest request,
   auto receiver = make_receiver_(conn);
   storage_.put(task_id, std::move(receiver));
 
-  auto frame = strij::io::SerializeTlvFrame(
-      strij::io::TlvFrame::kTaskSubmission,
-      std::as_bytes(std::span(serialized.data(), serialized.size())));
+  auto frame =
+      io::SerializeTlvFrame(strij::io::TlvFrame::kTaskSubmission,
+                            std::as_bytes(std::span(serialized.data(), serialized.size())));
   nodeagent_conn->Write(frame);
 
   LOG_DEBUG("Submitted task {} (type {}) to nodeagent", task_id, task_type.value());
