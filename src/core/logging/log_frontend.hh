@@ -18,10 +18,10 @@ struct LogEntry {
   void (*format_fn_)(const char* fmt_str, const std::byte* data, std::string& out);
 
   enum severity : char { DEBUG = 'D', INFO = 'I', WARNING = 'W', ERROR = 'E' };
-  severity severity_;
-  const char* fmt_str_;
+  severity severity_{DEBUG};
+  const char* fmt_str_{nullptr};
   std::chrono::system_clock::time_point timestamp_;
-  uint32_t thread_id_;
+  uint32_t thread_id_{0};
   std::source_location location_;
   alignas(16) std::byte args_data_[512];
 };
