@@ -55,7 +55,7 @@ void LogFrontend::HandleCompletion(uint8_t tag, int res, uint32_t flags) {
   while (queue_.front()) {
     std::string output;
     auto* entry = queue_.front();
-    entry->format_fn_(entry->fmt_str_, entry->args_data_, output);
+    entry->format_fn_(entry->fmt_str_, entry->args_data_.data(), output);
     auto time = std::chrono::system_clock::to_time_t(entry->timestamp_);
     auto local_time = *std::localtime(&time);
     auto microseconds = std::chrono::duration_cast<std::chrono::microseconds>(

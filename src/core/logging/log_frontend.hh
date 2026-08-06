@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <chrono>
 #include <cstring>
 #include <format>
@@ -14,8 +15,10 @@
 
 namespace strij::logging {
 
+inline constexpr std::size_t kLogArgsDataSize = 512;
+
 struct LogEntry {
-  void (*format_fn_)(const char* fmt_str, const std::byte* data, std::string& out);
+  void (*format_fn_)(const char* fmt_str, const std::byte* data, std::string& out){nullptr};
 
   enum severity : char { DEBUG = 'D', INFO = 'I', WARNING = 'W', ERROR = 'E' };
   severity severity_{DEBUG};
@@ -23,11 +26,11 @@ struct LogEntry {
   std::chrono::system_clock::time_point timestamp_;
   uint32_t thread_id_{0};
   std::source_location location_;
-  alignas(16) std::byte args_data_[512];
+  alignas(16) std::array<std::byte, kLogArgsDataSize> args_data_{};
 };
 
 template <typename T> struct Unpacker {
-  static T unpack(const std::byte*& ptr) {
+  static auto unpack(const std::byte*& ptr) -> T {
     T val;
     std::memcpy(&val, ptr, sizeof(T));
     ptr += sizeof(T);

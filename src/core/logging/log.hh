@@ -18,10 +18,10 @@ inline void write_stderr_fallback(LogEntry::severity severity, std::source_locat
 
   std::string msg = std::vformat(fmt_str, std::make_format_args(args...));
 
-  std::string buf = std::format("{} {:02}:{:02}:{:02}.{:06} {} [early] {}:{} {}\n",
-                                static_cast<char>(severity), local_time.tm_hour, local_time.tm_min,
-                                local_time.tm_sec, us.count(), gettid(), location.file_name(),
-                                location.line(), msg);
+  std::string buf =
+      std::format("{} {:02}:{:02}:{:02}.{:06} {} [early] {}:{} {}\n", static_cast<char>(severity),
+                  local_time.tm_hour, local_time.tm_min, local_time.tm_sec, us.count(), gettid(),
+                  location.file_name(), location.line(), msg);
 
   write(STDERR_FILENO, buf.data(), buf.size());
 }
@@ -39,7 +39,7 @@ inline void log_impl(LogEntry::severity severity, std::source_location&& locatio
     entry.fmt_str_ = fmt_str;
     entry.format_fn_ = get_format_fn<Args...>();
     // This ptr may be unused if Args are empty.
-    [[maybe_unused]] std::byte* ptr = entry.args_data_;
+    [[maybe_unused]] std::byte* ptr = entry.args_data_.data();
     (pack_arg(ptr, args), ...);
     strij::logging::Logger::local_context_->Log(std::move(entry));
   } else {
@@ -50,8 +50,8 @@ inline void log_impl(LogEntry::severity severity, std::source_location&& locatio
 } // namespace strij::logging
 
 #define LOG(s, format, ...)                                                                        \
-  strij::logging::log_impl(strij::logging::LogEntry::s, std::source_location::current(), format, \
-                            ##__VA_ARGS__)
+  strij::logging::log_impl(strij::logging::LogEntry::s, std::source_location::current(), format,   \
+                           ##__VA_ARGS__)
 
 #define LOG_DEBUG(format, ...) LOG(DEBUG, format, ##__VA_ARGS__)
 #define LOG_INFO(format, ...) LOG(INFO, format, ##__VA_ARGS__)
