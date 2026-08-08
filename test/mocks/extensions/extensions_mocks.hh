@@ -20,7 +20,8 @@ public:
 
 class MockTaskHandler final : public TaskHandler {
 public:
-  MOCK_METHOD(void, HandleTask, (const strij::task::Task& task, ResultSender& sender), (override));
+  MOCK_METHOD(void, HandleTask, (const strij::task::Task& task, std::unique_ptr<ResultSender> sender),
+              (override));
 };
 
 class MockTaskHandlerFactory final : public TaskHandlerFactory {
@@ -35,6 +36,7 @@ class MockFactoryContext final : public FactoryContext {
 public:
   MOCK_METHOD(event::Dispatcher&, Dispatcher, (), (override));
   MOCK_METHOD(logging::Logger&, Logger, (), (override));
+  MOCK_METHOD(::strij::extensions::FunctionResolver&, FunctionResolver, (), (override));
 };
 
 } // namespace strij::extensions

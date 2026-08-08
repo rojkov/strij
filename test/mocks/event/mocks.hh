@@ -23,6 +23,8 @@ public:
               (Completable * io, uint8_t tag, int fd, const struct sockaddr* addr,
                socklen_t addrlen),
               (override));
+  MOCK_METHOD(void, PreparePoll, (Completable * io, uint8_t tag, int fd, uint32_t poll_mask),
+              (override));
 };
 
 } // namespace strij::event

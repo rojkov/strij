@@ -26,6 +26,7 @@ public:
                     off_t offset) override;
   void PrepareConnect(Completable* receiver, uint8_t tag, int fdesc, const struct sockaddr* addr,
                       socklen_t addrlen) override;
+  void PreparePoll(Completable* receiver, uint8_t tag, int fdesc, uint32_t poll_mask) override;
 
   // Completable interface
   void HandleCompletion(uint8_t tag, int res, uint32_t flags) override;

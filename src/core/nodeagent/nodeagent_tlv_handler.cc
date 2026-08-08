@@ -32,8 +32,7 @@ void NodeagentTlvHandler::HandleFrame(io::TlvFrame frame, io::Connection& conn) 
     return;
   }
 
-  ConnectionResultSender sender(conn.Mailbox());
-  handler->HandleTask(task, sender);
+  handler->HandleTask(task, std::make_unique<ConnectionResultSender>(conn.Mailbox()));
 }
 
 } // namespace strij::nodeagent

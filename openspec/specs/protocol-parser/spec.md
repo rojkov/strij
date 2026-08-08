@@ -24,12 +24,20 @@ The system SHALL define a `ProtocolParser` abstract interface that all protocol 
 - **AND** the buffer SHALL be suitable for io_uring to write into directly (zero-copy from kernel to parser)
 
 ### Requirement: LlhttpParser implements ProtocolParser
-The existing `LlhttpParser` class SHALL implement the `ProtocolParser` interface. It SHALL NOT implement `event::Completable`. Its `GetReadBuffer()` SHALL return the writable span from its existing `Chunk` system (the `active_chunk_->WritableSpan()`). Its `OnData(size_t)` SHALL advance the chunk cursor, parse via `llhttp_execute`, and return the appropriate `Action`. The parser SHALL capture the request path via the llhttp `on_url` callback and SHALL deliver an `HttpRequest` struct containing the path and body to its callback. The existing HTTP parsing logic (llhttp integration, chunk management, body assembly) SHALL remain unchanged.
+The existing `LlhttpParser` class SHALL implement the `ProtocolParser` interface. It SHALL NOT implement `event::Completable`. Its `GetReadBuffer()` SHALL return the writable span from its existing `Chunk` system (the `active_chunk_->WritableSpan()`). Its `OnData(size_t)` SHALL advance the chunk cursor, parse via `llhttp_execute`, and return the appropriate `Action`. The parser SHALL capture the request path via the llhttp `on_url` callback, SHALL capture request headers via the llhttp `on_header_field` and `on_header_value` callbacks, and SHALL deliver an `HttpRequest` struct containing the path, headers, and body to its callback. The existing HTTP parsing logic (llhttp integration, chunk management, body assembly) SHALL remain unchanged.
 
 #### Scenario: LlhttpParser parses an HTTP request
 - **WHEN** `OnData(N)` is called after io_uring wrote a complete HTTP request into `GetReadBuffer()`
-- **THEN** `LlhttpParser` SHALL invoke the callback with an `HttpRequest` containing the request path and body
+- **THEN** `LlhttpParser` SHALL invoke the callback with an `HttpRequest` containing the request path, headers, and body
 - **AND** return `Action::MessageComplete`
+
+#### Scenario: LlhttpParser captures request headers
+- **WHEN** a request with header `x-strij-function: /usr/bin/cat` is parsed
+- **THEN** the delivered `HttpRequest.headers` SHALL contain the pair ("x-strij-function", "/usr/bin/cat")
+
+#### Scenario: LlhttpParser assembles fragmented header values
+- **WHEN** llhttp delivers a header value across multiple `on_header_value` callbacks
+- **THEN** the parser SHALL assemble the fragments into a single value in `HttpRequest.headers`
 
 #### Scenario: LlhttpParser captures the request path
 - **WHEN** a request with path "/tasks/echo" is parsed

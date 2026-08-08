@@ -7,6 +7,8 @@ strij_cc_test(
         "//api/core/task:task_cc_proto",
         "//src/core/gateway:gateway_http_handler_lib",
         "//src/core/gateway:gateway_tlv_handler_lib",
+        "//src/core/gateway:http_result_receiver_lib",
+        "//src/core/gateway:node_directory_lib",
         "//src/core/gateway:result_receiver_storage",
         "//src/core/io:connection_lib",
         "//src/core/io:protocol_parser",

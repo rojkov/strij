@@ -6,6 +6,7 @@
 #include "core/config/config_loader.hh"
 #include "core/event/dispatcher_impl.hh"
 #include "core/extensions/factory_context.hh"
+#include "core/extensions/function_resolver.hh"
 #include "core/io/tcp_listener.hh"
 #include "core/io/tlv_parser.hh"
 #include "core/logging/log.hh"
@@ -43,7 +44,8 @@ auto main(int argc, char** argv) -> int {
 
   // Build the task handler manager from config. This must run before the
   // --validate_only short-circuit so that unknown handler names fail validation.
-  strij::extensions::FactoryContextImpl factory_context(dispatcher);
+  auto function_resolver = std::make_unique<strij::extensions::LocalFunctionResolver>();
+  strij::extensions::FactoryContextImpl factory_context(dispatcher, std::move(function_resolver));
   auto manager_result =
       strij::nodeagent::BuildTaskHandlerManager(config.task_handlers(), factory_context);
   if (!manager_result.ok()) {

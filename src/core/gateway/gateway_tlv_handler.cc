@@ -22,12 +22,17 @@ void GatewayTlvHandler::HandleFrame(io::TlvFrame frame, io::Connection& /*conn*/
 
     auto* receiver = storage_.get(result.id());
     if (receiver != nullptr) {
+      const bool is_final = !result.has_is_final() || result.is_final();
       // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast)
       const auto* body_ptr = reinterpret_cast<const std::byte*>(result.body().data());
       auto body = std::span<const std::byte>(body_ptr, result.body().size());
-      receiver->Deliver(body);
-      storage_.erase(result.id());
-      LOG_DEBUG("Delivered result for task {}", result.id());
+      receiver->Deliver(body, is_final);
+      if (is_final) {
+        storage_.erase(result.id());
+        LOG_DEBUG("Delivered final result for task {}", result.id());
+      } else {
+        LOG_DEBUG("Delivered intermediate result for task {}", result.id());
+      }
     } else {
       LOG_WARNING("No receiver for task {}", result.id());
     }

@@ -9,7 +9,7 @@ namespace strij::extensions::task_handlers {
 
 class EchoTaskHandler final : public TaskHandler {
 public:
-  void HandleTask(const strij::task::Task& task, ResultSender& sender) override;
+  void HandleTask(const strij::task::Task& task, std::unique_ptr<ResultSender> sender) override;
 };
 
 class EchoTaskHandlerFactory final : public TaskHandlerFactory {

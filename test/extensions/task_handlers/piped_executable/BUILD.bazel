@@ -1,0 +1,15 @@
+load("//bazel:build_system.bzl", "strij_cc_test")
+
+strij_cc_test(
+    name = "piped_executable_task_handler_test",
+    srcs = ["piped_executable_task_handler_test.cc"],
+    deps = [
+        "//api/core/task:task_cc_proto",
+        "//api/extensions/task_handlers/piped_executable:piped_executable_cc_proto",
+        "//src/core/extensions:function_resolver_lib",
+        "//src/extensions/task_handlers/piped_executable:piped_executable_task_handler_lib",
+        "//test/mocks/event:event_mocks_lib",
+        "//test/mocks/extensions:extensions_mocks_lib",
+        "@googletest//:gtest_main",
+    ],
+)

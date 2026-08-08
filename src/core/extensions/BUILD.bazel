@@ -7,11 +7,24 @@ strij_cc_library(
 )
 
 strij_cc_library(
+    name = "function_resolver_lib",
+    srcs = ["function_resolver.cc"],
+    hdrs = ["function_resolver.hh"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//include/strij/common:pure_lib",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+    ],
+)
+
+strij_cc_library(
     name = "factory_context_lib",
     srcs = ["factory_context.cc"],
     hdrs = ["factory_context.hh"],
     visibility = ["//visibility:public"],
     deps = [
+        ":function_resolver_lib",
         "//include/strij/event:dispatcher_interface",
         "//src/core/logging:log_lib",
     ],

@@ -12,10 +12,10 @@ namespace strij::nodeagent {
 /**
  * @brief ResultSender bound to a Connection's outbound mailbox.
  *
- * Holds a shared_ptr to the connection-owned OutboundMailbox, so a copy may be
- * retained past HandleTask() and past the connection's lifetime. Sends after
- * the connection is torn down are dropped (the mailbox is closed); the
- * lifecycle hooks forward to the mailbox.
+ * Holds a shared_ptr to the connection-owned OutboundMailbox, so it may be
+ * owned by a handler past HandleTask() and past the connection's lifetime.
+ * Sends after the connection is torn down are dropped (the mailbox is closed);
+ * the lifecycle hooks forward to the mailbox.
  */
 class ConnectionResultSender final : public extensions::ResultSender {
 public:

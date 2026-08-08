@@ -5,6 +5,7 @@
 #include <array>
 #include <cstring>
 #include <memory>
+#include <utility>
 #include <vector>
 
 #include "test/mocks/common/common_mocks.hh"
@@ -26,12 +27,13 @@ namespace {
 
 class RetainingSenderHandler final : public strij::extensions::TaskHandler {
 public:
-  void HandleTask(const strij::task::Task& task, strij::extensions::ResultSender& sender) override {
+  void HandleTask(const strij::task::Task& task,
+                  std::unique_ptr<strij::extensions::ResultSender> sender) override {
     task_id_ = task.id();
-    // Retain the concrete sender past HandleTask (as an async handler would).
-    auto* concrete = dynamic_cast<strij::nodeagent::ConnectionResultSender*>(&sender);
+    // Own the sender past HandleTask (as an async handler would).
+    auto* concrete = dynamic_cast<strij::nodeagent::ConnectionResultSender*>(sender.get());
     ASSERT_NE(concrete, nullptr);
-    retained_ = std::make_unique<strij::nodeagent::ConnectionResultSender>(*concrete);
+    retained_ = std::move(sender);
   }
 
   void SendResults() {
@@ -49,7 +51,7 @@ public:
 
 private:
   std::string task_id_;
-  std::unique_ptr<strij::nodeagent::ConnectionResultSender> retained_;
+  std::unique_ptr<strij::extensions::ResultSender> retained_;
 };
 
 class NodeagentTlvHandlerTest : public ::testing::Test {

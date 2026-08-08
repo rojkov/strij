@@ -1,0 +1,5 @@
+syntax = "proto3";
+
+package strij.extensions.task_handlers.piped_executable;
+
+message PipedExecutableTaskHandlerConfig {}

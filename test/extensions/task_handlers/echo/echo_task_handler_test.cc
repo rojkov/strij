@@ -17,12 +17,12 @@ TEST(EchoTaskHandlerTest, DeliversTaskResultWithMatchingIdBodyAndFinalFlag) {
   task.set_id("42");
   task.set_body("hello");
 
-  MockResultSender sender;
+  auto sender = std::make_unique<MockResultSender>();
   strij::task::TaskResult sent;
-  EXPECT_CALL(sender, Send(::testing::_)).WillOnce(::testing::SaveArg<0>(&sent));
+  EXPECT_CALL(*sender, Send(::testing::_)).WillOnce(::testing::SaveArg<0>(&sent));
 
   EchoTaskHandler handler;
-  handler.HandleTask(task, sender);
+  handler.HandleTask(task, std::move(sender));
 
   EXPECT_EQ(sent.id(), "42");
   EXPECT_EQ(sent.body(), "hello");

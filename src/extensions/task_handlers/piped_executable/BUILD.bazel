@@ -1,0 +1,26 @@
+load("//bazel:build_system.bzl", "strij_cc_library")
+
+strij_cc_library(
+    name = "piped_executable_task_handler_lib",
+    srcs = [
+        "child_process.cc",
+        "piped_executable_task_handler.cc",
+    ],
+    hdrs = [
+        "child_process.hh",
+        "piped_executable_task_handler.hh",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//api/extensions/task_handlers/piped_executable:piped_executable_cc_proto",
+        "//include/strij/event:command_handler_interface",
+        "//include/strij/event:completable_interface",
+        "//include/strij/event:dispatcher_interface",
+        "//src/core/extensions:function_resolver_lib",
+        "//src/core/logging:log_lib",
+        "//src/extensions/task_handlers:task_handlers_interface",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+    ],
+    alwayslink = True,
+)

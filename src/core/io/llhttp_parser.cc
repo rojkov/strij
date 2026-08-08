@@ -20,6 +20,10 @@ LlhttpParser::LlhttpParser(std::move_only_function<void(HttpRequest)>&& on_messa
     : on_message_{std::move(on_message)}, active_chunk_{std::make_unique<Chunk>()} {
   llhttp_settings_init(&settings_);
   settings_.on_url = on_url;
+  settings_.on_header_field = on_header_field;
+  settings_.on_header_value = on_header_value;
+  settings_.on_header_value_complete = on_header_value_complete;
+  settings_.on_headers_complete = on_headers_complete;
   settings_.on_body = on_body;
   settings_.on_message_complete = on_message_complete;
   llhttp_init(&parser_, HTTP_REQUEST, &settings_);
@@ -58,7 +62,7 @@ void LlhttpParser::parse(const size_t offset, size_t length) {
 void LlhttpParser::finalizeMessage() {
   // No body data at all — deliver an empty request body.
   if (!active_chunk_->HasBodies() && body_chunks_.empty()) {
-    on_message_({.path = path_, .body = {}});
+    on_message_({.path = path_, .body = {}, .headers = std::move(headers_)});
     return;
   }
 
@@ -81,7 +85,8 @@ void LlhttpParser::finalizeMessage() {
     const auto& body_span = active_chunk_->GetBodies().front();
     on_message_(
         {.path = path_,
-         .body = std::as_bytes(active_chunk_->Data().subspan(body_span.start, body_span.size))});
+         .body = std::as_bytes(active_chunk_->Data().subspan(body_span.start, body_span.size)),
+         .headers = std::move(headers_)});
     return;
   }
 
@@ -92,7 +97,8 @@ void LlhttpParser::finalizeMessage() {
     const auto& body_span = body_chunks_.front()->GetBodies().front();
     on_message_({.path = path_,
                  .body = std::as_bytes(
-                     body_chunks_.front()->Data().subspan(body_span.start, body_span.size))});
+                     body_chunks_.front()->Data().subspan(body_span.start, body_span.size)),
+                 .headers = std::move(headers_)});
     body_chunks_.clear();
     return;
   }
@@ -111,13 +117,47 @@ void LlhttpParser::finalizeMessage() {
       body.append_range(active_chunk_->Data().subspan(body_span.start, body_span.size));
     }
   }
-  on_message_({.path = path_, .body = body});
+  on_message_({.path = path_, .body = body, .headers = std::move(headers_)});
   body_chunks_.clear();
 }
 
 auto LlhttpParser::onUrl(llhttp_t* /*parser*/, const char* ptr, size_t length) -> int {
   LOG_DEBUG("LlhttpParser::onUrl {}", std::string_view{ptr, length});
   path_.append(ptr, length);
+  return 0;
+}
+
+auto LlhttpParser::onHeaderField(llhttp_t* /*parser*/, const char* ptr, size_t length) -> int {
+  // A single field name may arrive across multiple calls (fragmented reads) —
+  // accumulate; the pair is flushed once the value completes.
+  header_field_.append(ptr, length);
+  header_field_pending_ = true;
+  return 0;
+}
+
+auto LlhttpParser::onHeaderValue(llhttp_t* /*parser*/, const char* ptr, size_t length) -> int {
+  header_value_.append(ptr, length);
+  return 0;
+}
+
+auto LlhttpParser::onHeaderValueComplete(llhttp_t* /*parser*/) -> int {
+  if (header_field_pending_) {
+    headers_.emplace_back(std::move(header_field_), std::move(header_value_));
+    header_field_.clear();
+    header_value_.clear();
+    header_field_pending_ = false;
+  }
+  return 0;
+}
+
+auto LlhttpParser::onHeadersComplete(llhttp_t* /*parser*/) -> int {
+  // Fallback flush in case the final value never completes via the callback.
+  if (header_field_pending_) {
+    headers_.emplace_back(std::move(header_field_), std::move(header_value_));
+    header_field_.clear();
+    header_value_.clear();
+    header_field_pending_ = false;
+  }
   return 0;
 }
 
@@ -149,6 +189,30 @@ auto LlhttpParser::on_url(llhttp_t* parser, const char* ptr, size_t length) -> i
   auto* obj = static_cast<LlhttpParser*>(parser->data);
   assert(obj != nullptr);
   return obj->onUrl(parser, ptr, length);
+}
+
+auto LlhttpParser::on_header_field(llhttp_t* parser, const char* ptr, size_t length) -> int {
+  auto* obj = static_cast<LlhttpParser*>(parser->data);
+  assert(obj != nullptr);
+  return obj->onHeaderField(parser, ptr, length);
+}
+
+auto LlhttpParser::on_header_value(llhttp_t* parser, const char* ptr, size_t length) -> int {
+  auto* obj = static_cast<LlhttpParser*>(parser->data);
+  assert(obj != nullptr);
+  return obj->onHeaderValue(parser, ptr, length);
+}
+
+auto LlhttpParser::on_header_value_complete(llhttp_t* parser) -> int {
+  auto* obj = static_cast<LlhttpParser*>(parser->data);
+  assert(obj != nullptr);
+  return obj->onHeaderValueComplete(parser);
+}
+
+auto LlhttpParser::on_headers_complete(llhttp_t* parser) -> int {
+  auto* obj = static_cast<LlhttpParser*>(parser->data);
+  assert(obj != nullptr);
+  return obj->onHeadersComplete(parser);
 }
 
 auto LlhttpParser::on_message_complete(llhttp_t* parser) -> int {

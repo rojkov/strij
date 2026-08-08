@@ -7,6 +7,10 @@ task_handlers:
     typed_config:
       "@type": "type.googleapis.com/strij.extensions.task_handlers.echo.EchoTaskHandlerConfig"
 
+  - name: "piped_executable"
+    typed_config:
+      "@type": "type.googleapis.com/strij.extensions.task_handlers.piped_executable.PipedExecutableTaskHandlerConfig"
+
 logging:
   level: "debug"
   format: "text"

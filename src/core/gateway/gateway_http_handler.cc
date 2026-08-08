@@ -1,5 +1,7 @@
 #include "core/gateway/gateway_http_handler.hh"
 
+#include <algorithm>
+#include <cctype>
 #include <format>
 #include <optional>
 #include <span>
@@ -27,6 +29,24 @@ auto ParseTaskType(std::string_view path) -> std::optional<std::string_view> {
     type = type.substr(0, query_pos);
   }
   return type;
+}
+
+void PopulateParametersFromHeaders(
+    strij::task::Task& task, const std::vector<std::pair<std::string, std::string>>& headers) {
+  auto parameters = task.mutable_parameters();
+  for (const auto& [name, value] : headers) {
+    std::string lower_name = name;
+    std::transform(lower_name.begin(), lower_name.end(), lower_name.begin(),
+                   [](unsigned char c) -> unsigned char { return std::tolower(c); });
+    if (!lower_name.starts_with(kStrijHeaderPrefix)) {
+      continue;
+    }
+    auto key = lower_name.substr(kStrijHeaderPrefix.size());
+    if (key.empty()) {
+      continue;
+    }
+    (*parameters)[key] = value;
+  }
 }
 
 namespace {
@@ -64,6 +84,7 @@ void GatewayHttpHandler::HandleMessage(strij::io::HttpRequest request,
   task.set_type(task_type->data(), task_type->size());
   // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast)
   task.set_body(reinterpret_cast<const char*>(request.body.data()), request.body.size());
+  PopulateParametersFromHeaders(task, request.headers);
 
   std::string serialized;
   if (!task.SerializeToString(&serialized)) {

@@ -1,5 +1,6 @@
 #include "core/nodeagent/result_sender.hh"
 
+#include <memory>
 #include <span>
 #include <string>
 #include <utility>

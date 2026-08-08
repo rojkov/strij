@@ -58,6 +58,25 @@ TEST(TaskResultTest, ExplicitIsFinalTrueRoundTrips) {
   EXPECT_TRUE(IsFinal(parsed));
 }
 
+TEST(TaskTest, ParametersRoundTrip) {
+  Task task;
+  task.set_id("42");
+  task.set_type("echo");
+  task.set_body("hello");
+  (*task.mutable_parameters())["function"] = "/usr/bin/cat";
+
+  std::string serialized;
+  task.SerializeToString(&serialized);
+
+  Task parsed;
+  ASSERT_TRUE(parsed.ParseFromString(serialized));
+  EXPECT_EQ(parsed.id(), "42");
+  EXPECT_EQ(parsed.type(), "echo");
+  EXPECT_EQ(parsed.body(), "hello");
+  EXPECT_EQ(parsed.parameters_size(), 1);
+  EXPECT_EQ(parsed.parameters().at("function"), "/usr/bin/cat");
+}
+
 // NOLINTEND(modernize-use-trailing-return-type)
 
 } // namespace

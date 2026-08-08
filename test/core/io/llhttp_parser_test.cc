@@ -1,6 +1,7 @@
 #include <array>
 #include <cstring>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "core/io/llhttp_parser.hh"
@@ -12,6 +13,7 @@ namespace {
 struct CapturedRequest {
   std::string path;
   std::vector<std::byte> body;
+  std::vector<std::pair<std::string, std::string>> headers;
 };
 
 class LlhttpParserTest : public ::testing::Test {
@@ -21,7 +23,8 @@ protected:
   std::vector<CapturedRequest> received_;
   LlhttpParser parser_{[this](HttpRequest request) -> void {
     received_.push_back({std::string(request.path),
-                         std::vector<std::byte>(request.body.begin(), request.body.end())});
+                         std::vector<std::byte>(request.body.begin(), request.body.end()),
+                         std::move(request.headers)});
   }};
 
   void feed(std::span<const std::byte> data) {
@@ -143,6 +146,62 @@ TEST_F(LlhttpParserTest, BodySplitAcrossReads) {
   const std::string body(reinterpret_cast<const char*>(received_[0].body.data()),
                          received_[0].body.size());
   EXPECT_EQ(body, "hello world");
+}
+
+TEST_F(LlhttpParserTest, CapturesHeaders) {
+  const std::string request =
+      "POST /tasks/echo HTTP/1.1\r\n"
+      "Host: localhost\r\n"
+      "x-strij-function: /usr/bin/cat\r\n"
+      "Content-Length: 0\r\n"
+      "\r\n";
+  auto data = std::as_bytes(std::span(request.data(), request.size()));
+  feed(data);
+
+  ASSERT_EQ(received_.size(), 1U);
+  ASSERT_EQ(received_[0].headers.size(), 3U);
+  EXPECT_EQ(received_[0].headers[0].first, "Host");
+  EXPECT_EQ(received_[0].headers[0].second, "localhost");
+  EXPECT_EQ(received_[0].headers[1].first, "x-strij-function");
+  EXPECT_EQ(received_[0].headers[1].second, "/usr/bin/cat");
+  EXPECT_EQ(received_[0].headers[2].first, "Content-Length");
+  EXPECT_EQ(received_[0].headers[2].second, "0");
+}
+
+TEST_F(LlhttpParserTest, HeaderValueSplitAcrossReads) {
+  const std::string request =
+      "POST /tasks/echo HTTP/1.1\r\n"
+      "Host: localhost\r\n"
+      "x-strij-function: /usr/bin/cat\r\n"
+      "Content-Length: 0\r\n"
+      "\r\n";
+
+  auto data = std::as_bytes(std::span(request.data(), request.size()));
+
+  // Feed one byte at a time so header fields and values are parsed in fragments
+  for (size_t i = 0; i < data.size(); ++i) {
+    feed(data.subspan(i, 1));
+  }
+
+  ASSERT_EQ(received_.size(), 1U);
+  ASSERT_EQ(received_[0].headers.size(), 3U);
+  EXPECT_EQ(received_[0].headers[1].first, "x-strij-function");
+  EXPECT_EQ(received_[0].headers[1].second, "/usr/bin/cat");
+}
+
+TEST_F(LlhttpParserTest, EmptyHeaderValueCaptured) {
+  const std::string request =
+      "POST /tasks/echo HTTP/1.1\r\n"
+      "x-strij-empty:\r\n"
+      "Content-Length: 0\r\n"
+      "\r\n";
+  auto data = std::as_bytes(std::span(request.data(), request.size()));
+  feed(data);
+
+  ASSERT_EQ(received_.size(), 1U);
+  ASSERT_EQ(received_[0].headers.size(), 2U);
+  EXPECT_EQ(received_[0].headers[0].first, "x-strij-empty");
+  EXPECT_TRUE(received_[0].headers[0].second.empty());
 }
 
 // NOLINTEND(modernize-use-trailing-return-type)

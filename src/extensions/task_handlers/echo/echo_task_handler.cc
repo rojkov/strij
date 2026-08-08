@@ -9,12 +9,13 @@
 
 namespace strij::extensions::task_handlers {
 
-void EchoTaskHandler::HandleTask(const strij::task::Task& task, ResultSender& sender) {
+void EchoTaskHandler::HandleTask(const strij::task::Task& task,
+                                 std::unique_ptr<ResultSender> sender) {
   strij::task::TaskResult result;
   result.set_id(task.id());
   result.set_body(task.body());
   result.set_is_final(true);
-  sender.Send(std::move(result));
+  sender->Send(std::move(result));
 }
 
 auto EchoTaskHandlerFactory::Name() const -> std::string { return "echo"; }

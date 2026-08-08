@@ -118,4 +118,12 @@ void DispatcherImpl::PrepareConnect(Completable* receiver, uint8_t tag, int fdes
   io_uring_prep_connect(sqe, fdesc, addr, addrlen);
 }
 
+void DispatcherImpl::PreparePoll(Completable* receiver, uint8_t tag, int fdesc,
+                                 uint32_t poll_mask) {
+  auto* sqe = io_uring_get_sqe(&ring_);
+  assert(sqe != nullptr);
+  io_uring_sqe_set_data(sqe, merge_with_tag(receiver, tag));
+  io_uring_prep_poll_add(sqe, fdesc, poll_mask);
+}
+
 } // namespace strij::event

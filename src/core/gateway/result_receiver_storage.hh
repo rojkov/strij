@@ -14,7 +14,8 @@ class ResultReceiver {
 public:
   virtual ~ResultReceiver() = default;
 
-  virtual void Deliver(std::span<const std::byte> value) PURE;
+  // Delivers one result chunk of a task. `is_final` marks the last result.
+  virtual void Deliver(std::span<const std::byte> value, bool is_final) PURE;
 };
 
 using ResultReceiverPtr = std::unique_ptr<ResultReceiver>;

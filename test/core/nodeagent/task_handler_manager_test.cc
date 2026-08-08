@@ -5,16 +5,20 @@
 #include <utility>
 
 #include "core/config/extensions.pb.h"
+#include "core/extensions/function_resolver.hh"
 #include "extensions/task_handlers/echo/echo_task_handler.pb.h"
+#include "extensions/task_handlers/piped_executable/piped_executable.pb.h"
 #include "gmock/gmock.h"
 #include "google/protobuf/repeated_ptr_field.h"
 #include "gtest/gtest.h"
+#include "test/mocks/event/mocks.hh"
 #include "test/mocks/extensions/extensions_mocks.hh"
 
 namespace strij::nodeagent {
 namespace {
 
 using ::testing::Return;
+using ::testing::ReturnRef;
 using ::testing::_;
 
 // NOLINTBEGIN(modernize-use-trailing-return-type)
@@ -98,6 +102,25 @@ TEST(TaskHandlerManagerTest, BuildInstantiatesHandlerFromConfig) {
   ASSERT_TRUE(result.ok());
   EXPECT_FALSE((*result)->empty());
   EXPECT_NE((*result)->GetHandler("mock"), nullptr);
+}
+
+TEST(TaskHandlerManagerTest, BuildInstantiatesPipedExecutableHandlerFromConfig) {
+  strij::extensions::MockFactoryContext context;
+  strij::extensions::LocalFunctionResolver resolver;
+  event::MockDispatcher dispatcher;
+  ON_CALL(context, Dispatcher()).WillByDefault(ReturnRef(dispatcher));
+  ON_CALL(context, FunctionResolver()).WillByDefault(ReturnRef(resolver));
+  ::google::protobuf::RepeatedPtrField<strij::config::ExtensionConfig> configs;
+  auto* ext = configs.Add();
+  ext->set_name("piped_executable");
+  strij::extensions::task_handlers::piped_executable::PipedExecutableTaskHandlerConfig typed;
+  ext->mutable_typed_config()->PackFrom(typed);
+
+  auto result = BuildTaskHandlerManager(configs, context);
+
+  ASSERT_TRUE(result.ok());
+  EXPECT_FALSE((*result)->empty());
+  EXPECT_NE((*result)->GetHandler("piped_executable"), nullptr);
 }
 
 // NOLINTEND(modernize-use-trailing-return-type)

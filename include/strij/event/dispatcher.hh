@@ -33,6 +33,7 @@ public:
                             std::span<const std::byte> buf, off_t offset) PURE;
   virtual void PrepareConnect(Completable* io, uint8_t tag, int fd,
                               const struct sockaddr* addr, socklen_t addrlen) PURE;
+  virtual void PreparePoll(Completable* io, uint8_t tag, int fd, uint32_t poll_mask) PURE;
 };
 
 using DispatcherSharedPtr = std::shared_ptr<Dispatcher>;

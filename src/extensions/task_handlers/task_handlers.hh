@@ -16,10 +16,10 @@ namespace strij::extensions {
 /**
  * @brief Delivers task results back to the originating connection.
  *
- * The sender is a copyable handle into the originating connection's outbound
- * mailbox. A handler MAY retain it past HandleTask(), call Send() zero or more
- * times, and mark the final result is_final = true. The sender stays valid
- * until the connection is torn down; sends made after teardown are dropped.
+ * HandleTask() transfers ownership of the sender to the handler, so it stays
+ * valid until it is destroyed or the connection is torn down. A handler MAY
+ * call Send() zero or more times, marking the final result is_final = true.
+ * Sends made after connection teardown are dropped.
  *
  * RegisterOnClose() notifies the handler when the connection is torn down (so
  * an async handler can cancel in-flight work); handlers should call
@@ -40,13 +40,13 @@ public:
  * Handler instances are shared across nodeagent connections, so handlers must
  * not store per-connection state. In-flight, per-task state (keyed by
  * task_id) is safe: frames and completions run on the single event-loop
- * thread. A handler MAY retain the sender passed to HandleTask() past the
- * call (see ResultSender) for asynchronous, multi-shot delivery.
+ * thread. HandleTask() moves ownership of the ResultSender to the handler so
+ * it can retain it for asynchronous, multi-shot delivery.
  */
 class TaskHandler {
 public:
   virtual ~TaskHandler() = default;
-  virtual void HandleTask(const strij::task::Task& task, ResultSender& sender) PURE;
+  virtual void HandleTask(const strij::task::Task& task, std::unique_ptr<ResultSender> sender) PURE;
 };
 
 class TaskHandlerFactory {
