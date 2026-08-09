@@ -13,8 +13,7 @@ void GatewayTlvHandler::HandleFrame(io::TlvFrame frame, io::Connection& /*conn*/
   switch (frame.type_id) {
   case io::TlvFrame::kResult: {
     task::TaskResult result;
-    // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast)
-    if (!result.ParseFromArray(reinterpret_cast<const char*>(frame.value.data()),
+    if (!result.ParseFromArray(std::bit_cast<const char*>(frame.value.data()),
                                static_cast<int>(frame.value.size()))) {
       LOG_WARNING("Malformed TaskResult frame dropped");
       return;
@@ -23,8 +22,7 @@ void GatewayTlvHandler::HandleFrame(io::TlvFrame frame, io::Connection& /*conn*/
     auto* receiver = storage_.get(result.id());
     if (receiver != nullptr) {
       const bool is_final = !result.has_is_final() || result.is_final();
-      // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast)
-      const auto* body_ptr = reinterpret_cast<const std::byte*>(result.body().data());
+      const auto* body_ptr = std::bit_cast<const std::byte*>(result.body().data());
       auto body = std::span<const std::byte>(body_ptr, result.body().size());
       receiver->Deliver(body, is_final);
       if (is_final) {

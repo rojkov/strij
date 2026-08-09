@@ -156,11 +156,11 @@ auto main(int argc, char** argv) -> int {
       [&](strij::io::Connection& conn) -> std::unique_ptr<strij::io::ProtocolParser> {
         auto handler = std::make_unique<strij::gateway::GatewayHttpHandler>(
             node_directory, storage,
-            [](strij::io::Connection& conn) -> std::unique_ptr<strij::gateway::ResultReceiver> {
+            [](strij::io::Connection& conn) -> strij::gateway::ResultReceiverPtr {
               return std::make_unique<strij::gateway::HttpResultReceiver>(conn);
             });
         return std::make_unique<strij::io::LlhttpParser>(
-            [hdl = std::move(handler), &conn](strij::io::HttpRequest request) -> void {
+            [hdl = std::move(handler), &conn](const strij::io::HttpRequest& request) -> void {
               hdl->HandleMessage(request, conn);
             });
       }};

@@ -13,15 +13,11 @@ FactoryContextImpl::FactoryContextImpl(
   }
 }
 
-auto FactoryContextImpl::Dispatcher() -> event::Dispatcher& {
-  return *dispatcher_;
-}
+auto FactoryContextImpl::Dispatcher() -> event::Dispatcher& { return *dispatcher_; }
 
-auto FactoryContextImpl::Logger() -> logging::Logger& {
-  return logging::Logger::GetInstance();
-}
+auto FactoryContextImpl::Logger() -> logging::Logger& { return logging::Logger::GetInstance(); }
 
-auto FactoryContextImpl::FunctionResolver() -> ::strij::extensions::FunctionResolver& {
+auto FactoryContextImpl::FunctionResolver() -> extensions::FunctionResolver& {
   return *function_resolver_;
 }
 

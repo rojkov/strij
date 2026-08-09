@@ -41,7 +41,7 @@ public:
 
   // False when the spawn failed; the owning handler then delivers an empty
   // final result instead of registering the child.
-  [[nodiscard]] auto OK() const -> bool;
+  [[nodiscard]] auto Ok() const -> bool;
 
   // event::Completable interface
   void HandleCompletion(uint8_t tag, int res, uint32_t flags) override;

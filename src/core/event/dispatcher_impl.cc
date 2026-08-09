@@ -6,20 +6,19 @@
 #include <cassert>
 #include <cstdint>
 
-#include "strij/event/completable.hh"
 #include "include/strij/event/completable.hh"
+#include "strij/event/completable.hh"
 
 namespace strij::event {
 
-const uintptr_t tag_mask{7};
+const uintptr_t kTagMask{7};
 
 namespace {
 
 inline auto merge_with_tag(Completable* completable, uint8_t tag) -> void* {
-  assert((tag & ~tag_mask) == 0);
+  assert((tag & ~kTagMask) == 0);
 
-  // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast)
-  return reinterpret_cast<void*>(reinterpret_cast<uintptr_t>(completable) | tag);
+  return std::bit_cast<void*>(std::bit_cast<uintptr_t>(completable) | tag);
 }
 
 } // namespace
@@ -52,11 +51,9 @@ void DispatcherImpl::Run() {
     unsigned count{0};
     io_uring_for_each_cqe(&ring_, head, cqe) {
       count++;
-      // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast)
-      auto user_data = reinterpret_cast<uintptr_t>(io_uring_cqe_get_data(cqe));
-      uint8_t tag = user_data & tag_mask;
-      // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast)
-      auto* completable = reinterpret_cast<Completable*>(user_data & ~tag_mask);
+      auto user_data = std::bit_cast<uintptr_t>(io_uring_cqe_get_data(cqe));
+      uint8_t tag = user_data & kTagMask;
+      auto* completable = std::bit_cast<Completable*>(user_data & ~kTagMask);
       if (completable != nullptr) {
         completable->HandleCompletion(tag, cqe->res, cqe->flags);
       }

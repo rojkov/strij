@@ -2,7 +2,6 @@
 
 #include <memory>
 #include <optional>
-#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -29,22 +28,29 @@ auto ParseTaskType(std::string_view path) -> std::optional<std::string_view>;
 // Forwards headers matching the x-strij- prefix into task.parameters: the
 // prefix is stripped, the key lowercased, and the value stored as-is. Pure and
 // deterministic; other headers are ignored.
-void PopulateParametersFromHeaders(
-    strij::task::Task& task,
-    const std::vector<std::pair<std::string, std::string>>& headers);
+void PopulateParametersFromHeaders(strij::task::Task& task,
+                                   const std::vector<std::pair<std::string, std::string>>& headers);
 
-class GatewayHttpHandler {
+class GatewayHttpHandler final {
 public:
   GatewayHttpHandler(NodeDirectory& node_directory, ResultReceiverStorage& storage,
-                     std::unique_ptr<ResultReceiver> (*make_receiver)(strij::io::Connection& conn))
-      : node_directory_{node_directory}, storage_{storage}, make_receiver_{make_receiver} {}
+                     std::function<ResultReceiverPtr(io::Connection& conn)>&& make_receiver)
+      : node_directory_{node_directory}, storage_{storage},
+        make_receiver_{std::move(make_receiver)} {}
 
-  void HandleMessage(strij::io::HttpRequest request, strij::io::Connection& conn);
+  ~GatewayHttpHandler() = default;
+
+  GatewayHttpHandler(const GatewayHttpHandler&) = delete;
+  auto operator=(const GatewayHttpHandler&) -> GatewayHttpHandler& = delete;
+  GatewayHttpHandler(GatewayHttpHandler&&) noexcept = delete;
+  auto operator=(GatewayHttpHandler&&) noexcept -> GatewayHttpHandler& = delete;
+
+  void HandleMessage(const io::HttpRequest& request, io::Connection& conn);
 
 private:
   NodeDirectory& node_directory_;
   ResultReceiverStorage& storage_;
-  std::unique_ptr<ResultReceiver> (*make_receiver_)(strij::io::Connection& conn);
+  std::function<ResultReceiverPtr(io::Connection& conn)> make_receiver_;
 };
 
 } // namespace strij::gateway

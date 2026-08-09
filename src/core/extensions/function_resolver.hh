@@ -41,6 +41,8 @@ public:
   virtual auto Resolve(std::string_view reference) -> absl::StatusOr<std::string> PURE;
 };
 
+// TODO: this class conceptually belongs to strij::nodeagent namespace, but resides in
+// src/core/extensions. Consider moving it to src/nodeagent.
 class LocalFunctionResolver final : public FunctionResolver {
 public:
   // FunctionResolver

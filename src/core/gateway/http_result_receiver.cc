@@ -1,7 +1,6 @@
 #include "core/gateway/http_result_receiver.hh"
 
 #include <format>
-#include <string>
 #include <string_view>
 
 namespace strij::gateway {

@@ -20,8 +20,7 @@ PipedExecutableTaskHandler::PipedExecutableTaskHandler(
     event::Dispatcher& dispatcher, strij::extensions::FunctionResolver& resolver)
     : dispatcher_{dispatcher}, resolver_{resolver} {}
 
-void PipedExecutableTaskHandler::HandleTask(const strij::task::Task& task,
-                                            std::unique_ptr<ResultSender> sender) {
+void PipedExecutableTaskHandler::HandleTask(const task::Task& task, ResultSenderPtr sender) {
   auto it = task.parameters().find(std::string(kFunctionParameter));
   if (it == task.parameters().end()) {
     LOG_WARNING("Task '{}': missing '{}' parameter; returning empty result", task.id(),
@@ -47,7 +46,7 @@ void PipedExecutableTaskHandler::HandleTask(const strij::task::Task& task,
 
   auto child = std::make_unique<ChildProcess>(dispatcher_, this, task.id(), path,
                                               std::move(stdin_body), std::move(sender));
-  if (child->OK()) {
+  if (child->Ok()) {
     child->Start();
     children_.emplace(task.id(), std::move(child));
   } else {
@@ -70,9 +69,8 @@ void PipedExecutableTaskHandler::ProcessCommand(event::Command cmd) {
   }
 }
 
-void PipedExecutableTaskHandler::sendEmptyFinal(const strij::task::Task& task,
-                                                ResultSender& sender) {
-  strij::task::TaskResult result;
+void PipedExecutableTaskHandler::sendEmptyFinal(const task::Task& task, ResultSender& sender) {
+  task::TaskResult result;
   result.set_id(task.id());
   result.set_is_final(true);
   sender.Send(std::move(result));
@@ -81,13 +79,11 @@ void PipedExecutableTaskHandler::sendEmptyFinal(const strij::task::Task& task,
 auto PipedExecutableTaskHandlerFactory::Name() const -> std::string { return "piped_executable"; }
 
 auto PipedExecutableTaskHandlerFactory::CreateEmptyConfigProto() -> MessagePtr {
-  return std::make_unique<
-      strij::extensions::task_handlers::piped_executable::PipedExecutableTaskHandlerConfig>();
+  return std::make_unique<piped_executable::PipedExecutableTaskHandlerConfig>();
 }
 
 auto PipedExecutableTaskHandlerFactory::Create(const ::google::protobuf::Message& /*config*/,
-                                               FactoryContext& context)
-    -> std::unique_ptr<TaskHandler> {
+                                               FactoryContext& context) -> TaskHandlerPtr {
   return std::make_unique<PipedExecutableTaskHandler>(context.Dispatcher(),
                                                       context.FunctionResolver());
 }

@@ -12,7 +12,13 @@ namespace strij::gateway {
 
 class ResultReceiver {
 public:
+  ResultReceiver() = default;
   virtual ~ResultReceiver() = default;
+
+  ResultReceiver(const ResultReceiver&) = delete;
+  auto operator=(const ResultReceiver&) -> ResultReceiver& = delete;
+  ResultReceiver(ResultReceiver&&) noexcept = delete;
+  auto operator=(ResultReceiver&&) noexcept -> ResultReceiver& = delete;
 
   // Delivers one result chunk of a task. `is_final` marks the last result.
   virtual void Deliver(std::span<const std::byte> value, bool is_final) PURE;
@@ -27,8 +33,8 @@ public:
   }
 
   auto get(const std::string& task_id) -> ResultReceiver* {
-    auto it = receivers_.find(task_id);
-    return it != receivers_.end() ? it->second.get() : nullptr;
+    auto iter = receivers_.find(task_id);
+    return iter != receivers_.end() ? iter->second.get() : nullptr;
   }
 
   void erase(const std::string& task_id) { receivers_.erase(task_id); }

@@ -6,9 +6,15 @@
 
 namespace strij::gateway {
 
-class GatewayTlvHandler {
+class GatewayTlvHandler final {
 public:
   explicit GatewayTlvHandler(ResultReceiverStorage& storage) : storage_{storage} {}
+  ~GatewayTlvHandler() = default;
+
+  GatewayTlvHandler(const GatewayTlvHandler&) = delete;
+  auto operator=(const GatewayTlvHandler&) -> GatewayTlvHandler& = delete;
+  GatewayTlvHandler(GatewayTlvHandler&&) noexcept = delete;
+  auto operator=(GatewayTlvHandler&&) noexcept -> GatewayTlvHandler& = delete;
 
   void HandleFrame(strij::io::TlvFrame frame, strij::io::Connection& conn);
 

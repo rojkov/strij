@@ -32,12 +32,12 @@ auto ParseTaskType(std::string_view path) -> std::optional<std::string_view> {
 }
 
 void PopulateParametersFromHeaders(
-    strij::task::Task& task, const std::vector<std::pair<std::string, std::string>>& headers) {
-  auto parameters = task.mutable_parameters();
+    task::Task& task, const std::vector<std::pair<std::string, std::string>>& headers) {
+  auto* parameters = task.mutable_parameters();
   for (const auto& [name, value] : headers) {
     std::string lower_name = name;
-    std::transform(lower_name.begin(), lower_name.end(), lower_name.begin(),
-                   [](unsigned char c) -> unsigned char { return std::tolower(c); });
+    std::ranges::transform(lower_name, lower_name.begin(),
+                           [](unsigned char chr) -> unsigned char { return std::tolower(chr); });
     if (!lower_name.starts_with(kStrijHeaderPrefix)) {
       continue;
     }
@@ -56,7 +56,7 @@ constexpr int kStatusNotFound = 404;
 constexpr int kStatusInternalServerError = 500;
 constexpr int kStatusServiceUnavailable = 503;
 
-void writeErrorResponse(strij::io::Connection& conn, int status, std::string_view reason) {
+void writeErrorResponse(io::Connection& conn, int status, std::string_view reason) {
   auto response = std::format("HTTP/1.1 {} {}\r\nContent-Length: 0\r\nContent-Type: "
                               "text/plain\r\nConnection: close\r\n\r\n",
                               status, reason);
@@ -66,8 +66,7 @@ void writeErrorResponse(strij::io::Connection& conn, int status, std::string_vie
 
 } // namespace
 
-void GatewayHttpHandler::HandleMessage(strij::io::HttpRequest request,
-                                       strij::io::Connection& conn) {
+void GatewayHttpHandler::HandleMessage(const io::HttpRequest& request, io::Connection& conn) {
   auto task_type = ParseTaskType(request.path);
   if (!task_type.has_value()) {
     writeErrorResponse(conn, kStatusNotFound, "Not Found");
@@ -78,8 +77,8 @@ void GatewayHttpHandler::HandleMessage(strij::io::HttpRequest request,
     return;
   }
 
-  auto task_id = strij::utils::GenerateTaskId();
-  strij::task::Task task;
+  auto task_id = utils::GenerateTaskId();
+  task::Task task;
   task.set_id(task_id);
   task.set_type(task_type->data(), task_type->size());
   // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast)
@@ -104,7 +103,7 @@ void GatewayHttpHandler::HandleMessage(strij::io::HttpRequest request,
   storage_.put(task_id, std::move(receiver));
 
   auto frame =
-      io::SerializeTlvFrame(strij::io::TlvFrame::kTaskSubmission,
+      io::SerializeTlvFrame(io::TlvFrame::kTaskSubmission,
                             std::as_bytes(std::span(serialized.data(), serialized.size())));
   nodeagent_conn->Write(frame);
 

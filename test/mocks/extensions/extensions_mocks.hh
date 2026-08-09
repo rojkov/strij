@@ -2,7 +2,6 @@
 
 #include <cstddef>
 #include <functional>
-#include <memory>
 #include <string>
 
 #include "core/extensions/factory_context.hh"
@@ -20,7 +19,7 @@ public:
 
 class MockTaskHandler final : public TaskHandler {
 public:
-  MOCK_METHOD(void, HandleTask, (const strij::task::Task& task, std::unique_ptr<ResultSender> sender),
+  MOCK_METHOD(void, HandleTask, (const strij::task::Task& task, ResultSenderPtr sender),
               (override));
 };
 
@@ -28,7 +27,7 @@ class MockTaskHandlerFactory final : public TaskHandlerFactory {
 public:
   MOCK_METHOD(std::string, Name, (), (const, override));
   MOCK_METHOD(MessagePtr, CreateEmptyConfigProto, (), (override));
-  MOCK_METHOD(std::unique_ptr<TaskHandler>, Create,
+  MOCK_METHOD(TaskHandlerPtr, Create,
               (const ::google::protobuf::Message& config, FactoryContext& context), (override));
 };
 

@@ -46,8 +46,7 @@ void sendEmptyFinal(const std::string& task_id, ResultSender& sender) {
 
 ChildProcess::ChildProcess(event::Dispatcher& dispatcher, event::CommandHandler* owner,
                            std::string task_id, std::string executable_path,
-                           std::vector<std::byte> stdin_body,
-                           std::unique_ptr<ResultSender> sender)
+                           std::vector<std::byte> stdin_body, std::unique_ptr<ResultSender> sender)
     : dispatcher_{&dispatcher}, owner_{owner}, task_id_{std::move(task_id)},
       executable_path_{std::move(executable_path)}, stdin_body_{std::move(stdin_body)},
       sender_{std::move(sender)} {
@@ -94,8 +93,8 @@ ChildProcess::ChildProcess(event::Dispatcher& dispatcher, event::CommandHandler*
 
   char* const argv[] = {executable_path_.data(), nullptr};
   // NOLINTNEXTLINE(cppcoreguidelines-pro-type-vararg)
-  int rc = posix_spawn(&pid_, executable_path_.c_str(), actions_ready ? &actions : nullptr,
-                       nullptr, argv, environ);
+  int rc = posix_spawn(&pid_, executable_path_.c_str(), actions_ready ? &actions : nullptr, nullptr,
+                       argv, environ);
   if (actions_ready) {
     posix_spawn_file_actions_destroy(&actions);
   }
@@ -105,8 +104,7 @@ ChildProcess::ChildProcess(event::Dispatcher& dispatcher, event::CommandHandler*
   closeFd(&stderr_pipe[1]);
 
   if (rc != 0) {
-    LOG_WARNING("Child '{}': posix_spawn('{}') failed (errno={})", task_id_, executable_path_,
-                rc);
+    LOG_WARNING("Child '{}': posix_spawn('{}') failed (errno={})", task_id_, executable_path_, rc);
     closeFd(&stdin_pipe[1]);
     closeFd(&stdout_pipe[0]);
     closeFd(&stderr_pipe[0]);
@@ -146,7 +144,7 @@ ChildProcess::~ChildProcess() {
   }
 }
 
-auto ChildProcess::OK() const -> bool { return ok_; }
+auto ChildProcess::Ok() const -> bool { return ok_; }
 
 void ChildProcess::Start() {
   if (!ok_) {
@@ -191,11 +189,10 @@ void ChildProcess::handleStdinWrite(int res) {
   if (res > 0) {
     stdin_offset_ += static_cast<std::size_t>(res);
     if (stdin_offset_ < stdin_body_.size()) {
-      dispatcher_->PrepareWrite(
-          this, kStdinWrite, stdin_w_,
-          std::span<const std::byte>(stdin_body_.data() + stdin_offset_,
-                                     stdin_body_.size() - stdin_offset_),
-          -1);
+      dispatcher_->PrepareWrite(this, kStdinWrite, stdin_w_,
+                                std::span<const std::byte>(stdin_body_.data() + stdin_offset_,
+                                                           stdin_body_.size() - stdin_offset_),
+                                -1);
       return;
     }
   } else {
@@ -272,8 +269,8 @@ void ChildProcess::handleExitPoll() {
   strij::task::TaskResult result;
   result.set_id(task_id_);
   // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast)
-  result.set_body(std::string(reinterpret_cast<const char*>(final_body_.data()),
-                              final_body_.size()));
+  result.set_body(
+      std::string(reinterpret_cast<const char*>(final_body_.data()), final_body_.size()));
   result.set_is_final(true);
   sender_->Send(std::move(result));
 
@@ -287,8 +284,7 @@ void ChildProcess::drainOutput() {
   for (;;) {
     ssize_t n = ::read(stdout_r_, stdout_buffer_.data(), stdout_buffer_.size());
     if (n > 0) {
-      final_body_.insert(final_body_.end(), stdout_buffer_.begin(),
-                         stdout_buffer_.begin() + n);
+      final_body_.insert(final_body_.end(), stdout_buffer_.begin(), stdout_buffer_.begin() + n);
       continue;
     }
     if (n == 0 || errno == EAGAIN || errno == EWOULDBLOCK) {
@@ -328,9 +324,8 @@ void ChildProcess::maybeFinish() {
     sender_->UnregisterOnClose(close_token_);
     close_registered_ = false;
   }
-  dispatcher_->SubmitCommand({.type_ = event::Command::DEFERRED_DELETE,
-                              .destination_ = owner_,
-                              .args_ = this});
+  dispatcher_->SubmitCommand(
+      {.type_ = event::Command::DEFERRED_DELETE, .destination_ = owner_, .args_ = this});
 }
 
 } // namespace strij::extensions::task_handlers

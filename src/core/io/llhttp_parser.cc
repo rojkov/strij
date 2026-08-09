@@ -16,7 +16,7 @@
 
 namespace strij::io {
 
-LlhttpParser::LlhttpParser(std::move_only_function<void(HttpRequest)>&& on_message)
+LlhttpParser::LlhttpParser(std::move_only_function<void(const HttpRequest&)>&& on_message)
     : on_message_{std::move(on_message)}, active_chunk_{std::make_unique<Chunk>()} {
   llhttp_settings_init(&settings_);
   settings_.on_url = on_url;

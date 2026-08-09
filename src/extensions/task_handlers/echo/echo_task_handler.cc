@@ -9,8 +9,7 @@
 
 namespace strij::extensions::task_handlers {
 
-void EchoTaskHandler::HandleTask(const strij::task::Task& task,
-                                 std::unique_ptr<ResultSender> sender) {
+void EchoTaskHandler::HandleTask(const task::Task& task, ResultSenderPtr sender) {
   strij::task::TaskResult result;
   result.set_id(task.id());
   result.set_body(task.body());
@@ -25,13 +24,11 @@ auto EchoTaskHandlerFactory::CreateEmptyConfigProto() -> MessagePtr {
 }
 
 auto EchoTaskHandlerFactory::Create(const ::google::protobuf::Message& /*config*/,
-                                    FactoryContext& /*context*/)
-    -> std::unique_ptr<TaskHandler> {
+                                    FactoryContext& /*context*/) -> TaskHandlerPtr {
   return std::make_unique<EchoTaskHandler>();
 }
 
 } // namespace strij::extensions::task_handlers
 
 REGISTER_FACTORY_FULLY_QUALIFIED(strij::extensions::task_handlers::EchoTaskHandlerFactory,
-                                 strij::extensions::TaskHandlerFactory,
-                                 echo_task_handler_registrar)
+                                 strij::extensions::TaskHandlerFactory, echo_task_handler_registrar)

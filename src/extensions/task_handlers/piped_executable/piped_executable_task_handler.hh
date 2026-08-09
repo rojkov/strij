@@ -24,26 +24,19 @@ class ChildProcess;
  */
 class PipedExecutableTaskHandler final : public TaskHandler, public event::CommandHandler {
 public:
-  PipedExecutableTaskHandler(event::Dispatcher& dispatcher,
-                             strij::extensions::FunctionResolver& resolver);
-  ~PipedExecutableTaskHandler() override = default;
-
-  PipedExecutableTaskHandler(const PipedExecutableTaskHandler&) = delete;
-  auto operator=(const PipedExecutableTaskHandler&) -> PipedExecutableTaskHandler& = delete;
-  PipedExecutableTaskHandler(PipedExecutableTaskHandler&&) noexcept = delete;
-  auto operator=(PipedExecutableTaskHandler&&) noexcept -> PipedExecutableTaskHandler& = delete;
+  PipedExecutableTaskHandler(event::Dispatcher& dispatcher, FunctionResolver& resolver);
 
   // TaskHandler interface
-  void HandleTask(const strij::task::Task& task, std::unique_ptr<ResultSender> sender) override;
+  void HandleTask(const strij::task::Task& task, ResultSenderPtr sender) override;
 
   // event::CommandHandler interface
   void ProcessCommand(event::Command cmd) override;
 
 private:
-  void sendEmptyFinal(const strij::task::Task& task, ResultSender& sender);
+  static void sendEmptyFinal(const strij::task::Task& task, ResultSender& sender);
 
   event::Dispatcher& dispatcher_;
-  strij::extensions::FunctionResolver& resolver_;
+  FunctionResolver& resolver_;
   std::unordered_map<std::string, std::unique_ptr<ChildProcess>> children_;
 };
 
@@ -52,7 +45,7 @@ public:
   [[nodiscard]] auto Name() const -> std::string override;
   auto CreateEmptyConfigProto() -> MessagePtr override;
   auto Create(const ::google::protobuf::Message& config, FactoryContext& context)
-      -> std::unique_ptr<TaskHandler> override;
+      -> TaskHandlerPtr override;
 };
 
 } // namespace strij::extensions::task_handlers

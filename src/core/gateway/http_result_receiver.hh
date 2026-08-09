@@ -2,7 +2,6 @@
 
 #include <cstdint>
 #include <span>
-#include <string_view>
 #include <vector>
 
 #include "core/gateway/result_receiver_storage.hh"
@@ -21,12 +20,11 @@ namespace strij::gateway {
  * Returns zero or more byte frames to write on the connection. Header-declared
  * so the framing logic is testable without a Connection or dispatcher.
  */
-class HttpResponseFramer {
+class HttpResponseFramer final {
 public:
   enum class State : uint8_t { kIdle, kChunked, kDone };
 
-  auto Next(std::span<const std::byte> body, bool is_final)
-      -> std::vector<std::vector<std::byte>>;
+  auto Next(std::span<const std::byte> body, bool is_final) -> std::vector<std::vector<std::byte>>;
 
 private:
   State state_{State::kIdle};

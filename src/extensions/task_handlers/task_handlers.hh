@@ -28,11 +28,20 @@ namespace strij::extensions {
  */
 class ResultSender {
 public:
+  ResultSender() = default;
   virtual ~ResultSender() = default;
+
+  ResultSender(const ResultSender&) = delete;
+  auto operator=(const ResultSender&) -> ResultSender& = delete;
+  ResultSender(ResultSender&&) noexcept = delete;
+  auto operator=(ResultSender&&) noexcept -> ResultSender& = delete;
+
   virtual void Send(strij::task::TaskResult result) PURE;
   virtual auto RegisterOnClose(std::move_only_function<void()> close_cb) -> std::size_t PURE;
   virtual void UnregisterOnClose(std::size_t token) PURE;
 };
+
+using ResultSenderPtr = std::unique_ptr<ResultSender>;
 
 /**
  * @brief Processes tasks of a specific type.
@@ -45,19 +54,35 @@ public:
  */
 class TaskHandler {
 public:
+  TaskHandler() = default;
   virtual ~TaskHandler() = default;
-  virtual void HandleTask(const strij::task::Task& task, std::unique_ptr<ResultSender> sender) PURE;
+
+  TaskHandler(const TaskHandler&) = delete;
+  auto operator=(const TaskHandler&) -> TaskHandler& = delete;
+  TaskHandler(TaskHandler&&) noexcept = delete;
+  auto operator=(TaskHandler&&) noexcept -> TaskHandler& = delete;
+
+  virtual void HandleTask(const task::Task& task, ResultSenderPtr sender) PURE;
 };
+
+using TaskHandlerPtr = std::unique_ptr<TaskHandler>;
 
 class TaskHandlerFactory {
 public:
   using MessagePtr = std::unique_ptr<::google::protobuf::Message>;
 
+  TaskHandlerFactory() = default;
   virtual ~TaskHandlerFactory() = default;
+
+  TaskHandlerFactory(const TaskHandlerFactory&) = delete;
+  auto operator=(const TaskHandlerFactory&) -> TaskHandlerFactory& = delete;
+  TaskHandlerFactory(TaskHandlerFactory&&) noexcept = delete;
+  auto operator=(TaskHandlerFactory&&) noexcept -> TaskHandlerFactory& = delete;
+
   [[nodiscard]] virtual auto Name() const -> std::string PURE;
   virtual auto CreateEmptyConfigProto() -> MessagePtr PURE;
   virtual auto Create(const ::google::protobuf::Message& config, FactoryContext& context)
-      -> std::unique_ptr<TaskHandler> PURE;
+      -> TaskHandlerPtr PURE;
 };
 
 } // namespace strij::extensions
