@@ -1,7 +1,9 @@
 # Strij
 
+The ultimate goal for Strij is a distributed runtime for serverless functions. It must scale to thousands of nodes and to millions of concurrent tasks. Also it should avoid single points of failure in its design. This implies multiple gateway processes running in parallel. And every gateway process may run multiple worker threads where tasks are mapped to nodes in parallel. The design should allow experimenting with different pluggable scheduling policies.
+
 C++23 gateway server and distributed node agent servers `io_uring`-based (Linux) event loop. Bazel 9.0.1 build.
-No synchronous system calls. Use `io_uring` as much as possible. Synchronous calls (e.g. `write(2)`) are acceptable when `io_uring` is not available (bootstrap and fallback paths). Additional accepted non-`io_uring` calls in the `piped_executable` task handler: `posix_spawn` (fork+exec, directly on the event-loop thread), `pipe2`, `pidfd_open` (subscribed via `io_uring` poll), and the reaping `waitpid(WNOHANG)` after the pidfd poll fires. See `src/extensions/task_handlers/piped_executable/child_process.cc`.
+Use `io_uring` as much as possible. Synchronous calls (e.g. `write(2)`) are acceptable when `io_uring` is not available (bootstrap and fallback paths) or too cumbersome to use. For example `posix_spawn` (fork+exec, directly on the event-loop thread), `pipe2`, `pidfd_open` (subscribed via `io_uring` poll), and the reaping `waitpid(WNOHANG)` after the pidfd poll fires are OK. See `src/extensions/task_handlers/piped_executable/child_process.cc`.
 
 ## Commands (Makefile wrappers)
 
