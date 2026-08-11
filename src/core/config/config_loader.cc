@@ -156,22 +156,43 @@ auto mergeYamlIntoProto(const YAML::Node& yaml, google::protobuf::Message* messa
     }
 
     if (field->is_repeated()) {
-      if (!value.IsSequence()) {
-        return absl::InvalidArgumentError(
-            absl::StrCat("Field '", full_path, "' expected sequence"));
-      }
-      for (const auto& item : value) {
-        if (field->cpp_type() == google::protobuf::FieldDescriptor::CPPTYPE_MESSAGE) {
+      const auto* field_msg_type = field->message_type();
+      const bool is_map_entry = field_msg_type != nullptr && field_msg_type->options().map_entry();
+      if (is_map_entry && value.IsMap()) {
+        // proto map fields are repeated MapEntry messages; accept a YAML map.
+        auto* key_field = field_msg_type->FindFieldByName("key");
+        auto* value_field = field_msg_type->FindFieldByName("value");
+        for (const auto& kv : value) {
           auto* sub_msg = reflection->AddMessage(message, field);
-          auto status = mergeYamlIntoProto(item, sub_msg, full_path);
+          const auto* sub_reflection = sub_msg->GetReflection();
+          auto status =
+              setFieldFromString(sub_msg, key_field, kv.first.as<std::string>(), sub_reflection);
           if (!status.ok()) {
             return status;
           }
-        } else if (field->cpp_type() == google::protobuf::FieldDescriptor::CPPTYPE_STRING) {
-          reflection->AddString(message, field, item.as<std::string>());
-        } else {
-          return absl::InvalidArgumentError(absl::StrCat("Repeated field '", full_path,
-                                                         "' only supports message or string type"));
+          status =
+              setFieldFromString(sub_msg, value_field, kv.second.as<std::string>(), sub_reflection);
+          if (!status.ok()) {
+            return status;
+          }
+        }
+      } else if (!value.IsSequence()) {
+        return absl::InvalidArgumentError(
+            absl::StrCat("Field '", full_path, "' expected sequence"));
+      } else {
+        for (const auto& item : value) {
+          if (field->cpp_type() == google::protobuf::FieldDescriptor::CPPTYPE_MESSAGE) {
+            auto* sub_msg = reflection->AddMessage(message, field);
+            auto status = mergeYamlIntoProto(item, sub_msg, full_path);
+            if (!status.ok()) {
+              return status;
+            }
+          } else if (field->cpp_type() == google::protobuf::FieldDescriptor::CPPTYPE_STRING) {
+            reflection->AddString(message, field, item.as<std::string>());
+          } else {
+            return absl::InvalidArgumentError(absl::StrCat("Repeated field '", full_path,
+                                                           "' only supports message or string type"));
+          }
         }
       }
     } else if (field->cpp_type() == google::protobuf::FieldDescriptor::CPPTYPE_MESSAGE) {

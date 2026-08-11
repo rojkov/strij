@@ -1,0 +1,13 @@
+load("//bazel:build_system.bzl", "strij_cc_test")
+
+strij_cc_test(
+    name = "static_node_discovery_test",
+    srcs = ["static_node_discovery_test.cc"],
+    deps = [
+        "//api/extensions/node_discovery/static:static_node_discovery_cc_proto",
+        "//src/extensions/node_discovery:node_discovery_interface",
+        "//src/extensions/node_discovery/static:static_node_discovery_lib",
+        "//test/mocks/extensions:extensions_mocks_lib",
+        "@googletest//:gtest_main",
+    ],
+)

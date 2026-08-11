@@ -6,11 +6,13 @@
 #include <string_view>
 #include <vector>
 
+#include "core/gateway/exact_state_tracker.hh"
 #include "core/gateway/node_directory.hh"
 #include "core/gateway/result_receiver_storage.hh"
 #include "core/io/connection.hh"
 #include "core/io/llhttp_parser.hh"
 #include "core/task/task.pb.h"
+#include "extensions/schedulers/scheduler.hh"
 
 namespace strij::gateway {
 
@@ -34,9 +36,13 @@ void PopulateParametersFromHeaders(strij::task::Task& task,
 class GatewayHttpHandler final {
 public:
   GatewayHttpHandler(NodeDirectory& node_directory, ResultReceiverStorage& storage,
-                     std::function<ResultReceiverPtr(io::Connection& conn)>&& make_receiver)
-      : node_directory_{node_directory}, storage_{storage},
-        make_receiver_{std::move(make_receiver)} {}
+                     std::function<ResultReceiverPtr(io::Connection& conn)>&& make_receiver,
+                     extensions::Scheduler& scheduler, ExactStateTracker* state_tracker = nullptr)
+      : node_directory_{node_directory},
+        storage_{storage},
+        make_receiver_{std::move(make_receiver)},
+        scheduler_{scheduler},
+        state_tracker_{state_tracker} {}
 
   ~GatewayHttpHandler() = default;
 
@@ -51,6 +57,9 @@ private:
   NodeDirectory& node_directory_;
   ResultReceiverStorage& storage_;
   std::function<ResultReceiverPtr(io::Connection& conn)> make_receiver_;
+  extensions::Scheduler& scheduler_;
+  // Optional exact state accounting; null in unit tests that don't need it.
+  ExactStateTracker* state_tracker_;
 };
 
 } // namespace strij::gateway

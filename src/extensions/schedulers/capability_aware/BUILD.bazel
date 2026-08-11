@@ -1,0 +1,13 @@
+load("//bazel:build_system.bzl", "strij_cc_library")
+
+strij_cc_library(
+    name = "capability_aware_scheduler_lib",
+    srcs = ["capability_aware_scheduler.cc"],
+    hdrs = ["capability_aware_scheduler.hh"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//api/extensions/schedulers/capability_aware:capability_aware_scheduler_cc_proto",
+        "//src/extensions/schedulers:scheduler_interface",
+    ],
+    alwayslink = True,
+)

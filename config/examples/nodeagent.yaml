@@ -2,14 +2,33 @@ tlv_listener:
   address: "0.0.0.0"
   port: 9090
 
+pools:
+  - name: "cpu"
+    total: 16
+  - name: "gpu.h100"
+    total: 2
+
+reservations:
+  - task_type: "video-encode"
+    pool: "gpu.h100"
+    amount: 1
+
 task_handlers:
   - name: "echo"
     typed_config:
       "@type": "type.googleapis.com/strij.extensions.task_handlers.echo.EchoTaskHandlerConfig"
+      capacity:
+        concurrency: 1024
+        default_resources:
+          resources:
+            cpu: 1
 
   - name: "piped_executable"
     typed_config:
       "@type": "type.googleapis.com/strij.extensions.task_handlers.piped_executable.PipedExecutableTaskHandlerConfig"
+
+heartbeat_interval:
+  seconds: 5
 
 logging:
   level: "debug"

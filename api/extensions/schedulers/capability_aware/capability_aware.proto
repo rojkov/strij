@@ -1,0 +1,6 @@
+syntax = "proto3";
+
+package strij.extensions.schedulers.capability_aware;
+
+// Empty placeholder: the capability_aware policy has no tunables in v1.
+message CapabilityAwareSchedulerConfig {}

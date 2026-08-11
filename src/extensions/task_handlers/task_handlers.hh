@@ -5,8 +5,10 @@
 #include <memory>
 #include <string>
 
+#include "absl/status/statusor.h"
 #include "core/extensions/extension_registry.hh"
 #include "core/extensions/factory_context.hh"
+#include "core/node/capabilities.pb.h"
 #include "core/task/task.pb.h"
 #include "google/protobuf/message.h"
 #include "strij/common/pure.hh"
@@ -83,6 +85,13 @@ public:
   virtual auto CreateEmptyConfigProto() -> MessagePtr PURE;
   virtual auto Create(const ::google::protobuf::Message& config, FactoryContext& context)
       -> TaskHandlerPtr PURE;
+  // Parses the operator-declared capacity (concurrency limit and default
+  // resource requirements) out of the factory's config message. The default
+  // implementation declares no concurrency limit and no default resources.
+  [[nodiscard]] virtual auto ParseConfig(const ::google::protobuf::Message& /*config*/)
+      -> absl::StatusOr<strij::node::HandlerCapacity> {
+    return strij::node::HandlerCapacity{};
+  }
 };
 
 } // namespace strij::extensions

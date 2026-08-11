@@ -10,6 +10,10 @@ message GatewayConfig {
   repeated NodeConnection node_connections = 2;
   Logging logging = 3;
   ExtensionConfig node_discovery = 4;
+  // Required: names the scheduling policy (e.g. "round_robin",
+  // "capability_aware"). The gateway fails to start when unset or when the name
+  // is not registered.
+  ExtensionConfig scheduler = 5;
 }
 
 message HttpListener {

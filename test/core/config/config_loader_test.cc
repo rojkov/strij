@@ -9,6 +9,8 @@
 #include "core/config/config_loader.hh"
 #include "core/config/gateway.pb.h"
 #include "core/config/nodeagent.pb.h"
+#include "extensions/schedulers/round_robin/round_robin.pb.h"
+#include "extensions/task_handlers/echo/echo_task_handler.pb.h"
 #include "gtest/gtest.h"
 
 namespace strij::config {
@@ -60,6 +62,34 @@ logging:
   std::filesystem::remove(path);
 }
 
+TEST(ConfigLoaderTest, GatewaySchedulerExtensionYaml) {
+  std::string yaml = R"(
+http_listener:
+  address: "0.0.0.0"
+  port: 8081
+scheduler:
+  name: "round_robin"
+  typed_config:
+    "@type": "type.googleapis.com/strij.extensions.schedulers.round_robin.RoundRobinSchedulerConfig"
+node_connections:
+  - address: "127.0.0.1:9090"
+logging:
+  level: "info"
+)";
+  std::string path = CreateTempFile(yaml);
+  ASSERT_FALSE(path.empty());
+
+  auto result = LoadConfig<GatewayConfig>(path);
+  ASSERT_TRUE(result.ok()) << result.status().message();
+  const auto& config = result.value();
+  ASSERT_TRUE(config.has_scheduler());
+  EXPECT_EQ(config.scheduler().name(), "round_robin");
+  EXPECT_TRUE(config.scheduler().typed_config().Is<strij::extensions::schedulers::round_robin::
+                                                     RoundRobinSchedulerConfig>());
+
+  std::filesystem::remove(path);
+}
+
 TEST(ConfigLoaderTest, ValidNodeAgentYaml) {
   std::string yaml = R"(
 tlv_listener:
@@ -81,6 +111,57 @@ logging:
   EXPECT_EQ(config.logging().level(), "debug");
   EXPECT_EQ(config.logging().format(), "json");
   EXPECT_EQ(config.logging().output(), "stderr");
+
+  std::filesystem::remove(path);
+}
+
+TEST(ConfigLoaderTest, NodeAgentCapabilitiesYaml) {
+  std::string yaml = R"(
+tlv_listener:
+  address: "0.0.0.0"
+  port: 9090
+pools:
+  - name: "cpu"
+    total: 16
+  - name: "gpu.h100"
+    total: 2
+reservations:
+  - task_type: "video-encode"
+    pool: "gpu.h100"
+    amount: 1
+task_handlers:
+  - name: "echo"
+    typed_config:
+      "@type": "type.googleapis.com/strij.extensions.task_handlers.echo.EchoTaskHandlerConfig"
+      capacity:
+        concurrency: 1024
+        default_resources:
+          resources:
+            cpu: 2
+heartbeat_interval:
+  seconds: 5
+)";
+  std::string path = CreateTempFile(yaml);
+  ASSERT_FALSE(path.empty());
+
+  auto result = LoadConfig<NodeAgentConfig>(path);
+  ASSERT_TRUE(result.ok()) << result.status().message();
+  const auto& config = result.value();
+  ASSERT_EQ(config.pools_size(), 2);
+  EXPECT_EQ(config.pools(0).name(), "cpu");
+  EXPECT_EQ(config.pools(0).total(), 16u);
+  EXPECT_EQ(config.pools(1).name(), "gpu.h100");
+  EXPECT_EQ(config.pools(1).total(), 2u);
+  ASSERT_EQ(config.reservations_size(), 1);
+  EXPECT_EQ(config.reservations(0).task_type(), "video-encode");
+  EXPECT_EQ(config.reservations(0).amount(), 1u);
+  ASSERT_EQ(config.task_handlers_size(), 1);
+  EXPECT_EQ(config.task_handlers(0).name(), "echo");
+  strij::extensions::task_handlers::echo::EchoTaskHandlerConfig handler_config;
+  ASSERT_TRUE(config.task_handlers(0).typed_config().UnpackTo(&handler_config));
+  EXPECT_EQ(handler_config.capacity().concurrency(), 1024u);
+  EXPECT_EQ(handler_config.capacity().default_resources().resources().at("cpu"), 2u);
+  EXPECT_EQ(config.heartbeat_interval().seconds(), 5);
 
   std::filesystem::remove(path);
 }

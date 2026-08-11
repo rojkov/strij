@@ -5,9 +5,11 @@ strij_cc_library(
     hdrs = ["task_handlers.hh"],
     visibility = ["//visibility:public"],
     deps = [
+        "//api/core/node:node_cc_proto",
         "//api/core/task:task_cc_proto",
         "//src/core/extensions:extension_registry_lib",
         "//src/core/extensions:factory_context_lib",
+        "@abseil-cpp//absl/status:statusor",
         "@protobuf//:protobuf",
     ],
 )

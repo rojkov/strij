@@ -17,3 +17,11 @@ message TaskResult {
   // final; producers of single-shot results may leave it unset.
   optional bool is_final = 3;
 }
+
+// Sent by a nodeagent when a submitted task was NOT admitted (kTaskRejected).
+// `id` matches the originating Task.id; `reason` describes why (e.g. a pool
+// was exhausted or the task type is at its concurrency limit).
+message TaskRejected {
+  string id = 1;
+  string reason = 2;
+}

@@ -4,6 +4,8 @@
 #include <string>
 #include <utility>
 
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "core/task/task.pb.h"
 #include "extensions/task_handlers/echo/echo_task_handler.pb.h"
 
@@ -26,6 +28,16 @@ auto EchoTaskHandlerFactory::CreateEmptyConfigProto() -> MessagePtr {
 auto EchoTaskHandlerFactory::Create(const ::google::protobuf::Message& /*config*/,
                                     FactoryContext& /*context*/) -> TaskHandlerPtr {
   return std::make_unique<EchoTaskHandler>();
+}
+
+auto EchoTaskHandlerFactory::ParseConfig(const ::google::protobuf::Message& config)
+    -> absl::StatusOr<strij::node::HandlerCapacity> {
+  const auto* echo_config =
+      dynamic_cast<const echo::EchoTaskHandlerConfig*>(&config);
+  if (echo_config == nullptr) {
+    return absl::InvalidArgumentError("config is not an EchoTaskHandlerConfig");
+  }
+  return echo_config->capacity();
 }
 
 } // namespace strij::extensions::task_handlers

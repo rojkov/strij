@@ -2,6 +2,23 @@ tlv_listener:
   address: "0.0.0.0"
   port: 9090
 
+pools:
+  - name: "cpu"
+    total: 16
+
+task_handlers:
+  - name: "echo"
+    typed_config:
+      "@type": "type.googleapis.com/strij.extensions.task_handlers.echo.EchoTaskHandlerConfig"
+      capacity:
+        concurrency: 1024
+        default_resources:
+          resources:
+            cpu: 1
+
+heartbeat_interval:
+  seconds: 5
+
 logging:
   level: "debug"
   format: "text"

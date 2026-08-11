@@ -18,10 +18,41 @@
 
 namespace strij::gateway {
 
-Node::Node(std::string address, event::DispatcherSharedPtr dispatcher,
+Node::Node(std::string node_id, std::string address, event::DispatcherSharedPtr dispatcher,
            strij::io::ConnectionFactory factory)
-    : address_{std::move(address)}, dispatcher_{std::move(dispatcher)},
-      factory_{std::move(factory)} {}
+    : node_id_{std::move(node_id)}, address_{std::move(address)},
+      dispatcher_{std::move(dispatcher)}, factory_{std::move(factory)} {}
+
+void Node::SetNodeId(std::string node_id) { node_id_ = std::move(node_id); }
+
+void Node::StoreCapabilities(strij::node::NodeCapabilities capabilities) {
+  capabilities_ = std::make_unique<strij::node::NodeCapabilities>(std::move(capabilities));
+}
+
+auto Node::GetCapabilities() const -> const strij::node::NodeCapabilities* {
+  return capabilities_.get();
+}
+
+void Node::UpdateState(strij::node::NodeState state) {
+  state_ = std::make_unique<strij::node::NodeState>(std::move(state));
+}
+
+auto Node::GetState() const -> const strij::node::NodeState* { return state_.get(); }
+
+void Node::Disconnect() {
+  if (connection_ != nullptr) {
+    connection_->Close();
+    connection_.reset();
+  }
+  status_ = Status::kDisconnected;
+}
+
+void Node::ReconnectTo(std::string address) {
+  Disconnect();
+  address_ = std::move(address);
+  status_ = Status::kInitial;
+  StartConnect();
+}
 
 void Node::StartConnect() {
   assert(status_ == Status::kInitial);

@@ -1,0 +1,15 @@
+load("@protobuf//bazel:cc_proto_library.bzl", "cc_proto_library")
+load("@rules_proto//proto:defs.bzl", "proto_library")
+
+proto_library(
+    name = "capability_aware_scheduler_proto",
+    srcs = ["capability_aware.proto"],
+    strip_import_prefix = "/api",
+    visibility = ["//visibility:public"],
+)
+
+cc_proto_library(
+    name = "capability_aware_scheduler_cc_proto",
+    visibility = ["//visibility:public"],
+    deps = [":capability_aware_scheduler_proto"],
+)

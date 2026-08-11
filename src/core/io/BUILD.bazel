@@ -75,3 +75,15 @@ strij_cc_library(
         "//src/core/utils:errors_lib",
     ],
 )
+
+strij_cc_library(
+    name = "periodic_timer_lib",
+    srcs = ["periodic_timer.cc"],
+    hdrs = ["periodic_timer.hh"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//include/strij/event:completable_interface",
+        "//include/strij/event:dispatcher_interface",
+        "@abseil-cpp//absl/time",
+    ],
+)

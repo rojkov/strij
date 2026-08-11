@@ -62,8 +62,34 @@ auto HttpResponseFramer::Next(std::span<const std::byte> body, bool is_final)
   return frames;
 }
 
+auto HttpResponseFramer::ErrorResponse(std::string_view reason)
+    -> std::vector<std::vector<std::byte>> {
+  std::vector<std::vector<std::byte>> frames;
+  if (state_ != State::kIdle) {
+    return frames;
+  }
+  auto header = std::format("HTTP/1.1 503 Service Unavailable\r\nContent-Type: text/plain\r\n"
+                            "Content-Length: {}\r\nConnection: close\r\n\r\n",
+                            reason.size());
+  auto header_bytes = toBytes(header);
+  std::vector<std::byte> frame;
+  frame.reserve(header_bytes.size() + reason.size());
+  frame.insert(frame.end(), header_bytes.begin(), header_bytes.end());
+  auto reason_bytes = toBytes(reason);
+  frame.insert(frame.end(), reason_bytes.begin(), reason_bytes.end());
+  frames.push_back(std::move(frame));
+  state_ = State::kDone;
+  return frames;
+}
+
 void HttpResultReceiver::Deliver(std::span<const std::byte> value, bool is_final) {
   for (const auto& frame : framer_.Next(value, is_final)) {
+    conn_.Write(frame);
+  }
+}
+
+void HttpResultReceiver::DeliverError(std::string_view reason) {
+  for (const auto& frame : framer_.ErrorResponse(reason)) {
     conn_.Write(frame);
   }
 }

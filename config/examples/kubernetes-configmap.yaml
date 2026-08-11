@@ -10,8 +10,18 @@ data:
       address: "0.0.0.0"
       port: 8081
 
-    node_connections:
-      - address: "nodeagent-0.strij.svc.cluster.local:9090"
+    node_discovery:
+      name: "static"
+      typed_config:
+        "@type": "type.googleapis.com/strij.config.StaticNodeDiscoveryConfig"
+        addresses:
+          - "nodeagent-0.strij.svc.cluster.local:9090"
+          - "nodeagent-1.strij.svc.cluster.local:9090"
+
+    scheduler:
+      name: "capability_aware"
+      typed_config:
+        "@type": "type.googleapis.com/strij.extensions.schedulers.capability_aware.CapabilityAwareSchedulerConfig"
 
     logging:
       level: "info"
@@ -29,6 +39,23 @@ data:
     tlv_listener:
       address: "0.0.0.0"
       port: 9090
+
+    pools:
+      - name: "cpu"
+        total: 16
+
+    task_handlers:
+      - name: "echo"
+        typed_config:
+          "@type": "type.googleapis.com/strij.extensions.task_handlers.echo.EchoTaskHandlerConfig"
+          capacity:
+            concurrency: 1024
+            default_resources:
+              resources:
+                cpu: 1
+
+    heartbeat_interval:
+      seconds: 5
 
     logging:
       level: "debug"

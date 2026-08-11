@@ -9,6 +9,11 @@ node_discovery:
     addresses:
       - "127.0.0.1:9090"
 
+scheduler:
+  name: "capability_aware"
+  typed_config:
+    "@type": "type.googleapis.com/strij.extensions.schedulers.capability_aware.CapabilityAwareSchedulerConfig"
+
 logging:
   level: "info"
   format: "text"

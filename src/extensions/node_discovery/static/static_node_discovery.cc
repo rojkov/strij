@@ -18,7 +18,10 @@ void StaticNodeDiscovery::Start(DiscoveryCallback callback) {
   std::vector<NodeInfo> nodes;
   nodes.reserve(addresses_.size());
   for (const auto& addr : addresses_) {
-    nodes.push_back(NodeInfo{addr});
+    // A static source does not know stable node identities: derive the
+    // node_id from the address. The canonical identity is learned later from
+    // the node's advertisement.
+    nodes.push_back(NodeInfo{.node_id = addr, .address = addr});
   }
   callback(std::move(nodes));
 }

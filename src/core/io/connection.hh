@@ -35,6 +35,13 @@ public:
 
   void Write(std::span<const std::byte> data);
   auto Mailbox() -> std::shared_ptr<OutboundMailbox>;
+  // Returns the CommandHandler that owns this connection (e.g. the gateway
+  // Node for a nodeagent connection, or the TcpListener owner).
+  auto GetOwner() -> event::CommandHandler* { return owner_; }
+  // Synchronously closes the fd and the outbound mailbox. Used when the owner
+  // tears the connection down directly (e.g. node removal); the deferred
+  // CLOSE_CONNECTION command is not submitted.
+  void Close();
 
 private:
   enum Tags : uint8_t { kRead = 0, kWrite = 1 };

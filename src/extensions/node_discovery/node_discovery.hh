@@ -14,6 +14,7 @@
 namespace strij::extensions {
 
 struct NodeInfo {
+  std::string node_id;
   std::string address;
 };
 

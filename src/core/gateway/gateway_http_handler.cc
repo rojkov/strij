@@ -12,6 +12,7 @@
 #include "core/io/connection.hh"
 #include "core/io/llhttp_parser.hh"
 #include "core/io/tlv_frame.hh"
+#include "core/gateway/requirements_resolver.hh"
 #include "core/logging/log.hh"
 #include "core/task/task.pb.h"
 #include "core/utils/task_id.hh"
@@ -85,13 +86,12 @@ void GatewayHttpHandler::HandleMessage(const io::HttpRequest& request, io::Conne
   task.set_body(reinterpret_cast<const char*>(request.body.data()), request.body.size());
   PopulateParametersFromHeaders(task, request.headers);
 
-  std::string serialized;
-  if (!task.SerializeToString(&serialized)) {
-    writeErrorResponse(conn, kStatusInternalServerError, "Internal Failure");
-    return;
-  }
+  ParamsOnlyRequirementsResolver resolver;
+  const auto requirements =
+      resolver.Resolve(FunctionRef{.type = task.type(), .id = ""}, task.parameters());
+  const extensions::TaskOffer offer{.task = &task, .requirements = &requirements};
 
-  auto* node = node_directory_.GetNextNode();
+  auto* node = scheduler_.Choose(node_directory_, offer);
   if (node == nullptr) {
     writeErrorResponse(conn, kStatusServiceUnavailable, "Service Unavailable");
     return;
@@ -101,6 +101,16 @@ void GatewayHttpHandler::HandleMessage(const io::HttpRequest& request, io::Conne
 
   auto receiver = make_receiver_(conn);
   storage_.put(task_id, std::move(receiver));
+
+  if (state_tracker_ != nullptr) {
+    state_tracker_->RecordSubmission(task_id, node->GetNodeId(), requirements);
+  }
+
+  std::string serialized;
+  if (!task.SerializeToString(&serialized)) {
+    writeErrorResponse(conn, kStatusInternalServerError, "Internal Failure");
+    return;
+  }
 
   auto frame =
       io::SerializeTlvFrame(io::TlvFrame::kTaskSubmission,

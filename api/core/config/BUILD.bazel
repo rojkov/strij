@@ -12,6 +12,7 @@ proto_library(
     strip_import_prefix = "/api",
     visibility = ["//visibility:public"],
     deps = [
+        "//api/core/node:node_proto",
         "@protobuf//:any_proto",
         "@protobuf//:descriptor_proto",
         "@protobuf//:duration_proto",

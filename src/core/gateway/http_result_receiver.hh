@@ -25,6 +25,9 @@ public:
   enum class State : uint8_t { kIdle, kChunked, kDone };
 
   auto Next(std::span<const std::byte> body, bool is_final) -> std::vector<std::vector<std::byte>>;
+  // Builds a single HTTP error response and transitions to kDone so no further
+  // frames are emitted. Safe only before any result has been delivered.
+  auto ErrorResponse(std::string_view reason) -> std::vector<std::vector<std::byte>>;
 
 private:
   State state_{State::kIdle};
@@ -35,6 +38,7 @@ public:
   explicit HttpResultReceiver(strij::io::Connection& conn) : conn_{conn} {}
 
   void Deliver(std::span<const std::byte> value, bool is_final) override;
+  void DeliverError(std::string_view reason) override;
 
 private:
   strij::io::Connection& conn_;
