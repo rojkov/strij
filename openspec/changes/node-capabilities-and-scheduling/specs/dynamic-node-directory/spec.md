@@ -8,7 +8,7 @@ Defines runtime node membership: a stable node identity, and a `NodeDirectory` t
 
 ### Requirement: Stable node identity
 
-Each nodeagent SHALL generate a stable `node_id` at startup. The `node_id` SHALL be the membership key for a node in the gateway's directory and SHALL be distinct from the node's `address`. A node re-announced under a different address with the same `node_id` SHALL update the existing record rather than create a new one.
+Each nodeagent SHALL generate a stable `node_id` at startup. The `node_id` SHALL be the membership key for a node in the gateway's directory and SHALL be distinct from the node's `address`. A node re-announced under a different address with the same `node_id` SHALL update the existing record rather than create a new one, SHALL tear down the existing connection (it points at the stale address), and SHALL reconnect to the new address.
 
 #### Scenario: Node reappears under a new address
 
@@ -16,6 +16,8 @@ Each nodeagent SHALL generate a stable `node_id` at startup. The `node_id` SHALL
 - **AND** later the same `node_id` is announced at address `b:9090`
 - **THEN** the gateway SHALL keep one record for `n1`
 - **AND** the record SHALL now point at `b:9090`
+- **AND** the gateway SHALL close the connection to `a:9090`
+- **AND** the gateway SHALL connect to `b:9090`
 
 ### Requirement: Runtime add and remove
 

@@ -41,6 +41,15 @@ The reserved `heartbeat_interval` Duration field SHALL be active in v2 and SHALL
 - **WHEN** a `NodeAgentConfig` is created with no explicit `heartbeat_interval`
 - **THEN** `heartbeat_interval` SHALL be 10s
 
+### Requirement: Pools are required in v1
+
+In v1 the nodeagent SHALL require at least one `ResourcePool` to be declared in `NodeAgentConfig.pools`; the nodeagent SHALL fail to start if the list is empty. The pool source is a future extension point (e.g. `static_config`, auto-probing implementations); v1 supports config-declared pools only.
+
+#### Scenario: Empty pools fail startup
+
+- **WHEN** a `NodeAgentConfig` has no `pools` entries
+- **THEN** the nodeagent SHALL fail to start with an error indicating pools must be configured
+
 ### Requirement: Nodeagent derives capabilities from config
 
 The nodeagent SHALL derive its `NodeCapabilities` advertisement from `NodeAgentConfig.pools`, `.reservations`, and `.handlers`, plus the handlers registered in `TaskHandlerManager`. The nodeagent SHALL fail to start if a `PoolReservation` references a pool not declared in `pools`, or if a `HandlerCapability` names a task type with no registered handler.

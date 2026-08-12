@@ -61,12 +61,12 @@ The system SHALL provide a `capability_aware` scheduler registered as `"capabili
 
 ### Requirement: Scheduler configuration
 
-`GatewayConfig` SHALL expose an `ExtensionConfig scheduler` field. When unset, the gateway SHALL use the `round_robin` scheduler. When set, the gateway SHALL look up the named factory in `Registry<SchedulerFactory>` and, if the factory is not found, fail to start with an error naming the missing scheduler.
+`GatewayConfig` SHALL expose an `ExtensionConfig scheduler` field. The field SHALL be required: when unset, the gateway SHALL fail to start with an error indicating the scheduler must be configured. When set, the gateway SHALL look up the named factory in `Registry<SchedulerFactory>` and, if the factory is not found, fail to start with an error naming the missing scheduler.
 
-#### Scenario: Scheduler defaults to round_robin
+#### Scenario: Missing scheduler fails startup
 
 - **WHEN** a `GatewayConfig` has no `scheduler` field
-- **THEN** the gateway SHALL use `round_robin`
+- **THEN** the gateway SHALL log an error and exit with status 1
 
 #### Scenario: Unknown scheduler name fails startup
 

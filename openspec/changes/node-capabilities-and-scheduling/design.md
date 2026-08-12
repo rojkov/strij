@@ -17,7 +17,7 @@ This design introduces the node lifecycle and capability-aware routing spine: dy
 **Non-Goals:**
 - Function repository / real `RequirementsResolver` and `CodeResolver` implementations (only the seam + params-only default).
 - New discovery *channels* (Redis, mDNS, ZooKeeper, direct announcement) — the mechanism supports them; only `static` ships.
-- Nodeagent-side `NodeAnnouncer` existence extensions and inbound (nodeagent-initiated) connections (orientation option C).
+- Nodeagent-side `NodeAnnouncer` existence extensions and inbound (nodeagent-initiated) connections. v1 keeps the outbound-only model where the gateway connects to nodeagent `TlvListener`s; accepting nodeagent-initiated connections (the "direct announcement" deployment, where the gateway acts as a listener) is deferred.
 - Probe/lease/pull two-sided scheduling (Sparrow-style) — reserved behind `scheduling_protocols`.
 - State channels other than heartbeat-over-connection.
 - Reconnection logic for disconnected nodes (existing roadmap item; this change handles removal, not reconnect-backoff).
@@ -191,7 +191,7 @@ Admission runs on every `kTaskSubmission`: check `shared_free(pool) ≥ task_req
 
 ### D12 — Pluggable scheduler
 
-A new gateway extension category `Scheduler` (Registry pattern, like `NodeDiscoveryFactory`), configured via `GatewayConfig.scheduler` (ExtensionConfig). If unset, `round_robin` is used (behavior-compatible with today).
+A new gateway extension category `Scheduler` (Registry pattern, like `NodeDiscoveryFactory`), configured via `GatewayConfig.scheduler` (ExtensionConfig). The field is **required**: the gateway fails to start if it is unset or names an unregistered scheduler. The operator chooses the policy explicitly; no silent default.
 
 ```cpp
 class Scheduler {
@@ -232,10 +232,10 @@ class RequirementsResolver {
 
 ### D15 — Configuration shape
 
-- `GatewayConfig.scheduler` — `ExtensionConfig`; default `round_robin` when unset (backward compatible).
+- `GatewayConfig.scheduler` — `ExtensionConfig`, **required**; the gateway fails to start if unset or if the named scheduler is not registered.
 - `NodeAgentConfig` gains: `repeated ResourcePool pools`, `repeated PoolReservation reservations`, `repeated HandlerCapability handlers` (`{task_type, concurrency, function_sourced, default_resources?}`); the reserved `heartbeat_interval` (Duration) becomes the active state-snapshot cadence.
 
-Pools and reservations are nodeagent-side config (the operator configures the node it runs on — distinct from the "no capabilities predefined in gateway config" requirement). `HandlerCapability` mirrors a configured task handler; the nodeagent derives its advertisement from config + handler manager. Auto-detection of hardware (nproc, `/proc/meminfo`, GPU discovery) is a future enhancement.
+Pools and reservations are nodeagent-side config (the operator configures the node it runs on — distinct from the "no capabilities predefined in gateway config" requirement). `HandlerCapability` mirrors a configured task handler; the nodeagent derives its advertisement from config + handler manager. v1 **requires** the pools to be declared in nodeagent config (`cpu`/`mem` etc.). Where pools come from is a future extension point — a pool-source category with implementations like `static_config` (v1 default), `auto_probe_cadvisor`, `auto_probe_something_else`.
 
 ## Risks / Trade-offs
 
@@ -257,5 +257,4 @@ Pools and reservations are nodeagent-side config (the operator configures the no
 
 - **Staleness/eviction for non-connection state channels**: when a future Redis/ZK channel exists, what TTL rule expires a node's state? (Connection-based liveness covers v1.)
 - **`function_sourced` handler semantics**: how a handler that accepts function IDs declares itself, and how `default_resources` interacts with repo-resolved requirements when both exist.
-- **Auto-detected vs configured pools**: whether v1 should auto-probe `cpu`/`mem` from the machine instead of requiring nodeagent config.
 - **Reject retry policy**: whether any v1 scheduler policy should auto-retry a rejected task on another node (default: no).

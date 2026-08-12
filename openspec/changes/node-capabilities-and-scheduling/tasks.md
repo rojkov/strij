@@ -13,7 +13,7 @@
 - [ ] 2.2 Add `kNodeAdvertisement = 3`, `kNodeState = 4`, `kTaskRejected = 5` constants to `TlvFrame` in `src/core/io/tlv_frame.hh` (specs: typed-tlv-messages).
 - [ ] 2.3 Add `repeated ResourcePool pools`, `repeated PoolReservation reservations`, `repeated HandlerCapability handlers` to `NodeAgentConfig` and activate the reserved `heartbeat_interval` (Duration) in `api/core/config/nodeagent.proto` (specs: nodeagent-config).
 - [ ] 2.4 Nodeagent: build the `NodeCapabilities` advertisement from config + `TaskHandlerManager`, and send `kNodeAdvertisement` as the first frame on every established connection (specs: node-advertisement).
-- [ ] 2.5 Nodeagent startup validation: fail on a `PoolReservation` referencing an undeclared pool or a `HandlerCapability` naming an unregistered task type (specs: nodeagent-config).
+- [ ] 2.5 Nodeagent startup validation: fail on an empty `pools` list, on a `PoolReservation` referencing an undeclared pool, or on a `HandlerCapability` naming an unregistered task type (specs: nodeagent-config).
 - [ ] 2.6 Gateway: handle `kNodeAdvertisement` in `GatewayTlvHandler` — store capabilities on the owning `Node`, warn on `capability_version` mismatch, and rekey the directory to the advertised `node_id` (specs: node-advertisement, dynamic-node-directory).
 - [ ] 2.7 Add `GetCapabilities()`/`GetState()` accessors on `Node`; expose a protocol-filtered candidate iteration on `NodeDirectory` (specs: node-directory).
 - [ ] 2.8 Add the `RequirementsResolver` interface and `ParamsOnlyRequirementsResolver` implementation (reads resource entries from task parameters; empty otherwise) (specs: node-advertisement).
@@ -34,9 +34,9 @@
 - [ ] 4.1 Define the `Scheduler` interface (`RequiredProtocol()`, `Choose(NodeDirectory&, const TaskOffer&)`) and `TaskOffer` (task + resolved `ResourceRequirements`); add `Registry<SchedulerFactory>` category (specs: pluggable-scheduler).
 - [ ] 4.2 Implement the `round_robin` scheduler preserving current `GetNextNode()` behavior (specs: pluggable-scheduler).
 - [ ] 4.3 Implement the `capability_aware` scheduler: exclude nodes with insufficient shared-free pools or exhausted per-type concurrency; pick the least-loaded eligible node (specs: pluggable-scheduler).
-- [ ] 4.4 Add `ExtensionConfig scheduler` to `GatewayConfig`; in `gateway.cc` default to `round_robin` when unset, error out on an unregistered scheduler name (specs: gateway-config, pluggable-scheduler).
+- [ ] 4.4 Add `ExtensionConfig scheduler` to `GatewayConfig`; in `gateway.cc` fail to start when `scheduler` is unset or names an unregistered scheduler (specs: gateway-config, pluggable-scheduler).
 - [ ] 4.5 Switch `GatewayHttpHandler` from `GetNextNode()` to the configured scheduler's `Choose`, mapping `nullptr` to the no-node-available error status (specs: pluggable-scheduler).
-- [ ] 4.6 Tests: round_robin rotation; capability_aware filtering and least-loaded choice; protocol-filtered candidate exclusion; gateway config default/unknown-name handling; HTTP routing through the scheduler (specs: pluggable-scheduler).
+- [ ] 4.6 Tests: round_robin rotation; capability_aware filtering and least-loaded choice; protocol-filtered candidate exclusion; gateway config missing/unknown-name handling; HTTP routing through the scheduler (specs: pluggable-scheduler).
 
 ## 5. Integration & verification
 
