@@ -188,6 +188,7 @@ Admission runs on every `kTaskSubmission`: check `shared_free(pool) ≥ task_req
 
 - The gateway routes `kTaskRejected` by task id to the `ResultReceiver` (D14), so the HTTP client learns the task was not admitted (503-equivalent) instead of hanging.
 - v1 does **not** auto-retry on rejection: in exact mode rejections are a rare safety net, and auto-retry semantics belong with the distributed-mode scheduler work.
+- **Future (roadmap):** instead of rejecting outright when resources are unavailable, the nodeagent could enqueue incoming tasks and reject only when the queue overflows. This matches the Sparrow scheduling scheme better and belongs with the two-sided scheduler work (D12); out of scope here.
 
 ### D12 — Pluggable scheduler
 
@@ -207,6 +208,8 @@ class Scheduler {
 - `capability_aware`: excludes nodes whose `shared_free` pools < requirements or whose per-type concurrency is exhausted, then picks the least-loaded (fewest free-slot ratio / lowest `in_flight`) among the eligible.
 
 `GatewayHttpHandler` calls `scheduler->Choose(...)` instead of `GetNextNode()`; a `nullptr` return is a 503 to the client (same as no-node-available today).
+
+- **Future (roadmap):** a Sparrow-like scheduler cannot `Choose()` a node up front — a task may sit in the incoming queues of several nodes until one frees enough capacity (late binding). It would replace the interface with a fire-and-forget `Schedule(std::move(task))`, plus a dispatch callback (to write the task to a node) and a completion hook (the kResult/`kTaskRejected` path notifying the scheduler when a node frees capacity — today `GatewayTlvHandler` handles completions without notifying a scheduler). The result path is already async (`ResultReceiverStorage` keyed by `task_id`), so the client just waits instead of getting an immediate 503; the `nullptr → 503` contract is v1-only and must not apply to such a scheduler. Deferred: the category is new and the interface change touches only the two built-in schedulers and the handler dispatch, with no protocol break.
 
 ### D13 — Function-requirement seam (deferred implementation)
 
@@ -258,3 +261,4 @@ Pools and reservations are nodeagent-side config (the operator configures the no
 - **Staleness/eviction for non-connection state channels**: when a future Redis/ZK channel exists, what TTL rule expires a node's state? (Connection-based liveness covers v1.)
 - **`function_sourced` handler semantics**: how a handler that accepts function IDs declares itself, and how `default_resources` interacts with repo-resolved requirements when both exist.
 - **Reject retry policy**: whether any v1 scheduler policy should auto-retry a rejected task on another node (default: no).
+- **Late-binding (Sparrow) scheduler**: when a future scheduler owns tasks via `Schedule(std::move(task))` until they bind to a node, the `Choose()` sync interface and the `nullptr → 503` handler contract are replaced (see D12); no protocol change required.

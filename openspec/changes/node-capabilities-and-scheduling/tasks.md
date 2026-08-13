@@ -2,7 +2,7 @@
 
 - [ ] 1.1 Extend `NodeInfo` in `src/extensions/node_discovery/node_discovery.hh` with a `node_id` string; update `StaticNodeDiscovery` to derive `node_id` from the address (specs: node-discovery, dynamic-node-directory).
 - [ ] 1.2 Add a `node_id` member with accessors to `Node` in `src/core/gateway/node.hh`; pass it through construction from the discovery source.
-- [ ] 1.3 Rework `NodeDirectory` (`src/core/gateway/node_directory.{hh,cc}`) to own `Node`s keyed by `node_id` and to add `AddNode(node_id, address)`, `RemoveNode(node_id)`, and `Reconcile(snapshot)`; keep `StartConnectAll()`, `GetNextNode()`, and the count accessors (specs: dynamic-node-directory, node-directory).
+- [ ] 1.3 Rework `NodeDirectory` (`src/core/gateway/node_directory.{hh,cc}`) to own `Node`s keyed by `node_id` and to add `AddNode(node_id, address)`, `RemoveNode(node_id)`, and `Reconcile(snapshot)`; `AddNode` SHALL start connecting the `Node`. Keep `GetNextNode()`, and the count accessors (specs: dynamic-node-directory, node-directory).
 - [ ] 1.4 Wire the discovery callback in `src/exe/gateway/gateway.cc` to `NodeDirectory::Reconcile` (remove the local `node_addresses` vector capture); construct the directory with no initial nodes.
 - [ ] 1.5 Add `test/core/gateway/node_directory_test.cc`: runtime add/remove/reconcile against a fake dynamic discovery, unchanged-snapshot no-op, and removal closing the connection (specs: dynamic-node-directory).
 - [ ] 1.6 Add/extend `StaticNodeDiscovery` tests for address-derived `node_id` (specs: node-discovery).

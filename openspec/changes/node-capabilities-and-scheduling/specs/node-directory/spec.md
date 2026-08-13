@@ -17,16 +17,12 @@ Manages a pool of `Node` instances that connect to nodeagent servers asynchronou
 #### Scenario: NodeDirectory adds a node at runtime
 - **WHEN** `AddNode("n1", "host1:9090")` is called
 - **THEN** it SHALL own a `Node` for `"n1"` with address `"host1:9090"`
-- **AND** the node SHALL have status `kInitial`
+- **AND** the node SHALL begin connecting (status `kConnecting`)
 
 #### Scenario: NodeDirectory removes a node at runtime
 - **WHEN** `RemoveNode("n1")` is called on a directory containing `"n1"`
 - **THEN** `GetNodeCount()` SHALL decrease by one
 - **AND** the node's connection SHALL be closed
-
-#### Scenario: NodeDirectory starts connecting all nodes
-- **WHEN** `NodeDirectory::StartConnectAll()` is called
-- **THEN** it SHALL call `Node::StartConnect()` on every node
 
 ### Requirement: NodeDirectory returns next available node
 `NodeDirectory` SHALL expose iteration over eligible nodes (connected, and advertising the `scheduling_protocols` requested by a scheduler) for scheduler policies, and SHALL retain a default round-robin selection over available nodes.

@@ -49,9 +49,14 @@ The system SHALL represent handler-pinned capacity as `PoolReservation` (`task_t
 
 ### Requirement: Handler capabilities
 
-The system SHALL represent per-type handler capability as `HandlerCapability` with `task_type`, `concurrency` (max concurrent tasks of the type), `function_sourced` (whether the handler consumes function IDs resolved from the function plane), and optional `default_resources` (a `ResourceRequirements` used when the handler is not function-sourced).
+The system SHALL represent per-type handler capability as `HandlerCapability` with `task_type`, `concurrency` (max concurrent tasks of the type; `0` or omitted SHALL mean no concurrency limit on the node), `function_sourced` (whether the handler consumes function IDs resolved from the function plane), and optional `default_resources` (a `ResourceRequirements` used when the handler is not function-sourced).
 
-#### Scenario: Handler announces type and concurrency
+#### Scenario: Zero concurrency means no limit
+
+- **WHEN** a `HandlerCapability` is built with `task_type = "echo"` and `concurrency` unset or `0`
+- **THEN** the node SHALL impose no concurrency limit on tasks of type `"echo"`
+
+#### Scenario: Handler announces a concurrency limit
 
 - **WHEN** a `HandlerCapability` is built with `task_type = "echo"` and `concurrency = 1024`
 - **THEN** the gateway SHALL read the supported task type and its concurrency limit from the advertisement

@@ -8,11 +8,11 @@ Allow the gateway to discover node identities and addresses from pluggable sourc
 
 ### Requirement: NodeDiscovery interface
 
-The system SHALL provide a `NodeDiscovery` interface with `start(DiscoveryCallback)` and `stop()` methods. `DiscoveryCallback` SHALL be `std::function<void(std::vector<NodeInfo>)>`, and `NodeInfo` SHALL contain a `node_id` string and an `address` string. A discovery source that does not know stable node identities SHALL derive `node_id` from the address. The callback SHALL be invocable multiple times; each invocation SHALL deliver the complete current node set (a full snapshot), and the gateway SHALL reconcile it against current membership.
+The system SHALL provide a `NodeDiscovery` interface with `Start(DiscoveryCallback)` and `Stop()` methods. `DiscoveryCallback` SHALL be `std::function<void(std::vector<NodeInfo>)>`, and `NodeInfo` SHALL contain a `node_id` string and an `address` string. A discovery source that does not know stable node identities SHALL derive `node_id` from the address. The callback SHALL be invocable multiple times; each invocation SHALL deliver the complete current node set (a full snapshot), and the gateway SHALL reconcile it against current membership.
 
 #### Scenario: NodeDiscovery stop
 
-- **WHEN** `stop()` is called on a started `StaticNodeDiscovery` with addresses configured
+- **WHEN** `Stop()` is called on a started `StaticNodeDiscovery` with addresses configured
 - **THEN** no error occurs (no-op)
 
 #### Scenario: NodeInfo carries node_id and address

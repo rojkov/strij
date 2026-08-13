@@ -50,7 +50,7 @@ The system SHALL provide an `ExactStateTracker` that maintains per-node state on
 
 ### Requirement: Nodeagent admission control
 
-On each `kTaskSubmission`, the nodeagent SHALL admit the task only if the shared free capacity of every requested pool is at least the task's requirement and the task type has concurrency headroom. On admission it SHALL reserve capacity; otherwise it SHALL NOT reserve and SHALL send a `kTaskRejected` frame.
+On each `kTaskSubmission`, the nodeagent SHALL admit the task only if the shared free capacity of every requested pool is at least the task's requirement and the task type has concurrency headroom (unlimited when the handler's `concurrency` is `0` or omitted). On admission it SHALL reserve capacity; otherwise it SHALL NOT reserve and SHALL send a `kTaskRejected` frame.
 
 #### Scenario: Task admitted within capacity
 
