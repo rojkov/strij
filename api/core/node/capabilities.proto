@@ -1,0 +1,83 @@
+syntax = "proto3";
+
+package strij.node;
+
+// Node plane: what a nodeagent can run and how loaded it is. Advertised to
+// gateways over the task connection (kNodeAdvertisement) and updated by
+// periodic state snapshots (kNodeState).
+message NodeCapabilities {
+  string node_id = 1;
+  string address = 2;                    // where the gateway connects (outbound)
+  repeated ResourcePool pools = 3;       // named, shared, schedulable capacity
+  repeated PoolReservation reservations = 4; // handler-pinned, excluded from shared
+  repeated HandlerCapability handlers = 5;
+  repeated UpdateChannel update_channels = 6;       // v1: [heartbeat]
+  repeated SchedulingProtocol scheduling_protocols = 7; // v1: [push]
+  uint32 capability_version = 8;
+}
+
+// Named schedulable capacity. The unit of `total` is a convention of the pool
+// name (`cpu` -> cores, `mem` -> bytes, `gpu.h100` -> devices).
+message ResourcePool {
+  string name = 1;
+  uint64 total = 2;
+}
+
+// Handler-pinned capacity, excluded from the shared capacity gateways route on.
+message PoolReservation {
+  string task_type = 1;
+  string pool = 2;
+  uint64 amount = 3;                     // permanently pinned to this handler
+}
+
+// Per-type handler capability. `concurrency` of 0 (or omitted) means no
+// concurrency limit on the node.
+message HandlerCapability {
+  string task_type = 1;
+  uint64 concurrency = 2;
+  bool function_sourced = 3;
+  ResourceRequirements default_resources = 4;
+}
+
+// How the nodeagent will deliver node state. v1 supports exactly one kind:
+// "heartbeat" (state over the established task connection).
+message UpdateChannel {
+  string kind = 1;
+}
+
+// Task-flow protocols the nodeagent's admission speaks. v1 supports exactly
+// one protocol: "push" (accept kTaskSubmission and run admission).
+message SchedulingProtocol {
+  string name = 1;
+}
+
+// Hardware requirements of a task, keyed by pool name.
+message ResourceRequirements {
+  map<string, uint64> resources = 1;
+}
+
+// Reference to a function in the (future) function plane.
+message FunctionRef {
+  string type = 1;
+  string id = 2;
+}
+
+// Periodic node state snapshot (kNodeState).
+message NodeState {
+  string node_id = 1;
+  uint64 seq = 2;                        // monotonic, for coalescing
+  uint64 timestamp = 3;
+  repeated PoolUsage pools = 4;          // {pool, in_use}
+  uint64 in_flight = 5;                  // node-wide
+  repeated TypeUsage type_usage = 6;     // {task_type, in_flight}
+}
+
+message PoolUsage {
+  string pool = 1;
+  uint64 in_use = 2;
+}
+
+message TypeUsage {
+  string task_type = 1;
+  uint64 in_flight = 2;
+}

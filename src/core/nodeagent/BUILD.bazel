@@ -1,17 +1,74 @@
 load("//bazel:build_system.bzl", "strij_cc_library")
 
 strij_cc_library(
+    name = "admission_controller_lib",
+    srcs = ["admission_controller.cc"],
+    hdrs = ["admission_controller.hh"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//api/core/node:node_cc_proto",
+        "//src/core/logging:log_lib",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/strings",
+    ],
+)
+
+strij_cc_library(
+    name = "admission_tracking_sender_lib",
+    hdrs = ["admission_tracking_sender.hh"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":admission_controller_lib",
+        ":result_sender_lib",
+        "//src/extensions/task_handlers:task_handlers_interface",
+    ],
+)
+
+strij_cc_library(
+    name = "state_reporter_lib",
+    srcs = ["state_reporter.cc"],
+    hdrs = ["state_reporter.hh"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":admission_controller_lib",
+        "//src/core/io:connection_lib",
+        "//src/core/io:tlv_frame",
+    ],
+)
+
+strij_cc_library(
+    name = "capabilities_lib",
+    srcs = ["capabilities.cc"],
+    hdrs = ["capabilities.hh"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//api/core/config:config_cc_proto",
+        "//api/core/node:node_cc_proto",
+        "//src/core/logging:log_lib",
+        "//src/core/nodeagent:task_handler_manager_lib",
+        "//src/core/utils:task_id_lib",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+    ],
+)
+
+strij_cc_library(
     name = "nodeagent_tlv_handler_lib",
     srcs = ["nodeagent_tlv_handler.cc"],
     hdrs = ["nodeagent_tlv_handler.hh"],
     visibility = ["//visibility:public"],
     deps = [
+        ":admission_controller_lib",
+        ":admission_tracking_sender_lib",
+        ":result_sender_lib",
+        ":task_handler_manager_lib",
+        "//api/core/node:node_cc_proto",
         "//api/core/task:task_cc_proto",
         "//src/core/io:connection_lib",
         "//src/core/io:tlv_frame",
         "//src/core/logging:log_lib",
-        "//src/core/nodeagent:result_sender_lib",
-        "//src/core/nodeagent:task_handler_manager_lib",
+        "@abseil-cpp//absl/status",
     ],
 )
 

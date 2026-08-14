@@ -23,6 +23,7 @@ strij_cc_library(
     hdrs = ["node.hh"],
     visibility = ["//visibility:public"],
     deps = [
+        "//api/core/node:node_cc_proto",
         "//include/strij/event:command_handler_interface",
         "//include/strij/event:completable_interface",
         "//include/strij/event:dispatcher_interface",
@@ -41,6 +42,30 @@ strij_cc_library(
         ":node_lib",
         "//include/strij/event:dispatcher_interface",
         "//src/core/io:connection_lib",
+        "//src/core/logging:log_lib",
+        "//src/extensions/node_discovery:node_discovery_interface",
+    ],
+)
+
+strij_cc_library(
+    name = "exact_state_tracker_lib",
+    srcs = ["exact_state_tracker.cc"],
+    hdrs = ["exact_state_tracker.hh"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//api/core/node:node_cc_proto",
+    ],
+)
+
+strij_cc_library(
+    name = "requirements_resolver_lib",
+    srcs = ["requirements_resolver.cc"],
+    hdrs = ["requirements_resolver.hh"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//api/core/node:node_cc_proto",
+        "//src/core/logging:log_lib",
+        "@protobuf//:protobuf",
     ],
 )
 
@@ -50,7 +75,9 @@ strij_cc_library(
     hdrs = ["gateway_http_handler.hh"],
     visibility = ["//visibility:public"],
     deps = [
+        ":exact_state_tracker_lib",
         ":node_directory_lib",
+        ":requirements_resolver_lib",
         ":result_receiver_storage",
         "//api/core/task:task_cc_proto",
         "//src/core/io:connection_lib",
@@ -67,7 +94,10 @@ strij_cc_library(
     hdrs = ["gateway_tlv_handler.hh"],
     visibility = ["//visibility:public"],
     deps = [
+        ":exact_state_tracker_lib",
+        ":node_directory_lib",
         ":result_receiver_storage",
+        "//api/core/node:node_cc_proto",
         "//api/core/task:task_cc_proto",
         "//src/core/io:connection_lib",
         "//src/core/io:tlv_frame",

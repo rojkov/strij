@@ -4,6 +4,7 @@
 #include <memory>
 #include <span>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 
 #include "strij/common/pure.hh"
@@ -22,6 +23,9 @@ public:
 
   // Delivers one result chunk of a task. `is_final` marks the last result.
   virtual void Deliver(std::span<const std::byte> value, bool is_final) PURE;
+  // Delivers an error outcome (e.g. the node rejected the task); the client
+  // connection must not hang. Implementations may finalize their framing.
+  virtual void DeliverError(std::string_view reason) PURE;
 };
 
 using ResultReceiverPtr = std::unique_ptr<ResultReceiver>;

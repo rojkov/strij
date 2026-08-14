@@ -11,6 +11,7 @@ strij_cc_binary(
         "//src/core/event:dispatcher_impl_lib",
         "//src/core/extensions:extension_registry_lib",
         "//src/core/extensions:factory_context_lib",
+        "//src/core/gateway:exact_state_tracker_lib",
         "//src/core/gateway:http_result_receiver_lib",
         "//src/core/gateway:gateway_http_handler_lib",
         "//src/core/gateway:gateway_tlv_handler_lib",

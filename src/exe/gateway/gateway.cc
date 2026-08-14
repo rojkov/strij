@@ -1,7 +1,6 @@
 #include <memory>
 #include <string>
 #include <utility>
-#include <vector>
 
 #include "src/extensions/node_discovery/node_discovery.hh"
 
@@ -98,6 +97,7 @@ auto main(int argc, char** argv) -> int {
   // Note: Logger::GetInstance().SetLogLevel(config.logging().level());  // if available
 
   strij::gateway::ResultReceiverStorage storage;
+  strij::gateway::ExactStateTracker state_tracker;
 
   // Node discovery via extension registry
   strij::extensions::FactoryContextImpl factory_context(dispatcher);
@@ -126,10 +126,16 @@ auto main(int argc, char** argv) -> int {
   node_discovery = factory->Create(*config_msg, factory_context);
   LOG_INFO("Node discovery extension '{}' loaded", ext.name());
 
-  // Node directory with async connect
+  // Node directory with async connect. Nodes are discovered dynamically and
+  // reconciled into the directory by repeated discovery snapshots. The
+  // connection factory needs the directory (to store advertisements and rekey
+  // records), so a back-pointer is filled in after construction.
+  strij::gateway::NodeDirectory* node_directory_ptr = nullptr;
   auto connection_factory =
-      [&storage](strij::io::Connection& conn) -> std::unique_ptr<strij::io::ProtocolParser> {
-    auto handler = std::make_unique<strij::gateway::GatewayTlvHandler>(storage);
+      [&storage, &state_tracker,
+       &node_directory_ptr](strij::io::Connection& conn) -> std::unique_ptr<strij::io::ProtocolParser> {
+    auto handler = std::make_unique<strij::gateway::GatewayTlvHandler>(*node_directory_ptr, storage,
+                                                                       &state_tracker);
     // Move the handler into the parser's callback via a named capture.
     return std::make_unique<strij::io::TlvParser>(
         [hdl = std::move(handler), &conn](strij::io::TlvFrame frame) -> void {
@@ -137,19 +143,13 @@ auto main(int argc, char** argv) -> int {
         });
   };
 
-  std::vector<std::string> node_addresses;
-  node_discovery->Start(
-      [&node_addresses](const std::vector<strij::extensions::NodeInfo>& nodes) -> void {
-        node_addresses.clear();
-        node_addresses.reserve(nodes.size());
-        for (const auto& node : nodes) {
-          node_addresses.emplace_back(node.address);
-        }
-      });
+  strij::gateway::NodeDirectory node_directory{dispatcher, std::move(connection_factory)};
+  node_directory_ptr = &node_directory;
 
-  strij::gateway::NodeDirectory node_directory{dispatcher, node_addresses,
-                                               std::move(connection_factory)};
-  node_directory.StartConnectAll();
+  node_discovery->Start(
+      [&node_directory](const std::vector<strij::extensions::NodeInfo>& nodes) -> void {
+        node_directory.Reconcile(nodes);
+      });
 
   const strij::io::TcpListener http_listener{
       dispatcher, config.http_listener().port(),
@@ -158,7 +158,8 @@ auto main(int argc, char** argv) -> int {
             node_directory, storage,
             [](strij::io::Connection& conn) -> strij::gateway::ResultReceiverPtr {
               return std::make_unique<strij::gateway::HttpResultReceiver>(conn);
-            });
+            },
+            &state_tracker);
         return std::make_unique<strij::io::LlhttpParser>(
             [hdl = std::move(handler), &conn](const strij::io::HttpRequest& request) -> void {
               hdl->HandleMessage(request, conn);

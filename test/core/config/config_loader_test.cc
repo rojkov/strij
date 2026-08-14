@@ -85,6 +85,52 @@ logging:
   std::filesystem::remove(path);
 }
 
+TEST(ConfigLoaderTest, NodeAgentCapabilitiesYaml) {
+  std::string yaml = R"(
+tlv_listener:
+  address: "0.0.0.0"
+  port: 9090
+pools:
+  - name: "cpu"
+    total: 16
+  - name: "gpu.h100"
+    total: 2
+reservations:
+  - task_type: "video-encode"
+    pool: "gpu.h100"
+    amount: 1
+handlers:
+  - task_type: "echo"
+    concurrency: 1024
+    default_resources:
+      resources:
+        cpu: 2
+heartbeat_interval:
+  seconds: 5
+)";
+  std::string path = CreateTempFile(yaml);
+  ASSERT_FALSE(path.empty());
+
+  auto result = LoadConfig<NodeAgentConfig>(path);
+  ASSERT_TRUE(result.ok()) << result.status().message();
+  const auto& config = result.value();
+  ASSERT_EQ(config.pools_size(), 2);
+  EXPECT_EQ(config.pools(0).name(), "cpu");
+  EXPECT_EQ(config.pools(0).total(), 16u);
+  EXPECT_EQ(config.pools(1).name(), "gpu.h100");
+  EXPECT_EQ(config.pools(1).total(), 2u);
+  ASSERT_EQ(config.reservations_size(), 1);
+  EXPECT_EQ(config.reservations(0).task_type(), "video-encode");
+  EXPECT_EQ(config.reservations(0).amount(), 1u);
+  ASSERT_EQ(config.handlers_size(), 1);
+  EXPECT_EQ(config.handlers(0).task_type(), "echo");
+  EXPECT_EQ(config.handlers(0).concurrency(), 1024u);
+  EXPECT_EQ(config.handlers(0).default_resources().resources().at("cpu"), 2u);
+  EXPECT_EQ(config.heartbeat_interval().seconds(), 5);
+
+  std::filesystem::remove(path);
+}
+
 TEST(ConfigLoaderTest, InvalidPortOutOfRange) {
   std::string yaml = R"(
 http_listener:

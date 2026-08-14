@@ -4,6 +4,7 @@ strij_cc_test(
     name = "nodeagent_tlv_handler_test",
     srcs = ["nodeagent_tlv_handler_test.cc"],
     deps = [
+        "//api/core/node:node_cc_proto",
         "//api/core/task:task_cc_proto",
         "//src/core/io:connection_lib",
         "//src/core/io:tlv_frame",
@@ -11,6 +12,49 @@ strij_cc_test(
         "//src/core/nodeagent:nodeagent_tlv_handler_lib",
         "//src/core/nodeagent:task_handler_manager_lib",
         "//src/extensions/task_handlers/echo:echo_task_handler_lib",
+        "//test/mocks/common:common_mocks_lib",
+        "//test/mocks/event:event_mocks_lib",
+        "@googletest//:gtest_main",
+    ],
+)
+
+strij_cc_test(
+    name = "nodeagent_capabilities_test",
+    srcs = ["nodeagent_capabilities_test.cc"],
+    deps = [
+        "//api/core/config:config_cc_proto",
+        "//api/core/node:node_cc_proto",
+        "//api/core/task:task_cc_proto",
+        "//src/core/nodeagent:capabilities_lib",
+        "//src/core/nodeagent:task_handler_manager_lib",
+        "//src/extensions/task_handlers/echo:echo_task_handler_lib",
+        "@googletest//:gtest_main",
+        "@protobuf//:protobuf",
+    ],
+)
+
+strij_cc_test(
+    name = "admission_controller_test",
+    srcs = ["admission_controller_test.cc"],
+    deps = [
+        "//api/core/node:node_cc_proto",
+        "//src/core/nodeagent:admission_controller_lib",
+        "@abseil-cpp//absl/status",
+        "@googletest//:gtest_main",
+    ],
+)
+
+strij_cc_test(
+    name = "state_reporter_test",
+    srcs = ["state_reporter_test.cc"],
+    deps = [
+        "//api/core/node:node_cc_proto",
+        "//src/core/io:connection_lib",
+        "//src/core/io:protocol_parser",
+        "//src/core/io:tlv_frame",
+        "//src/core/io:tlv_parser_lib",
+        "//src/core/nodeagent:admission_controller_lib",
+        "//src/core/nodeagent:state_reporter_lib",
         "//test/mocks/common:common_mocks_lib",
         "//test/mocks/event:event_mocks_lib",
         "@googletest//:gtest_main",

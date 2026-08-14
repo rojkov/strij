@@ -14,12 +14,15 @@
 #include "core/gateway/gateway_http_handler.hh"
 #include "core/gateway/gateway_tlv_handler.hh"
 #include "core/gateway/http_result_receiver.hh"
+#include "core/gateway/requirements_resolver.hh"
 #include "core/gateway/result_receiver_storage.hh"
 #include "core/io/connection.hh"
 #include "core/io/protocol_parser.hh"
 #include "core/io/tlv_frame.hh"
 #include "core/io/tlv_parser.hh"
+#include "core/node/capabilities.pb.h"
 #include "core/task/task.pb.h"
+#include "google/protobuf/map.h"
 #include "gtest/gtest.h"
 
 namespace strij::gateway {
@@ -28,8 +31,9 @@ namespace {
 class MockReceiver : public ResultReceiver {
 public:
   explicit MockReceiver(std::vector<std::byte>* out,
-                        std::shared_ptr<std::vector<bool>> finalities = {})
-      : out_{out}, finalities_{std::move(finalities)} {}
+                        std::shared_ptr<std::vector<bool>> finalities = {},
+                        std::shared_ptr<std::vector<std::string>> errors = {})
+      : out_{out}, finalities_{std::move(finalities)}, errors_{std::move(errors)} {}
 
   void Deliver(std::span<const std::byte> value, bool is_final) override {
     out_->assign(value.begin(), value.end());
@@ -38,14 +42,22 @@ public:
     }
   }
 
+  void DeliverError(std::string_view reason) override {
+    if (errors_) {
+      errors_->push_back(std::string(reason));
+    }
+  }
+
 private:
   std::vector<std::byte>* out_;
   std::shared_ptr<std::vector<bool>> finalities_;
+  std::shared_ptr<std::vector<std::string>> errors_;
 };
 
 class NullReceiver : public ResultReceiver {
 public:
   void Deliver(std::span<const std::byte> /*value*/, bool /*is_final*/) override {}
+  void DeliverError(std::string_view /*reason*/) override {}
 };
 
 auto SerializeTaskResult(const strij::task::TaskResult& result) -> std::string {
@@ -95,8 +107,124 @@ TEST_F(ParseTaskTypeTest, EmptyTypeForTasksPrefixWithQuery) {
 class GatewayTlvHandlerTest : public ::testing::Test {
 protected:
   ResultReceiverStorage storage_;
-  GatewayTlvHandler handler_{storage_};
+  std::shared_ptr<strij::event::MockDispatcher> dispatcher_{
+      std::make_shared<strij::event::MockDispatcher>()};
+  NodeDirectory directory_{
+      dispatcher_, [](strij::io::Connection&) -> std::unique_ptr<strij::io::ProtocolParser> {
+        return std::make_unique<strij::io::TrivialParser>();
+      }};
+  GatewayTlvHandler handler_{directory_, storage_};
 };
+
+TEST_F(GatewayTlvHandlerTest, NodeAdvertisementStoresCapabilitiesAndRekeyes) {
+  strij::event::Completable* node_completable = nullptr;
+  EXPECT_CALL(*dispatcher_,
+              PrepareConnect(::testing::_, ::testing::_, ::testing::_, ::testing::_, ::testing::_))
+      .WillOnce(::testing::DoAll(::testing::SaveArg<0>(&node_completable), ::testing::Return()));
+  directory_.AddNode("10.0.0.1:9090", "10.0.0.1:9090");
+  ASSERT_NE(node_completable, nullptr);
+  // The Node's Connection constructor issues a PrepareRead.
+  EXPECT_CALL(*dispatcher_,
+              PrepareRead(::testing::_, ::testing::_, ::testing::_, ::testing::_, ::testing::_))
+      .WillOnce(::testing::Return());
+  node_completable->HandleCompletion(0, 0, 0);
+
+  auto* node = directory_.GetNode("10.0.0.1:9090");
+  ASSERT_NE(node, nullptr);
+  EXPECT_EQ(node->GetStatus(), Node::Status::kConnected);
+
+  strij::node::NodeCapabilities caps;
+  caps.set_node_id("node-realkey");
+  caps.set_capability_version(1);
+  caps.add_scheduling_protocols()->set_name("push");
+  std::string serialized;
+  ASSERT_TRUE(caps.SerializeToString(&serialized));
+
+  handler_.HandleFrame(
+      {.type_id = strij::io::TlvFrame::kNodeAdvertisement,
+       .value = std::as_bytes(std::span(serialized))},
+      *node->GetConnection());
+
+  // The record was rekeyed to the advertised identity.
+  EXPECT_EQ(directory_.GetNode("10.0.0.1:9090"), nullptr);
+  auto* rekeyed = directory_.GetNode("node-realkey");
+  ASSERT_NE(rekeyed, nullptr);
+  EXPECT_EQ(rekeyed->GetNodeId(), "node-realkey");
+  ASSERT_NE(rekeyed->GetCapabilities(), nullptr);
+  EXPECT_EQ(rekeyed->GetCapabilities()->node_id(), "node-realkey");
+}
+
+TEST_F(GatewayTlvHandlerTest, NodeStateFrameUpdatesNodeState) {
+  strij::event::Completable* node_completable = nullptr;
+  EXPECT_CALL(*dispatcher_,
+              PrepareConnect(::testing::_, ::testing::_, ::testing::_, ::testing::_, ::testing::_))
+      .WillOnce(::testing::DoAll(::testing::SaveArg<0>(&node_completable), ::testing::Return()));
+  directory_.AddNode("n1", "10.0.0.1:9090");
+  ASSERT_NE(node_completable, nullptr);
+  EXPECT_CALL(*dispatcher_,
+              PrepareRead(::testing::_, ::testing::_, ::testing::_, ::testing::_, ::testing::_))
+      .WillOnce(::testing::Return());
+  node_completable->HandleCompletion(0, 0, 0);
+
+  auto* node = directory_.GetNode("n1");
+  ASSERT_NE(node, nullptr);
+  ASSERT_EQ(node->GetState(), nullptr);
+
+  strij::node::NodeState state;
+  state.set_node_id("n1");
+  state.set_seq(7);
+  state.set_in_flight(3);
+  state.add_pools()->set_in_use(2);
+  std::string serialized;
+  ASSERT_TRUE(state.SerializeToString(&serialized));
+
+  handler_.HandleFrame(
+      {.type_id = strij::io::TlvFrame::kNodeState,
+       .value = std::as_bytes(std::span(serialized))},
+      *node->GetConnection());
+
+  ASSERT_NE(node->GetState(), nullptr);
+  EXPECT_EQ(node->GetState()->seq(), 7U);
+  EXPECT_EQ(node->GetState()->in_flight(), 3U);
+  EXPECT_EQ(node->GetState()->pools_size(), 1);
+}
+
+class ParamsOnlyRequirementsResolverTest : public ::testing::Test {
+protected:
+  ParamsOnlyRequirementsResolver resolver_;
+};
+
+TEST_F(ParamsOnlyRequirementsResolverTest, ReadsDeclaredResourceEntries) {
+  google::protobuf::Map<std::string, std::string> parameters;
+  parameters["resources.cpu"] = "2";
+  parameters["resources.gpu.h100"] = "1";
+  parameters["function"] = "/usr/bin/cat";
+
+  auto requirements = resolver_.Resolve(FunctionRef{.type = "echo"}, parameters);
+
+  EXPECT_EQ(requirements.resources().size(), 2U);
+  EXPECT_EQ(requirements.resources().at("cpu"), 2U);
+  EXPECT_EQ(requirements.resources().at("gpu.h100"), 1U);
+}
+
+TEST_F(ParamsOnlyRequirementsResolverTest, AcceptsDashSeparatedKeys) {
+  google::protobuf::Map<std::string, std::string> parameters;
+  parameters["resources-cpu"] = "4";
+
+  auto requirements = resolver_.Resolve(FunctionRef{.type = "echo"}, parameters);
+
+  EXPECT_EQ(requirements.resources().size(), 1U);
+  EXPECT_EQ(requirements.resources().at("cpu"), 4U);
+}
+
+TEST_F(ParamsOnlyRequirementsResolverTest, ReturnsEmptyWhenNoResourcesDeclared) {
+  google::protobuf::Map<std::string, std::string> parameters;
+  parameters["function"] = "/usr/bin/cat";
+
+  auto requirements = resolver_.Resolve(FunctionRef{.type = "echo"}, parameters);
+
+  EXPECT_EQ(requirements.resources().size(), 0U);
+}
 
 TEST_F(GatewayTlvHandlerTest, DispatchResultToReceiver) {
   std::vector<std::byte> delivered;
@@ -221,6 +349,89 @@ TEST_F(GatewayTlvHandlerTest, MalformedResultFrameIsDropped) {
 
   close(fds[0]);
   close(fds[1]);
+}
+
+TEST_F(GatewayTlvHandlerTest, RejectedTaskRoutesErrorToReceiver) {
+  auto errors = std::make_shared<std::vector<std::string>>();
+  storage_.put("t1", std::make_unique<MockReceiver>(nullptr, nullptr, errors));
+
+  strij::task::TaskRejected rejected;
+  rejected.set_id("t1");
+  rejected.set_reason("gpu.h100 exhausted");
+  std::string serialized;
+  ASSERT_TRUE(rejected.SerializeToString(&serialized));
+
+  int fds[2];
+  ASSERT_EQ(0, socketpair(AF_UNIX, SOCK_STREAM, 0, fds));
+  auto dispatcher = std::make_shared<strij::event::MockDispatcher>();
+  strij::event::DummyOwner owner;
+  EXPECT_CALL(*dispatcher,
+              PrepareRead(::testing::_, ::testing::_, ::testing::_, ::testing::_, ::testing::_))
+      .WillOnce(::testing::Return());
+  strij::io::Connection conn(fds[0], dispatcher, &owner,
+                              [](strij::io::Connection&) -> std::unique_ptr<strij::io::ProtocolParser> {
+                                return std::make_unique<strij::io::TrivialParser>();
+                              });
+
+  handler_.HandleFrame(
+      {.type_id = strij::io::TlvFrame::kTaskRejected,
+       .value = std::as_bytes(std::span(serialized))},
+      conn);
+
+  ASSERT_EQ(errors->size(), 1U);
+  EXPECT_EQ((*errors)[0], "gpu.h100 exhausted");
+  EXPECT_EQ(storage_.get("t1"), nullptr);
+
+  close(fds[0]);
+  close(fds[1]);
+}
+
+TEST_F(GatewayTlvHandlerTest, RejectedTaskWithoutReceiverIsDropped) {
+  auto errors = std::make_shared<std::vector<std::string>>();
+  storage_.put("t1", std::make_unique<MockReceiver>(nullptr, nullptr, errors));
+
+  strij::task::TaskRejected rejected;
+  rejected.set_id("unknown");
+  rejected.set_reason("concurrency at capacity");
+  std::string serialized;
+  ASSERT_TRUE(rejected.SerializeToString(&serialized));
+
+  int fds[2];
+  ASSERT_EQ(0, socketpair(AF_UNIX, SOCK_STREAM, 0, fds));
+  auto dispatcher = std::make_shared<strij::event::MockDispatcher>();
+  strij::event::DummyOwner owner;
+  EXPECT_CALL(*dispatcher,
+              PrepareRead(::testing::_, ::testing::_, ::testing::_, ::testing::_, ::testing::_))
+      .WillOnce(::testing::Return());
+  strij::io::Connection conn(fds[0], dispatcher, &owner,
+                              [](strij::io::Connection&) -> std::unique_ptr<strij::io::ProtocolParser> {
+                                return std::make_unique<strij::io::TrivialParser>();
+                              });
+
+  handler_.HandleFrame(
+      {.type_id = strij::io::TlvFrame::kTaskRejected,
+       .value = std::as_bytes(std::span(serialized))},
+      conn);
+
+  EXPECT_TRUE(errors->empty());
+  EXPECT_NE(storage_.get("t1"), nullptr);
+
+  close(fds[0]);
+  close(fds[1]);
+}
+
+TEST(HttpResponseFramerTest, ErrorResponseUses503) {
+  HttpResponseFramer framer;
+  auto frames = framer.ErrorResponse("gpu.h100 exhausted");
+
+  ASSERT_EQ(frames.size(), 1U);
+  std::string response(reinterpret_cast<const char*>(frames[0].data()), frames[0].size());
+  EXPECT_NE(response.find("HTTP/1.1 503 Service Unavailable"), std::string::npos);
+  EXPECT_NE(response.find("gpu.h100 exhausted"), std::string::npos);
+
+  // A subsequent result must not produce further frames (connection is done).
+  std::vector<std::byte> body{std::byte{'x'}};
+  EXPECT_TRUE(framer.Next(body, true).empty());
 }
 
 TEST_F(GatewayTlvHandlerTest, IntermediateResultKeepsReceiverUntilFinal) {
@@ -410,7 +621,7 @@ TEST_F(GatewayHttpHandlerTest, HandleMessageForwardsParametersToNode) {
   // Node directory with one node that we drive into the connected state by
   // simulating a successful connect completion.
   strij::gateway::NodeDirectory directory(
-      dispatcher, {"127.0.0.1:9090"},
+      dispatcher,
       [](strij::io::Connection&) -> std::unique_ptr<strij::io::ProtocolParser> {
         return std::make_unique<strij::io::TrivialParser>();
       });
@@ -418,7 +629,7 @@ TEST_F(GatewayHttpHandlerTest, HandleMessageForwardsParametersToNode) {
   EXPECT_CALL(*dispatcher,
               PrepareConnect(::testing::_, ::testing::_, ::testing::_, ::testing::_, ::testing::_))
       .WillOnce(::testing::DoAll(::testing::SaveArg<0>(&node_completable), ::testing::Return()));
-  directory.StartConnectAll();
+  directory.AddNode("127.0.0.1:9090", "127.0.0.1:9090");
   ASSERT_NE(node_completable, nullptr);
   node_completable->HandleCompletion(0, 0, 0);
 

@@ -12,6 +12,7 @@
 #include "core/io/connection.hh"
 #include "core/io/llhttp_parser.hh"
 #include "core/io/tlv_frame.hh"
+#include "core/gateway/requirements_resolver.hh"
 #include "core/logging/log.hh"
 #include "core/task/task.pb.h"
 #include "core/utils/task_id.hh"
@@ -101,6 +102,13 @@ void GatewayHttpHandler::HandleMessage(const io::HttpRequest& request, io::Conne
 
   auto receiver = make_receiver_(conn);
   storage_.put(task_id, std::move(receiver));
+
+  if (state_tracker_ != nullptr) {
+    ParamsOnlyRequirementsResolver resolver;
+    const auto requirements =
+        resolver.Resolve(FunctionRef{.type = task.type(), .id = ""}, task.parameters());
+    state_tracker_->RecordSubmission(task_id, node->GetNodeId(), requirements);
+  }
 
   auto frame =
       io::SerializeTlvFrame(io::TlvFrame::kTaskSubmission,

@@ -8,10 +8,15 @@
 #include "core/extensions/factory_context.hh"
 #include "core/extensions/function_resolver.hh"
 #include "core/io/tcp_listener.hh"
+#include "core/io/tlv_frame.hh"
 #include "core/io/tlv_parser.hh"
 #include "core/logging/log.hh"
+#include "core/nodeagent/admission_controller.hh"
+#include "core/nodeagent/capabilities.hh"
 #include "core/nodeagent/nodeagent_tlv_handler.hh"
+#include "core/nodeagent/state_reporter.hh"
 #include "core/nodeagent/task_handler_manager.hh"
+#include "core/io/periodic_timer.hh"
 
 // Generated protobuf headers
 #include "core/config/nodeagent.pb.h"
@@ -39,6 +44,11 @@ auto main(int argc, char** argv) -> int {
 
   strij::config::NodeAgentConfig config = config_result.value();
 
+  // The state-snapshot cadence defaults to 10s when not configured.
+  if (!config.has_heartbeat_interval()) {
+    config.mutable_heartbeat_interval()->set_seconds(10);
+  }
+
   const strij::event::DispatcherSharedPtr dispatcher =
       std::make_shared<strij::event::DispatcherImpl>();
 
@@ -54,6 +64,19 @@ auto main(int argc, char** argv) -> int {
   }
   const std::shared_ptr<strij::nodeagent::TaskHandlerManager>& task_handler_manager =
       manager_result.value();
+
+  // Build and validate the node capabilities advertisement from config. Runs
+  // before --validate_only so that bad pools/reservations/handlers fail
+  // validation too. The node_id is stable for the lifetime of this process.
+  const std::string node_id = strij::nodeagent::GenerateNodeId();
+  auto capabilities_result =
+      strij::nodeagent::BuildNodeCapabilities(config, *task_handler_manager, node_id);
+  if (!capabilities_result.ok()) {
+    LOG_ERROR("Capabilities config error: {}", capabilities_result.status().message());
+    return 1;
+  }
+  const std::shared_ptr<const strij::node::NodeCapabilities> capabilities =
+      std::make_shared<strij::node::NodeCapabilities>(std::move(capabilities_result).value());
 
   if (absl::GetFlag(FLAGS_validate_only)) {
     LOG_INFO("Config validation passed");
@@ -82,12 +105,23 @@ auto main(int argc, char** argv) -> int {
 
   LOG_REGISTER_THREAD();
 
+  // Admission controller tracks per-pool/per-type usage derived from admissions
+  // and completions; the state reporter broadcasts periodic kNodeState
+  // snapshots to every established connection at heartbeat_interval.
+  const auto admission = std::make_shared<strij::nodeagent::AdmissionController>(*capabilities);
+  auto state_reporter = std::make_shared<strij::nodeagent::StateReporter>(admission, node_id);
+  strij::io::PeriodicTimer state_timer(
+      dispatcher, [state_reporter]() { state_reporter->Broadcast(); });
+  state_timer.Start(absl::Seconds(config.heartbeat_interval().seconds()));
+
   strij::io::TcpListener listener{
       dispatcher, config.tlv_listener().port(),
-      [task_handler_manager](
+      [task_handler_manager, capabilities, admission, state_reporter](
           strij::io::Connection& conn) -> std::unique_ptr<strij::io::ProtocolParser> {
-        auto handler =
-            std::make_unique<strij::nodeagent::NodeagentTlvHandler>(task_handler_manager);
+        auto handler = std::make_unique<strij::nodeagent::NodeagentTlvHandler>(
+            task_handler_manager, capabilities, admission);
+        handler->SendAdvertisement(conn);
+        state_reporter->AddConnection(conn.Mailbox());
         return std::make_unique<strij::io::TlvParser>(
             [hdl = std::move(handler), &conn](strij::io::TlvFrame frame) -> void {
               hdl->HandleFrame(frame, conn);

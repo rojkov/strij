@@ -14,6 +14,9 @@ struct TlvFrame {
   static constexpr uint8_t kTaskSubmission = 0;
   static constexpr uint8_t kResult = 1;
   static constexpr uint8_t kHeartbeat = 2;
+  static constexpr uint8_t kNodeAdvertisement = 3;
+  static constexpr uint8_t kNodeState = 4;
+  static constexpr uint8_t kTaskRejected = 5;
 };
 
 auto SerializeTlvFrame(uint8_t type_id, std::span<const std::byte> value)

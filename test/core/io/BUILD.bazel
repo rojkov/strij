@@ -53,3 +53,14 @@ strij_cc_test(
         "@googletest//:gtest_main",
     ],
 )
+
+strij_cc_test(
+    name = "periodic_timer_test",
+    srcs = ["periodic_timer_test.cc"],
+    deps = [
+        "//src/core/io:periodic_timer_lib",
+        "//test/mocks/event:event_mocks_lib",
+        "@abseil-cpp//absl/time",
+        "@googletest//:gtest_main",
+    ],
+)

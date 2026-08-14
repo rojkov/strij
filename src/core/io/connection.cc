@@ -68,6 +68,14 @@ void Connection::Write(std::span<const std::byte> data) {
 
 auto Connection::Mailbox() -> std::shared_ptr<OutboundMailbox> { return mailbox_; }
 
+void Connection::Close() {
+  if (fd_ >= 0) {
+    ::close(fd_);
+    fd_ = -1;
+  }
+  mailbox_->Close();
+}
+
 void Connection::onEndOfStream() {
   ::close(fd_);
   mailbox_->Close();
