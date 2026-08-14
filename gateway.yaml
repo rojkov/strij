@@ -9,6 +9,11 @@ node_discovery:
     addresses:
       - "127.0.0.1:9090"
 
+scheduler:
+  name: "round_robin"
+  typed_config:
+    "@type": "type.googleapis.com/strij.extensions.schedulers.round_robin.RoundRobinSchedulerConfig"
+
 logging:
   level: "info"
   format: "text"

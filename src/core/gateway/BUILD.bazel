@@ -85,6 +85,7 @@ strij_cc_library(
         "//src/core/io:tlv_frame",
         "//src/core/logging:log_lib",
         "//src/core/utils:task_id_lib",
+        "//src/extensions/schedulers:scheduler_interface",
     ],
 )
 

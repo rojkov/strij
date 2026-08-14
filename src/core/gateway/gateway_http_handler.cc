@@ -86,13 +86,12 @@ void GatewayHttpHandler::HandleMessage(const io::HttpRequest& request, io::Conne
   task.set_body(reinterpret_cast<const char*>(request.body.data()), request.body.size());
   PopulateParametersFromHeaders(task, request.headers);
 
-  std::string serialized;
-  if (!task.SerializeToString(&serialized)) {
-    writeErrorResponse(conn, kStatusInternalServerError, "Internal Failure");
-    return;
-  }
+  ParamsOnlyRequirementsResolver resolver;
+  const auto requirements =
+      resolver.Resolve(FunctionRef{.type = task.type(), .id = ""}, task.parameters());
+  const extensions::TaskOffer offer{.task = &task, .requirements = &requirements};
 
-  auto* node = node_directory_.GetNextNode();
+  auto* node = scheduler_.Choose(node_directory_, offer);
   if (node == nullptr) {
     writeErrorResponse(conn, kStatusServiceUnavailable, "Service Unavailable");
     return;
@@ -104,10 +103,13 @@ void GatewayHttpHandler::HandleMessage(const io::HttpRequest& request, io::Conne
   storage_.put(task_id, std::move(receiver));
 
   if (state_tracker_ != nullptr) {
-    ParamsOnlyRequirementsResolver resolver;
-    const auto requirements =
-        resolver.Resolve(FunctionRef{.type = task.type(), .id = ""}, task.parameters());
     state_tracker_->RecordSubmission(task_id, node->GetNodeId(), requirements);
+  }
+
+  std::string serialized;
+  if (!task.SerializeToString(&serialized)) {
+    writeErrorResponse(conn, kStatusInternalServerError, "Internal Failure");
+    return;
   }
 
   auto frame =

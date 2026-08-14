@@ -24,6 +24,7 @@
 #include "core/io/tlv_parser.hh"
 #include "core/logging/log.hh"
 #include "core/logging/logger.hh"
+#include "extensions/schedulers/scheduler.hh"
 #include "strij/event/dispatcher.hh"
 
 // Generated protobuf headers
@@ -126,6 +127,18 @@ auto main(int argc, char** argv) -> int {
   node_discovery = factory->Create(*config_msg, factory_context);
   LOG_INFO("Node discovery extension '{}' loaded", ext.name());
 
+  // Scheduler via extension registry: required, no silent default.
+  const strij::config::ExtensionConfig* scheduler_config =
+      config.has_scheduler() ? &config.scheduler() : nullptr;
+  auto scheduler_result = strij::extensions::CreateScheduler(scheduler_config, factory_context);
+  if (!scheduler_result.ok()) {
+    LOG_ERROR("Config error: {}", scheduler_result.status().message());
+    return 1;
+  }
+  auto scheduler = std::move(scheduler_result).value();
+  LOG_INFO("Scheduler '{}' loaded (requires protocol '{}')", config.scheduler().name(),
+           scheduler->RequiredProtocol());
+
   // Node directory with async connect. Nodes are discovered dynamically and
   // reconciled into the directory by repeated discovery snapshots. The
   // connection factory needs the directory (to store advertisements and rekey
@@ -159,7 +172,7 @@ auto main(int argc, char** argv) -> int {
             [](strij::io::Connection& conn) -> strij::gateway::ResultReceiverPtr {
               return std::make_unique<strij::gateway::HttpResultReceiver>(conn);
             },
-            &state_tracker);
+            *scheduler, &state_tracker);
         return std::make_unique<strij::io::LlhttpParser>(
             [hdl = std::move(handler), &conn](const strij::io::HttpRequest& request) -> void {
               hdl->HandleMessage(request, conn);

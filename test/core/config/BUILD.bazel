@@ -4,6 +4,7 @@ strij_cc_test(
     name = "config_loader_test",
     srcs = ["config_loader_test.cc"],
     deps = [
+        "//api/extensions/schedulers/round_robin:round_robin_scheduler_cc_proto",
         "//src/core/config:config_loader_lib",
         "@googletest//:gtest_main",
     ],

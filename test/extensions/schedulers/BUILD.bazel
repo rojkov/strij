@@ -1,0 +1,15 @@
+load("//bazel:build_system.bzl", "strij_cc_test")
+
+strij_cc_test(
+    name = "scheduler_factory_test",
+    srcs = ["scheduler_factory_test.cc"],
+    deps = [
+        "//api/core/config:config_cc_proto",
+        "//api/extensions/schedulers/round_robin:round_robin_scheduler_cc_proto",
+        "//src/extensions/schedulers/round_robin:round_robin_scheduler_lib",
+        "//src/extensions/schedulers:scheduler_interface",
+        "//test/mocks/common:common_mocks_lib",
+        "//test/mocks/event:event_mocks_lib",
+        "@googletest//:gtest_main",
+    ],
+)

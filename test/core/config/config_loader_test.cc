@@ -9,6 +9,7 @@
 #include "core/config/config_loader.hh"
 #include "core/config/gateway.pb.h"
 #include "core/config/nodeagent.pb.h"
+#include "extensions/schedulers/round_robin/round_robin.pb.h"
 #include "gtest/gtest.h"
 
 namespace strij::config {
@@ -56,6 +57,34 @@ logging:
   EXPECT_EQ(config.logging().format(), "text");
   EXPECT_EQ(config.logging().output(), "stdout");
   EXPECT_FALSE(config.logging().include_source_location());
+
+  std::filesystem::remove(path);
+}
+
+TEST(ConfigLoaderTest, GatewaySchedulerExtensionYaml) {
+  std::string yaml = R"(
+http_listener:
+  address: "0.0.0.0"
+  port: 8081
+scheduler:
+  name: "round_robin"
+  typed_config:
+    "@type": "type.googleapis.com/strij.extensions.schedulers.round_robin.RoundRobinSchedulerConfig"
+node_connections:
+  - address: "127.0.0.1:9090"
+logging:
+  level: "info"
+)";
+  std::string path = CreateTempFile(yaml);
+  ASSERT_FALSE(path.empty());
+
+  auto result = LoadConfig<GatewayConfig>(path);
+  ASSERT_TRUE(result.ok()) << result.status().message();
+  const auto& config = result.value();
+  ASSERT_TRUE(config.has_scheduler());
+  EXPECT_EQ(config.scheduler().name(), "round_robin");
+  EXPECT_TRUE(config.scheduler().typed_config().Is<strij::extensions::schedulers::round_robin::
+                                                     RoundRobinSchedulerConfig>());
 
   std::filesystem::remove(path);
 }

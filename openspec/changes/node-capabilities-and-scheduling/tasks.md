@@ -31,12 +31,12 @@
 
 ## 4. Pluggable scheduler
 
-- [ ] 4.1 Define the `Scheduler` interface (`RequiredProtocol()`, `Choose(NodeDirectory&, const TaskOffer&)`) and `TaskOffer` (task + resolved `ResourceRequirements`); add `Registry<SchedulerFactory>` category (specs: pluggable-scheduler).
-- [ ] 4.2 Implement the `round_robin` scheduler preserving current `GetNextNode()` behavior (specs: pluggable-scheduler).
-- [ ] 4.3 Implement the `capability_aware` scheduler: exclude nodes with insufficient shared-free pools or exhausted per-type concurrency; pick the least-loaded eligible node (specs: pluggable-scheduler).
-- [ ] 4.4 Add `ExtensionConfig scheduler` to `GatewayConfig`; in `gateway.cc` fail to start when `scheduler` is unset or names an unregistered scheduler (specs: gateway-config, pluggable-scheduler).
-- [ ] 4.5 Switch `GatewayHttpHandler` from `GetNextNode()` to the configured scheduler's `Choose`, mapping `nullptr` to the no-node-available error status (specs: pluggable-scheduler).
-- [ ] 4.6 Tests: round_robin rotation; capability_aware filtering and least-loaded choice; protocol-filtered candidate exclusion; gateway config missing/unknown-name handling; HTTP routing through the scheduler (specs: pluggable-scheduler).
+- [x] 4.1 Define the `Scheduler` interface (`RequiredProtocol()`, `Choose(NodeDirectory&, const TaskOffer&)`) and `TaskOffer` (task + resolved `ResourceRequirements`); add `Registry<SchedulerFactory>` category (specs: pluggable-scheduler).
+- [x] 4.2 Implement the `round_robin` scheduler preserving current `GetNextNode()` behavior (specs: pluggable-scheduler).
+- [x] 4.3 Implement the `capability_aware` scheduler: exclude nodes with insufficient shared-free pools or exhausted per-type concurrency; pick the least-loaded eligible node (specs: pluggable-scheduler).
+- [x] 4.4 Add `ExtensionConfig scheduler` to `GatewayConfig`; in `gateway.cc` fail to start when `scheduler` is unset or names an unregistered scheduler (specs: gateway-config, pluggable-scheduler).
+- [x] 4.5 Switch `GatewayHttpHandler` from `GetNextNode()` to the configured scheduler's `Choose`, mapping `nullptr` to the no-node-available error status (specs: pluggable-scheduler).
+- [x] 4.6 Tests: round_robin rotation; capability_aware filtering and least-loaded choice; protocol-filtered candidate exclusion; gateway config missing/unknown-name handling; HTTP routing through the scheduler (specs: pluggable-scheduler).
 
 ## 5. Integration & verification
 
