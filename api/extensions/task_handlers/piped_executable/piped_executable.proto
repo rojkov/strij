@@ -2,4 +2,9 @@ syntax = "proto3";
 
 package strij.extensions.task_handlers.piped_executable;
 
-message PipedExecutableTaskHandlerConfig {}
+import "core/node/capabilities.proto";
+
+message PipedExecutableTaskHandlerConfig {
+  // Operator-declared capacity (concurrency limit + default resources).
+  strij.node.HandlerCapacity capacity = 1;
+}

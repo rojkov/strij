@@ -1,11 +1,11 @@
 #pragma once
 
 #include <string>
+#include <string_view>
 
 #include "absl/status/statusor.h"
 #include "core/config/nodeagent.pb.h"
 #include "core/node/capabilities.pb.h"
-#include "core/nodeagent/task_handler_manager.hh"
 
 namespace strij::nodeagent {
 
@@ -18,14 +18,16 @@ inline constexpr std::string_view kPushSchedulingProtocol = "push";
 // not persisted across restarts.
 auto GenerateNodeId() -> std::string;
 
-// Derives the NodeCapabilities advertisement from nodeagent config plus the
-// handlers registered in TaskHandlerManager. Validates that:
+// Derives the NodeCapabilities advertisement from nodeagent config. Handlers
+// are derived from config.task_handlers: each entry must resolve to a
+// registered TaskHandlerFactory whose typed_config unpacks, and the advertised
+// capacity (task_type = factory name, concurrency, default_resources) is read
+// via TaskHandlerFactory::ParseConfig. Validates that:
 //  - at least one ResourcePool is declared,
 //  - every PoolReservation references a declared pool,
-//  - every HandlerCapability names a registered task type.
+//  - every task_handlers entry resolves to a registered task handler.
 // Returns InvalidArgumentError on any of the above failures.
-auto BuildNodeCapabilities(const config::NodeAgentConfig& config,
-                           const TaskHandlerManager& manager, const std::string& node_id)
+auto BuildNodeCapabilities(const config::NodeAgentConfig& config, const std::string& node_id)
     -> absl::StatusOr<strij::node::NodeCapabilities>;
 
 } // namespace strij::nodeagent

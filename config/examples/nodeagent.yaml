@@ -13,17 +13,15 @@ reservations:
     pool: "gpu.h100"
     amount: 1
 
-handlers:
-  - task_type: "echo"
-    concurrency: 1024
-    default_resources:
-      resources:
-        cpu: 1
-
 task_handlers:
   - name: "echo"
     typed_config:
       "@type": "type.googleapis.com/strij.extensions.task_handlers.echo.EchoTaskHandlerConfig"
+      capacity:
+        concurrency: 1024
+        default_resources:
+          resources:
+            cpu: 1
 
   - name: "piped_executable"
     typed_config:

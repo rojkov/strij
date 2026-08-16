@@ -6,17 +6,15 @@ pools:
   - name: "cpu"
     total: 16
 
-handlers:
-  - task_type: "echo"
-    concurrency: 1024
-    default_resources:
-      resources:
-        cpu: 1
-
 task_handlers:
   - name: "echo"
     typed_config:
       "@type": "type.googleapis.com/strij.extensions.task_handlers.echo.EchoTaskHandlerConfig"
+      capacity:
+        concurrency: 1024
+        default_resources:
+          resources:
+            cpu: 1
 
 heartbeat_interval:
   seconds: 5

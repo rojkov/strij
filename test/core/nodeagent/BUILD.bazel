@@ -24,9 +24,8 @@ strij_cc_test(
     deps = [
         "//api/core/config:config_cc_proto",
         "//api/core/node:node_cc_proto",
-        "//api/core/task:task_cc_proto",
+        "//api/extensions/task_handlers/echo:echo_task_handler_cc_proto",
         "//src/core/nodeagent:capabilities_lib",
-        "//src/core/nodeagent:task_handler_manager_lib",
         "//src/extensions/task_handlers/echo:echo_task_handler_lib",
         "@googletest//:gtest_main",
         "@protobuf//:protobuf",

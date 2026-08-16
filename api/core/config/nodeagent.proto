@@ -12,7 +12,6 @@ message NodeAgentConfig {
   Logging logging = 2;
   repeated strij.node.ResourcePool pools = 7;
   repeated strij.node.PoolReservation reservations = 8;
-  repeated strij.node.HandlerCapability handlers = 9;
   google.protobuf.Duration heartbeat_interval = 10;
   repeated ExtensionConfig task_handlers = 6;
   // RESERVED for future (v2+)

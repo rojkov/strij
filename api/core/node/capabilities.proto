@@ -39,6 +39,15 @@ message HandlerCapability {
   ResourceRequirements default_resources = 4;
 }
 
+// Operator-declared capacity for a task handler, embedded in task handler
+// extension configs. `concurrency` of 0 (or omitted) means no concurrency
+// limit on the node; absent `default_resources` means the handler has no
+// fallback requirements (tasks must then declare resources explicitly).
+message HandlerCapacity {
+  uint64 concurrency = 1;
+  ResourceRequirements default_resources = 2;
+}
+
 // How the nodeagent will deliver node state. v1 supports exactly one kind:
 // "heartbeat" (state over the established task connection).
 message UpdateChannel {

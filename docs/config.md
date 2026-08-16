@@ -70,10 +70,29 @@ tlv_listener:
   address: "0.0.0.0"     # default: "0.0.0.0"
   port: 9090              # range: 1-65535
 
+pools:
+  - name: "cpu"
+    total: 16
+  - name: "gpu.h100"
+    total: 2
+
+reservations:
+  - task_type: "video-encode"
+    pool: "gpu.h100"
+    amount: 1
+
 task_handlers:
   - name: "echo"
     typed_config:
       "@type": "type.googleapis.com/strij.extensions.task_handlers.echo.EchoTaskHandlerConfig"
+      capacity:
+        concurrency: 1024
+        default_resources:
+          resources:
+            cpu: 1
+
+heartbeat_interval:
+  seconds: 5
 
 logging:
   level: "debug"          # trace|debug|info|warn|error
@@ -82,7 +101,7 @@ logging:
   include_source_location: false
 ```
 
-`task_handlers` is a list of extension configs. Each `name` must match a registered task handler factory; unknown names cause startup to fail. If no handlers are configured, all incoming tasks are dropped.
+`pools` declares the node's schedulable capacity (named, shared); `reservations` pins a pool amount to a task type, excluding it from the shared capacity the gateway routes on. `task_handlers` is a list of extension configs. Each `name` must match a registered task handler factory; unknown names cause startup to fail. The operator-declared handler capacity (concurrency limit and default resource requirements) lives in each extension's `typed_config.capacity`; it is advertised to gateways as a `HandlerCapability`. If no handlers are configured, all incoming tasks are dropped.
 
 ### CLI Flags
 

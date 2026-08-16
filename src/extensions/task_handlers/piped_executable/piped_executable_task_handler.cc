@@ -88,6 +88,16 @@ auto PipedExecutableTaskHandlerFactory::Create(const ::google::protobuf::Message
                                                       context.FunctionResolver());
 }
 
+auto PipedExecutableTaskHandlerFactory::ParseConfig(const ::google::protobuf::Message& config)
+    -> absl::StatusOr<strij::node::HandlerCapacity> {
+  const auto* piped_config =
+      dynamic_cast<const piped_executable::PipedExecutableTaskHandlerConfig*>(&config);
+  if (piped_config == nullptr) {
+    return absl::InvalidArgumentError("config is not a PipedExecutableTaskHandlerConfig");
+  }
+  return piped_config->capacity();
+}
+
 } // namespace strij::extensions::task_handlers
 
 REGISTER_FACTORY_FULLY_QUALIFIED(

@@ -236,9 +236,10 @@ class RequirementsResolver {
 ### D15 — Configuration shape
 
 - `GatewayConfig.scheduler` — `ExtensionConfig`, **required**; the gateway fails to start if unset or if the named scheduler is not registered.
-- `NodeAgentConfig` gains: `repeated ResourcePool pools`, `repeated PoolReservation reservations`, `repeated HandlerCapability handlers` (`{task_type, concurrency, function_sourced, default_resources?}`); the reserved `heartbeat_interval` (Duration) becomes the active state-snapshot cadence.
+- `NodeAgentConfig` gains: `repeated ResourcePool pools`, `repeated PoolReservation reservations`; the reserved `heartbeat_interval` (Duration) becomes the active state-snapshot cadence.
+- Handler capacity is **not** a top-level config section. Each task handler extension config embeds a shared `strij.node.HandlerCapacity` (`{concurrency, default_resources?}`); the nodeagent reads it via a new `TaskHandlerFactory::ParseConfig(config) -> StatusOr<HandlerCapacity>` virtual (default: no limit, no default resources) and advertises it as a `HandlerCapability` keyed by the factory name. This avoids a redundant `handlers`/`task_handlers` split for operators while keeping core decoupled from extension protos (the factory knows its own config layout).
 
-Pools and reservations are nodeagent-side config (the operator configures the node it runs on — distinct from the "no capabilities predefined in gateway config" requirement). `HandlerCapability` mirrors a configured task handler; the nodeagent derives its advertisement from config + handler manager. v1 **requires** the pools to be declared in nodeagent config (`cpu`/`mem` etc.). Where pools come from is a future extension point — a pool-source category with implementations like `static_config` (v1 default), `auto_probe_cadvisor`, `auto_probe_something_else`.
+Pools and reservations are nodeagent-side config (the operator configures the node it runs on — distinct from the "no capabilities predefined in gateway config" requirement). Handler capabilities mirror the configured task handlers; the nodeagent derives its advertisement from config, resolving each `task_handlers` entry to a registered factory and reading its declared capacity. v1 **requires** the pools to be declared in nodeagent config (`cpu`/`mem` etc.). Where pools come from is a future extension point — a pool-source category with implementations like `static_config` (v1 default), `auto_probe_cadvisor`, `auto_probe_something_else`.
 
 ## Risks / Trade-offs
 

@@ -69,8 +69,7 @@ auto main(int argc, char** argv) -> int {
   // before --validate_only so that bad pools/reservations/handlers fail
   // validation too. The node_id is stable for the lifetime of this process.
   const std::string node_id = strij::nodeagent::GenerateNodeId();
-  auto capabilities_result =
-      strij::nodeagent::BuildNodeCapabilities(config, *task_handler_manager, node_id);
+  auto capabilities_result = strij::nodeagent::BuildNodeCapabilities(config, node_id);
   if (!capabilities_result.ok()) {
     LOG_ERROR("Capabilities config error: {}", capabilities_result.status().message());
     return 1;

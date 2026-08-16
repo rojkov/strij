@@ -2,4 +2,9 @@ syntax = "proto3";
 
 package strij.extensions.task_handlers.echo;
 
-message EchoTaskHandlerConfig {}
+import "core/node/capabilities.proto";
+
+message EchoTaskHandlerConfig {
+  // Operator-declared capacity (concurrency limit + default resources).
+  strij.node.HandlerCapacity capacity = 1;
+}

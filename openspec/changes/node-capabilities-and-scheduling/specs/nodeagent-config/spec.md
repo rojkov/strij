@@ -8,7 +8,7 @@ Protobuf schema and default configuration for the Strij NodeAgent service: defin
 
 ### Requirement: NodeAgentConfig protobuf schema
 
-The system SHALL define a `NodeAgentConfig` protobuf message in `api/core/config/nodeagent.proto` (package `strij.config`) with `TlvListener tlv_listener`, `Logging logging`, `repeated ExtensionConfig task_handlers`, `repeated ResourcePool pools`, `repeated PoolReservation reservations`, `repeated HandlerCapability handlers`, an active `heartbeat_interval` field (state-snapshot cadence), and reserved-for-future fields `connection_timeout` and `TlsConfig tls`.
+The system SHALL define a `NodeAgentConfig` protobuf message in `api/core/config/nodeagent.proto` (package `strij.config`) with `TlvListener tlv_listener`, `Logging logging`, `repeated ExtensionConfig task_handlers`, `repeated ResourcePool pools`, `repeated PoolReservation reservations`, an active `heartbeat_interval` field (state-snapshot cadence), and reserved-for-future fields `connection_timeout` and `TlsConfig tls`. Operator-declared handler capacity (concurrency limit and default resources) SHALL be carried inside each task handler extension's `typed_config` as a shared `HandlerCapacity` message (defined in `core/node/capabilities.proto`), not as a separate top-level `handlers` section.
 
 #### Scenario: Listener and logging sections load into the message
 
@@ -22,8 +22,8 @@ The system SHALL define a `NodeAgentConfig` protobuf message in `api/core/config
 
 #### Scenario: Capability sections load into the message
 
-- **WHEN** a `NodeAgentConfig` is loaded from YAML with `pools`, `reservations`, and `handlers` sections
-- **THEN** the resulting message SHALL contain the corresponding `ResourcePool`, `PoolReservation`, and `HandlerCapability` values
+- **WHEN** a `NodeAgentConfig` is loaded from YAML with `pools` and `reservations` sections, and a `task_handlers` entry whose `typed_config` carries `capacity`
+- **THEN** the resulting message SHALL contain the corresponding `ResourcePool` and `PoolReservation` values, and the unpacked handler config SHALL expose the declared `HandlerCapacity`
 
 #### Scenario: TLS fields are reserved for future use
 
@@ -52,12 +52,12 @@ In v1 the nodeagent SHALL require at least one `ResourcePool` to be declared in 
 
 ### Requirement: Nodeagent derives capabilities from config
 
-The nodeagent SHALL derive its `NodeCapabilities` advertisement from `NodeAgentConfig.pools`, `.reservations`, and `.handlers`, plus the handlers registered in `TaskHandlerManager`. The nodeagent SHALL fail to start if a `PoolReservation` references a pool not declared in `pools`, or if a `HandlerCapability` names a task type with no registered handler.
+The nodeagent SHALL derive its `NodeCapabilities` advertisement from `NodeAgentConfig.pools`, `.reservations`, and `.task_handlers`. Each task handler extension entry SHALL resolve to a registered `TaskHandlerFactory`; the nodeagent SHALL read the operator-declared capacity via the factory's `ParseConfig` method and advertise a `HandlerCapability` whose `task_type` is the factory name. The nodeagent SHALL fail to start if a `PoolReservation` references a pool not declared in `pools`, or if a task handler extension name does not resolve to a registered factory.
 
 #### Scenario: Advertisement reflects configured pools and handlers
 
-- **WHEN** a nodeagent is configured with pool `cpu` total 16 and a handler capability for type `"echo"`
-- **THEN** its `NodeCapabilities` SHALL contain pool `cpu` with total 16 and a handler capability for type `"echo"`
+- **WHEN** a nodeagent is configured with pool `cpu` total 16 and a task handler extension for `"echo"` whose config declares capacity
+- **THEN** its `NodeCapabilities` SHALL contain pool `cpu` with total 16 and a handler capability for type `"echo"` carrying the declared capacity
 
 #### Scenario: Reservation referencing an undeclared pool fails startup
 
@@ -66,5 +66,5 @@ The nodeagent SHALL derive its `NodeCapabilities` advertisement from `NodeAgentC
 
 #### Scenario: Handler capability without a registered handler fails startup
 
-- **WHEN** a `HandlerCapability` names a task type with no handler in `TaskHandlerManager`
+- **WHEN** a `task_handlers` entry names a task handler with no registered factory
 - **THEN** startup SHALL fail with a validation error

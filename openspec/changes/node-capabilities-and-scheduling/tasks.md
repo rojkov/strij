@@ -11,7 +11,7 @@
 
 - [x] 2.1 Add `api/core/node/capabilities.proto` (package `strij.node`) with `NodeCapabilities`, `ResourcePool`, `PoolReservation`, `HandlerCapability`, `UpdateChannel`, `SchedulingProtocol`, `ResourceRequirements`, `FunctionRef`, `NodeState`, `PoolUsage`, `TypeUsage`; add a `strij_cc_library`/proto target (specs: node-advertisement, node-state-reporting).
 - [x] 2.2 Add `kNodeAdvertisement = 3`, `kNodeState = 4`, `kTaskRejected = 5` constants to `TlvFrame` in `src/core/io/tlv_frame.hh` (specs: typed-tlv-messages).
-- [x] 2.3 Add `repeated ResourcePool pools`, `repeated PoolReservation reservations`, `repeated HandlerCapability handlers` to `NodeAgentConfig` and activate the reserved `heartbeat_interval` (Duration) in `api/core/config/nodeagent.proto` (specs: nodeagent-config).
+- [x] 2.3 Add `repeated ResourcePool pools` and `repeated PoolReservation reservations` to `NodeAgentConfig` and activate the reserved `heartbeat_interval` (Duration) in `api/core/config/nodeagent.proto`. Handler capacity lives in each task handler extension config as a shared `HandlerCapacity` message (specs: nodeagent-config).
 - [x] 2.4 Nodeagent: build the `NodeCapabilities` advertisement from config + `TaskHandlerManager`, and send `kNodeAdvertisement` as the first frame on every established connection (specs: node-advertisement).
 - [x] 2.5 Nodeagent startup validation: fail on an empty `pools` list, on a `PoolReservation` referencing an undeclared pool, or on a `HandlerCapability` naming an unregistered task type (specs: nodeagent-config).
 - [x] 2.6 Gateway: handle `kNodeAdvertisement` in `GatewayTlvHandler` — store capabilities on the owning `Node`, warn on `capability_version` mismatch, and rekey the directory to the advertised `node_id` (specs: node-advertisement, dynamic-node-directory).
@@ -40,6 +40,6 @@
 
 ## 5. Integration & verification
 
-- [ ] 5.1 Update `gateway.yaml` / `nodeagent.yaml` examples with `scheduler`, `pools`, `reservations`, `handlers`, and `heartbeat_interval`.
+- [ ] 5.1 Update `gateway.yaml` / `nodeagent.yaml` examples with `scheduler`, `pools`, `reservations`, `heartbeat_interval`, and `capacity` inside the task handler extension configs.
 - [ ] 5.2 End-to-end: one gateway (static discovery) + two nodeagents running `echo` with configured pools; verify routing, state snapshots, and rejection when a pool is exhausted.
 - [ ] 5.3 Run `make build`, `make test`, `make test_asan`, and `make clang-tidy`; fix findings.

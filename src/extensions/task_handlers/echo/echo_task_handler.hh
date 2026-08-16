@@ -2,6 +2,8 @@
 
 #include <string>
 
+#include "absl/status/statusor.h"
+#include "core/node/capabilities.pb.h"
 #include "extensions/task_handlers/task_handlers.hh"
 
 namespace strij::extensions::task_handlers {
@@ -17,6 +19,8 @@ public:
   auto CreateEmptyConfigProto() -> MessagePtr override;
   auto Create(const ::google::protobuf::Message& config, FactoryContext& context)
       -> TaskHandlerPtr override;
+  auto ParseConfig(const ::google::protobuf::Message& config)
+      -> absl::StatusOr<strij::node::HandlerCapacity> override;
 };
 
 } // namespace strij::extensions::task_handlers

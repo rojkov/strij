@@ -6,6 +6,7 @@ proto_library(
     srcs = ["piped_executable.proto"],
     strip_import_prefix = "/api",
     visibility = ["//visibility:public"],
+    deps = ["//api/core/node:node_proto"],
 )
 
 cc_proto_library(
