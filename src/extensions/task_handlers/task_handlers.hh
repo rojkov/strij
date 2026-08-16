@@ -6,7 +6,6 @@
 #include <string>
 
 #include "absl/status/statusor.h"
-#include "core/extensions/extension_registry.hh"
 #include "core/extensions/factory_context.hh"
 #include "core/node/capabilities.pb.h"
 #include "core/task/task.pb.h"

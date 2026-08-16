@@ -29,13 +29,13 @@ public:
   PipedExecutableTaskHandler(event::Dispatcher& dispatcher, FunctionResolver& resolver);
 
   // TaskHandler interface
-  void HandleTask(const strij::task::Task& task, ResultSenderPtr sender) override;
+  void HandleTask(const task::Task& task, ResultSenderPtr sender) override;
 
   // event::CommandHandler interface
   void ProcessCommand(event::Command cmd) override;
 
 private:
-  static void sendEmptyFinal(const strij::task::Task& task, ResultSender& sender);
+  static void sendEmptyFinal(const task::Task& task, ResultSender& sender);
 
   event::Dispatcher& dispatcher_;
   FunctionResolver& resolver_;
@@ -49,7 +49,7 @@ public:
   auto Create(const ::google::protobuf::Message& config, FactoryContext& context)
       -> TaskHandlerPtr override;
   auto ParseConfig(const ::google::protobuf::Message& config)
-      -> absl::StatusOr<strij::node::HandlerCapacity> override;
+      -> absl::StatusOr<node::HandlerCapacity> override;
 };
 
 } // namespace strij::extensions::task_handlers

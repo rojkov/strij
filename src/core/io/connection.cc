@@ -73,6 +73,7 @@ void Connection::Close() {
     ::close(fd_);
     fd_ = -1;
   }
+
   mailbox_->Close();
 }
 

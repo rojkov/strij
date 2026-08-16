@@ -1,6 +1,5 @@
 #pragma once
 
-#include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -38,10 +37,8 @@ public:
   GatewayHttpHandler(NodeDirectory& node_directory, ResultReceiverStorage& storage,
                      std::function<ResultReceiverPtr(io::Connection& conn)>&& make_receiver,
                      extensions::Scheduler& scheduler, ExactStateTracker* state_tracker = nullptr)
-      : node_directory_{node_directory},
-        storage_{storage},
-        make_receiver_{std::move(make_receiver)},
-        scheduler_{scheduler},
+      : node_directory_{node_directory}, storage_{storage},
+        make_receiver_{std::move(make_receiver)}, scheduler_{scheduler},
         state_tracker_{state_tracker} {}
 
   ~GatewayHttpHandler() = default;

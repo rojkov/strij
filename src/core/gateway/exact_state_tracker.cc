@@ -8,19 +8,17 @@
 namespace strij::gateway {
 
 auto ExactStateTracker::accounting(const std::string& node_id) -> NodeAccounting& {
+  // Get or create.
   return per_node_[node_id];
 }
 
 void ExactStateTracker::RecordSubmission(std::string task_id, std::string node_id,
-                                         const strij::node::ResourceRequirements& requirements) {
-  const std::string task_key = task_id;
-  tasks_.insert_or_assign(std::move(task_id), TaskRecord{std::move(node_id), requirements});
+                                         const node::ResourceRequirements& requirements) {
+  auto& account = accounting(node_id);
+  account.Increment(requirements);
 
-  auto& account = accounting(tasks_.at(task_key).node_id);
-  ++account.in_flight;
-  for (const auto& [pool, amount] : requirements.resources()) {
-    account.pools[pool] += amount;
-  }
+  tasks_.insert_or_assign(std::move(task_id), TaskRecord{.node_id_ = std::move(node_id),
+                                                         .requirements_ = requirements});
 }
 
 void ExactStateTracker::RecordCompletion(const std::string& task_id) {
@@ -29,26 +27,20 @@ void ExactStateTracker::RecordCompletion(const std::string& task_id) {
     return;
   }
 
-  auto& account = accounting(task_iter->second.node_id);
-  if (account.in_flight > 0) {
-    --account.in_flight;
-  }
-  decrement(account, task_iter->second.requirements);
+  auto& account = accounting(task_iter->second.node_id_);
+
+  account.Decrement(task_iter->second.requirements_);
   tasks_.erase(task_iter);
 }
 
-void ExactStateTracker::ApplyStateSnapshot(const strij::node::NodeState& state) {
+void ExactStateTracker::ApplyStateSnapshot(const node::NodeState& state) {
   auto& account = accounting(state.node_id());
-  account.in_flight = state.in_flight();
-  account.pools.clear();
-  for (const auto& usage : state.pools()) {
-    account.pools[usage.pool()] = usage.in_use();
-  }
+  account.ApplyStateSnapshot(state);
 }
 
 auto ExactStateTracker::InFlight(const std::string& node_id) const -> uint64_t {
   const auto iter = per_node_.find(node_id);
-  return iter == per_node_.end() ? 0 : iter->second.in_flight;
+  return iter == per_node_.end() ? 0 : iter->second.InFlight();
 }
 
 auto ExactStateTracker::PoolInUse(const std::string& node_id, std::string_view pool) const
@@ -57,23 +49,51 @@ auto ExactStateTracker::PoolInUse(const std::string& node_id, std::string_view p
   if (node_iter == per_node_.end()) {
     return 0;
   }
-  const auto pool_iter = node_iter->second.pools.find(std::string(pool));
-  return pool_iter == node_iter->second.pools.end() ? 0 : pool_iter->second;
+
+  return node_iter->second.PoolInUse(pool);
 }
 
-void ExactStateTracker::decrement(NodeAccounting& account,
-                                  const strij::node::ResourceRequirements& requirements) {
+void ExactStateTracker::NodeAccounting::ApplyStateSnapshot(const node::NodeState& state) {
+  in_flight_ = state.in_flight();
+  pools_.clear();
+
+  for (const auto& usage : state.pools()) {
+    pools_[usage.pool()] = usage.in_use();
+  }
+}
+
+void ExactStateTracker::NodeAccounting::Decrement(const node::ResourceRequirements& requirements) {
+  if (in_flight_ > 0) {
+    --in_flight_;
+  }
+
   for (const auto& [pool, amount] : requirements.resources()) {
-    auto iter = account.pools.find(pool);
-    if (iter == account.pools.end()) {
+    auto iter = pools_.find(pool);
+    if (iter == pools_.end()) {
       continue;
     }
+
     if (amount >= iter->second) {
-      account.pools.erase(iter);
+      pools_.erase(iter);
     } else {
       iter->second -= amount;
     }
   }
 }
+
+void ExactStateTracker::NodeAccounting::Increment(const node::ResourceRequirements& requirements) {
+  ++in_flight_;
+
+  for (const auto& [pool, amount] : requirements.resources()) {
+    pools_[pool] += amount;
+  }
+}
+
+auto ExactStateTracker::NodeAccounting::PoolInUse(std::string_view pool) const -> uint64_t {
+  const auto pool_iter = pools_.find(std::string(pool));
+  return pool_iter == pools_.end() ? 0 : pool_iter->second;
+}
+
+auto ExactStateTracker::NodeAccounting::InFlight() const -> uint64_t { return in_flight_; }
 
 } // namespace strij::gateway

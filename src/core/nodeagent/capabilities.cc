@@ -20,7 +20,7 @@ namespace strij::nodeagent {
 auto GenerateNodeId() -> std::string { return absl::StrCat("node-", utils::GenerateTaskId()); }
 
 auto BuildNodeCapabilities(const config::NodeAgentConfig& config, const std::string& node_id)
-    -> absl::StatusOr<strij::node::NodeCapabilities> {
+    -> absl::StatusOr<node::NodeCapabilities> {
   if (config.pools().empty()) {
     return absl::InvalidArgumentError(
         "NodeAgentConfig.pools is empty: at least one ResourcePool must be configured");
@@ -33,13 +33,13 @@ auto BuildNodeCapabilities(const config::NodeAgentConfig& config, const std::str
 
   for (const auto& reservation : config.reservations()) {
     if (!declared_pools.contains(reservation.pool())) {
-      return absl::InvalidArgumentError(absl::StrCat(
-          "PoolReservation for task type '", reservation.task_type(),
-          "' references undeclared pool '", reservation.pool(), "'"));
+      return absl::InvalidArgumentError(
+          absl::StrCat("PoolReservation for task type '", reservation.task_type(),
+                       "' references undeclared pool '", reservation.pool(), "'"));
     }
   }
 
-  strij::node::NodeCapabilities caps;
+  node::NodeCapabilities caps;
   caps.set_node_id(node_id);
   caps.set_address(
       absl::StrCat(config.tlv_listener().address(), ":", config.tlv_listener().port()));
@@ -50,6 +50,7 @@ auto BuildNodeCapabilities(const config::NodeAgentConfig& config, const std::str
     out->set_name(pool.name());
     out->set_total(pool.total());
   }
+
   for (const auto& reservation : config.reservations()) {
     auto* out = caps.add_reservations();
     out->set_task_type(reservation.task_type());
@@ -60,8 +61,7 @@ auto BuildNodeCapabilities(const config::NodeAgentConfig& config, const std::str
   // Derive the advertised per-type handler capabilities from the extension
   // configs: each entry must resolve to a registered factory, its typed_config
   // must unpack, and the operator-declared capacity is read via ParseConfig.
-  auto& registry =
-      strij::extensions::Registry<strij::extensions::TaskHandlerFactory>::instance();
+  auto& registry = extensions::Registry<extensions::TaskHandlerFactory>::instance();
   for (const auto& ext : config.task_handlers()) {
     auto* factory = registry.GetFactory(ext.name());
     if (factory == nullptr) {
@@ -74,22 +74,24 @@ auto BuildNodeCapabilities(const config::NodeAgentConfig& config, const std::str
     ::google::protobuf::Any unpacked;
     unpacked.CopyFrom(ext.typed_config());
     auto config_msg = factory->CreateEmptyConfigProto();
+
     if (!unpacked.UnpackTo(config_msg.get())) {
-      return absl::InvalidArgumentError(absl::StrCat(
-          "Failed to unpack typed_config for task handler '", ext.name(), "': unknown type '",
-          unpacked.type_url(), "'"));
+      return absl::InvalidArgumentError(
+          absl::StrCat("Failed to unpack typed_config for task handler '", ext.name(),
+                       "': unknown type '", unpacked.type_url(), "'"));
     }
 
     auto capacity_result = factory->ParseConfig(*config_msg);
     if (!capacity_result.ok()) {
       return absl::InvalidArgumentError(absl::StrCat("Failed to parse capacity for task handler '",
-                                                     ext.name(), "': ",
-                                                     capacity_result.status().message()));
+                                                     ext.name(),
+                                                     "': ", capacity_result.status().message()));
     }
 
     auto* out = caps.add_handlers();
     out->set_task_type(factory->Name());
     out->set_concurrency(capacity_result.value().concurrency());
+
     if (capacity_result.value().has_default_resources()) {
       out->mutable_default_resources()->CopyFrom(capacity_result.value().default_resources());
     }

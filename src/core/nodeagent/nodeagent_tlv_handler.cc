@@ -16,24 +16,23 @@
 
 namespace strij::nodeagent {
 
-NodeagentTlvHandler::NodeagentTlvHandler(
-    std::shared_ptr<TaskHandlerManager> manager,
-    std::shared_ptr<const strij::node::NodeCapabilities> capabilities,
-    std::shared_ptr<AdmissionController> admission)
-    : manager_{std::move(manager)},
-      capabilities_{std::move(capabilities)},
+NodeagentTlvHandler::NodeagentTlvHandler(std::shared_ptr<TaskHandlerManager> manager,
+                                         std::shared_ptr<const node::NodeCapabilities> capabilities,
+                                         std::shared_ptr<AdmissionController> admission)
+    : manager_{std::move(manager)}, capabilities_{std::move(capabilities)},
       admission_{std::move(admission)} {}
 
 void NodeagentTlvHandler::SendAdvertisement(io::Connection& conn) {
   std::string serialized;
   capabilities_->SerializeToString(&serialized);
-  auto frame = io::SerializeTlvFrame(
-      io::TlvFrame::kNodeAdvertisement, std::as_bytes(std::span(serialized.data(), serialized.size())));
+  auto frame =
+      io::SerializeTlvFrame(io::TlvFrame::kNodeAdvertisement,
+                            std::as_bytes(std::span(serialized.data(), serialized.size())));
   conn.Write(frame);
 }
 
 auto NodeagentTlvHandler::resolveRequirements(const std::string& task_type) const
-    -> strij::node::ResourceRequirements {
+    -> node::ResourceRequirements {
   for (const auto& handler : capabilities_->handlers()) {
     if (handler.task_type() == task_type && handler.has_default_resources()) {
       return handler.default_resources();
@@ -74,7 +73,7 @@ void NodeagentTlvHandler::HandleFrame(io::TlvFrame frame, io::Connection& conn) 
     return;
   }
 
-  const strij::node::ResourceRequirements requirements = resolveRequirements(task.type());
+  const node::ResourceRequirements requirements = resolveRequirements(task.type());
   const absl::Status admit_status = admission_->Admit(task.type(), requirements);
   if (!admit_status.ok()) {
     sendTaskRejected(conn, task.id(), admit_status.message());

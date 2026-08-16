@@ -1,7 +1,6 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
-#include <array>
 #include <cstddef>
 #include <memory>
 #include <vector>
@@ -33,12 +32,10 @@ protected:
     close(fds_[1]);
   }
 
-  auto MakeConnection() -> std::unique_ptr<strij::io::Connection> {
-    return std::make_unique<strij::io::Connection>(
+  auto MakeConnection() -> ConnectionPtr {
+    return std::make_unique<Connection>(
         fds_[0], dispatcher_, &owner_,
-        [](strij::io::Connection&) -> std::unique_ptr<strij::io::ProtocolParser> {
-          return std::make_unique<strij::io::TrivialParser>();
-        });
+        [](Connection&) -> ProtocolParserPtr { return std::make_unique<TrivialParser>(); });
   }
 
   int fds_[2];

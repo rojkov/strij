@@ -9,12 +9,11 @@ strij_cc_library(
         "//api/core/config:config_cc_proto",
         "//api/core/node:node_cc_proto",
         "//api/core/task:task_cc_proto",
-        "//src/core/extensions:extension_registry_lib",
         "//src/core/extensions:factory_context_lib",
         "//src/core/gateway:node_directory_lib",
         "@abseil-cpp//absl/status",
         "@abseil-cpp//absl/status:statusor",
         "@abseil-cpp//absl/strings",
-        "@protobuf//:protobuf",
+        "@protobuf",
     ],
 )

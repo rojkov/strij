@@ -1,12 +1,11 @@
 #pragma once
 
-#include <memory>
 #include <vector>
 
+#include "core/io/connection.hh"
 #include "strij/event/command_handler.hh"
 #include "strij/event/completable.hh"
 #include "strij/event/dispatcher.hh"
-#include "core/io/connection.hh"
 
 namespace strij::io {
 
@@ -23,7 +22,7 @@ private:
   event::DispatcherSharedPtr dispatcher_;
   int listen_fd_;
   ConnectionFactory factory_;
-  std::vector<std::unique_ptr<Connection>> owned_connections_;
+  std::vector<ConnectionPtr> owned_connections_;
 };
 
 } // namespace strij::io

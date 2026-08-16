@@ -28,6 +28,6 @@ auto GenerateNodeId() -> std::string;
 //  - every task_handlers entry resolves to a registered task handler.
 // Returns InvalidArgumentError on any of the above failures.
 auto BuildNodeCapabilities(const config::NodeAgentConfig& config, const std::string& node_id)
-    -> absl::StatusOr<strij::node::NodeCapabilities>;
+    -> absl::StatusOr<node::NodeCapabilities>;
 
 } // namespace strij::nodeagent

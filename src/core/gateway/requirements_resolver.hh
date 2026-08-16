@@ -4,6 +4,7 @@
 
 #include "core/node/capabilities.pb.h"
 #include "google/protobuf/map.h"
+#include "strij/common/pure.hh"
 
 namespace strij::gateway {
 
@@ -19,13 +20,21 @@ struct FunctionRef {
 // work (function plane).
 class RequirementsResolver {
 public:
+  RequirementsResolver() = default;
   virtual ~RequirementsResolver() = default;
 
-  virtual auto Resolve(
-      const FunctionRef& ref,
-      const google::protobuf::Map<std::string, std::string>& parameters) const
-      -> strij::node::ResourceRequirements = 0;
+  RequirementsResolver(const RequirementsResolver&) = delete;
+  auto operator=(const RequirementsResolver&) -> RequirementsResolver& = delete;
+  RequirementsResolver(RequirementsResolver&&) noexcept = delete;
+  auto operator=(RequirementsResolver&&) noexcept -> RequirementsResolver& = delete;
+
+  [[nodiscard]] virtual auto
+  Resolve(const FunctionRef& ref,
+          const google::protobuf::Map<std::string, std::string>& parameters) const
+      -> node::ResourceRequirements PURE;
 };
+
+using RequirementsResolverPtr = std::unique_ptr<RequirementsResolver>;
 
 // Reads resource entries from task parameters keyed "resources.{pool}" (also
 // accepted with a dash separator, "resources-{pool}") and returns them as a
@@ -34,9 +43,10 @@ public:
 // warning.
 class ParamsOnlyRequirementsResolver final : public RequirementsResolver {
 public:
-  auto Resolve(const FunctionRef& ref,
-               const google::protobuf::Map<std::string, std::string>& parameters) const
-      -> strij::node::ResourceRequirements override;
+  [[nodiscard]] auto
+  Resolve(const FunctionRef& ref,
+          const google::protobuf::Map<std::string, std::string>& parameters) const
+      -> node::ResourceRequirements override;
 };
 
 } // namespace strij::gateway

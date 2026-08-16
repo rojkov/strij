@@ -5,10 +5,10 @@
 #include "test/mocks/common/common_mocks.hh"
 #include "test/mocks/event/mocks.hh"
 
+#include "core/extensions/extension_registry.hh"
 #include "core/gateway/node_directory.hh"
 #include "core/io/protocol_parser.hh"
 #include "core/node/capabilities.pb.h"
-#include "core/task/task.pb.h"
 #include "extensions/schedulers/round_robin/round_robin_scheduler.hh"
 #include "extensions/schedulers/scheduler.hh"
 #include "gtest/gtest.h"
@@ -25,13 +25,11 @@ protected:
   auto MakeConnectedDirectory(std::initializer_list<std::string> ids)
       -> std::unique_ptr<strij::gateway::NodeDirectory> {
     auto directory = std::make_unique<strij::gateway::NodeDirectory>(
-        dispatcher_,
-        [](strij::io::Connection&) -> std::unique_ptr<strij::io::ProtocolParser> {
+        dispatcher_, [](strij::io::Connection&) -> std::unique_ptr<strij::io::ProtocolParser> {
           return std::make_unique<strij::io::TrivialParser>();
         });
-    EXPECT_CALL(*dispatcher_,
-                PrepareConnect(::testing::_, ::testing::_, ::testing::_, ::testing::_,
-                               ::testing::_))
+    EXPECT_CALL(*dispatcher_, PrepareConnect(::testing::_, ::testing::_, ::testing::_, ::testing::_,
+                                             ::testing::_))
         .WillRepeatedly(::testing::Return());
     for (const auto& id : ids) {
       directory->AddNode(id, "10.0.0.1:9090");

@@ -16,23 +16,23 @@
 
 namespace strij::extensions::task_handlers {
 
-PipedExecutableTaskHandler::PipedExecutableTaskHandler(
-    event::Dispatcher& dispatcher, strij::extensions::FunctionResolver& resolver)
+PipedExecutableTaskHandler::PipedExecutableTaskHandler(event::Dispatcher& dispatcher,
+                                                       extensions::FunctionResolver& resolver)
     : dispatcher_{dispatcher}, resolver_{resolver} {}
 
 void PipedExecutableTaskHandler::HandleTask(const task::Task& task, ResultSenderPtr sender) {
-  auto it = task.parameters().find(std::string(kFunctionParameter));
-  if (it == task.parameters().end()) {
+  auto iter = task.parameters().find(std::string(kFunctionParameter));
+  if (iter == task.parameters().end()) {
     LOG_WARNING("Task '{}': missing '{}' parameter; returning empty result", task.id(),
                 kFunctionParameter);
     sendEmptyFinal(task, *sender);
     return;
   }
 
-  auto resolved = resolver_.Resolve(it->second);
+  auto resolved = resolver_.Resolve(iter->second);
   if (!resolved.ok()) {
     LOG_WARNING("Task '{}': failed to resolve '{}': {}; returning empty result", task.id(),
-                it->second, resolved.status().message());
+                iter->second, resolved.status().message());
     sendEmptyFinal(task, *sender);
     return;
   }
@@ -40,8 +40,8 @@ void PipedExecutableTaskHandler::HandleTask(const task::Task& task, ResultSender
 
   std::vector<std::byte> stdin_body;
   stdin_body.reserve(task.body().size());
-  for (const char c : task.body()) {
-    stdin_body.push_back(static_cast<std::byte>(c));
+  for (const char chr : task.body()) {
+    stdin_body.push_back(static_cast<std::byte>(chr));
   }
 
   auto child = std::make_unique<ChildProcess>(dispatcher_, this, task.id(), path,
@@ -89,7 +89,7 @@ auto PipedExecutableTaskHandlerFactory::Create(const ::google::protobuf::Message
 }
 
 auto PipedExecutableTaskHandlerFactory::ParseConfig(const ::google::protobuf::Message& config)
-    -> absl::StatusOr<strij::node::HandlerCapacity> {
+    -> absl::StatusOr<node::HandlerCapacity> {
   const auto* piped_config =
       dynamic_cast<const piped_executable::PipedExecutableTaskHandlerConfig*>(&config);
   if (piped_config == nullptr) {

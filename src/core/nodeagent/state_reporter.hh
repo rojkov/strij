@@ -6,8 +6,9 @@
 #include <utility>
 #include <vector>
 
+#include "src/core/nodeagent/admission_controller.hh"
+
 #include "core/io/outbound_mailbox.hh"
-#include "core/io/tlv_frame.hh"
 #include "core/nodeagent/admission_controller.hh"
 
 namespace strij::nodeagent {
@@ -32,7 +33,7 @@ public:
 private:
   void removeConnection(const std::shared_ptr<io::OutboundMailbox>& mailbox);
 
-  std::shared_ptr<AdmissionController> controller_;
+  AdmissionControllerSharedPtr controller_;
   std::string node_id_;
   uint64_t seq_{0};
   std::vector<std::pair<std::size_t, std::shared_ptr<io::OutboundMailbox>>> connections_;

@@ -14,11 +14,9 @@
 #include "core/io/connection.hh"
 #include "core/io/protocol_parser.hh"
 #include "core/io/tlv_frame.hh"
-#include "core/io/tlv_parser.hh"
 #include "core/node/capabilities.pb.h"
 #include "core/nodeagent/admission_controller.hh"
 #include "core/nodeagent/nodeagent_tlv_handler.hh"
-#include "core/nodeagent/result_sender.hh"
 #include "core/nodeagent/task_handler_manager.hh"
 #include "core/task/task.pb.h"
 #include "extensions/task_handlers/echo/echo_task_handler.hh"
@@ -27,22 +25,22 @@
 namespace strij::nodeagent {
 namespace {
 
-class RetainingSenderHandler final : public strij::extensions::TaskHandler {
+class RetainingSenderHandler final : public extensions::TaskHandler {
 public:
-  void HandleTask(const strij::task::Task& task,
-                  std::unique_ptr<strij::extensions::ResultSender> sender) override {
+  void HandleTask(const task::Task& task,
+                  std::unique_ptr<extensions::ResultSender> sender) override {
     task_id_ = task.id();
     // Own the sender past HandleTask (as an async handler would).
     retained_ = std::move(sender);
   }
 
   void SendResults() {
-    strij::task::TaskResult first;
+    task::TaskResult first;
     first.set_id(task_id_);
     first.set_body("chunk1");
     retained_->Send(std::move(first));
 
-    strij::task::TaskResult last;
+    task::TaskResult last;
     last.set_id(task_id_);
     last.set_body("chunk2");
     last.set_is_final(true);
@@ -51,23 +49,22 @@ public:
 
 private:
   std::string task_id_;
-  std::unique_ptr<strij::extensions::ResultSender> retained_;
+  std::unique_ptr<extensions::ResultSender> retained_;
 };
 
 class NodeagentTlvHandlerTest : public ::testing::Test {
 protected:
   void SetUp() override {
     ASSERT_EQ(0, socketpair(AF_UNIX, SOCK_STREAM, 0, fds_));
-    dispatcher_ = std::make_shared<strij::event::MockDispatcher>();
+    dispatcher_ = std::make_shared<event::MockDispatcher>();
     // Suppress the PrepareRead issued by the Connection constructor.
     EXPECT_CALL(*dispatcher_,
                 PrepareRead(::testing::_, ::testing::_, ::testing::_, ::testing::_, ::testing::_))
         .WillOnce(::testing::Return());
-    conn_ = std::make_unique<strij::io::Connection>(
-        fds_[0], dispatcher_, &owner_,
-        [](strij::io::Connection&) -> std::unique_ptr<strij::io::ProtocolParser> {
-          return std::make_unique<strij::io::TrivialParser>();
-        });
+    conn_ = std::make_unique<io::Connection>(fds_[0], dispatcher_, &owner_,
+                                             [](io::Connection&) -> io::ProtocolParserPtr {
+                                               return std::make_unique<io::TrivialParser>();
+                                             });
   }
 
   void TearDown() override {
@@ -78,13 +75,12 @@ protected:
 
   auto MakeEchoManager() -> std::shared_ptr<TaskHandlerManager> {
     auto manager = std::make_shared<TaskHandlerManager>();
-    manager->AddHandler("echo",
-                        std::make_unique<strij::extensions::task_handlers::EchoTaskHandler>());
+    manager->AddHandler("echo", std::make_unique<extensions::task_handlers::EchoTaskHandler>());
     return manager;
   }
 
-  auto MakeCapabilities() -> std::shared_ptr<const strij::node::NodeCapabilities> {
-    auto caps = std::make_shared<strij::node::NodeCapabilities>();
+  auto MakeCapabilities() -> std::shared_ptr<const node::NodeCapabilities> {
+    auto caps = std::make_shared<node::NodeCapabilities>();
     caps->set_node_id("node-test");
     caps->set_capability_version(1);
     return caps;
@@ -101,46 +97,45 @@ protected:
   }
 
   int fds_[2];
-  std::shared_ptr<strij::event::MockDispatcher> dispatcher_;
-  strij::event::DummyOwner owner_;
-  std::unique_ptr<strij::io::Connection> conn_;
+  std::shared_ptr<event::MockDispatcher> dispatcher_;
+  event::DummyOwner owner_;
+  io::ConnectionPtr conn_;
 };
 
 // NOLINTBEGIN(modernize-use-trailing-return-type)
 
 TEST_F(NodeagentTlvHandlerTest, EchoesTaskAsTaskResult) {
-  strij::task::Task task;
+  task::Task task;
   task.set_id("42");
   task.set_type("echo");
   task.set_body("hello");
   std::string serialized;
   task.SerializeToString(&serialized);
-  auto wire =
-      strij::io::SerializeTlvFrame(strij::io::TlvFrame::kTaskSubmission,
-                                   std::as_bytes(std::span(serialized.data(), serialized.size())));
+  auto wire = io::SerializeTlvFrame(io::TlvFrame::kTaskSubmission,
+                                    std::as_bytes(std::span(serialized.data(), serialized.size())));
 
   // When Connection::Write submits, perform the actual write to the socket.
   EXPECT_CALL(*dispatcher_, PrepareWrite(::testing::_, ::testing::_, ::testing::_, ::testing::_, 0))
-      .WillOnce(::testing::Invoke([this](strij::event::Completable*, uint8_t, int,
+      .WillOnce(::testing::Invoke([this](event::Completable*, uint8_t, int,
                                          std::span<const std::byte> buf,
                                          off_t) { ::write(fds_[0], buf.data(), buf.size()); }));
 
   NodeagentTlvHandler handler(MakeEchoManager(), MakeCapabilities(), MakeAdmission());
-  handler.HandleFrame({.type_id = strij::io::TlvFrame::kTaskSubmission,
-                       .value = std::as_bytes(std::span(serialized))},
-                      *conn_);
+  handler.HandleFrame(
+      {.type_id = io::TlvFrame::kTaskSubmission, .value = std::as_bytes(std::span(serialized))},
+      *conn_);
 
   std::array<std::byte, 1024> buf{};
   ssize_t n = ReadWritten(buf);
   ASSERT_GT(n, 5);
 
-  EXPECT_EQ(static_cast<uint8_t>(buf[0]), strij::io::TlvFrame::kResult);
+  EXPECT_EQ(static_cast<uint8_t>(buf[0]), io::TlvFrame::kResult);
   uint32_t net_len{};
   std::memcpy(&net_len, buf.data() + 1, 4);
   uint32_t length = ntohl(net_len);
   EXPECT_EQ(length, static_cast<uint32_t>(n - 5));
 
-  strij::task::TaskResult result;
+  task::TaskResult result;
   ASSERT_TRUE(result.ParseFromArray(buf.data() + 5, static_cast<int>(n - 5)));
   EXPECT_EQ(result.id(), "42");
   EXPECT_EQ(result.body(), "hello");
@@ -149,13 +144,14 @@ TEST_F(NodeagentTlvHandlerTest, EchoesTaskAsTaskResult) {
 TEST_F(NodeagentTlvHandlerTest, DropsMalformedTask) {
   auto garbage =
       std::vector<std::byte>{std::byte{0xDE}, std::byte{0xAD}, std::byte{0xBE}, std::byte{0xEF}};
-  auto wire = strij::io::SerializeTlvFrame(strij::io::TlvFrame::kTaskSubmission, garbage);
+  auto wire = io::SerializeTlvFrame(io::TlvFrame::kTaskSubmission, garbage);
 
   EXPECT_CALL(*dispatcher_, PrepareWrite(::testing::_, ::testing::_, ::testing::_, ::testing::_, 0))
       .Times(0);
 
-  NodeagentTlvHandler handler(std::make_shared<TaskHandlerManager>(), MakeCapabilities(), MakeAdmission());
-  handler.HandleFrame({.type_id = strij::io::TlvFrame::kTaskSubmission, .value = garbage}, *conn_);
+  NodeagentTlvHandler handler(std::make_shared<TaskHandlerManager>(), MakeCapabilities(),
+                              MakeAdmission());
+  handler.HandleFrame({.type_id = io::TlvFrame::kTaskSubmission, .value = garbage}, *conn_);
 
   std::array<std::byte, 16> buf{};
   EXPECT_EQ(ReadWritten(buf), -1);
@@ -164,38 +160,36 @@ TEST_F(NodeagentTlvHandlerTest, DropsMalformedTask) {
 }
 
 TEST_F(NodeagentTlvHandlerTest, DropsTaskWithNoRegisteredHandler) {
-  strij::task::Task task;
+  task::Task task;
   task.set_id("7");
   task.set_type("unknown");
   task.set_body("x");
   std::string serialized;
   task.SerializeToString(&serialized);
-  auto wire =
-      strij::io::SerializeTlvFrame(strij::io::TlvFrame::kTaskSubmission,
-                                   std::as_bytes(std::span(serialized.data(), serialized.size())));
+  auto wire = io::SerializeTlvFrame(io::TlvFrame::kTaskSubmission,
+                                    std::as_bytes(std::span(serialized.data(), serialized.size())));
 
   EXPECT_CALL(*dispatcher_, PrepareWrite(::testing::_, ::testing::_, ::testing::_, ::testing::_, 0))
       .Times(0);
 
   NodeagentTlvHandler handler(MakeEchoManager(), MakeCapabilities(), MakeAdmission());
-  handler.HandleFrame({.type_id = strij::io::TlvFrame::kTaskSubmission,
-                       .value = std::as_bytes(std::span(serialized))},
-                      *conn_);
+  handler.HandleFrame(
+      {.type_id = io::TlvFrame::kTaskSubmission, .value = std::as_bytes(std::span(serialized))},
+      *conn_);
 
   std::array<std::byte, 16> buf{};
   EXPECT_EQ(ReadWritten(buf), -1);
 }
 
 TEST_F(NodeagentTlvHandlerTest, AsyncHandlerRetainsSenderAndSendsTwice) {
-  strij::task::Task task;
+  task::Task task;
   task.set_id("99");
   task.set_type("retaining");
   task.set_body("hello");
   std::string serialized;
   task.SerializeToString(&serialized);
-  auto wire =
-      strij::io::SerializeTlvFrame(strij::io::TlvFrame::kTaskSubmission,
-                                   std::as_bytes(std::span(serialized.data(), serialized.size())));
+  auto wire = io::SerializeTlvFrame(io::TlvFrame::kTaskSubmission,
+                                    std::as_bytes(std::span(serialized.data(), serialized.size())));
 
   auto manager = std::make_shared<TaskHandlerManager>();
   auto handler = std::make_unique<RetainingSenderHandler>();
@@ -205,16 +199,16 @@ TEST_F(NodeagentTlvHandlerTest, AsyncHandlerRetainsSenderAndSendsTwice) {
   // When Connection::Write submits, perform the write to the socket and
   // complete it immediately so the next queued buffer drains.
   EXPECT_CALL(*dispatcher_, PrepareWrite(::testing::_, ::testing::_, ::testing::_, ::testing::_, 0))
-      .WillRepeatedly(::testing::Invoke([this](strij::event::Completable* io, uint8_t tag, int fd,
+      .WillRepeatedly(::testing::Invoke([this](event::Completable* io, uint8_t tag, int fd,
                                                std::span<const std::byte> buf, off_t) {
         ::write(fd, buf.data(), buf.size());
         conn_->HandleCompletion(tag, static_cast<int>(buf.size()), 0);
       }));
 
   NodeagentTlvHandler handler_wrapper(manager, MakeCapabilities(), MakeAdmission());
-  handler_wrapper.HandleFrame({.type_id = strij::io::TlvFrame::kTaskSubmission,
-                               .value = std::as_bytes(std::span(serialized))},
-                              *conn_);
+  handler_wrapper.HandleFrame(
+      {.type_id = io::TlvFrame::kTaskSubmission, .value = std::as_bytes(std::span(serialized))},
+      *conn_);
 
   // The handler retained its sender: it may send results after HandleFrame
   // returned.
@@ -224,12 +218,12 @@ TEST_F(NodeagentTlvHandlerTest, AsyncHandlerRetainsSenderAndSendsTwice) {
   ssize_t n = ReadWritten(buf);
   ASSERT_GT(n, 0);
 
-  auto parse_at = [&buf](size_t offset) -> std::pair<strij::task::TaskResult, size_t> {
-    EXPECT_EQ(static_cast<uint8_t>(buf[offset]), strij::io::TlvFrame::kResult);
+  auto parse_at = [&buf](size_t offset) -> std::pair<task::TaskResult, size_t> {
+    EXPECT_EQ(static_cast<uint8_t>(buf[offset]), io::TlvFrame::kResult);
     uint32_t net_len{};
     std::memcpy(&net_len, buf.data() + offset + 1, 4);
     uint32_t length = ntohl(net_len);
-    strij::task::TaskResult result;
+    task::TaskResult result;
     EXPECT_TRUE(result.ParseFromArray(buf.data() + offset + 5, static_cast<int>(length)));
     return {std::move(result), static_cast<size_t>(5 + length)};
   };
@@ -250,11 +244,11 @@ TEST_F(NodeagentTlvHandlerTest, AsyncHandlerRetainsSenderAndSendsTwice) {
 TEST_F(NodeagentTlvHandlerTest, SendAdvertisementWritesCapabilitiesAsFirstFrame) {
   // When Connection::Write submits, perform the actual write to the socket.
   EXPECT_CALL(*dispatcher_, PrepareWrite(::testing::_, ::testing::_, ::testing::_, ::testing::_, 0))
-      .WillOnce(::testing::Invoke([this](strij::event::Completable*, uint8_t, int,
+      .WillOnce(::testing::Invoke([this](event::Completable*, uint8_t, int,
                                          std::span<const std::byte> buf,
                                          off_t) { ::write(fds_[0], buf.data(), buf.size()); }));
 
-  auto caps = std::make_shared<strij::node::NodeCapabilities>();
+  auto caps = std::make_shared<node::NodeCapabilities>();
   caps->set_node_id("node-abc");
   caps->set_capability_version(1);
   caps->add_update_channels()->set_kind("heartbeat");
@@ -266,20 +260,20 @@ TEST_F(NodeagentTlvHandlerTest, SendAdvertisementWritesCapabilitiesAsFirstFrame)
   ssize_t n = ReadWritten(buf);
   ASSERT_GT(n, 5);
 
-  EXPECT_EQ(static_cast<uint8_t>(buf[0]), strij::io::TlvFrame::kNodeAdvertisement);
+  EXPECT_EQ(static_cast<uint8_t>(buf[0]), io::TlvFrame::kNodeAdvertisement);
   uint32_t net_len{};
   std::memcpy(&net_len, buf.data() + 1, 4);
   uint32_t length = ntohl(net_len);
   ASSERT_EQ(length, static_cast<uint32_t>(n - 5));
 
-  strij::node::NodeCapabilities parsed;
+  node::NodeCapabilities parsed;
   ASSERT_TRUE(parsed.ParseFromArray(buf.data() + 5, static_cast<int>(n - 5)));
   EXPECT_EQ(parsed.node_id(), "node-abc");
   EXPECT_EQ(parsed.update_channels_size(), 1);
 }
 
 TEST_F(NodeagentTlvHandlerTest, RejectsTaskWhenPoolExhausted) {
-  auto caps = std::make_shared<strij::node::NodeCapabilities>();
+  auto caps = std::make_shared<node::NodeCapabilities>();
   caps->set_node_id("node-test");
   caps->set_capability_version(1);
   auto* pool = caps->add_pools();
@@ -295,49 +289,47 @@ TEST_F(NodeagentTlvHandlerTest, RejectsTaskWhenPoolExhausted) {
 
   // Only the rejected task writes a frame.
   EXPECT_CALL(*dispatcher_, PrepareWrite(::testing::_, ::testing::_, ::testing::_, ::testing::_, 0))
-      .WillOnce(::testing::Invoke([this](strij::event::Completable*, uint8_t, int,
+      .WillOnce(::testing::Invoke([this](event::Completable*, uint8_t, int,
                                          std::span<const std::byte> buf,
                                          off_t) { ::write(fds_[0], buf.data(), buf.size()); }));
 
   NodeagentTlvHandler handler(manager, caps, admission);
 
-  strij::task::Task first;
+  task::Task first;
   first.set_id("1");
   first.set_type("retaining");
   std::string first_serialized;
   first.SerializeToString(&first_serialized);
-  handler.HandleFrame(
-      {.type_id = strij::io::TlvFrame::kTaskSubmission,
-       .value = std::as_bytes(std::span(first_serialized))},
-      *conn_);
+  handler.HandleFrame({.type_id = io::TlvFrame::kTaskSubmission,
+                       .value = std::as_bytes(std::span(first_serialized))},
+                      *conn_);
 
-  strij::task::Task second;
+  task::Task second;
   second.set_id("2");
   second.set_type("retaining");
   std::string second_serialized;
   second.SerializeToString(&second_serialized);
-  handler.HandleFrame(
-      {.type_id = strij::io::TlvFrame::kTaskSubmission,
-       .value = std::as_bytes(std::span(second_serialized))},
-      *conn_);
+  handler.HandleFrame({.type_id = io::TlvFrame::kTaskSubmission,
+                       .value = std::as_bytes(std::span(second_serialized))},
+                      *conn_);
 
   std::array<std::byte, 1024> buf{};
   ssize_t n = ReadWritten(buf);
   ASSERT_GT(n, 5);
-  EXPECT_EQ(static_cast<uint8_t>(buf[0]), strij::io::TlvFrame::kTaskRejected);
+  EXPECT_EQ(static_cast<uint8_t>(buf[0]), io::TlvFrame::kTaskRejected);
   uint32_t net_len{};
   std::memcpy(&net_len, buf.data() + 1, 4);
   uint32_t length = ntohl(net_len);
   EXPECT_EQ(length, static_cast<uint32_t>(n - 5));
 
-  strij::task::TaskRejected rejected;
+  task::TaskRejected rejected;
   ASSERT_TRUE(rejected.ParseFromArray(buf.data() + 5, static_cast<int>(n - 5)));
   EXPECT_EQ(rejected.id(), "2");
   EXPECT_NE(rejected.reason().find("gpu.h100"), std::string::npos);
 }
 
 TEST_F(NodeagentTlvHandlerTest, RejectsTaskAtConcurrencyLimit) {
-  auto caps = std::make_shared<strij::node::NodeCapabilities>();
+  auto caps = std::make_shared<node::NodeCapabilities>();
   caps->set_node_id("node-test");
   caps->set_capability_version(1);
   auto* handler_cap = caps->add_handlers();
@@ -349,38 +341,36 @@ TEST_F(NodeagentTlvHandlerTest, RejectsTaskAtConcurrencyLimit) {
   auto admission = std::make_shared<AdmissionController>(*caps);
 
   EXPECT_CALL(*dispatcher_, PrepareWrite(::testing::_, ::testing::_, ::testing::_, ::testing::_, 0))
-      .WillOnce(::testing::Invoke([this](strij::event::Completable*, uint8_t, int,
+      .WillOnce(::testing::Invoke([this](event::Completable*, uint8_t, int,
                                          std::span<const std::byte> buf,
                                          off_t) { ::write(fds_[0], buf.data(), buf.size()); }));
 
   NodeagentTlvHandler handler(manager, caps, admission);
 
-  strij::task::Task first;
+  task::Task first;
   first.set_id("1");
   first.set_type("retaining");
   std::string first_serialized;
   first.SerializeToString(&first_serialized);
-  handler.HandleFrame(
-      {.type_id = strij::io::TlvFrame::kTaskSubmission,
-       .value = std::as_bytes(std::span(first_serialized))},
-      *conn_);
+  handler.HandleFrame({.type_id = io::TlvFrame::kTaskSubmission,
+                       .value = std::as_bytes(std::span(first_serialized))},
+                      *conn_);
 
-  strij::task::Task second;
+  task::Task second;
   second.set_id("2");
   second.set_type("retaining");
   std::string second_serialized;
   second.SerializeToString(&second_serialized);
-  handler.HandleFrame(
-      {.type_id = strij::io::TlvFrame::kTaskSubmission,
-       .value = std::as_bytes(std::span(second_serialized))},
-      *conn_);
+  handler.HandleFrame({.type_id = io::TlvFrame::kTaskSubmission,
+                       .value = std::as_bytes(std::span(second_serialized))},
+                      *conn_);
 
   std::array<std::byte, 1024> buf{};
   ssize_t n = ReadWritten(buf);
   ASSERT_GT(n, 5);
-  EXPECT_EQ(static_cast<uint8_t>(buf[0]), strij::io::TlvFrame::kTaskRejected);
+  EXPECT_EQ(static_cast<uint8_t>(buf[0]), io::TlvFrame::kTaskRejected);
 
-  strij::task::TaskRejected rejected;
+  task::TaskRejected rejected;
   uint32_t net_len{};
   std::memcpy(&net_len, buf.data() + 1, 4);
   uint32_t length = ntohl(net_len);
@@ -390,7 +380,7 @@ TEST_F(NodeagentTlvHandlerTest, RejectsTaskAtConcurrencyLimit) {
 }
 
 TEST_F(NodeagentTlvHandlerTest, CompletionReleasesReservedCapacity) {
-  auto caps = std::make_shared<strij::node::NodeCapabilities>();
+  auto caps = std::make_shared<node::NodeCapabilities>();
   caps->set_node_id("node-test");
   caps->set_capability_version(1);
   auto* pool = caps->add_pools();
@@ -404,20 +394,19 @@ TEST_F(NodeagentTlvHandlerTest, CompletionReleasesReservedCapacity) {
   EXPECT_EQ(admission->SharedFree("cpu"), 16U);
 
   EXPECT_CALL(*dispatcher_, PrepareWrite(::testing::_, ::testing::_, ::testing::_, ::testing::_, 0))
-      .WillOnce(::testing::Invoke([this](strij::event::Completable*, uint8_t, int,
+      .WillOnce(::testing::Invoke([this](event::Completable*, uint8_t, int,
                                          std::span<const std::byte> buf,
                                          off_t) { ::write(fds_[0], buf.data(), buf.size()); }));
 
   NodeagentTlvHandler handler(MakeEchoManager(), caps, admission);
 
-  strij::task::Task task;
+  task::Task task;
   task.set_id("1");
   task.set_type("echo");
   std::string serialized;
   task.SerializeToString(&serialized);
   handler.HandleFrame(
-      {.type_id = strij::io::TlvFrame::kTaskSubmission,
-       .value = std::as_bytes(std::span(serialized))},
+      {.type_id = io::TlvFrame::kTaskSubmission, .value = std::as_bytes(std::span(serialized))},
       *conn_);
 
   // The echo handler sends the final result immediately; the tracking sender

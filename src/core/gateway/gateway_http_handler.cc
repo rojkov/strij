@@ -9,10 +9,10 @@
 #include <string_view>
 #include <utility>
 
+#include "core/gateway/requirements_resolver.hh"
 #include "core/io/connection.hh"
 #include "core/io/llhttp_parser.hh"
 #include "core/io/tlv_frame.hh"
-#include "core/gateway/requirements_resolver.hh"
 #include "core/logging/log.hh"
 #include "core/task/task.pb.h"
 #include "core/utils/task_id.hh"
@@ -29,23 +29,28 @@ auto ParseTaskType(std::string_view path) -> std::optional<std::string_view> {
   if (const auto query_pos = type.find('?'); query_pos != std::string_view::npos) {
     type = type.substr(0, query_pos);
   }
+
   return type;
 }
 
 void PopulateParametersFromHeaders(
     task::Task& task, const std::vector<std::pair<std::string, std::string>>& headers) {
   auto* parameters = task.mutable_parameters();
+
   for (const auto& [name, value] : headers) {
     std::string lower_name = name;
     std::ranges::transform(lower_name, lower_name.begin(),
                            [](unsigned char chr) -> unsigned char { return std::tolower(chr); });
+
     if (!lower_name.starts_with(kStrijHeaderPrefix)) {
       continue;
     }
+
     auto key = lower_name.substr(kStrijHeaderPrefix.size());
     if (key.empty()) {
       continue;
     }
+
     (*parameters)[key] = value;
   }
 }
@@ -73,6 +78,7 @@ void GatewayHttpHandler::HandleMessage(const io::HttpRequest& request, io::Conne
     writeErrorResponse(conn, kStatusNotFound, "Not Found");
     return;
   }
+
   if (task_type->empty()) {
     writeErrorResponse(conn, kStatusBadRequest, "Bad Request");
     return;
