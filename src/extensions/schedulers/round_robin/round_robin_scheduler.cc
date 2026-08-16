@@ -3,10 +3,14 @@
 #include <memory>
 #include <string>
 #include <string_view>
-#include <utility>
 #include <vector>
 
+#include "core/extensions/extension_registry.hh"
+#include "core/extensions/factory_context.hh"
+#include "core/gateway/node.hh"
+#include "core/gateway/node_directory.hh"
 #include "extensions/schedulers/round_robin/round_robin.pb.h"
+#include "extensions/schedulers/scheduler.hh"
 
 namespace strij::extensions::schedulers {
 
@@ -18,7 +22,7 @@ auto RoundRobinScheduler::Choose(strij::gateway::NodeDirectory& dir,
   if (candidates.empty()) {
     return nullptr;
   }
-  strij::gateway::Node* chosen = candidates[next_index_ % candidates.size()];
+  strij::gateway::Node* chosen = candidates.at(next_index_ % candidates.size());
   next_index_ = (next_index_ + 1) % candidates.size();
   return chosen;
 }

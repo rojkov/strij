@@ -5,17 +5,21 @@
 #include <memory>
 #include <string>
 #include <string_view>
-#include <utility>
-#include <vector>
 
+#include "core/extensions/extension_registry.hh"
+#include "core/extensions/factory_context.hh"
+#include "core/gateway/node.hh"
+#include "core/gateway/node_directory.hh"
+#include "core/node/capabilities.pb.h"
 #include "extensions/schedulers/capability_aware/capability_aware.pb.h"
+#include "extensions/schedulers/scheduler.hh"
 
 namespace strij::extensions::schedulers {
 
 namespace {
 
-const strij::node::HandlerCapability* findHandler(const strij::node::NodeCapabilities* caps,
-                                                  std::string_view task_type) {
+auto findHandler(const strij::node::NodeCapabilities* caps, std::string_view task_type)
+    -> const strij::node::HandlerCapability* {
   if (caps == nullptr) {
     return nullptr;
   }
@@ -27,7 +31,7 @@ const strij::node::HandlerCapability* findHandler(const strij::node::NodeCapabil
   return nullptr;
 }
 
-uint64_t poolTotal(const strij::node::NodeCapabilities* caps, std::string_view pool) {
+auto poolTotal(const strij::node::NodeCapabilities* caps, std::string_view pool) -> uint64_t {
   if (caps == nullptr) {
     return 0;
   }
@@ -41,7 +45,7 @@ uint64_t poolTotal(const strij::node::NodeCapabilities* caps, std::string_view p
 
 // Capacity pinned by reservations, excluded from the shared pool gateways route
 // on.
-uint64_t poolReserved(const strij::node::NodeCapabilities* caps, std::string_view pool) {
+auto poolReserved(const strij::node::NodeCapabilities* caps, std::string_view pool) -> uint64_t {
   if (caps == nullptr) {
     return 0;
   }
@@ -54,7 +58,7 @@ uint64_t poolReserved(const strij::node::NodeCapabilities* caps, std::string_vie
   return reserved;
 }
 
-uint64_t poolInUse(const strij::node::NodeState* state, std::string_view pool) {
+auto poolInUse(const strij::node::NodeState* state, std::string_view pool) -> uint64_t {
   if (state == nullptr) {
     return 0;
   }
@@ -66,7 +70,7 @@ uint64_t poolInUse(const strij::node::NodeState* state, std::string_view pool) {
   return 0;
 }
 
-uint64_t typeInFlight(const strij::node::NodeState* state, std::string_view task_type) {
+auto typeInFlight(const strij::node::NodeState* state, std::string_view task_type) -> uint64_t {
   if (state == nullptr) {
     return 0;
   }
@@ -78,14 +82,14 @@ uint64_t typeInFlight(const strij::node::NodeState* state, std::string_view task
   return 0;
 }
 
-uint64_t nodeInFlight(const strij::node::NodeState* state) {
+auto nodeInFlight(const strij::node::NodeState* state) -> uint64_t {
   return state == nullptr ? 0 : state->in_flight();
 }
 
 // Whether the node can currently take the offer: it declares a handler for the
 // task type (or declares no handlers at all), has per-type concurrency
 // headroom, and every required pool has enough shared-free capacity.
-bool eligible(const strij::gateway::Node* node, const TaskOffer& offer) {
+auto eligible(const strij::gateway::Node* node, const TaskOffer& offer) -> bool {
   const auto* caps = node->GetCapabilities();
   // A node without an advertisement cannot be verified; exclude it until the
   // advertisement arrives.
@@ -105,22 +109,20 @@ bool eligible(const strij::gateway::Node* node, const TaskOffer& offer) {
     return false;
   }
 
-  for (const auto& [pool, amount] : offer.requirements->resources()) {
+  return std::ranges::all_of(offer.requirements->resources(), [&](const auto& resource) -> bool {
+    const auto& [pool, amount] = resource;
     const uint64_t total = poolTotal(caps, pool);
     const uint64_t reserved = poolReserved(caps, pool);
     const uint64_t shared_capacity = total > reserved ? total - reserved : 0;
     const uint64_t in_use = poolInUse(state, pool);
     const uint64_t shared_free = shared_capacity > in_use ? shared_capacity - in_use : 0;
-    if (shared_free < amount) {
-      return false;
-    }
-  }
-  return true;
+    return shared_free >= amount;
+  });
 }
 
 // Load metric: fraction of the per-type concurrency limit in use when a limit
 // is declared, otherwise neutral (1.0). Lower is less loaded.
-double loadRatio(const strij::gateway::Node* node, const TaskOffer& offer) {
+auto loadRatio(const strij::gateway::Node* node, const TaskOffer& offer) -> double {
   const auto* state = node->GetState();
   const auto* handler = findHandler(node->GetCapabilities(), offer.task->type());
   if (handler != nullptr && handler->concurrency() > 0) {

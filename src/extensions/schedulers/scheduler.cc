@@ -1,12 +1,14 @@
 #include "extensions/schedulers/scheduler.hh"
 
 #include <memory>
-#include <string>
-#include <utility>
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "core/config/extensions.pb.h"
+#include "core/extensions/extension_registry.hh"
+#include "core/extensions/factory_context.hh"
 #include "google/protobuf/any.pb.h"
 
 namespace strij::extensions {
