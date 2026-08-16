@@ -35,6 +35,11 @@ message PoolReservation {
 message HandlerCapability {
   string task_type = 1;
   uint64 concurrency = 2;
+  // True when the handler consumes function IDs resolved from the (future)
+  // function plane instead of tasks that carry explicit parameters. When set,
+  // resource requirements come from the repo lookup and `default_resources` is
+  // unused; when false (the v1 default), `default_resources` supplies the
+  // fallback requirements the admission controller applies.
   bool function_sourced = 3;
   ResourceRequirements default_resources = 4;
 }
