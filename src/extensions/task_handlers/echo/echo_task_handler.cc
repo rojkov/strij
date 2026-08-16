@@ -6,13 +6,14 @@
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "core/extensions/extension_registry.hh"
 #include "core/task/task.pb.h"
 #include "extensions/task_handlers/echo/echo_task_handler.pb.h"
 
 namespace strij::extensions::task_handlers {
 
 void EchoTaskHandler::HandleTask(const task::Task& task, ResultSenderPtr sender) {
-  strij::task::TaskResult result;
+  task::TaskResult result;
   result.set_id(task.id());
   result.set_body(task.body());
   result.set_is_final(true);
@@ -22,7 +23,7 @@ void EchoTaskHandler::HandleTask(const task::Task& task, ResultSenderPtr sender)
 auto EchoTaskHandlerFactory::Name() const -> std::string { return "echo"; }
 
 auto EchoTaskHandlerFactory::CreateEmptyConfigProto() -> MessagePtr {
-  return std::make_unique<strij::extensions::task_handlers::echo::EchoTaskHandlerConfig>();
+  return std::make_unique<extensions::task_handlers::echo::EchoTaskHandlerConfig>();
 }
 
 auto EchoTaskHandlerFactory::Create(const ::google::protobuf::Message& /*config*/,
@@ -31,9 +32,8 @@ auto EchoTaskHandlerFactory::Create(const ::google::protobuf::Message& /*config*
 }
 
 auto EchoTaskHandlerFactory::ParseConfig(const ::google::protobuf::Message& config)
-    -> absl::StatusOr<strij::node::HandlerCapacity> {
-  const auto* echo_config =
-      dynamic_cast<const echo::EchoTaskHandlerConfig*>(&config);
+    -> absl::StatusOr<node::HandlerCapacity> {
+  const auto* echo_config = dynamic_cast<const echo::EchoTaskHandlerConfig*>(&config);
   if (echo_config == nullptr) {
     return absl::InvalidArgumentError("config is not an EchoTaskHandlerConfig");
   }

@@ -16,32 +16,32 @@ namespace strij::extensions::schedulers {
 
 auto RoundRobinScheduler::RequiredProtocol() const -> std::string_view { return "push"; }
 
-auto RoundRobinScheduler::Choose(strij::gateway::NodeDirectory& dir,
-                                 const TaskOffer& /*offer*/) -> strij::gateway::Node* {
-  std::vector<strij::gateway::Node*> candidates = dir.GetCandidates(RequiredProtocol());
+auto RoundRobinScheduler::Choose(gateway::NodeDirectory& dir, const TaskOffer& /*offer*/)
+    -> gateway::Node* {
+  std::vector<gateway::Node*> candidates = dir.GetCandidates(RequiredProtocol());
   if (candidates.empty()) {
     return nullptr;
   }
-  strij::gateway::Node* chosen = candidates.at(next_index_ % candidates.size());
+
+  gateway::Node* chosen = candidates.at(next_index_ % candidates.size());
   next_index_ = (next_index_ + 1) % candidates.size();
+
   return chosen;
 }
 
 auto RoundRobinSchedulerFactory::Name() const -> std::string { return "round_robin"; }
 
 auto RoundRobinSchedulerFactory::CreateEmptyConfigProto() -> MessagePtr {
-  return std::make_unique<
-      strij::extensions::schedulers::round_robin::RoundRobinSchedulerConfig>();
+  return std::make_unique<extensions::schedulers::round_robin::RoundRobinSchedulerConfig>();
 }
 
 auto RoundRobinSchedulerFactory::Create(const ::google::protobuf::Message& /*config*/,
-                                        FactoryContext& /*context*/)
-    -> std::unique_ptr<Scheduler> {
+                                        FactoryContext& /*context*/) -> SchedulerPtr {
   return std::make_unique<RoundRobinScheduler>();
 }
 
 } // namespace strij::extensions::schedulers
 
-REGISTER_FACTORY_FULLY_QUALIFIED(
-    strij::extensions::schedulers::RoundRobinSchedulerFactory, strij::extensions::SchedulerFactory,
-    round_robin_scheduler_registrar)
+REGISTER_FACTORY_FULLY_QUALIFIED(strij::extensions::schedulers::RoundRobinSchedulerFactory,
+                                 strij::extensions::SchedulerFactory,
+                                 round_robin_scheduler_registrar)

@@ -124,6 +124,7 @@ auto main(int argc, char** argv) -> int {
               unpacked.type_url());
     return 1;
   }
+
   node_discovery = factory->Create(*config_msg, factory_context);
   LOG_INFO("Node discovery extension '{}' loaded", ext.name());
 
@@ -135,6 +136,7 @@ auto main(int argc, char** argv) -> int {
     LOG_ERROR("Config error: {}", scheduler_result.status().message());
     return 1;
   }
+
   auto scheduler = std::move(scheduler_result).value();
   LOG_INFO("Scheduler '{}' loaded (requires protocol '{}')", config.scheduler().name(),
            scheduler->RequiredProtocol());
@@ -145,14 +147,17 @@ auto main(int argc, char** argv) -> int {
   // records), so a back-pointer is filled in after construction.
   strij::gateway::NodeDirectory* node_directory_ptr = nullptr;
   auto connection_factory =
-      [&storage, &state_tracker,
-       &node_directory_ptr](strij::io::Connection& conn) -> std::unique_ptr<strij::io::ProtocolParser> {
+      [&storage, &state_tracker, &node_directory_ptr](
+          strij::io::Connection& conn) -> std::unique_ptr<strij::io::ProtocolParser> {
     auto handler = std::make_unique<strij::gateway::GatewayTlvHandler>(*node_directory_ptr, storage,
                                                                        &state_tracker);
     // Move the handler into the parser's callback via a named capture.
     return std::make_unique<strij::io::TlvParser>(
         [hdl = std::move(handler), &conn](strij::io::TlvFrame frame) -> void {
-          hdl->HandleFrame(frame, conn);
+          const absl::Status status = hdl->HandleFrame(frame, conn);
+          if (!status.ok()) {
+            LOG_WARNING("frame dropped: {}", status.message());
+          }
         });
   };
 

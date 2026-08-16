@@ -5,15 +5,13 @@
 #include <string_view>
 
 #include "absl/status/statusor.h"
-#include "google/protobuf/message.h"
-
-#include "strij/common/pure.hh"
 #include "core/config/extensions.pb.h"
 #include "core/extensions/factory_context.hh"
-#include "core/extensions/extension_registry.hh"
 #include "core/gateway/node_directory.hh"
 #include "core/node/capabilities.pb.h"
 #include "core/task/task.pb.h"
+#include "google/protobuf/message.h"
+#include "strij/common/pure.hh"
 
 namespace strij::extensions {
 
@@ -21,8 +19,8 @@ namespace strij::extensions {
 // hardware requirements. Both members stay valid for the duration of a
 // Scheduler::Choose() call.
 struct TaskOffer {
-  const strij::task::Task* task;
-  const strij::node::ResourceRequirements* requirements;
+  const task::Task* task;
+  const node::ResourceRequirements* requirements;
 };
 
 // A gateway scheduling policy. Choose() returns a connected node that
@@ -30,23 +28,37 @@ struct TaskOffer {
 // eligible node exists).
 class Scheduler {
 public:
+  Scheduler() = default;
   virtual ~Scheduler() = default;
 
+  Scheduler(const Scheduler&) = delete;
+  auto operator=(const Scheduler&) -> Scheduler& = delete;
+  Scheduler(Scheduler&&) noexcept = delete;
+  auto operator=(Scheduler&&) noexcept -> Scheduler& = delete;
+
   // The scheduling_protocol a candidate node must advertise (v1: "push").
-  virtual auto RequiredProtocol() const -> std::string_view PURE;
-  virtual auto Choose(strij::gateway::NodeDirectory& dir, const TaskOffer& offer)
-      -> strij::gateway::Node* PURE;
+  [[nodiscard]] virtual auto RequiredProtocol() const -> std::string_view PURE;
+  virtual auto Choose(gateway::NodeDirectory& dir, const TaskOffer& offer) -> gateway::Node* PURE;
 };
+
+using SchedulerPtr = std::unique_ptr<Scheduler>;
 
 class SchedulerFactory {
 public:
   using MessagePtr = std::unique_ptr<::google::protobuf::Message>;
 
+  SchedulerFactory() = default;
   virtual ~SchedulerFactory() = default;
-  virtual auto Name() const -> std::string PURE;
+
+  SchedulerFactory(const SchedulerFactory&) = delete;
+  auto operator=(const SchedulerFactory&) -> SchedulerFactory& = delete;
+  SchedulerFactory(SchedulerFactory&&) noexcept = delete;
+  auto operator=(SchedulerFactory&&) noexcept -> SchedulerFactory& = delete;
+
+  [[nodiscard]] virtual auto Name() const -> std::string PURE;
   virtual auto CreateEmptyConfigProto() -> MessagePtr PURE;
   virtual auto Create(const ::google::protobuf::Message& config, FactoryContext& context)
-      -> std::unique_ptr<Scheduler> PURE;
+      -> SchedulerPtr PURE;
 };
 
 // Loads a scheduler from the gateway config's `scheduler` ExtensionConfig:
@@ -54,7 +66,7 @@ public:
 // typed_config, and creates the instance. Returns InvalidArgumentError when no
 // scheduler is configured (null config) and NotFoundError when the name is not
 // registered.
-auto CreateScheduler(const strij::config::ExtensionConfig* config, FactoryContext& context)
-    -> absl::StatusOr<std::unique_ptr<Scheduler>>;
+auto CreateScheduler(const config::ExtensionConfig* config, FactoryContext& context)
+    -> absl::StatusOr<SchedulerPtr>;
 
 } // namespace strij::extensions

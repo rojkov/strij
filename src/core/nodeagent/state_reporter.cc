@@ -16,8 +16,8 @@ StateReporter::StateReporter(std::shared_ptr<AdmissionController> controller, st
 
 void StateReporter::AddConnection(std::shared_ptr<io::OutboundMailbox> mailbox) {
   auto self = shared_from_this();
-  std::size_t token =
-      mailbox->RegisterOnClose([self, mailbox]() { self->removeConnection(mailbox); });
+  const std::size_t token =
+      mailbox->RegisterOnClose([self, mailbox]() -> void { self->removeConnection(mailbox); });
   connections_.emplace_back(token, std::move(mailbox));
 }
 
@@ -25,6 +25,7 @@ void StateReporter::removeConnection(const std::shared_ptr<io::OutboundMailbox>&
   for (auto iter = connections_.begin(); iter != connections_.end(); ++iter) {
     if (iter->second == mailbox) {
       connections_.erase(iter);
+
       return;
     }
   }

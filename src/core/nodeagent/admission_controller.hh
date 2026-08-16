@@ -22,37 +22,37 @@ namespace strij::nodeagent {
 // limit; a concurrency of 0 (or an undeclared type) means no limit.
 class AdmissionController {
 public:
-  explicit AdmissionController(const strij::node::NodeCapabilities& capabilities);
+  explicit AdmissionController(const node::NodeCapabilities& capabilities);
 
   // Attempts to reserve capacity for a task of `task_type` requiring
   // `requirements`. On success the pool and concurrency capacity is reserved;
   // otherwise nothing is reserved and a descriptive error is returned.
-  auto Admit(std::string_view task_type,
-             const strij::node::ResourceRequirements& requirements) -> absl::Status;
+  auto Admit(std::string_view task_type, const node::ResourceRequirements& requirements)
+      -> absl::Status;
 
   // Releases capacity previously reserved by Admit(). Each Admit must be paired
   // with exactly one Release (possibly via AdmissionScope).
-  void Release(std::string_view task_type,
-               const strij::node::ResourceRequirements& requirements);
+  void Release(std::string_view task_type, const node::ResourceRequirements& requirements);
 
   // Builds the current kNodeState snapshot. `seq` is caller-owned (monotonic).
-  auto BuildStateSnapshot(std::string node_id, uint64_t seq) const
-      -> strij::node::NodeState;
+  [[nodiscard]] auto BuildStateSnapshot(std::string node_id, uint64_t seq) const -> node::NodeState;
 
   // Shared free capacity of a pool; 0 for undeclared pools.
-  auto SharedFree(std::string_view pool) const -> uint64_t;
+  [[nodiscard]] auto SharedFree(std::string_view pool) const -> uint64_t;
   // Current in-flight count of a task type.
-  auto InFlight(std::string_view task_type) const -> uint64_t;
+  [[nodiscard]] auto InFlight(std::string_view task_type) const -> uint64_t;
 
 private:
   // std::less<> enables heterogeneous (string_view) lookups.
-  std::map<std::string, uint64_t, std::less<>> pool_total_;
-  std::map<std::string, uint64_t, std::less<>> pool_reserved_;
-  std::map<std::string, uint64_t, std::less<>> pool_in_use_;
+  std::map<std::string, uint64_t, std::less<>> pool_total_map_;
+  std::map<std::string, uint64_t, std::less<>> pool_reserved_map_;
+  std::map<std::string, uint64_t, std::less<>> pool_in_use_map_;
   // 0 means no concurrency limit for the type.
-  std::map<std::string, uint64_t, std::less<>> type_concurrency_;
-  std::map<std::string, uint64_t, std::less<>> type_in_flight_;
+  std::map<std::string, uint64_t, std::less<>> type_concurrency_map_;
+  std::map<std::string, uint64_t, std::less<>> type_in_flight_map_;
 };
+
+using AdmissionControllerSharedPtr = std::shared_ptr<AdmissionController>;
 
 // RAII handle releasing admitted capacity when the owning result sender is
 // destroyed (a task that never reports a final result still releases its
@@ -62,7 +62,7 @@ private:
 class AdmissionScope {
 public:
   AdmissionScope(std::shared_ptr<AdmissionController> controller, std::string task_type,
-                 strij::node::ResourceRequirements requirements);
+                 node::ResourceRequirements requirements);
   ~AdmissionScope();
 
   AdmissionScope(const AdmissionScope&) = delete;
@@ -75,8 +75,10 @@ public:
 private:
   std::shared_ptr<AdmissionController> controller_;
   std::string task_type_;
-  strij::node::ResourceRequirements requirements_;
+  node::ResourceRequirements requirements_;
   bool released_{false};
 };
+
+using AdmissionScopePtr = std::unique_ptr<AdmissionScope>;
 
 } // namespace strij::nodeagent

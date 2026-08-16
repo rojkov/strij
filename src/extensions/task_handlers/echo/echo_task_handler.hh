@@ -10,7 +10,7 @@ namespace strij::extensions::task_handlers {
 
 class EchoTaskHandler final : public TaskHandler {
 public:
-  void HandleTask(const strij::task::Task& task, ResultSenderPtr sender) override;
+  void HandleTask(const task::Task& task, ResultSenderPtr sender) override;
 };
 
 class EchoTaskHandlerFactory final : public TaskHandlerFactory {
@@ -20,7 +20,7 @@ public:
   auto Create(const ::google::protobuf::Message& config, FactoryContext& context)
       -> TaskHandlerPtr override;
   auto ParseConfig(const ::google::protobuf::Message& config)
-      -> absl::StatusOr<strij::node::HandlerCapacity> override;
+      -> absl::StatusOr<node::HandlerCapacity> override;
 };
 
 } // namespace strij::extensions::task_handlers

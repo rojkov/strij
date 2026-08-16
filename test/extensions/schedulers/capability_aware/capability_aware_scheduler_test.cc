@@ -7,6 +7,7 @@
 #include "test/mocks/common/common_mocks.hh"
 #include "test/mocks/event/mocks.hh"
 
+#include "core/extensions/extension_registry.hh"
 #include "core/gateway/node.hh"
 #include "core/gateway/node_directory.hh"
 #include "core/io/protocol_parser.hh"
@@ -22,19 +23,16 @@ namespace {
 
 class CapabilityAwareSchedulerTest : public ::testing::Test {
 protected:
-  std::shared_ptr<strij::event::MockDispatcher> dispatcher_{
-      std::make_shared<strij::event::MockDispatcher>()};
+  std::shared_ptr<event::MockDispatcher> dispatcher_{std::make_shared<event::MockDispatcher>()};
 
   auto MakeConnectedDirectory(std::initializer_list<std::string> ids)
-      -> std::unique_ptr<strij::gateway::NodeDirectory> {
-    auto directory = std::make_unique<strij::gateway::NodeDirectory>(
-        dispatcher_,
-        [](strij::io::Connection&) -> std::unique_ptr<strij::io::ProtocolParser> {
-          return std::make_unique<strij::io::TrivialParser>();
+      -> std::unique_ptr<gateway::NodeDirectory> {
+    auto directory = std::make_unique<gateway::NodeDirectory>(
+        dispatcher_, [](io::Connection&) -> io::ProtocolParserPtr {
+          return std::make_unique<io::TrivialParser>();
         });
-    EXPECT_CALL(*dispatcher_,
-                PrepareConnect(::testing::_, ::testing::_, ::testing::_, ::testing::_,
-                               ::testing::_))
+    EXPECT_CALL(*dispatcher_, PrepareConnect(::testing::_, ::testing::_, ::testing::_, ::testing::_,
+                                             ::testing::_))
         .WillRepeatedly(::testing::Return());
     for (const auto& id : ids) {
       directory->AddNode(id, "10.0.0.1:9090");
@@ -45,17 +43,17 @@ protected:
     return directory;
   }
 
-  void AddProtocol(strij::node::NodeCapabilities* caps, std::string_view name) {
+  void AddProtocol(node::NodeCapabilities* caps, std::string_view name) {
     caps->add_scheduling_protocols()->set_name(name);
   }
 
-  void AddPool(strij::node::NodeCapabilities* caps, std::string_view name, uint64_t total) {
+  void AddPool(node::NodeCapabilities* caps, std::string_view name, uint64_t total) {
     auto* pool = caps->add_pools();
     pool->set_name(name);
     pool->set_total(total);
   }
 
-  void AddReservation(strij::node::NodeCapabilities* caps, std::string_view task_type,
+  void AddReservation(node::NodeCapabilities* caps, std::string_view task_type,
                       std::string_view pool, uint64_t amount) {
     auto* reservation = caps->add_reservations();
     reservation->set_task_type(task_type);
@@ -63,21 +61,19 @@ protected:
     reservation->set_amount(amount);
   }
 
-  void AddHandler(strij::node::NodeCapabilities* caps, std::string_view task_type,
-                  uint64_t concurrency) {
+  void AddHandler(node::NodeCapabilities* caps, std::string_view task_type, uint64_t concurrency) {
     auto* handler = caps->add_handlers();
     handler->set_task_type(task_type);
     handler->set_concurrency(concurrency);
   }
 
-  void SetPoolInUse(strij::node::NodeState* state, std::string_view name, uint64_t in_use) {
+  void SetPoolInUse(node::NodeState* state, std::string_view name, uint64_t in_use) {
     auto* usage = state->add_pools();
     usage->set_pool(name);
     usage->set_in_use(in_use);
   }
 
-  void SetTypeInFlight(strij::node::NodeState* state, std::string_view task_type,
-                       uint64_t in_flight) {
+  void SetTypeInFlight(node::NodeState* state, std::string_view task_type, uint64_t in_flight) {
     auto* usage = state->add_type_usage();
     usage->set_task_type(task_type);
     usage->set_in_flight(in_flight);
@@ -96,8 +92,8 @@ protected:
   }
 
 private:
-  strij::task::Task task_;
-  strij::node::ResourceRequirements requirements_;
+  task::Task task_;
+  node::ResourceRequirements requirements_;
 };
 
 // NOLINTBEGIN(modernize-use-trailing-return-type)
@@ -107,16 +103,16 @@ TEST_F(CapabilityAwareSchedulerTest, ExcludesNodeWithoutRequiredPoolCapacity) {
   auto* full = directory->GetNode("full");
   auto* free = directory->GetNode("free");
 
-  strij::node::NodeCapabilities full_caps;
+  node::NodeCapabilities full_caps;
   AddProtocol(&full_caps, "push");
   AddPool(&full_caps, "gpu.h100", 1);
   full->StoreCapabilities(std::move(full_caps));
-  strij::node::NodeState full_state;
+  node::NodeState full_state;
   full_state.set_in_flight(1);
   SetPoolInUse(&full_state, "gpu.h100", 1);
   full->UpdateState(std::move(full_state));
 
-  strij::node::NodeCapabilities free_caps;
+  node::NodeCapabilities free_caps;
   AddProtocol(&free_caps, "push");
   AddPool(&free_caps, "gpu.h100", 2);
   free->StoreCapabilities(std::move(free_caps));
@@ -133,14 +129,16 @@ TEST_F(CapabilityAwareSchedulerTest, ExcludesNodeAtConcurrencyLimit) {
   auto* saturated = directory->GetNode("saturated");
   auto* free = directory->GetNode("free");
 
-  strij::node::NodeCapabilities caps;
+  node::NodeCapabilities caps;
+  node::NodeCapabilities caps_copy;
   AddProtocol(&caps, "push");
   AddPool(&caps, "cpu", 16);
   AddHandler(&caps, "echo", 2);
-  saturated->StoreCapabilities(caps);
-  free->StoreCapabilities(caps);
+  caps_copy.CopyFrom(caps);
+  saturated->StoreCapabilities(std::move(caps));
+  free->StoreCapabilities(std::move(caps_copy));
 
-  strij::node::NodeState saturated_state;
+  node::NodeState saturated_state;
   saturated_state.set_in_flight(2);
   SetTypeInFlight(&saturated_state, "echo", 2);
   saturated->UpdateState(std::move(saturated_state));
@@ -156,18 +154,20 @@ TEST_F(CapabilityAwareSchedulerTest, ChoosesLeastLoadedNodeByConcurrencyRatio) {
   auto* loaded = directory->GetNode("loaded");
   auto* light = directory->GetNode("light");
 
-  strij::node::NodeCapabilities caps;
+  node::NodeCapabilities caps;
+  node::NodeCapabilities caps_copy;
   AddProtocol(&caps, "push");
   AddHandler(&caps, "echo", 100);
-  loaded->StoreCapabilities(caps);
-  light->StoreCapabilities(caps);
+  caps_copy.CopyFrom(caps);
+  loaded->StoreCapabilities(std::move(caps));
+  light->StoreCapabilities(std::move(caps_copy));
 
-  strij::node::NodeState loaded_state;
+  node::NodeState loaded_state;
   loaded_state.set_in_flight(5);
   SetTypeInFlight(&loaded_state, "echo", 5);
   loaded->UpdateState(std::move(loaded_state));
 
-  strij::node::NodeState light_state;
+  node::NodeState light_state;
   light_state.set_in_flight(2);
   SetTypeInFlight(&light_state, "echo", 2);
   light->UpdateState(std::move(light_state));
@@ -185,16 +185,18 @@ TEST_F(CapabilityAwareSchedulerTest, TieBreaksByNodeWideInFlightCount) {
 
   // No per-type concurrency declared: both nodes have an equal (neutral) load
   // ratio, so the node-wide in-flight count decides.
-  strij::node::NodeCapabilities caps;
+  node::NodeCapabilities caps;
+  node::NodeCapabilities caps_copy;
   AddProtocol(&caps, "push");
-  busy->StoreCapabilities(caps);
-  idle->StoreCapabilities(caps);
+  caps_copy.CopyFrom(caps);
+  busy->StoreCapabilities(std::move(caps));
+  idle->StoreCapabilities(std::move(caps_copy));
 
-  strij::node::NodeState busy_state;
+  node::NodeState busy_state;
   busy_state.set_in_flight(5);
   busy->UpdateState(std::move(busy_state));
 
-  strij::node::NodeState idle_state;
+  node::NodeState idle_state;
   idle_state.set_in_flight(2);
   idle->UpdateState(std::move(idle_state));
 
@@ -209,12 +211,12 @@ TEST_F(CapabilityAwareSchedulerTest, ExcludesNodesNotAdvertisingRequiredProtocol
   auto* probe_only = directory->GetNode("probe_only");
   auto* push_node = directory->GetNode("push_node");
 
-  strij::node::NodeCapabilities probe_caps;
+  node::NodeCapabilities probe_caps;
   AddProtocol(&probe_caps, "probe");
   AddPool(&probe_caps, "cpu", 8);
   probe_only->StoreCapabilities(std::move(probe_caps));
 
-  strij::node::NodeCapabilities push_caps;
+  node::NodeCapabilities push_caps;
   AddProtocol(&push_caps, "push");
   AddPool(&push_caps, "cpu", 8);
   push_node->StoreCapabilities(std::move(push_caps));
@@ -230,12 +232,12 @@ TEST_F(CapabilityAwareSchedulerTest, ExcludesNodeWithoutMatchingHandler) {
   auto* video_only = directory->GetNode("video_only");
   auto* generic = directory->GetNode("generic");
 
-  strij::node::NodeCapabilities video_caps;
+  node::NodeCapabilities video_caps;
   AddProtocol(&video_caps, "push");
   AddHandler(&video_caps, "video-encode", 4);
   video_only->StoreCapabilities(std::move(video_caps));
 
-  strij::node::NodeCapabilities generic_caps;
+  node::NodeCapabilities generic_caps;
   AddProtocol(&generic_caps, "push");
   generic->StoreCapabilities(std::move(generic_caps));
 
@@ -257,12 +259,11 @@ TEST_F(CapabilityAwareSchedulerTest, ReturnsNullWhenNoEligibleNode) {
 
 TEST_F(CapabilityAwareSchedulerTest, FactoryIsRegisteredAndCreatesScheduler) {
   auto* factory =
-      strij::extensions::Registry<strij::extensions::SchedulerFactory>::instance().GetFactory(
-          "capability_aware");
+      extensions::Registry<extensions::SchedulerFactory>::instance().GetFactory("capability_aware");
   ASSERT_NE(factory, nullptr);
   EXPECT_EQ(factory->Name(), "capability_aware");
 
-  strij::extensions::FactoryContextImpl context(dispatcher_);
+  extensions::FactoryContextImpl context(dispatcher_);
   auto config = factory->CreateEmptyConfigProto();
   auto scheduler = factory->Create(*config, context);
   ASSERT_NE(scheduler, nullptr);

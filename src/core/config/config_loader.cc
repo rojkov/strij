@@ -1,15 +1,15 @@
 #include "core/config/config_loader.hh"
 
 #include <cctype>
+#include <cstdint>
 #include <cstdlib>
 #include <filesystem>
+#include <memory>
 #include <regex>
 #include <string>
 #include <string_view>
-#include <memory>
-#include <vector>
-#include <cstdint>
 #include <utility>
+#include <vector>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -160,18 +160,20 @@ auto mergeYamlIntoProto(const YAML::Node& yaml, google::protobuf::Message* messa
       const bool is_map_entry = field_msg_type != nullptr && field_msg_type->options().map_entry();
       if (is_map_entry && value.IsMap()) {
         // proto map fields are repeated MapEntry messages; accept a YAML map.
-        auto* key_field = field_msg_type->FindFieldByName("key");
-        auto* value_field = field_msg_type->FindFieldByName("value");
-        for (const auto& kv : value) {
+        const auto* key_field = field_msg_type->FindFieldByName("key");
+        const auto* value_field = field_msg_type->FindFieldByName("value");
+
+        for (const auto& iter : value) {
           auto* sub_msg = reflection->AddMessage(message, field);
           const auto* sub_reflection = sub_msg->GetReflection();
+
           auto status =
-              setFieldFromString(sub_msg, key_field, kv.first.as<std::string>(), sub_reflection);
+              setFieldFromString(sub_msg, key_field, iter.first.as<std::string>(), sub_reflection);
           if (!status.ok()) {
             return status;
           }
-          status =
-              setFieldFromString(sub_msg, value_field, kv.second.as<std::string>(), sub_reflection);
+          status = setFieldFromString(sub_msg, value_field, iter.second.as<std::string>(),
+                                      sub_reflection);
           if (!status.ok()) {
             return status;
           }
@@ -190,8 +192,8 @@ auto mergeYamlIntoProto(const YAML::Node& yaml, google::protobuf::Message* messa
           } else if (field->cpp_type() == google::protobuf::FieldDescriptor::CPPTYPE_STRING) {
             reflection->AddString(message, field, item.as<std::string>());
           } else {
-            return absl::InvalidArgumentError(absl::StrCat("Repeated field '", full_path,
-                                                           "' only supports message or string type"));
+            return absl::InvalidArgumentError(absl::StrCat(
+                "Repeated field '", full_path, "' only supports message or string type"));
           }
         }
       }
@@ -280,7 +282,7 @@ auto discoverAndApplyEnvVars(google::protobuf::Message* message, const std::stri
   for (int i = 0; i < descriptor->field_count(); ++i) {
     const auto* field = descriptor->field(i);
     const std::string path =
-      upper_prefix.empty() ? toUpper(field->name()) : upper_prefix + "_" + toUpper(field->name());
+        upper_prefix.empty() ? toUpper(field->name()) : upper_prefix + "_" + toUpper(field->name());
 
     if (field->cpp_type() == google::protobuf::FieldDescriptor::CPPTYPE_MESSAGE) {
       if (field->is_repeated()) {

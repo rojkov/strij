@@ -18,29 +18,37 @@ class ExactStateTracker final {
 public:
   // Records a task sent to `node_id` and reserves the pools in `requirements`.
   void RecordSubmission(std::string task_id, std::string node_id,
-                        const strij::node::ResourceRequirements& requirements);
+                        const node::ResourceRequirements& requirements);
   // Unwinds the task recorded by RecordSubmission (final result or rejection).
   // A no-op for an unknown task id.
   void RecordCompletion(const std::string& task_id);
   // Replaces the node's exact counts with the reported snapshot.
-  void ApplyStateSnapshot(const strij::node::NodeState& state);
+  void ApplyStateSnapshot(const node::NodeState& state);
 
   auto InFlight(const std::string& node_id) const -> uint64_t;
   auto PoolInUse(const std::string& node_id, std::string_view pool) const -> uint64_t;
 
 private:
   struct TaskRecord {
-    std::string node_id;
-    strij::node::ResourceRequirements requirements;
+    std::string node_id_;
+    node::ResourceRequirements requirements_;
   };
 
-  struct NodeAccounting {
-    uint64_t in_flight{0};
-    std::unordered_map<std::string, uint64_t> pools;
+  class NodeAccounting {
+  public:
+    void Decrement(const node::ResourceRequirements& requirements);
+    void Increment(const node::ResourceRequirements& requirements);
+    void ApplyStateSnapshot(const node::NodeState& state);
+
+    auto InFlight() const -> uint64_t;
+    auto PoolInUse(std::string_view pool) const -> uint64_t;
+
+  private:
+    uint64_t in_flight_{0};
+    std::unordered_map<std::string, uint64_t> pools_;
   };
 
   auto accounting(const std::string& node_id) -> NodeAccounting&;
-  void decrement(NodeAccounting& account, const strij::node::ResourceRequirements& requirements);
 
   std::unordered_map<std::string, NodeAccounting> per_node_;
   std::unordered_map<std::string, TaskRecord> tasks_;

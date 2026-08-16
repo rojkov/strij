@@ -51,10 +51,12 @@ private:
   int fd_;
   event::DispatcherSharedPtr dispatcher_;
   event::CommandHandler* owner_;
-  std::unique_ptr<ProtocolParser> parser_;
+  ProtocolParserPtr parser_;
   std::shared_ptr<OutboundMailbox> mailbox_;
   std::deque<std::vector<std::byte>> write_queue_;
   size_t write_offset_{0};
 };
+
+using ConnectionPtr = std::unique_ptr<Connection>;
 
 } // namespace strij::io

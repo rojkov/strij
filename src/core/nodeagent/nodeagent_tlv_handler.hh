@@ -3,6 +3,9 @@
 #include <memory>
 #include <string>
 
+#include "src/core/nodeagent/admission_controller.hh"
+#include "src/core/nodeagent/task_handler_manager.hh"
+
 #include "core/io/connection.hh"
 #include "core/io/tlv_frame.hh"
 #include "core/node/capabilities.pb.h"
@@ -13,27 +16,27 @@ namespace strij::nodeagent {
 
 class NodeagentTlvHandler {
 public:
-  NodeagentTlvHandler(std::shared_ptr<TaskHandlerManager> manager,
-                      std::shared_ptr<const strij::node::NodeCapabilities> capabilities,
-                      std::shared_ptr<AdmissionController> admission);
+  NodeagentTlvHandler(TaskHandlerManagerSharedPtr manager,
+                      std::shared_ptr<const node::NodeCapabilities> capabilities,
+                      AdmissionControllerSharedPtr admission);
 
   // Serializes and writes the kNodeAdvertisement frame to the connection. Must
   // be the first frame sent on every accepted gateway connection.
-  void SendAdvertisement(strij::io::Connection& conn);
+  void SendAdvertisement(io::Connection& conn);
 
-  void HandleFrame(strij::io::TlvFrame frame, strij::io::Connection& conn);
+  void HandleFrame(io::TlvFrame frame, io::Connection& conn);
 
 private:
   // Resolves the hardware requirements for a submitted task from the handler's
   // advertised default_resources (v1: empty when the type is not declared).
-  auto resolveRequirements(const std::string& task_type) const
-      -> strij::node::ResourceRequirements;
-  void sendTaskRejected(strij::io::Connection& conn, const std::string& task_id,
-                        std::string_view reason);
+  [[nodiscard]] auto resolveRequirements(const std::string& task_type) const
+      -> node::ResourceRequirements;
+  static void sendTaskRejected(io::Connection& conn, const std::string& task_id,
+                               std::string_view reason);
 
-  std::shared_ptr<TaskHandlerManager> manager_;
-  std::shared_ptr<const strij::node::NodeCapabilities> capabilities_;
-  std::shared_ptr<AdmissionController> admission_;
+  TaskHandlerManagerSharedPtr manager_;
+  std::shared_ptr<const node::NodeCapabilities> capabilities_;
+  AdmissionControllerSharedPtr admission_;
 };
 
 } // namespace strij::nodeagent

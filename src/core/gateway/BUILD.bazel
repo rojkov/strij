@@ -65,7 +65,7 @@ strij_cc_library(
     deps = [
         "//api/core/node:node_cc_proto",
         "//src/core/logging:log_lib",
-        "@protobuf//:protobuf",
+        "@protobuf",
     ],
 )
 

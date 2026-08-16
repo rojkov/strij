@@ -6,7 +6,6 @@
 #include <utility>
 
 #include "core/nodeagent/admission_controller.hh"
-#include "core/nodeagent/result_sender.hh"
 #include "extensions/task_handlers/task_handlers.hh"
 
 namespace strij::nodeagent {
@@ -22,7 +21,7 @@ namespace strij::nodeagent {
  */
 class AdmissionTrackingSender final : public extensions::ResultSender {
 public:
-  AdmissionTrackingSender(extensions::ResultSenderPtr inner, std::unique_ptr<AdmissionScope> scope)
+  AdmissionTrackingSender(extensions::ResultSenderPtr inner, AdmissionScopePtr scope)
       : inner_{std::move(inner)}, scope_{std::move(scope)} {}
 
   ~AdmissionTrackingSender() override = default;
@@ -32,9 +31,10 @@ public:
   AdmissionTrackingSender(AdmissionTrackingSender&&) noexcept = delete;
   auto operator=(AdmissionTrackingSender&&) noexcept -> AdmissionTrackingSender& = delete;
 
-  void Send(strij::task::TaskResult result) override {
+  void Send(task::TaskResult result) override {
     const bool is_final = !result.has_is_final() || result.is_final();
     inner_->Send(std::move(result));
+
     if (is_final) {
       scope_->Release();
     }
@@ -48,7 +48,7 @@ public:
 
 private:
   extensions::ResultSenderPtr inner_;
-  std::unique_ptr<AdmissionScope> scope_;
+  AdmissionScopePtr scope_;
 };
 
 } // namespace strij::nodeagent

@@ -7,6 +7,7 @@
 #include "core/event/dispatcher_impl.hh"
 #include "core/extensions/factory_context.hh"
 #include "core/extensions/function_resolver.hh"
+#include "core/io/periodic_timer.hh"
 #include "core/io/tcp_listener.hh"
 #include "core/io/tlv_frame.hh"
 #include "core/io/tlv_parser.hh"
@@ -16,7 +17,6 @@
 #include "core/nodeagent/nodeagent_tlv_handler.hh"
 #include "core/nodeagent/state_reporter.hh"
 #include "core/nodeagent/task_handler_manager.hh"
-#include "core/io/periodic_timer.hh"
 
 // Generated protobuf headers
 #include "core/config/nodeagent.pb.h"
@@ -46,7 +46,8 @@ auto main(int argc, char** argv) -> int {
 
   // The state-snapshot cadence defaults to 10s when not configured.
   if (!config.has_heartbeat_interval()) {
-    config.mutable_heartbeat_interval()->set_seconds(10);
+    const int64_t ten_secs{10};
+    config.mutable_heartbeat_interval()->set_seconds(ten_secs);
   }
 
   const strij::event::DispatcherSharedPtr dispatcher =
@@ -62,6 +63,7 @@ auto main(int argc, char** argv) -> int {
     LOG_ERROR("Task handler config error: {}", manager_result.status().message());
     return 1;
   }
+
   const std::shared_ptr<strij::nodeagent::TaskHandlerManager>& task_handler_manager =
       manager_result.value();
 
@@ -74,6 +76,7 @@ auto main(int argc, char** argv) -> int {
     LOG_ERROR("Capabilities config error: {}", capabilities_result.status().message());
     return 1;
   }
+
   const std::shared_ptr<const strij::node::NodeCapabilities> capabilities =
       std::make_shared<strij::node::NodeCapabilities>(std::move(capabilities_result).value());
 
@@ -109,14 +112,14 @@ auto main(int argc, char** argv) -> int {
   // snapshots to every established connection at heartbeat_interval.
   const auto admission = std::make_shared<strij::nodeagent::AdmissionController>(*capabilities);
   auto state_reporter = std::make_shared<strij::nodeagent::StateReporter>(admission, node_id);
-  strij::io::PeriodicTimer state_timer(
-      dispatcher, [state_reporter]() { state_reporter->Broadcast(); });
+  strij::io::PeriodicTimer state_timer(dispatcher,
+                                       [state_reporter]() { state_reporter->Broadcast(); });
   state_timer.Start(absl::Seconds(config.heartbeat_interval().seconds()));
 
   strij::io::TcpListener listener{
       dispatcher, config.tlv_listener().port(),
-      [task_handler_manager, capabilities, admission, state_reporter](
-          strij::io::Connection& conn) -> std::unique_ptr<strij::io::ProtocolParser> {
+      [task_handler_manager, capabilities, admission,
+       state_reporter](strij::io::Connection& conn) -> std::unique_ptr<strij::io::ProtocolParser> {
         auto handler = std::make_unique<strij::nodeagent::NodeagentTlvHandler>(
             task_handler_manager, capabilities, admission);
         handler->SendAdvertisement(conn);

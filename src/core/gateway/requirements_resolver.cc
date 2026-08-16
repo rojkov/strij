@@ -18,8 +18,10 @@ auto ParamsOnlyRequirementsResolver::Resolve(
 
   strij::node::ResourceRequirements requirements;
   auto* resources = requirements.mutable_resources();
+
   for (const auto& [key, value] : parameters) {
     std::string_view pool;
+
     if (key.starts_with(kDotPrefix)) {
       pool = std::string_view(key).substr(kDotPrefix.size());
     } else if (key.starts_with(kDashPrefix)) {
@@ -36,6 +38,7 @@ auto ParamsOnlyRequirementsResolver::Resolve(
       LOG_WARNING("Ignoring unparseable resource amount for pool '{}': '{}'", pool, value);
     }
   }
+
   return requirements;
 }
 

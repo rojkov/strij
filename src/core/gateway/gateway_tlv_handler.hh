@@ -24,12 +24,18 @@ public:
   GatewayTlvHandler(GatewayTlvHandler&&) noexcept = delete;
   auto operator=(GatewayTlvHandler&&) noexcept -> GatewayTlvHandler& = delete;
 
-  void HandleFrame(strij::io::TlvFrame frame, strij::io::Connection& conn);
+  auto HandleFrame(const io::TlvFrame& frame, io::Connection& conn) -> absl::Status;
 
 private:
   // Returns the Node that owns the connection, or nullptr if the frame
   // arrived on a connection not owned by a gateway Node.
-  auto owningNode(strij::io::Connection& conn) -> Node*;
+  static auto owningNode(io::Connection& conn) -> Node*;
+
+  auto handleNodeAdvertisementFrame(const io::TlvFrame& frame, io::Connection& conn)
+      -> absl::Status;
+  auto handleNodeStateFrame(const io::TlvFrame& frame, io::Connection& conn) -> absl::Status;
+  auto handleTaskRejectedFrame(const io::TlvFrame& frame, io::Connection& conn) -> absl::Status;
+  auto handleTaskResultFrame(const io::TlvFrame& frame, io::Connection& conn) -> absl::Status;
 
   NodeDirectory& directory_;
   ResultReceiverStorage& storage_;

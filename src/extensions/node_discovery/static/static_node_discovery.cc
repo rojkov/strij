@@ -6,6 +6,7 @@
 #include <utility>
 #include <vector>
 
+#include "core/extensions/extension_registry.hh"
 #include "extensions/node_discovery/static/static_node_discovery.pb.h"
 #include "google/protobuf/any.pb.h"
 
@@ -21,7 +22,7 @@ void StaticNodeDiscovery::Start(DiscoveryCallback callback) {
     // A static source does not know stable node identities: derive the
     // node_id from the address. The canonical identity is learned later from
     // the node's advertisement.
-    nodes.push_back(NodeInfo{.node_id = addr, .address = addr});
+    nodes.push_back(NodeInfo{.node_id_ = addr, .address_ = addr});
   }
   callback(std::move(nodes));
 }

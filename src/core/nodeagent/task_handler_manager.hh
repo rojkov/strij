@@ -4,12 +4,11 @@
 #include <string>
 #include <unordered_map>
 
-#include "google/protobuf/repeated_ptr_field.h"
-
 #include "absl/status/statusor.h"
 #include "core/config/extensions.pb.h"
 #include "core/extensions/factory_context.hh"
 #include "extensions/task_handlers/task_handlers.hh"
+#include "google/protobuf/repeated_ptr_field.h"
 
 namespace strij::nodeagent {
 
@@ -17,18 +16,19 @@ class TaskHandlerManager {
 public:
   TaskHandlerManager() = default;
 
-  auto GetHandler(const std::string& type) const -> strij::extensions::TaskHandler*;
-  void AddHandler(std::string type, std::unique_ptr<strij::extensions::TaskHandler> handler);
+  auto GetHandler(const std::string& type) const -> extensions::TaskHandler*;
+  void AddHandler(std::string type, extensions::TaskHandlerPtr handler);
   void RemoveHandler(const std::string& type);
-  bool empty() const;
+  [[nodiscard]] auto empty() const -> bool;
 
 private:
-  std::unordered_map<std::string, std::unique_ptr<strij::extensions::TaskHandler>> handlers_;
+  std::unordered_map<std::string, extensions::TaskHandlerPtr> handlers_;
 };
 
+using TaskHandlerManagerSharedPtr = std::shared_ptr<TaskHandlerManager>;
+
 auto BuildTaskHandlerManager(
-    const ::google::protobuf::RepeatedPtrField<strij::config::ExtensionConfig>& configs,
-    strij::extensions::FactoryContext& context)
-    -> absl::StatusOr<std::shared_ptr<TaskHandlerManager>>;
+    const ::google::protobuf::RepeatedPtrField<config::ExtensionConfig>& configs,
+    extensions::FactoryContext& context) -> absl::StatusOr<TaskHandlerManagerSharedPtr>;
 
 } // namespace strij::nodeagent

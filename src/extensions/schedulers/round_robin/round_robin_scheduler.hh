@@ -4,9 +4,8 @@
 #include <string>
 #include <string_view>
 
-#include "google/protobuf/message.h"
-
 #include "extensions/schedulers/scheduler.hh"
+#include "google/protobuf/message.h"
 
 namespace strij::extensions::schedulers {
 
@@ -15,9 +14,8 @@ namespace strij::extensions::schedulers {
 // selection index on each call. Not requirements-aware.
 class RoundRobinScheduler final : public Scheduler {
 public:
-  auto RequiredProtocol() const -> std::string_view override;
-  auto Choose(strij::gateway::NodeDirectory& dir, const TaskOffer& offer)
-      -> strij::gateway::Node* override;
+  [[nodiscard]] auto RequiredProtocol() const -> std::string_view override;
+  auto Choose(gateway::NodeDirectory& dir, const TaskOffer& offer) -> gateway::Node* override;
 
 private:
   size_t next_index_{0};
@@ -28,7 +26,7 @@ public:
   [[nodiscard]] auto Name() const -> std::string override;
   auto CreateEmptyConfigProto() -> MessagePtr override;
   auto Create(const ::google::protobuf::Message& config, FactoryContext& context)
-      -> std::unique_ptr<Scheduler> override;
+      -> SchedulerPtr override;
 };
 
 } // namespace strij::extensions::schedulers

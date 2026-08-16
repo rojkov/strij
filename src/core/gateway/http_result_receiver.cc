@@ -68,6 +68,7 @@ auto HttpResponseFramer::ErrorResponse(std::string_view reason)
   if (state_ != State::kIdle) {
     return frames;
   }
+
   auto header = std::format("HTTP/1.1 503 Service Unavailable\r\nContent-Type: text/plain\r\n"
                             "Content-Length: {}\r\nConnection: close\r\n\r\n",
                             reason.size());

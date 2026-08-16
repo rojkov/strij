@@ -8,8 +8,8 @@ namespace strij::gateway {
 namespace {
 
 auto Resources(std::initializer_list<std::pair<std::string, uint64_t>> entries)
-    -> strij::node::ResourceRequirements {
-  strij::node::ResourceRequirements requirements;
+    -> node::ResourceRequirements {
+  node::ResourceRequirements requirements;
   for (const auto& [pool, amount] : entries) {
     requirements.mutable_resources()->insert({pool, amount});
   }
@@ -64,7 +64,7 @@ TEST(ExactStateTrackerTest, ApplyStateSnapshotCorrectsExactCounts) {
   // Simulate drift: exact accounting says 2 tasks in flight.
   EXPECT_EQ(tracker.InFlight("node-a"), 2U);
 
-  strij::node::NodeState state;
+  node::NodeState state;
   state.set_node_id("node-a");
   state.set_in_flight(1);
   auto* usage = state.add_pools();

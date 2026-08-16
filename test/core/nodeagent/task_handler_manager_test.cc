@@ -1,25 +1,26 @@
-#include "core/nodeagent/task_handler_manager.hh"
-
 #include <memory>
 #include <string>
 #include <utility>
 
+#include "test/mocks/event/mocks.hh"
+#include "test/mocks/extensions/extensions_mocks.hh"
+
 #include "core/config/extensions.pb.h"
+#include "core/extensions/extension_registry.hh"
 #include "core/extensions/function_resolver.hh"
+#include "core/nodeagent/task_handler_manager.hh"
 #include "extensions/task_handlers/echo/echo_task_handler.pb.h"
 #include "extensions/task_handlers/piped_executable/piped_executable.pb.h"
 #include "gmock/gmock.h"
 #include "google/protobuf/repeated_ptr_field.h"
 #include "gtest/gtest.h"
-#include "test/mocks/event/mocks.hh"
-#include "test/mocks/extensions/extensions_mocks.hh"
 
 namespace strij::nodeagent {
 namespace {
 
+using ::testing::_;
 using ::testing::Return;
 using ::testing::ReturnRef;
-using ::testing::_;
 
 // NOLINTBEGIN(modernize-use-trailing-return-type)
 
@@ -82,7 +83,8 @@ TEST(TaskHandlerManagerTest, BuildInstantiatesHandlerFromConfig) {
   auto factory = std::make_unique<strij::extensions::MockTaskHandlerFactory>();
   EXPECT_CALL(*factory, Name()).WillRepeatedly(Return("mock"));
   EXPECT_CALL(*factory, CreateEmptyConfigProto())
-      .WillOnce(Return(std::make_unique<strij::extensions::task_handlers::echo::EchoTaskHandlerConfig>()));
+      .WillOnce(Return(
+          std::make_unique<strij::extensions::task_handlers::echo::EchoTaskHandlerConfig>()));
   EXPECT_CALL(*factory, Create(_, _))
       .WillOnce(Return(std::make_unique<strij::extensions::MockTaskHandler>()));
   // The singleton registry owns the factory for the program lifetime.

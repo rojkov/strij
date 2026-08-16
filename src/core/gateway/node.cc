@@ -19,25 +19,23 @@
 namespace strij::gateway {
 
 Node::Node(std::string node_id, std::string address, event::DispatcherSharedPtr dispatcher,
-           strij::io::ConnectionFactory factory)
+           io::ConnectionFactory factory)
     : node_id_{std::move(node_id)}, address_{std::move(address)},
       dispatcher_{std::move(dispatcher)}, factory_{std::move(factory)} {}
 
 void Node::SetNodeId(std::string node_id) { node_id_ = std::move(node_id); }
 
-void Node::StoreCapabilities(strij::node::NodeCapabilities capabilities) {
-  capabilities_ = std::make_unique<strij::node::NodeCapabilities>(std::move(capabilities));
+void Node::StoreCapabilities(node::NodeCapabilities&& capabilities) {
+  capabilities_ = std::make_unique<node::NodeCapabilities>(std::move(capabilities));
 }
 
-auto Node::GetCapabilities() const -> const strij::node::NodeCapabilities* {
-  return capabilities_.get();
+auto Node::GetCapabilities() const -> const node::NodeCapabilities* { return capabilities_.get(); }
+
+void Node::UpdateState(node::NodeState&& state) {
+  state_ = std::make_unique<node::NodeState>(std::move(state));
 }
 
-void Node::UpdateState(strij::node::NodeState state) {
-  state_ = std::make_unique<strij::node::NodeState>(std::move(state));
-}
-
-auto Node::GetState() const -> const strij::node::NodeState* { return state_.get(); }
+auto Node::GetState() const -> const node::NodeState* { return state_.get(); }
 
 void Node::Disconnect() {
   if (connection_ != nullptr) {
@@ -91,8 +89,7 @@ void Node::StartConnect() {
 void Node::HandleCompletion(uint8_t tag, int res, uint32_t /*flags*/) {
   if (tag == kConnect) {
     if (res == 0) {
-      connection_ =
-          std::make_unique<strij::io::Connection>(fd_, dispatcher_, this, std::move(factory_));
+      connection_ = std::make_unique<io::Connection>(fd_, dispatcher_, this, std::move(factory_));
       fd_ = -1;
       status_ = Status::kConnected;
       LOG_INFO("Connected to {}", address_);

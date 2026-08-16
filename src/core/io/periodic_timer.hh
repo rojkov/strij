@@ -2,7 +2,6 @@
 
 #include <cstdint>
 #include <functional>
-#include <memory>
 
 #include "absl/time/time.h"
 #include "strij/event/completable.hh"
