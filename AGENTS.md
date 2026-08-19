@@ -37,9 +37,8 @@ Use `io_uring` as much as possible. Synchronous calls (e.g. `write(2)`) are acce
 - **Private methods** are lowercase.
 - **Constructors/destructors:** adhere to the C++ Rule of Five. Explicitly delete copy and move ctors if not needed to avoid unintended copies.
 - **Struct/class members** use trailing underscore suffix (`success_`, `error_message_`) to distinguish them from scoped local variables.
-- **Namespaces:** `strij::common`, `strij::event`, `strij::io`, `strij::logging`, `strij::gateway`, `strij::nodeagent`, `strij::config`, `strij::utils`, `strij::extensions`. Use relative namespace prefixes, eg. `event::Dispatcher` to reference `strij::event::Dispatcher` when inside `strij::io` namespace.
+- **Namespaces:** Use relative namespace prefixes, eg. `event::Dispatcher` to reference `strij::event::Dispatcher` when inside `strij::io` namespace.
 - **Format:** `.clang-format` — column 100, left-aligned pointers, grouped includes (std, system, "src", "exe", "test", rest).
-- **Lint:** `.clang-tidy` with cppcoreguidelines/modernize/readability checks.
 - **Tag dispatch:** classes that implement `Completable` use `private enum Tags : uint8_t { kX = 0, kY = 1 }` for tag constants.
 - **`using` aliases:** `DispatcherSharedPtr = std::shared_ptr<Dispatcher>`, `ChunkPtr = std::unique_ptr<Chunk>`, `ProtocolParserPtr = std::unique_ptr<ProtocolParser>`, `ResultReceiverPtr = std::unique_ptr<ResultReceiver>`, `FactoryContextPtr = std::unique_ptr<FactoryContext>`, `ConnectionFactory = std::function<std::unique_ptr<ProtocolParser>(Connection&)>`.
 - **Callbacks:** use `std::move_only_function<void(T)>` (C++23) for owning callbacks in parser/handler constructors.
@@ -61,7 +60,6 @@ Use `io_uring` as much as possible. Synchronous calls (e.g. `write(2)`) are acce
 
 ## Testing
 
-- **9 test suites:** `config_loader_test`, `gateway_test`, `connection_test`, `llhttp_parser_test`, `tlv_frame_test`, `tlv_parser_test`, `log_frontend_test`, `nodeagent_tlv_handler_test`, `task_id_test`.
 - Google Test 1.17.0 with GMock. Tests use `//test:mocks/event:event_mocks_lib` (`MockDispatcher`).
 - **Common mocks** in `test/mocks/common/common_mocks.hh`: `TrivialParser` (dummy ProtocolParser returning `NeedMoreData`), `DummyOwner` (no-op CommandHandler). Include via `"test/mocks/..."` path.
 - **Test pattern:** use anonymous namespace inside test file, `namespace strij::X { namespace { ... } }`. Wrap `TEST_F`/`TEST` in `NOLINTBEGIN(modernize-use-trailing-return-type)` / `NOLINTEND`.
