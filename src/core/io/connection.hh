@@ -39,8 +39,8 @@ public:
   // Node for a nodeagent connection, or the TcpListener owner).
   auto GetOwner() -> event::CommandHandler* { return owner_; }
   // Synchronously closes the fd and the outbound mailbox. Used when the owner
-  // tears the connection down directly (e.g. node removal); the deferred
-  // CLOSE_CONNECTION command is not submitted.
+  // tears the connection down directly (e.g. node removal); no deferred
+  // DEFERRED_DELETE command is submitted.
   void Close();
 
 private:

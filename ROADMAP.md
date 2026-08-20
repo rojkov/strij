@@ -6,10 +6,6 @@ The `2026-08-19-node-capabilities-and-scheduling` change has landed the node-man
 
 ## Phase 1 — Correctness & hygiene (do next)
 
-- [ ] **Unify teardown: migrate `CLOSE_CONNECTION` onto `DEFERRED_DELETE`**
-  - Migrate the pre-existing `Command::CLOSE_CONNECTION` usage to the generic `DEFERRED_DELETE` command and document the deferred-delete pattern.
-  - Source: `openspec/changes/archive/2026-08-08-piped-executable-task-handler/proposal.md`, `design.md` (D6). Mechanical, removes a redundant `Command::Type` value.
-
 - [ ] **Gateway receiver lifecycle: clean up `ResultReceiverStorage` on connection drop**
   - `ResultReceiverStorage` currently has no cleanup when connections drop, leaking receivers for in-flight async tasks.
   - Source: TODO `src/core/gateway/result_receiver_storage.hh:40`; overlaps the piped_executable follow-up "per-task cancellation + result-receiver lifecycle on connection drop".

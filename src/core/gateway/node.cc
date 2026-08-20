@@ -103,7 +103,7 @@ void Node::HandleCompletion(uint8_t tag, int res, uint32_t /*flags*/) {
 }
 
 void Node::ProcessCommand(event::Command cmd) {
-  if (cmd.type_ == event::Command::CLOSE_CONNECTION) {
+  if (cmd.type_ == event::Command::DEFERRED_DELETE) {
     connection_.reset();
     status_ = Status::kDisconnected;
   }

@@ -66,7 +66,7 @@ void TcpListener::HandleCompletion(uint8_t /*tag*/, int res, uint32_t flags) {
 }
 
 void TcpListener::ProcessCommand(event::Command cmd) {
-  if (cmd.type_ == event::Command::CLOSE_CONNECTION) {
+  if (cmd.type_ == event::Command::DEFERRED_DELETE) {
     auto* conn = static_cast<Connection*>(cmd.args_);
     auto iter = std::find_if(owned_connections_.begin(), owned_connections_.end(),
                              [conn](const auto& ptr) -> bool { return ptr.get() == conn; });

@@ -19,7 +19,7 @@
 #### Scenario: Connection handles a read error or EOF
 
 - **WHEN** the Dispatcher calls `Connection::HandleCompletion(tag=Read, res<=0)`
-- **THEN** Connection SHALL invoke end-of-stream handling (close fd, submit CLOSE_CONNECTION)
+- **THEN** Connection SHALL invoke end-of-stream handling (close fd, submit DEFERRED_DELETE)
 
 #### Scenario: Connection handles a write completion
 
@@ -36,10 +36,10 @@
 - **WHEN** the Dispatcher calls `Connection::HandleCompletion(tag=Write, res)` with res <= 0
 - **THEN** Connection SHALL clear `write_buf_`, reset `write_offset_` to 0, and log the error
 
-#### Scenario: Connection sends CLOSE_CONNECTION to owner
+#### Scenario: Connection sends DEFERRED_DELETE to owner
 
 - **WHEN** end-of-stream is detected
-- **THEN** Connection SHALL submit a `Command` with `type_=CLOSE_CONNECTION` targeting its owner (`CommandHandler*`)
+- **THEN** Connection SHALL submit a `Command` with `type_=DEFERRED_DELETE` targeting its owner (`CommandHandler*`)
 - **AND** the command payload SHALL contain a `Connection*` pointer to itself
 
 ### Requirement: Connection does not own read buffers

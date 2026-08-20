@@ -234,7 +234,7 @@ TEST_F(ConnectionPartialWriteTest, EndOfStreamClosesMailboxAndSubmitsCloseComman
 
   EXPECT_CALL(*dispatcher, SubmitCommand(::testing::AllOf(
                                ::testing::Field(&strij::event::Command::type_,
-                                                strij::event::Command::CLOSE_CONNECTION),
+                                                 strij::event::Command::DEFERRED_DELETE),
                                ::testing::Field(&strij::event::Command::destination_, &owner))))
       .Times(1);
 

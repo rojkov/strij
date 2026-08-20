@@ -81,7 +81,7 @@ void Connection::onEndOfStream() {
   ::close(fd_);
   mailbox_->Close();
   dispatcher_->SubmitCommand(
-      {.type_ = event::Command::CLOSE_CONNECTION, .destination_ = owner_, .args_ = this});
+      {.type_ = event::Command::DEFERRED_DELETE, .destination_ = owner_, .args_ = this});
 }
 
 } // namespace strij::io

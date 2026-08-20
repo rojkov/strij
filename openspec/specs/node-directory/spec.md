@@ -26,7 +26,7 @@ Manages a pool of `Node` instances that connect to nodeagent servers asynchronou
 - **AND** `Node::GetConnection()` SHALL return `nullptr`
 
 #### Scenario: Node handles connection closure
-- **WHEN** the `Connection` owned by a `Node` sends a `CLOSE_CONNECTION` command
+- **WHEN** the `Connection` owned by a `Node` sends a `DEFERRED_DELETE` command
 - **AND** `Node::ProcessCommand()` receives the command
 - **THEN** the node SHALL reset its `connection_` to `nullptr`
 - **AND** the node SHALL transition to status `kDisconnected`
