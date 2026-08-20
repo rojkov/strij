@@ -14,6 +14,7 @@
 
 #include "core/gateway/gateway_http_handler.hh"
 #include "core/gateway/gateway_tlv_handler.hh"
+#include "core/gateway/exact_state_tracker.hh"
 #include "core/gateway/http_result_receiver.hh"
 #include "core/gateway/requirements_resolver.hh"
 #include "core/gateway/result_receiver_storage.hh"
@@ -145,9 +146,11 @@ protected:
   std::shared_ptr<strij::event::MockDispatcher> dispatcher_{
       std::make_shared<strij::event::MockDispatcher>()};
   NodeDirectory directory_{
-      dispatcher_, [](strij::io::Connection&) -> std::unique_ptr<strij::io::ProtocolParser> {
+      dispatcher_,
+      [](strij::io::Connection&) -> std::unique_ptr<strij::io::ProtocolParser> {
         return std::make_unique<strij::io::TrivialParser>();
-      }};
+      },
+      storage_};
   GatewayTlvHandler handler_{directory_, storage_};
 };
 
@@ -263,7 +266,7 @@ TEST_F(ParamsOnlyRequirementsResolverTest, ReturnsEmptyWhenNoResourcesDeclared) 
 
 TEST_F(GatewayTlvHandlerTest, DispatchResultToReceiver) {
   std::vector<std::byte> delivered;
-  storage_.Put("42", std::make_unique<MockReceiver>(&delivered));
+  storage_.Put("42", std::make_unique<MockReceiver>(&delivered), "node-1");
 
   strij::task::TaskResult result;
   result.set_id("42");
@@ -309,7 +312,7 @@ TEST_F(GatewayTlvHandlerTest, DispatchResultToReceiver) {
 
 TEST_F(GatewayTlvHandlerTest, UnknownTaskIdDropsResult) {
   std::vector<std::byte> delivered;
-  storage_.Put("1", std::make_unique<MockReceiver>(&delivered));
+  storage_.Put("1", std::make_unique<MockReceiver>(&delivered), "node-1");
 
   strij::task::TaskResult result;
   result.set_id("99");
@@ -351,7 +354,7 @@ TEST_F(GatewayTlvHandlerTest, UnknownTaskIdDropsResult) {
 
 TEST_F(GatewayTlvHandlerTest, MalformedResultFrameIsDropped) {
   std::vector<std::byte> delivered;
-  storage_.Put("7", std::make_unique<MockReceiver>(&delivered));
+  storage_.Put("7", std::make_unique<MockReceiver>(&delivered), "node-1");
 
   auto garbage = std::vector<std::byte>{std::byte{0xDE}, std::byte{0xAD}, std::byte{0xBE},
                                         std::byte{0xEF}};
@@ -388,7 +391,7 @@ TEST_F(GatewayTlvHandlerTest, MalformedResultFrameIsDropped) {
 
 TEST_F(GatewayTlvHandlerTest, RejectedTaskRoutesErrorToReceiver) {
   auto errors = std::make_shared<std::vector<std::string>>();
-  storage_.Put("t1", std::make_unique<MockReceiver>(nullptr, nullptr, errors));
+  storage_.Put("t1", std::make_unique<MockReceiver>(nullptr, nullptr, errors), "node-1");
 
   strij::task::TaskRejected rejected;
   rejected.set_id("t1");
@@ -423,7 +426,7 @@ TEST_F(GatewayTlvHandlerTest, RejectedTaskRoutesErrorToReceiver) {
 
 TEST_F(GatewayTlvHandlerTest, RejectedTaskWithoutReceiverIsDropped) {
   auto errors = std::make_shared<std::vector<std::string>>();
-  storage_.Put("t1", std::make_unique<MockReceiver>(nullptr, nullptr, errors));
+  storage_.Put("t1", std::make_unique<MockReceiver>(nullptr, nullptr, errors), "node-1");
 
   strij::task::TaskRejected rejected;
   rejected.set_id("unknown");
@@ -474,7 +477,7 @@ TEST_F(GatewayTlvHandlerTest, IntermediateResultKeepsReceiverUntilFinal) {
   auto finalities = std::make_shared<std::vector<bool>>();
   auto receiver = std::make_unique<MockReceiver>(&delivered, finalities);
   auto* receiver_raw = receiver.get();
-  storage_.Put("42", std::move(receiver));
+  storage_.Put("42", std::move(receiver), "node-1");
 
   int fds[2];
   ASSERT_EQ(0, socketpair(AF_UNIX, SOCK_STREAM, 0, fds));
@@ -515,7 +518,7 @@ TEST_F(GatewayTlvHandlerTest, IntermediateResultKeepsReceiverUntilFinal) {
 TEST_F(GatewayTlvHandlerTest, AbsentIsFinalFieldTreatsResultAsFinal) {
   std::vector<std::byte> delivered;
   auto receiver = std::make_unique<MockReceiver>(&delivered);
-  storage_.Put("7", std::move(receiver));
+  storage_.Put("7", std::move(receiver), "node-1");
 
   int fds[2];
   ASSERT_EQ(0, socketpair(AF_UNIX, SOCK_STREAM, 0, fds));
@@ -655,11 +658,13 @@ TEST_F(GatewayHttpHandlerTest, HandleMessageForwardsParametersToNode) {
 
   // Node directory with one node that we drive into the connected state by
   // simulating a successful connect completion.
+  strij::gateway::ResultReceiverStorage node_storage;
   strij::gateway::NodeDirectory directory(
       dispatcher,
       [](strij::io::Connection&) -> std::unique_ptr<strij::io::ProtocolParser> {
         return std::make_unique<strij::io::TrivialParser>();
-      });
+      },
+      node_storage);
   strij::event::Completable* node_completable = nullptr;
   EXPECT_CALL(*dispatcher,
               PrepareConnect(::testing::_, ::testing::_, ::testing::_, ::testing::_, ::testing::_))
@@ -721,11 +726,13 @@ TEST_F(GatewayHttpHandlerTest, RoutesTaskThroughScheduler) {
         return std::make_unique<strij::io::TrivialParser>();
       });
 
+  strij::gateway::ResultReceiverStorage node_storage2;
   strij::gateway::NodeDirectory directory(
       dispatcher,
       [](strij::io::Connection&) -> std::unique_ptr<strij::io::ProtocolParser> {
         return std::make_unique<strij::io::TrivialParser>();
-      });
+      },
+      node_storage2);
   strij::event::Completable* node_completable = nullptr;
   EXPECT_CALL(*dispatcher,
               PrepareConnect(::testing::_, ::testing::_, ::testing::_, ::testing::_, ::testing::_))
@@ -800,11 +807,13 @@ TEST_F(GatewayHttpHandlerTest, ReturnsServiceUnavailableWhenNoNodeSelected) {
         return std::make_unique<strij::io::TrivialParser>();
       });
 
+  strij::gateway::ResultReceiverStorage node_storage3;
   strij::gateway::NodeDirectory directory(
       dispatcher,
       [](strij::io::Connection&) -> std::unique_ptr<strij::io::ProtocolParser> {
         return std::make_unique<strij::io::TrivialParser>();
-      });
+      },
+      node_storage3);
   strij::event::Completable* node_completable = nullptr;
   EXPECT_CALL(*dispatcher,
               PrepareConnect(::testing::_, ::testing::_, ::testing::_, ::testing::_, ::testing::_))
@@ -835,6 +844,134 @@ TEST_F(GatewayHttpHandlerTest, ReturnsServiceUnavailableWhenNoNodeSelected) {
 
   close(fds[0]);
   close(fds[1]);
+}
+
+// --- Receiver lifecycle tests ---
+
+TEST_F(GatewayTlvHandlerTest, HttpDropErasesReceiver) {
+  ExactStateTracker tracker;
+  ResultReceiverStorage storage{&tracker};
+  std::vector<std::byte> delivered;
+  storage.Put("t1", std::make_unique<MockReceiver>(&delivered), "node-A");
+  tracker.RecordSubmission("t1", "node-A", {});
+  EXPECT_EQ(tracker.InFlight("node-A"), 1U);
+
+  // Simulate HTTP client drop by triggering end-of-stream read.
+  int fds[2];
+  ASSERT_EQ(0, socketpair(AF_UNIX, SOCK_STREAM, 0, fds));
+  auto dispatcher = std::make_shared<strij::event::MockDispatcher>();
+  strij::event::DummyOwner owner;
+  EXPECT_CALL(*dispatcher,
+              PrepareRead(::testing::_, ::testing::_, ::testing::_, ::testing::_, ::testing::_))
+      .WillOnce(::testing::Return());
+  strij::io::Connection http_conn(
+      fds[0], dispatcher, &owner,
+      [](strij::io::Connection&) -> std::unique_ptr<strij::io::ProtocolParser> {
+        return std::make_unique<strij::io::TrivialParser>();
+      });
+
+  // The handler's close callback erases the receiver and records completion.
+  bool close_fired = false;
+  http_conn.Mailbox()->RegisterOnClose([&storage, &close_fired] {
+    close_fired = true;
+    storage.NotifyClientDisconnected("t1");
+  });
+
+  ASSERT_NE(storage.Get("t1"), nullptr);
+  // End-of-stream read (res == 0) closes the connection and fires callbacks.
+  http_conn.HandleCompletion(0 /*kRead*/, 0, 0);
+
+  EXPECT_TRUE(close_fired);
+  EXPECT_EQ(storage.Get("t1"), nullptr);
+  EXPECT_EQ(tracker.InFlight("node-A"), 0U);
+
+  close(fds[1]);
+}
+
+TEST(GatewayReceiverLifecycleTest, HttpDropRecordsCompletion) {
+  ExactStateTracker tracker;
+  ResultReceiverStorage storage{&tracker};
+
+  std::vector<std::byte> delivered;
+  storage.Put("t1", std::make_unique<MockReceiver>(&delivered), "node-A");
+  tracker.RecordSubmission("t1", "node-A", {});
+  EXPECT_EQ(tracker.InFlight("node-A"), 1U);
+
+  // HTTP client drop: receiver erased and tracker completion recorded.
+  storage.NotifyClientDisconnected("t1");
+
+  EXPECT_EQ(storage.Get("t1"), nullptr);
+  EXPECT_EQ(tracker.InFlight("node-A"), 0U);
+}
+
+TEST(GatewayReceiverLifecycleTest, NodeDropDeliversErrorsAndRecordsCompletion) {
+  ExactStateTracker tracker;
+  ResultReceiverStorage storage{&tracker};
+
+  std::vector<std::byte> delivered_a;
+  std::vector<std::byte> delivered_b;
+  auto errors_a = std::make_shared<std::vector<std::string>>();
+  auto errors_b = std::make_shared<std::vector<std::string>>();
+  storage.Put("t1", std::make_unique<MockReceiver>(&delivered_a, nullptr, errors_a), "node-A");
+  storage.Put("t2", std::make_unique<MockReceiver>(&delivered_b, nullptr, errors_b), "node-A");
+  storage.Put("t3", std::make_unique<MockReceiver>(&delivered_b, nullptr, errors_b), "node-B");
+
+  // Record submissions so tracker has something to complete.
+  tracker.RecordSubmission("t1", "node-A", {});
+  tracker.RecordSubmission("t2", "node-A", {});
+  tracker.RecordSubmission("t3", "node-B", {});
+
+  storage.NotifyNodeDisconnected("node-A");
+
+  // Receivers for node-A are erased with errors delivered.
+  EXPECT_EQ(storage.Get("t1"), nullptr);
+  EXPECT_EQ(storage.Get("t2"), nullptr);
+  EXPECT_THAT(*errors_a, ::testing::ElementsAre("node disconnected"));
+
+  // Tracker accounting for node-A is unwound; node-B is untouched.
+  EXPECT_EQ(tracker.InFlight("node-A"), 0U);
+  EXPECT_EQ(tracker.InFlight("node-B"), 1U);
+
+  // Receiver for node-B is untouched.
+  EXPECT_NE(storage.Get("t3"), nullptr);
+}
+
+TEST(GatewayReceiverLifecycleTest, NodeDropNoReceiversIsNoop) {
+  ExactStateTracker tracker;
+  ResultReceiverStorage storage{&tracker};
+  storage.NotifyNodeDisconnected("nonexistent");
+  EXPECT_TRUE(storage.Empty());
+}
+
+TEST(GatewayReceiverLifecycleTest, IdempotentDoubleErase) {
+  ResultReceiverStorage storage;
+
+  std::vector<std::byte> delivered;
+  storage.Put("t1", std::make_unique<MockReceiver>(&delivered), "node-A");
+
+  // Erase once — simulates normal completion path.
+  storage.Erase("t1");
+  EXPECT_EQ(storage.Get("t1"), nullptr);
+
+  // Second erase — simulates close callback firing after result delivered.
+  storage.Erase("t1");
+  EXPECT_EQ(storage.Get("t1"), nullptr);
+}
+
+TEST(GatewayReceiverLifecycleTest, NodeDropDeliversErrorWhileHttpAlive) {
+  ExactStateTracker tracker;
+  ResultReceiverStorage storage{&tracker};
+
+  std::vector<std::byte> delivered;
+  auto errors = std::make_shared<std::vector<std::string>>();
+  storage.Put("t1", std::make_unique<MockReceiver>(&delivered, nullptr, errors), "node-A");
+  tracker.RecordSubmission("t1", "node-A", {});
+
+  storage.NotifyNodeDisconnected("node-A");
+
+  EXPECT_EQ(storage.Get("t1"), nullptr);
+  ASSERT_EQ(errors->size(), 1U);
+  EXPECT_EQ(errors->at(0), "node disconnected");
 }
 
 } // namespace

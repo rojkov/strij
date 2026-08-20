@@ -11,11 +11,12 @@
 
 namespace strij::gateway {
 
-NodeDirectory::NodeDirectory(event::DispatcherSharedPtr dispatcher, io::ConnectionFactory factory)
-    : dispatcher_{std::move(dispatcher)}, factory_{std::move(factory)} {}
+NodeDirectory::NodeDirectory(event::DispatcherSharedPtr dispatcher, io::ConnectionFactory factory,
+                             ResultReceiverStorage& storage)
+    : dispatcher_{std::move(dispatcher)}, factory_{std::move(factory)}, storage_{storage} {}
 
 void NodeDirectory::AddNode(const std::string& node_id, const std::string& address) {
-  auto node = std::make_unique<Node>(node_id, address, dispatcher_, factory_);
+  auto node = std::make_unique<Node>(node_id, address, dispatcher_, factory_, storage_);
   Node* node_raw_ptr = node.get();
   nodes_.insert_or_assign(node_id, std::move(node));
   node_raw_ptr->StartConnect();

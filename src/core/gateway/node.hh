@@ -14,12 +14,14 @@
 
 namespace strij::gateway {
 
+class ResultReceiverStorage;
+
 class Node : public event::Completable, public event::CommandHandler {
 public:
   enum class Status : uint8_t { kInitial, kConnecting, kConnected, kDisconnected };
 
   Node(std::string node_id, std::string address, event::DispatcherSharedPtr dispatcher,
-       io::ConnectionFactory factory);
+       io::ConnectionFactory factory, ResultReceiverStorage& storage);
   ~Node() override = default;
 
   Node(const Node&) = delete;
@@ -68,6 +70,7 @@ private:
   event::DispatcherSharedPtr dispatcher_;
   io::ConnectionFactory factory_;
   io::ConnectionPtr connection_;
+  ResultReceiverStorage& storage_;
   std::unique_ptr<node::NodeCapabilities> capabilities_;
   std::unique_ptr<node::NodeState> state_;
 };

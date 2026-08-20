@@ -106,7 +106,11 @@ void GatewayHttpHandler::HandleMessage(const io::HttpRequest& request, io::Conne
   auto* nodeagent_conn = node->GetConnection();
 
   auto receiver = make_receiver_(conn);
-  storage_.Put(task_id, std::move(receiver));
+  storage_.Put(task_id, std::move(receiver), std::string(node->GetNodeId()));
+
+  // Clean up the receiver if the HTTP client drops before the task completes.
+  conn.Mailbox()->RegisterOnClose(
+      [&storage = storage_, task_id]() { storage.NotifyClientDisconnected(task_id); });
 
   if (state_tracker_ != nullptr) {
     state_tracker_->RecordSubmission(task_id, node->GetNodeId(), requirements);

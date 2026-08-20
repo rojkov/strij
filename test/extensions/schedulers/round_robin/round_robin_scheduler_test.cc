@@ -7,6 +7,7 @@
 
 #include "core/extensions/extension_registry.hh"
 #include "core/gateway/node_directory.hh"
+#include "core/gateway/result_receiver_storage.hh"
 #include "core/io/protocol_parser.hh"
 #include "core/node/capabilities.pb.h"
 #include "extensions/schedulers/round_robin/round_robin_scheduler.hh"
@@ -20,14 +21,17 @@ class RoundRobinSchedulerTest : public ::testing::Test {
 protected:
   std::shared_ptr<strij::event::MockDispatcher> dispatcher_{
       std::make_shared<strij::event::MockDispatcher>()};
+  strij::gateway::ResultReceiverStorage storage_;
 
   // Creates a directory and brings every node into the connected state.
   auto MakeConnectedDirectory(std::initializer_list<std::string> ids)
       -> std::unique_ptr<strij::gateway::NodeDirectory> {
     auto directory = std::make_unique<strij::gateway::NodeDirectory>(
-        dispatcher_, [](strij::io::Connection&) -> std::unique_ptr<strij::io::ProtocolParser> {
+        dispatcher_,
+        [](strij::io::Connection&) -> std::unique_ptr<strij::io::ProtocolParser> {
           return std::make_unique<strij::io::TrivialParser>();
-        });
+        },
+        storage_);
     EXPECT_CALL(*dispatcher_, PrepareConnect(::testing::_, ::testing::_, ::testing::_, ::testing::_,
                                              ::testing::_))
         .WillRepeatedly(::testing::Return());
