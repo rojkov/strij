@@ -56,14 +56,14 @@ When a node connection drops, all receivers for tasks that were routed to that n
 
 ### Requirement: `NotifyNodeDisconnected` is self-contained
 
-The `NotifyNodeDisconnected(node_id)` method SHALL own a `task_id → node_id` mapping populated by `put()` and cleared by `erase()`. It SHALL NOT depend on `ExactStateTracker` internals for finding tasks by node, ensuring the cleanup survives future state model replacements.
+The `NotifyNodeDisconnected(node_id)` method SHALL own a `task_id → node_id` mapping populated by `Put()` and cleared by `Erase()`. It SHALL NOT depend on `ExactStateTracker` internals for finding tasks by node, ensuring the cleanup survives future state model replacements.
 
 #### Scenario: Task-to-node mapping populated on put
 
-- **WHEN** `put("task_1", receiver, "node_A")` is called
+- **WHEN** `Put("task_1", receiver, "node_A")` is called
 - **THEN** `NotifyNodeDisconnected("node_A")` SHALL find `task_1`
 
 #### Scenario: Task-to-node mapping cleared on erase
 
-- **WHEN** `erase("task_1")` is called after `put("task_1", receiver, "node_A")`
+- **WHEN** `Erase("task_1")` is called after `Put("task_1", receiver, "node_A")`
 - **THEN** `NotifyNodeDisconnected("node_A")` SHALL NOT find `task_1`

@@ -27,7 +27,7 @@ Both must be handled. Both use the same underlying mechanism (`OutboundMailbox::
 
 ### D1: Extend `ResultReceiverStorage` with `task_id → node_id` mapping
 
-**Decision**: `ResultReceiverStorage` owns a `node_of_task_` map populated by `put(task_id, receiver, node_id)` and cleared by `erase()`. A new `NotifyNodeDisconnected(node_id)` method iterates this map, finds all receivers for the node, delivers errors, erases receivers, and calls `RecordCompletion` on the state tracker.
+**Decision**: `ResultReceiverStorage` owns a `node_of_task_` map populated by `Put(task_id, receiver, node_id)` and cleared by `Erase()`. A new `NotifyNodeDisconnected(node_id)` method iterates this map, finds all receivers for the node, delivers errors, erases receivers, and calls `RecordCompletion` on the state tracker.
 
 **Alternatives considered:**
 - *Put `TasksForNode()` on `ExactStateTracker`*: rejected because the tracker is a v1 mechanism explicitly slated for replacement by the D10 cached/distributed model. Coupling receiver cleanup to it would make the tracker harder to replace.
@@ -37,19 +37,19 @@ Both must be handled. Both use the same underlying mechanism (`OutboundMailbox::
 
 ### D2: HTTP client cleanup via mailbox close callback in `GatewayHttpHandler`
 
-**Decision**: After `storage_.put(task_id, receiver)`, register a close callback on the HTTP connection's mailbox:
+**Decision**: After `storage_.Put(task_id, receiver)`, register a close callback on the HTTP connection's mailbox:
 
 ```cpp
 conn.Mailbox()->RegisterOnClose(
     [&storage = storage_, task_id, &tracker = state_tracker_]() {
-      storage.erase(task_id);
+      storage.Erase(task_id);
       if (tracker != nullptr) {
         tracker->RecordCompletion(task_id);
       }
     });
 ```
 
-**Rationale**: The callback fires synchronously within `onEndOfStream()` while the `Connection` object is still alive. `unordered_map::erase` for a missing key is a no-op, so the normal final-result path (which also calls `erase`) doesn't conflict.
+**Rationale**: The callback fires synchronously within `onEndOfStream()` while the `Connection` object is still alive. `unordered_map::erase` for a missing key is a no-op, so the normal final-result path (which also calls `Erase`) doesn't conflict.
 
 ### D3: Node cleanup via mailbox close callback in `Node`
 
@@ -80,7 +80,7 @@ close_token_ = connection_->Mailbox()->RegisterOnClose([this]() {
   HTTP client          Gateway                    Node Agent
        │                    │                          │
        │── POST /tasks ────▶│                          │
-       │                    │ storage.put(id, recv)    │
+        │                    │ storage.Put(id, recv)    │
        │                    │ mailbox.RegisterOnClose()│
        │                    │── TLV TaskSubmission ───▶│
        │                    │                          │
@@ -89,12 +89,12 @@ close_token_ = connection_->Mailbox()->RegisterOnClose([this]() {
        │              │ onEndOfStream                  │
        │              │ mailbox.Close()                │
        │              │   callback:                    │
-       │              │     storage.erase(id)          │
+        │              │     storage.Erase(id)          │
        │              │     tracker.RecordCompletion   │
        │              └────────────┘                   │
        │                    │                          │
        │                    │◀── kResult (late) ───────│
-       │                    │   storage.get(id)→nullptr│
+        │                    │   storage.Get(id)→nullptr│
        │                    │   → warning, dropped     │
 ```
 
@@ -112,14 +112,14 @@ close_token_ = connection_->Mailbox()->RegisterOnClose([this]() {
        │                  │              │     find tasks│
        │                  │              │     recv→     │
        │                  │              │       DeliverError│
-       │                  │              │     storage.erase│
+        │                  │              │     storage.Erase│
        │                  │              │     tracker.Record│
        │                  │              └─────────────┘
 ```
 
 ## Risks / Trade-offs
 
-- **[Double cleanup idempotency]** If both the HTTP and node callbacks fire for the same task_id (both connections drop), `storage.erase()` is called twice. This is safe: `unordered_map::erase` for a missing key is a no-op. The `tracker.RecordCompletion` call is also idempotent (no-op for unknown task_id). → No mitigation needed; inherent in the design.
+- **[Double cleanup idempotency]** If both the HTTP and node callbacks fire for the same task_id (both connections drop), `storage.Erase()` is called twice. This is safe: `unordered_map::erase` for a missing key is a no-op. The `tracker.RecordCompletion` call is also idempotent (no-op for unknown task_id). → No mitigation needed; inherent in the design.
 
 - **[Stale `per_node_` in ExactStateTracker]** After cleaning up all tasks for a disconnected node, the `per_node_[node_id]` entry stays at zero in-flight. If the node reappears, the next `kNodeState` heartbeat corrects it via `ApplyStateSnapshot`. If the node never returns, the entry is harmless memory. → Acceptable; the entry is small and bounded by the number of distinct nodes ever seen.
 

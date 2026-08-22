@@ -3,16 +3,16 @@
 ## MODIFIED Requirements
 
 ### Requirement: ResultReceiverStorage maps task_ids to receivers
-`ResultReceiverStorage` SHALL be an associative container mapping `std::string` task_ids to result receiver objects. It SHALL support `put(task_id, receiver, node_id)`, `get(task_id)`, and `erase(task_id)` operations. The `put` operation SHALL record the association between the task and the node it was routed to. The storage SHALL be thread-safe for concurrent access from HTTP and TLV handlers (if handlers run on different threads).
+`ResultReceiverStorage` SHALL be an associative container mapping `std::string` task_ids to result receiver objects. It SHALL support `Put(task_id, receiver, node_id)`, `Get(task_id)`, and `Erase(task_id)` operations. The `Put` operation SHALL record the association between the task and the node it was routed to. The storage SHALL be thread-safe for concurrent access from HTTP and TLV handlers (if handlers run on different threads).
 
 #### Scenario: Store and retrieve a receiver
-- **WHEN** `put("happy_fox_runs_k7m2x9p4", receiver, "node_A")` is called
-- **THEN** `get("happy_fox_runs_k7m2x9p4")` SHALL return a pointer to the stored receiver
-- **AND** `get("other_id_12345678")` SHALL return nullptr
+- **WHEN** `Put("happy_fox_runs_k7m2x9p4", receiver, "node_A")` is called
+- **THEN** `Get("happy_fox_runs_k7m2x9p4")` SHALL return a pointer to the stored receiver
+- **AND** `Get("other_id_12345678")` SHALL return nullptr
 
 #### Scenario: Erase a receiver
-- **WHEN** `erase("happy_fox_runs_k7m2x9p4")` is called after `put("happy_fox_runs_k7m2x9p4", receiver, "node_A")`
-- **THEN** `get("happy_fox_runs_k7m2x9p4")` SHALL return nullptr
+- **WHEN** `Erase("happy_fox_runs_k7m2x9p4")` is called after `Put("happy_fox_runs_k7m2x9p4", receiver, "node_A")`
+- **THEN** `Get("happy_fox_runs_k7m2x9p4")` SHALL return nullptr
 - **AND** the task-to-node association SHALL be removed
 
 ### Requirement: GatewayHttpHandler creates tasks from HTTP requests

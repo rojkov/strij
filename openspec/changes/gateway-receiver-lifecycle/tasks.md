@@ -1,12 +1,12 @@
 ## 1. ResultReceiverStorage: node-aware cleanup
 
-- [ ] 1.1 Add `node_of_task_` map (`std::unordered_map<std::string, std::string>`) and modify `put()` to accept and store `node_id`
-- [ ] 1.2 Modify `erase()` to also clear the `node_of_task_` entry
-- [ ] 1.3 Add `NotifyNodeDisconnected(const std::string& node_id)` method: iterate `node_of_task_`, find matching tasks, call `receiver->DeliverError()`, `erase()`, and `tracker->RecordCompletion()` for each
+- [ ] 1.1 Add `node_of_task_` map (`std::unordered_map<std::string, std::string>`) and modify `Put()` to accept and store `node_id`
+- [ ] 1.2 Modify `Erase()` to also clear the `node_of_task_` entry
+- [ ] 1.3 Add `NotifyNodeDisconnected(const std::string& node_id)` method: iterate `node_of_task_`, find matching tasks, call `receiver->DeliverError()`, `Erase()`, and `tracker->RecordCompletion()` for each
 
 ## 2. HTTP client drop cleanup
 
-- [ ] 2.1 In `GatewayHttpHandler::HandleMessage`, after `storage_.put()`, register a mailbox close callback on the HTTP connection that calls `storage_.erase(task_id)` and `state_tracker_->RecordCompletion(task_id)`
+- [ ] 2.1 In `GatewayHttpHandler::HandleMessage`, after `storage_.Put()`, register a mailbox close callback on the HTTP connection that calls `storage_.Erase(task_id)` and `state_tracker_->RecordCompletion(task_id)`
 
 ## 3. Node connection drop cleanup
 
