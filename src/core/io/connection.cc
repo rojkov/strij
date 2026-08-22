@@ -58,6 +58,9 @@ void Connection::HandleCompletion(uint8_t tag, int res, uint32_t /*flags*/) {
 }
 
 void Connection::Write(std::span<const std::byte> data) {
+  if (fd_ < 0) {
+    return;
+  }
   write_queue_.emplace_back(data.begin(), data.end());
   if (write_queue_.size() == 1) {
     dispatcher_->PrepareWrite(
@@ -79,6 +82,7 @@ void Connection::Close() {
 
 void Connection::onEndOfStream() {
   ::close(fd_);
+  fd_ = -1;
   mailbox_->Close();
   dispatcher_->SubmitCommand(
       {.type_ = event::Command::DEFERRED_DELETE, .destination_ = owner_, .args_ = this});
