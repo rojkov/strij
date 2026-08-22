@@ -6,9 +6,13 @@ The `2026-08-19-node-capabilities-and-scheduling` change has landed the node-man
 
 ## Phase 1 — Correctness & hygiene (do next)
 
-- [ ] **Gateway receiver lifecycle: clean up `ResultReceiverStorage` on connection drop**
+- [x] **Gateway receiver lifecycle: clean up `ResultReceiverStorage` on connection drop**
   - `ResultReceiverStorage` currently has no cleanup when connections drop, leaking receivers for in-flight async tasks.
   - Source: TODO `src/core/gateway/result_receiver_storage.hh:40`; overlaps the piped_executable follow-up "per-task cancellation + result-receiver lifecycle on connection drop".
+
+- [ ] **io_uring write-after-close race (SIGPIPE)**
+  - Within a single io_uring CQE batch, a handler may submit a write SQE (e.g. delivering a task result to an HTTP connection) and then the same batch contains the EOF for that connection, closing the fd. The stale SQE is submitted on the next `io_uring_submit_and_wait`, causing the kernel to deliver SIGPIPE. Currently masked by `signal(SIGPIPE, SIG_IGN)` in `gateway.cc` — the write completion handler already treats `res <= 0` as an error and tears down the connection. The proper fix is to defer SQE submission: queue write data in `Connection::Write()` without calling `PrepareWrite`, and submit all pending writes after the CQE batch is drained. The same race applies to node disconnect paths where `NotifyNodeDisconnected` writes to HTTP connections. Affects both gateway and nodeagent.
+  - Source: SIGPIPE crash reported during HTTP client drop with in-flight task; `src/core/io/connection.cc:60`, `src/core/event/dispatcher_impl.cc:47`.
 
 - [ ] **`TcpListener`: guard against shutdown in progress**
   - Accept path does not check whether shutdown is underway.

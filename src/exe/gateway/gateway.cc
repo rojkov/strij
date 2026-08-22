@@ -43,6 +43,14 @@ ABSL_FLAG(std::string, log_format, "", "Override log format (text|json)");
 // NOLINTEND
 
 auto main(int argc, char** argv) -> int {
+  // Suppress SIGPIPE. Within a single io_uring CQE batch a write SQE can be
+  // queued (e.g. delivering a task result to an HTTP connection) and then the
+  // target fd closed (HTTP EOF in the same batch). The stale SQE is submitted
+  // on the next io_uring_submit_and_wait, causing the kernel to deliver
+  // SIGPIPE. The write completion handler already treats <= 0 as an error and
+  // tears down the connection. A proper fix is to defer SQE submission until
+  // after all CQEs in the batch are drained (see ROADMAP.md).
+  signal(SIGPIPE, SIG_IGN);
   absl::ParseCommandLine(argc, argv);
 
   // Load configuration
