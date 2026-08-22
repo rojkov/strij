@@ -96,13 +96,13 @@ auto GatewayTlvHandler::handleTaskRejectedFrame(const io::TlvFrame& frame, io::C
     return absl::InvalidArgumentError("malformed task::TaskRejected message");
   }
 
-  auto* receiver = storage_.get(rejected.id());
+  auto* receiver = storage_.Get(rejected.id());
   if (receiver == nullptr) {
     return absl::InternalError(std::format("No receiver for rejected task {}", rejected.id()));
   }
 
   receiver->DeliverError(rejected.reason());
-  storage_.erase(rejected.id());
+  storage_.Erase(rejected.id());
   if (state_tracker_ != nullptr) {
     state_tracker_->RecordCompletion(rejected.id());
   }
@@ -120,7 +120,7 @@ auto GatewayTlvHandler::handleTaskResultFrame(const io::TlvFrame& frame, io::Con
     return absl::InvalidArgumentError("malformed task::TaskResult message");
   }
 
-  auto* receiver = storage_.get(result.id());
+  auto* receiver = storage_.Get(result.id());
   if (receiver == nullptr) {
     return absl::InternalError(std::format("No receiver for task {}", result.id()));
   }
@@ -131,7 +131,7 @@ auto GatewayTlvHandler::handleTaskResultFrame(const io::TlvFrame& frame, io::Con
   receiver->Deliver(body, is_final);
 
   if (is_final) {
-    storage_.erase(result.id());
+    storage_.Erase(result.id());
 
     if (state_tracker_ != nullptr) {
       state_tracker_->RecordCompletion(result.id());

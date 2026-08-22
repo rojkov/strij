@@ -263,7 +263,7 @@ TEST_F(ParamsOnlyRequirementsResolverTest, ReturnsEmptyWhenNoResourcesDeclared) 
 
 TEST_F(GatewayTlvHandlerTest, DispatchResultToReceiver) {
   std::vector<std::byte> delivered;
-  storage_.put("42", std::make_unique<MockReceiver>(&delivered));
+  storage_.Put("42", std::make_unique<MockReceiver>(&delivered));
 
   strij::task::TaskResult result;
   result.set_id("42");
@@ -301,7 +301,7 @@ TEST_F(GatewayTlvHandlerTest, DispatchResultToReceiver) {
                                          std::byte{'D'}};
   ASSERT_EQ(delivered.size(), expected.size());
   EXPECT_TRUE(std::equal(delivered.begin(), delivered.end(), expected.begin()));
-  EXPECT_EQ(storage_.get("42"), nullptr);
+  EXPECT_EQ(storage_.Get("42"), nullptr);
 
   close(fds[0]);
   close(fds[1]);
@@ -309,7 +309,7 @@ TEST_F(GatewayTlvHandlerTest, DispatchResultToReceiver) {
 
 TEST_F(GatewayTlvHandlerTest, UnknownTaskIdDropsResult) {
   std::vector<std::byte> delivered;
-  storage_.put("1", std::make_unique<MockReceiver>(&delivered));
+  storage_.Put("1", std::make_unique<MockReceiver>(&delivered));
 
   strij::task::TaskResult result;
   result.set_id("99");
@@ -343,7 +343,7 @@ TEST_F(GatewayTlvHandlerTest, UnknownTaskIdDropsResult) {
   handler_.HandleFrame(received_frames[0], conn);
 
   EXPECT_TRUE(delivered.empty());
-  EXPECT_NE(storage_.get("1"), nullptr);
+  EXPECT_NE(storage_.Get("1"), nullptr);
 
   close(fds[0]);
   close(fds[1]);
@@ -351,7 +351,7 @@ TEST_F(GatewayTlvHandlerTest, UnknownTaskIdDropsResult) {
 
 TEST_F(GatewayTlvHandlerTest, MalformedResultFrameIsDropped) {
   std::vector<std::byte> delivered;
-  storage_.put("7", std::make_unique<MockReceiver>(&delivered));
+  storage_.Put("7", std::make_unique<MockReceiver>(&delivered));
 
   auto garbage = std::vector<std::byte>{std::byte{0xDE}, std::byte{0xAD}, std::byte{0xBE},
                                         std::byte{0xEF}};
@@ -380,7 +380,7 @@ TEST_F(GatewayTlvHandlerTest, MalformedResultFrameIsDropped) {
   handler_.HandleFrame(received_frames[0], conn);
 
   EXPECT_TRUE(delivered.empty());
-  EXPECT_NE(storage_.get("7"), nullptr);
+  EXPECT_NE(storage_.Get("7"), nullptr);
 
   close(fds[0]);
   close(fds[1]);
@@ -388,7 +388,7 @@ TEST_F(GatewayTlvHandlerTest, MalformedResultFrameIsDropped) {
 
 TEST_F(GatewayTlvHandlerTest, RejectedTaskRoutesErrorToReceiver) {
   auto errors = std::make_shared<std::vector<std::string>>();
-  storage_.put("t1", std::make_unique<MockReceiver>(nullptr, nullptr, errors));
+  storage_.Put("t1", std::make_unique<MockReceiver>(nullptr, nullptr, errors));
 
   strij::task::TaskRejected rejected;
   rejected.set_id("t1");
@@ -415,7 +415,7 @@ TEST_F(GatewayTlvHandlerTest, RejectedTaskRoutesErrorToReceiver) {
 
   ASSERT_EQ(errors->size(), 1U);
   EXPECT_EQ((*errors)[0], "gpu.h100 exhausted");
-  EXPECT_EQ(storage_.get("t1"), nullptr);
+  EXPECT_EQ(storage_.Get("t1"), nullptr);
 
   close(fds[0]);
   close(fds[1]);
@@ -423,7 +423,7 @@ TEST_F(GatewayTlvHandlerTest, RejectedTaskRoutesErrorToReceiver) {
 
 TEST_F(GatewayTlvHandlerTest, RejectedTaskWithoutReceiverIsDropped) {
   auto errors = std::make_shared<std::vector<std::string>>();
-  storage_.put("t1", std::make_unique<MockReceiver>(nullptr, nullptr, errors));
+  storage_.Put("t1", std::make_unique<MockReceiver>(nullptr, nullptr, errors));
 
   strij::task::TaskRejected rejected;
   rejected.set_id("unknown");
@@ -449,7 +449,7 @@ TEST_F(GatewayTlvHandlerTest, RejectedTaskWithoutReceiverIsDropped) {
       conn);
 
   EXPECT_TRUE(errors->empty());
-  EXPECT_NE(storage_.get("t1"), nullptr);
+  EXPECT_NE(storage_.Get("t1"), nullptr);
 
   close(fds[0]);
   close(fds[1]);
@@ -474,7 +474,7 @@ TEST_F(GatewayTlvHandlerTest, IntermediateResultKeepsReceiverUntilFinal) {
   auto finalities = std::make_shared<std::vector<bool>>();
   auto receiver = std::make_unique<MockReceiver>(&delivered, finalities);
   auto* receiver_raw = receiver.get();
-  storage_.put("42", std::move(receiver));
+  storage_.Put("42", std::move(receiver));
 
   int fds[2];
   ASSERT_EQ(0, socketpair(AF_UNIX, SOCK_STREAM, 0, fds));
@@ -494,7 +494,7 @@ TEST_F(GatewayTlvHandlerTest, IntermediateResultKeepsReceiverUntilFinal) {
   intermediate.set_is_final(false);
   auto intermediate_serialized = SerializeTaskResult(intermediate);
   handler_.HandleFrame(toTlvFrame(intermediate_serialized), conn);
-  EXPECT_EQ(storage_.get("42"), receiver_raw);
+  EXPECT_EQ(storage_.Get("42"), receiver_raw);
   ASSERT_EQ(finalities->size(), 1U);
   EXPECT_FALSE((*finalities)[0]);
 
@@ -504,7 +504,7 @@ TEST_F(GatewayTlvHandlerTest, IntermediateResultKeepsReceiverUntilFinal) {
   final_result.set_is_final(true);
   auto final_serialized = SerializeTaskResult(final_result);
   handler_.HandleFrame(toTlvFrame(final_serialized), conn);
-  EXPECT_EQ(storage_.get("42"), nullptr);
+  EXPECT_EQ(storage_.Get("42"), nullptr);
   ASSERT_EQ(finalities->size(), 2U);
   EXPECT_TRUE((*finalities)[1]);
 
@@ -515,7 +515,7 @@ TEST_F(GatewayTlvHandlerTest, IntermediateResultKeepsReceiverUntilFinal) {
 TEST_F(GatewayTlvHandlerTest, AbsentIsFinalFieldTreatsResultAsFinal) {
   std::vector<std::byte> delivered;
   auto receiver = std::make_unique<MockReceiver>(&delivered);
-  storage_.put("7", std::move(receiver));
+  storage_.Put("7", std::move(receiver));
 
   int fds[2];
   ASSERT_EQ(0, socketpair(AF_UNIX, SOCK_STREAM, 0, fds));
@@ -534,7 +534,7 @@ TEST_F(GatewayTlvHandlerTest, AbsentIsFinalFieldTreatsResultAsFinal) {
   result.set_body("done");
   auto result_serialized = SerializeTaskResult(result);
   handler_.HandleFrame(toTlvFrame(result_serialized), conn);
-  EXPECT_EQ(storage_.get("7"), nullptr);
+  EXPECT_EQ(storage_.Get("7"), nullptr);
 
   close(fds[0]);
   close(fds[1]);
