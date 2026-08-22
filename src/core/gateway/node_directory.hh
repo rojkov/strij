@@ -19,10 +19,16 @@ class ResultReceiverStorage;
 // Owns the pool of Node instances, keyed by the stable node_id. Membership is
 // driven by repeated discovery snapshots via Reconcile(); the gateway never
 // invents nodes.
-class NodeDirectory {
+class NodeDirectory final {
 public:
   NodeDirectory(event::DispatcherSharedPtr dispatcher, io::ConnectionFactory factory,
                 ResultReceiverStorage& storage);
+  ~NodeDirectory() = default;
+
+  NodeDirectory(const NodeDirectory&) = delete;
+  auto operator=(const NodeDirectory&) -> NodeDirectory& = delete;
+  NodeDirectory(NodeDirectory&&) noexcept = delete;
+  auto operator=(NodeDirectory&&) noexcept -> NodeDirectory& = delete;
 
   // Adds a node and starts connecting it. A no-op for an existing node_id.
   void AddNode(const std::string& node_id, const std::string& address);

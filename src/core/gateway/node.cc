@@ -95,9 +95,8 @@ void Node::HandleCompletion(uint8_t tag, int res, uint32_t /*flags*/) {
       status_ = Status::kConnected;
 
       // Clean up orphaned receivers if this node connection drops.
-      connection_->Mailbox()->RegisterOnClose([this]() {
-        storage_.NotifyNodeDisconnected(node_id_);
-      });
+      connection_->Mailbox()->RegisterOnClose(
+          [this]() { storage_.NotifyNodeDisconnected(node_id_); });
 
       LOG_INFO("Connected to {}", address_);
     } else {
