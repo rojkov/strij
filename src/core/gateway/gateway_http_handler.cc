@@ -110,7 +110,7 @@ void GatewayHttpHandler::HandleMessage(const io::HttpRequest& request, io::Conne
 
   // Clean up the receiver if the HTTP client drops before the task completes.
   conn.Mailbox()->RegisterOnClose([&storage = storage_, task_id]() {
-    storage.Erase(task_id);
+    storage.NotifyClientDisconnected(task_id);
   });
 
   if (state_tracker_ != nullptr) {

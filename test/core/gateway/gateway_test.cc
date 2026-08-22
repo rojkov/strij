@@ -849,8 +849,12 @@ TEST_F(GatewayHttpHandlerTest, ReturnsServiceUnavailableWhenNoNodeSelected) {
 // --- Receiver lifecycle tests ---
 
 TEST_F(GatewayTlvHandlerTest, HttpDropErasesReceiver) {
+  ExactStateTracker tracker;
+  ResultReceiverStorage storage{&tracker};
   std::vector<std::byte> delivered;
-  storage_.Put("t1", std::make_unique<MockReceiver>(&delivered), "node-A");
+  storage.Put("t1", std::make_unique<MockReceiver>(&delivered), "node-A");
+  tracker.RecordSubmission("t1", "node-A", {});
+  EXPECT_EQ(tracker.InFlight("node-A"), 1U);
 
   // Simulate HTTP client drop by triggering end-of-stream read.
   int fds[2];
@@ -866,20 +870,38 @@ TEST_F(GatewayTlvHandlerTest, HttpDropErasesReceiver) {
         return std::make_unique<strij::io::TrivialParser>();
       });
 
+  // The handler's close callback erases the receiver and records completion.
   bool close_fired = false;
-  http_conn.Mailbox()->RegisterOnClose([this, &close_fired] {
+  http_conn.Mailbox()->RegisterOnClose([&storage, &close_fired] {
     close_fired = true;
-    storage_.Erase("t1");
+    storage.NotifyClientDisconnected("t1");
   });
 
-  ASSERT_NE(storage_.Get("t1"), nullptr);
+  ASSERT_NE(storage.Get("t1"), nullptr);
   // End-of-stream read (res == 0) closes the connection and fires callbacks.
   http_conn.HandleCompletion(0 /*kRead*/, 0, 0);
 
   EXPECT_TRUE(close_fired);
-  EXPECT_EQ(storage_.Get("t1"), nullptr);
+  EXPECT_EQ(storage.Get("t1"), nullptr);
+  EXPECT_EQ(tracker.InFlight("node-A"), 0U);
 
   close(fds[1]);
+}
+
+TEST(GatewayReceiverLifecycleTest, HttpDropRecordsCompletion) {
+  ExactStateTracker tracker;
+  ResultReceiverStorage storage{&tracker};
+
+  std::vector<std::byte> delivered;
+  storage.Put("t1", std::make_unique<MockReceiver>(&delivered), "node-A");
+  tracker.RecordSubmission("t1", "node-A", {});
+  EXPECT_EQ(tracker.InFlight("node-A"), 1U);
+
+  // HTTP client drop: receiver erased and tracker completion recorded.
+  storage.NotifyClientDisconnected("t1");
+
+  EXPECT_EQ(storage.Get("t1"), nullptr);
+  EXPECT_EQ(tracker.InFlight("node-A"), 0U);
 }
 
 TEST(GatewayReceiverLifecycleTest, NodeDropDeliversErrorsAndRecordsCompletion) {
@@ -905,6 +927,10 @@ TEST(GatewayReceiverLifecycleTest, NodeDropDeliversErrorsAndRecordsCompletion) {
   EXPECT_EQ(storage.Get("t1"), nullptr);
   EXPECT_EQ(storage.Get("t2"), nullptr);
   EXPECT_THAT(*errors_a, ::testing::ElementsAre("node disconnected"));
+
+  // Tracker accounting for node-A is unwound; node-B is untouched.
+  EXPECT_EQ(tracker.InFlight("node-A"), 0U);
+  EXPECT_EQ(tracker.InFlight("node-B"), 1U);
 
   // Receiver for node-B is untouched.
   EXPECT_NE(storage.Get("t3"), nullptr);

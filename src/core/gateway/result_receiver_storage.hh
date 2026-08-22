@@ -61,6 +61,11 @@ public:
   // in the state tracker.
   void NotifyNodeDisconnected(const std::string& node_id);
 
+  // Cleans up the receiver for a task whose HTTP client disconnected before
+  // the task completed. Removes the receiver and records completion in the
+  // state tracker so the node's in-flight accounting is unwound.
+  void NotifyClientDisconnected(const std::string& task_id);
+
 private:
   ExactStateTracker* state_tracker_;
   std::unordered_map<std::string, ResultReceiverPtr> receivers_;

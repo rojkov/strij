@@ -37,19 +37,16 @@ Both must be handled. Both use the same underlying mechanism (`OutboundMailbox::
 
 ### D2: HTTP client cleanup via mailbox close callback in `GatewayHttpHandler`
 
-**Decision**: After `storage_.Put(task_id, receiver)`, register a close callback on the HTTP connection's mailbox:
+**Decision**: After `storage_.Put(task_id, receiver, node_id)`, register a close callback on the HTTP connection's mailbox that routes through `ResultReceiverStorage::NotifyClientDisconnected(task_id)` — erasing the receiver and recording completion in the state tracker (which storage now owns):
 
 ```cpp
 conn.Mailbox()->RegisterOnClose(
-    [&storage = storage_, task_id, &tracker = state_tracker_]() {
-      storage.Erase(task_id);
-      if (tracker != nullptr) {
-        tracker->RecordCompletion(task_id);
-      }
+    [&storage = storage_, task_id]() {
+      storage.NotifyClientDisconnected(task_id);
     });
 ```
 
-**Rationale**: The callback fires synchronously within `onEndOfStream()` while the `Connection` object is still alive. `unordered_map::erase` for a missing key is a no-op, so the normal final-result path (which also calls `Erase`) doesn't conflict.
+**Rationale**: The callback fires synchronously within `onEndOfStream()` while the `Connection` object is still alive. `unordered_map::erase` for a missing key is a no-op, so the normal final-result path (which also calls `Erase`) doesn't conflict. Routing through storage keeps `ExactStateTracker::RecordCompletion` invoked exactly once and keeps the callback's captures free of a dangling tracker pointer (the tracker's lifetime is owned by storage).
 
 ### D3: Node cleanup via mailbox close callback in `Node`
 

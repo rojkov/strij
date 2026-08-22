@@ -24,4 +24,11 @@ void ResultReceiverStorage::NotifyNodeDisconnected(const std::string& node_id) {
   }
 }
 
+void ResultReceiverStorage::NotifyClientDisconnected(const std::string& task_id) {
+  Erase(task_id);
+  if (state_tracker_ != nullptr) {
+    state_tracker_->RecordCompletion(task_id);
+  }
+}
+
 } // namespace strij::gateway
