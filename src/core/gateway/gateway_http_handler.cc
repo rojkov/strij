@@ -106,7 +106,7 @@ void GatewayHttpHandler::HandleMessage(const io::HttpRequest& request, io::Conne
   auto* nodeagent_conn = node->GetConnection();
 
   auto receiver = make_receiver_(conn);
-  storage_.put(task_id, std::move(receiver));
+  storage_.Put(task_id, std::move(receiver));
 
   if (state_tracker_ != nullptr) {
     state_tracker_->RecordSubmission(task_id, node->GetNodeId(), requirements);
