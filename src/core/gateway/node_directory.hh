@@ -14,12 +14,15 @@
 
 namespace strij::gateway {
 
+class ResultReceiverStorage;
+
 // Owns the pool of Node instances, keyed by the stable node_id. Membership is
 // driven by repeated discovery snapshots via Reconcile(); the gateway never
 // invents nodes.
 class NodeDirectory {
 public:
-  NodeDirectory(event::DispatcherSharedPtr dispatcher, io::ConnectionFactory factory);
+  NodeDirectory(event::DispatcherSharedPtr dispatcher, io::ConnectionFactory factory,
+                ResultReceiverStorage& storage);
 
   // Adds a node and starts connecting it. A no-op for an existing node_id.
   void AddNode(const std::string& node_id, const std::string& address);
@@ -48,6 +51,7 @@ public:
 private:
   event::DispatcherSharedPtr dispatcher_;
   io::ConnectionFactory factory_;
+  ResultReceiverStorage& storage_;
   // std::map keeps a deterministic iteration order for round-robin selection.
   std::map<std::string, NodePtr> nodes_;
   // Maps discovery-derived (placeholder) node identities to the canonical

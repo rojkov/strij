@@ -2,8 +2,13 @@ load("//bazel:build_system.bzl", "strij_cc_library")
 
 strij_cc_library(
     name = "result_receiver_storage",
+    srcs = ["result_receiver_storage.cc"],
     hdrs = ["result_receiver_storage.hh"],
     visibility = ["//visibility:public"],
+    deps = [
+        ":exact_state_tracker_lib",
+        "//include/strij/common:pure_lib",
+    ],
 )
 
 strij_cc_library(
@@ -23,6 +28,7 @@ strij_cc_library(
     hdrs = ["node.hh"],
     visibility = ["//visibility:public"],
     deps = [
+        ":result_receiver_storage",
         "//api/core/node:node_cc_proto",
         "//include/strij/event:command_handler_interface",
         "//include/strij/event:completable_interface",
@@ -40,6 +46,7 @@ strij_cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":node_lib",
+        ":result_receiver_storage",
         "//include/strij/event:dispatcher_interface",
         "//src/core/io:connection_lib",
         "//src/core/logging:log_lib",

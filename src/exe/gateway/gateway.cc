@@ -97,8 +97,8 @@ auto main(int argc, char** argv) -> int {
   // Set log level from config
   // Note: Logger::GetInstance().SetLogLevel(config.logging().level());  // if available
 
-  strij::gateway::ResultReceiverStorage storage;
   strij::gateway::ExactStateTracker state_tracker;
+  strij::gateway::ResultReceiverStorage storage{&state_tracker};
 
   // Node discovery via extension registry
   strij::extensions::FactoryContextImpl factory_context(dispatcher);
@@ -161,7 +161,7 @@ auto main(int argc, char** argv) -> int {
         });
   };
 
-  strij::gateway::NodeDirectory node_directory{dispatcher, std::move(connection_factory)};
+  strij::gateway::NodeDirectory node_directory{dispatcher, std::move(connection_factory), storage};
   node_directory_ptr = &node_directory;
 
   node_discovery->Start(

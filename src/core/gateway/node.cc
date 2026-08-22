@@ -13,15 +13,16 @@
 #include <string>
 #include <utility>
 
+#include "core/gateway/result_receiver_storage.hh"
 #include "core/logging/log.hh"
 #include "core/utils/errors.hh"
 
 namespace strij::gateway {
 
 Node::Node(std::string node_id, std::string address, event::DispatcherSharedPtr dispatcher,
-           io::ConnectionFactory factory)
+           io::ConnectionFactory factory, ResultReceiverStorage& storage)
     : node_id_{std::move(node_id)}, address_{std::move(address)},
-      dispatcher_{std::move(dispatcher)}, factory_{std::move(factory)} {}
+      dispatcher_{std::move(dispatcher)}, factory_{std::move(factory)}, storage_{storage} {}
 
 void Node::SetNodeId(std::string node_id) { node_id_ = std::move(node_id); }
 
@@ -92,6 +93,12 @@ void Node::HandleCompletion(uint8_t tag, int res, uint32_t /*flags*/) {
       connection_ = std::make_unique<io::Connection>(fd_, dispatcher_, this, std::move(factory_));
       fd_ = -1;
       status_ = Status::kConnected;
+
+      // Clean up orphaned receivers if this node connection drops.
+      connection_->Mailbox()->RegisterOnClose([this]() {
+        storage_.NotifyNodeDisconnected(node_id_);
+      });
+
       LOG_INFO("Connected to {}", address_);
     } else {
       LOG_WARNING("Failed to connect to {}: {}", address_, utils::GetErrorString(-res));

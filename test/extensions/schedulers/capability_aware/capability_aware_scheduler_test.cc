@@ -10,6 +10,7 @@
 #include "core/extensions/extension_registry.hh"
 #include "core/gateway/node.hh"
 #include "core/gateway/node_directory.hh"
+#include "core/gateway/result_receiver_storage.hh"
 #include "core/io/protocol_parser.hh"
 #include "core/node/capabilities.pb.h"
 #include "core/task/task.pb.h"
@@ -24,13 +25,16 @@ namespace {
 class CapabilityAwareSchedulerTest : public ::testing::Test {
 protected:
   std::shared_ptr<event::MockDispatcher> dispatcher_{std::make_shared<event::MockDispatcher>()};
+  gateway::ResultReceiverStorage storage_;
 
   auto MakeConnectedDirectory(std::initializer_list<std::string> ids)
       -> std::unique_ptr<gateway::NodeDirectory> {
     auto directory = std::make_unique<gateway::NodeDirectory>(
-        dispatcher_, [](io::Connection&) -> io::ProtocolParserPtr {
+        dispatcher_,
+        [](io::Connection&) -> io::ProtocolParserPtr {
           return std::make_unique<io::TrivialParser>();
-        });
+        },
+        storage_);
     EXPECT_CALL(*dispatcher_, PrepareConnect(::testing::_, ::testing::_, ::testing::_, ::testing::_,
                                              ::testing::_))
         .WillRepeatedly(::testing::Return());
