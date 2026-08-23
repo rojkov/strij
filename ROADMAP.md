@@ -113,7 +113,7 @@ The `2026-08-19-node-capabilities-and-scheduling` change landed runtime node dis
   - Source: `openspec/changes/archive/2026-08-19-node-capabilities-and-scheduling/design.md` (D15); `openspec/specs/nodeagent-config/spec.md`.
 
 - [ ] **`function_sourced` handler semantics**
-  - How handlers that accept function IDs declare themselves, and how `default_resources` interacts with repo-resolved requirements when both exist.
+  - How handlers that accept function IDs declare themselves and where their requirements come from in the (future) function plane. Resolved: `default_resources` was removed — requirements are resolved at the gateway and carried on the `Task` (see `openspec/changes/carry-task-requirements`).
   - Source: `openspec/changes/archive/2026-08-19-node-capabilities-and-scheduling/design.md` (Open Questions).
 
 - [ ] **Reject retry policy**

@@ -36,21 +36,16 @@ message HandlerCapability {
   string task_type = 1;
   uint64 concurrency = 2;
   // True when the handler consumes function IDs resolved from the (future)
-  // function plane instead of tasks that carry explicit parameters. When set,
-  // resource requirements come from the repo lookup and `default_resources` is
-  // unused; when false (the v1 default), `default_resources` supplies the
-  // fallback requirements the admission controller applies.
+  // function plane instead of tasks that carry explicit parameters.
   bool function_sourced = 3;
-  ResourceRequirements default_resources = 4;
 }
 
 // Operator-declared capacity for a task handler, embedded in task handler
 // extension configs. `concurrency` of 0 (or omitted) means no concurrency
-// limit on the node; absent `default_resources` means the handler has no
-// fallback requirements (tasks must then declare resources explicitly).
+// limit on the node. Hardware requirements are NOT declared here: they are
+// resolved at the gateway and carried on the submitted `Task`.
 message HandlerCapacity {
   uint64 concurrency = 1;
-  ResourceRequirements default_resources = 2;
 }
 
 // How the nodeagent will deliver node state. v1 supports exactly one kind:

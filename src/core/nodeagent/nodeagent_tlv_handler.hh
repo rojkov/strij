@@ -27,10 +27,6 @@ public:
   void HandleFrame(io::TlvFrame frame, io::Connection& conn);
 
 private:
-  // Resolves the hardware requirements for a submitted task from the handler's
-  // advertised default_resources (v1: empty when the type is not declared).
-  [[nodiscard]] auto resolveRequirements(const std::string& task_type) const
-      -> node::ResourceRequirements;
   static void sendTaskRejected(io::Connection& conn, const std::string& task_id,
                                std::string_view reason);
 

@@ -2,11 +2,17 @@ syntax = "proto3";
 
 package strij.task;
 
+import "core/node/capabilities.proto";
+
 message Task {
   string id = 1;
   string type = 2;
   bytes body = 3;
   map<string, string> parameters = 4;
+  // Authoritative hardware requirements of the task, resolved at the gateway
+  // (e.g. from `resources.*` parameters) and carried to the nodeagent. The
+  // nodeagent admits against these; absence means empty requirements.
+  strij.node.ResourceRequirements requirements = 5;
 }
 
 message TaskResult {

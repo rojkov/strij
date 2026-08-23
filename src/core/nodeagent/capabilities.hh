@@ -21,8 +21,8 @@ auto GenerateNodeId() -> std::string;
 // Derives the NodeCapabilities advertisement from nodeagent config. Handlers
 // are derived from config.task_handlers: each entry must resolve to a
 // registered TaskHandlerFactory whose typed_config unpacks, and the advertised
-// capacity (task_type = factory name, concurrency, default_resources) is read
-// via TaskHandlerFactory::ParseConfig. Validates that:
+// capacity (task_type = factory name, concurrency) is read via
+// TaskHandlerFactory::ParseConfig. Validates that:
 //  - at least one ResourcePool is declared,
 //  - every PoolReservation references a declared pool,
 //  - every task_handlers entry resolves to a registered task handler.

@@ -21,16 +21,11 @@ protected:
     return config;
   }
 
-  static void AddEchoHandler(config::NodeAgentConfig* config, uint64_t concurrency = 0,
-                             const char* pool = nullptr, uint64_t amount = 0) {
+  static void AddEchoHandler(config::NodeAgentConfig* config, uint64_t concurrency = 0) {
     auto* ext = config->add_task_handlers();
     ext->set_name("echo");
     extensions::task_handlers::echo::EchoTaskHandlerConfig handler_config;
     handler_config.mutable_capacity()->set_concurrency(concurrency);
-    if (pool != nullptr) {
-      (*handler_config.mutable_capacity()->mutable_default_resources()->mutable_resources())[pool] =
-          amount;
-    }
     ext->mutable_typed_config()->PackFrom(handler_config);
   }
 };
@@ -121,15 +116,14 @@ TEST_F(NodeagentCapabilitiesTest, UnregisteredTaskHandlerFails) {
   EXPECT_TRUE(result.status().message().find("ghost") != std::string::npos);
 }
 
-TEST_F(NodeagentCapabilitiesTest, HandlerCapacityCarriesDefaultResources) {
+TEST_F(NodeagentCapabilitiesTest, HandlerCapacityCarriesConcurrencyOnly) {
   auto config = MakeConfig();
-  AddEchoHandler(&config, /*concurrency=*/1024, /*pool=*/"cpu", /*amount=*/2);
+  AddEchoHandler(&config, /*concurrency=*/1024);
   auto result = BuildNodeCapabilities(config, "node-abc");
   ASSERT_TRUE(result.ok());
   ASSERT_EQ(result.value().handlers_size(), 1);
   EXPECT_EQ(result.value().handlers(0).task_type(), "echo");
   EXPECT_EQ(result.value().handlers(0).concurrency(), 1024U);
-  EXPECT_EQ(result.value().handlers(0).default_resources().resources().at("cpu"), 2U);
 }
 
 // NOLINTEND(modernize-use-trailing-return-type)

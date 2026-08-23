@@ -87,9 +87,6 @@ task_handlers:
       "@type": "type.googleapis.com/strij.extensions.task_handlers.echo.EchoTaskHandlerConfig"
       capacity:
         concurrency: 1024
-        default_resources:
-          resources:
-            cpu: 1
 
 heartbeat_interval:
   seconds: 5
@@ -101,7 +98,9 @@ logging:
   include_source_location: false
 ```
 
-`pools` declares the node's schedulable capacity (named, shared); `reservations` pins a pool amount to a task type, excluding it from the shared capacity the gateway routes on. `task_handlers` is a list of extension configs. Each `name` must match a registered task handler factory; unknown names cause startup to fail. The operator-declared handler capacity (concurrency limit and default resource requirements) lives in each extension's `typed_config.capacity`; it is advertised to gateways as a `HandlerCapability`. If no handlers are configured, all incoming tasks are dropped.
+`pools` declares the node's schedulable capacity (named, shared); `reservations` pins a pool amount to a task type, excluding it from the shared capacity the gateway routes on. `task_handlers` is a list of extension configs. Each `name` must match a registered task handler factory; unknown names cause startup to fail. The operator-declared handler capacity (a concurrency limit) lives in each extension's `typed_config.capacity`; it is advertised to gateways as a `HandlerCapability`. If no handlers are configured, all incoming tasks are dropped.
+
+Hardware requirements are NOT configured on the node: they are declared per-request at the gateway via `x-strij-resources-<pool>` (or `x-strij-resources.<pool>`) headers, resolved into a `ResourceRequirements` map, and carried on the submitted `Task` for admission. Absent requirements mean a task is admitted without pool accounting (concurrency limits still apply).
 
 ### CLI Flags
 

@@ -93,9 +93,9 @@ void GatewayHttpHandler::HandleMessage(const io::HttpRequest& request, io::Conne
   PopulateParametersFromHeaders(task, request.headers);
 
   const ParamsOnlyRequirementsResolver resolver;
-  const auto requirements =
+  *task.mutable_requirements() =
       resolver.Resolve(FunctionRef{.type = task.type(), .id = ""}, task.parameters());
-  const extensions::TaskOffer offer{.task = &task, .requirements = &requirements};
+  const extensions::TaskOffer offer{.task = &task, .requirements = &task.requirements()};
 
   auto* node = scheduler_.Choose(node_directory_, offer);
   if (node == nullptr) {
@@ -113,7 +113,7 @@ void GatewayHttpHandler::HandleMessage(const io::HttpRequest& request, io::Conne
       [&storage = storage_, task_id]() { storage.NotifyClientDisconnected(task_id); });
 
   if (state_tracker_ != nullptr) {
-    state_tracker_->RecordSubmission(task_id, node->GetNodeId(), requirements);
+    state_tracker_->RecordSubmission(task_id, node->GetNodeId(), task.requirements());
   }
 
   std::string serialized;

@@ -31,16 +31,6 @@ void NodeagentTlvHandler::SendAdvertisement(io::Connection& conn) {
   conn.Write(frame);
 }
 
-auto NodeagentTlvHandler::resolveRequirements(const std::string& task_type) const
-    -> node::ResourceRequirements {
-  for (const auto& handler : capabilities_->handlers()) {
-    if (handler.task_type() == task_type && handler.has_default_resources()) {
-      return handler.default_resources();
-    }
-  }
-  return {};
-}
-
 void NodeagentTlvHandler::sendTaskRejected(io::Connection& conn, const std::string& task_id,
                                            std::string_view reason) {
   task::TaskRejected rejected;
@@ -73,7 +63,7 @@ void NodeagentTlvHandler::HandleFrame(io::TlvFrame frame, io::Connection& conn) 
     return;
   }
 
-  const node::ResourceRequirements requirements = resolveRequirements(task.type());
+  const node::ResourceRequirements& requirements = task.requirements();
   const absl::Status admit_status = admission_->Admit(task.type(), requirements);
   if (!admit_status.ok()) {
     sendTaskRejected(conn, task.id(), admit_status.message());

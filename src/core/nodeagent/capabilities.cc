@@ -91,10 +91,6 @@ auto BuildNodeCapabilities(const config::NodeAgentConfig& config, const std::str
     auto* out = caps.add_handlers();
     out->set_task_type(factory->Name());
     out->set_concurrency(capacity_result.value().concurrency());
-
-    if (capacity_result.value().has_default_resources()) {
-      out->mutable_default_resources()->CopyFrom(capacity_result.value().default_resources());
-    }
   }
 
   caps.add_update_channels()->set_kind(std::string(kHeartbeatChannelKind));

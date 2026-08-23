@@ -281,7 +281,6 @@ TEST_F(NodeagentTlvHandlerTest, RejectsTaskWhenPoolExhausted) {
   pool->set_total(1);
   auto* handler_cap = caps->add_handlers();
   handler_cap->set_task_type("retaining");
-  (*handler_cap->mutable_default_resources()->mutable_resources())["gpu.h100"] = 1;
 
   auto manager = std::make_shared<TaskHandlerManager>();
   manager->AddHandler("retaining", std::make_unique<RetainingSenderHandler>());
@@ -298,6 +297,7 @@ TEST_F(NodeagentTlvHandlerTest, RejectsTaskWhenPoolExhausted) {
   task::Task first;
   first.set_id("1");
   first.set_type("retaining");
+  (*first.mutable_requirements()->mutable_resources())["gpu.h100"] = 1;
   std::string first_serialized;
   first.SerializeToString(&first_serialized);
   handler.HandleFrame({.type_id = io::TlvFrame::kTaskSubmission,
@@ -307,6 +307,7 @@ TEST_F(NodeagentTlvHandlerTest, RejectsTaskWhenPoolExhausted) {
   task::Task second;
   second.set_id("2");
   second.set_type("retaining");
+  (*second.mutable_requirements()->mutable_resources())["gpu.h100"] = 1;
   std::string second_serialized;
   second.SerializeToString(&second_serialized);
   handler.HandleFrame({.type_id = io::TlvFrame::kTaskSubmission,
@@ -332,6 +333,9 @@ TEST_F(NodeagentTlvHandlerTest, RejectsTaskAtConcurrencyLimit) {
   auto caps = std::make_shared<node::NodeCapabilities>();
   caps->set_node_id("node-test");
   caps->set_capability_version(1);
+  auto* pool = caps->add_pools();
+  pool->set_name("cpu");
+  pool->set_total(16);
   auto* handler_cap = caps->add_handlers();
   handler_cap->set_task_type("retaining");
   handler_cap->set_concurrency(1);
@@ -355,6 +359,11 @@ TEST_F(NodeagentTlvHandlerTest, RejectsTaskAtConcurrencyLimit) {
   handler.HandleFrame({.type_id = io::TlvFrame::kTaskSubmission,
                        .value = std::as_bytes(std::span(first_serialized))},
                       *conn_);
+
+  // The task carried no requirements field, so it is admitted without
+  // reserving any pool capacity, but the concurrency limit still applies.
+  EXPECT_EQ(admission->SharedFree("cpu"), 16U);
+  EXPECT_EQ(admission->InFlight("retaining"), 1U);
 
   task::Task second;
   second.set_id("2");
@@ -388,7 +397,6 @@ TEST_F(NodeagentTlvHandlerTest, CompletionReleasesReservedCapacity) {
   pool->set_total(16);
   auto* handler_cap = caps->add_handlers();
   handler_cap->set_task_type("echo");
-  (*handler_cap->mutable_default_resources()->mutable_resources())["cpu"] = 2;
 
   auto admission = std::make_shared<AdmissionController>(*caps);
   EXPECT_EQ(admission->SharedFree("cpu"), 16U);
@@ -403,6 +411,7 @@ TEST_F(NodeagentTlvHandlerTest, CompletionReleasesReservedCapacity) {
   task::Task task;
   task.set_id("1");
   task.set_type("echo");
+  (*task.mutable_requirements()->mutable_resources())["cpu"] = 2;
   std::string serialized;
   task.SerializeToString(&serialized);
   handler.HandleFrame(

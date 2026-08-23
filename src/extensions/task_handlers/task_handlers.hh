@@ -84,9 +84,9 @@ public:
   virtual auto CreateEmptyConfigProto() -> MessagePtr PURE;
   virtual auto Create(const ::google::protobuf::Message& config, FactoryContext& context)
       -> TaskHandlerPtr PURE;
-  // Parses the operator-declared capacity (concurrency limit and default
-  // resource requirements) out of the factory's config message. The default
-  // implementation declares no concurrency limit and no default resources.
+  // Parses the operator-declared capacity (concurrency limit) out of the
+  // factory's config message. The default implementation declares no
+  // concurrency limit.
   [[nodiscard]] virtual auto ParseConfig(const ::google::protobuf::Message& /*config*/)
       -> absl::StatusOr<strij::node::HandlerCapacity> {
     return strij::node::HandlerCapacity{};

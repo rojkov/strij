@@ -691,6 +691,8 @@ TEST_F(GatewayHttpHandlerTest, HandleMessageForwardsParametersToNode) {
   EXPECT_EQ(task.type(), "echo");
   ASSERT_EQ(task.parameters_size(), 1);
   EXPECT_EQ(task.parameters().at("function"), "/usr/bin/cat");
+  EXPECT_TRUE(task.has_requirements());
+  EXPECT_TRUE(task.requirements().resources().empty());
 
   close(fds[0]);
   close(fds[1]);
@@ -770,6 +772,9 @@ TEST_F(GatewayHttpHandlerTest, RoutesTaskThroughScheduler) {
   ASSERT_TRUE(task.ParseFromArray(std::bit_cast<const char*>(received_frames[0].value.data()),
                                   static_cast<int>(received_frames[0].value.size())));
   EXPECT_EQ(task.type(), "echo");
+  ASSERT_TRUE(task.has_requirements());
+  ASSERT_EQ(task.requirements().resources().size(), 1U);
+  EXPECT_EQ(task.requirements().resources().at("cpu"), 2U);
 
   close(fds[0]);
   close(fds[1]);

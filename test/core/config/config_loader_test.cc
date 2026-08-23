@@ -137,9 +137,6 @@ task_handlers:
       "@type": "type.googleapis.com/strij.extensions.task_handlers.echo.EchoTaskHandlerConfig"
       capacity:
         concurrency: 1024
-        default_resources:
-          resources:
-            cpu: 2
 heartbeat_interval:
   seconds: 5
 )";
@@ -162,7 +159,6 @@ heartbeat_interval:
   extensions::task_handlers::echo::EchoTaskHandlerConfig handler_config;
   ASSERT_TRUE(config.task_handlers(0).typed_config().UnpackTo(&handler_config));
   EXPECT_EQ(handler_config.capacity().concurrency(), 1024U);
-  EXPECT_EQ(handler_config.capacity().default_resources().resources().at("cpu"), 2U);
   EXPECT_EQ(config.heartbeat_interval().seconds(), 5);
 
   std::filesystem::remove(path);
