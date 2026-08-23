@@ -18,12 +18,10 @@ using ::testing::_;
 
 class StaticNodeDiscoveryTest : public ::testing::Test {
 protected:
-  auto CollectNodes(std::unique_ptr<NodeDiscovery> discovery)
-      -> std::vector<strij::extensions::NodeInfo> {
-    std::vector<strij::extensions::NodeInfo> collected;
-    discovery->Start([&collected](std::vector<strij::extensions::NodeInfo> nodes) {
-      collected = std::move(nodes);
-    });
+  auto CollectNodes(std::unique_ptr<NodeDiscovery> discovery) -> std::vector<extensions::NodeInfo> {
+    std::vector<extensions::NodeInfo> collected;
+    discovery->Start(
+        [&collected](std::vector<extensions::NodeInfo> nodes) { collected = std::move(nodes); });
     return collected;
   }
 };
@@ -59,10 +57,10 @@ TEST_F(StaticNodeDiscoveryTest, StopIsNoop) {
 }
 
 TEST_F(StaticNodeDiscoveryTest, FactoryCreatesDiscoveryWithDerivedIdentity) {
-  strij::config::StaticNodeDiscoveryConfig config;
+  config::StaticNodeDiscoveryConfig config;
   config.add_addresses("10.0.0.1:9090");
 
-  strij::extensions::MockFactoryContext context;
+  extensions::MockFactoryContext context;
   StaticNodeDiscoveryFactory factory;
   auto discovery = factory.Create(config, context);
 

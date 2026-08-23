@@ -38,46 +38,48 @@ protected:
     EXPECT_CALL(*dispatcher_, PrepareConnect(::testing::_, ::testing::_, ::testing::_, ::testing::_,
                                              ::testing::_))
         .WillRepeatedly(::testing::Return());
-    for (const auto& id : ids) {
-      directory->AddNode(id, "10.0.0.1:9090");
+    for (const auto& node_id : ids) {
+      directory->AddNode(node_id, "10.0.0.1:9090");
     }
-    for (const auto& id : ids) {
-      directory->GetNode(id)->HandleCompletion(0, 0, 0);
+    for (const auto& node_id : ids) {
+      directory->GetNode(node_id)->HandleCompletion(0, 0, 0);
     }
     return directory;
   }
 
-  void AddProtocol(node::NodeCapabilities* caps, std::string_view name) {
+  static void AddProtocol(node::NodeCapabilities* caps, std::string_view name) {
     caps->add_scheduling_protocols()->set_name(name);
   }
 
-  void AddPool(node::NodeCapabilities* caps, std::string_view name, uint64_t total) {
+  static void AddPool(node::NodeCapabilities* caps, std::string_view name, uint64_t total) {
     auto* pool = caps->add_pools();
     pool->set_name(name);
     pool->set_total(total);
   }
 
-  void AddReservation(node::NodeCapabilities* caps, std::string_view task_type,
-                      std::string_view pool, uint64_t amount) {
+  static void AddReservation(node::NodeCapabilities* caps, std::string_view task_type,
+                             std::string_view pool, uint64_t amount) {
     auto* reservation = caps->add_reservations();
     reservation->set_task_type(task_type);
     reservation->set_pool(pool);
     reservation->set_amount(amount);
   }
 
-  void AddHandler(node::NodeCapabilities* caps, std::string_view task_type, uint64_t concurrency) {
+  static void AddHandler(node::NodeCapabilities* caps, std::string_view task_type,
+                         uint64_t concurrency) {
     auto* handler = caps->add_handlers();
     handler->set_task_type(task_type);
     handler->set_concurrency(concurrency);
   }
 
-  void SetPoolInUse(node::NodeState* state, std::string_view name, uint64_t in_use) {
+  static void SetPoolInUse(node::NodeState* state, std::string_view name, uint64_t in_use) {
     auto* usage = state->add_pools();
     usage->set_pool(name);
     usage->set_in_use(in_use);
   }
 
-  void SetTypeInFlight(node::NodeState* state, std::string_view task_type, uint64_t in_flight) {
+  static void SetTypeInFlight(node::NodeState* state, std::string_view task_type,
+                              uint64_t in_flight) {
     auto* usage = state->add_type_usage();
     usage->set_task_type(task_type);
     usage->set_in_flight(in_flight);

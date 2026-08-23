@@ -55,7 +55,7 @@ private:
 class NodeagentTlvHandlerTest : public ::testing::Test {
 protected:
   void SetUp() override {
-    ASSERT_EQ(0, socketpair(AF_UNIX, SOCK_STREAM, 0, fds_));
+    ASSERT_EQ(0, socketpair(AF_UNIX, SOCK_STREAM, 0, fds_.data()));
     dispatcher_ = std::make_shared<event::MockDispatcher>();
     // Suppress the PrepareRead issued by the Connection constructor.
     EXPECT_CALL(*dispatcher_,
@@ -73,20 +73,20 @@ protected:
     close(fds_[1]);
   }
 
-  auto MakeEchoManager() -> std::shared_ptr<TaskHandlerManager> {
+  static auto MakeEchoManager() -> std::shared_ptr<TaskHandlerManager> {
     auto manager = std::make_shared<TaskHandlerManager>();
     manager->AddHandler("echo", std::make_unique<extensions::task_handlers::EchoTaskHandler>());
     return manager;
   }
 
-  auto MakeCapabilities() -> std::shared_ptr<const node::NodeCapabilities> {
+  static auto MakeCapabilities() -> std::shared_ptr<const node::NodeCapabilities> {
     auto caps = std::make_shared<node::NodeCapabilities>();
     caps->set_node_id("node-test");
     caps->set_capability_version(1);
     return caps;
   }
 
-  auto MakeAdmission() -> std::shared_ptr<AdmissionController> {
+  static auto MakeAdmission() -> std::shared_ptr<AdmissionController> {
     return std::make_shared<AdmissionController>(*MakeCapabilities());
   }
 
@@ -96,7 +96,7 @@ protected:
     return ::recv(fds_[1], buf.data(), buf.size(), MSG_DONTWAIT);
   }
 
-  int fds_[2];
+  std::array<int, 2> fds_{};
   std::shared_ptr<event::MockDispatcher> dispatcher_;
   event::DummyOwner owner_;
   io::ConnectionPtr conn_;

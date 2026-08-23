@@ -1,4 +1,3 @@
-#include <memory>
 #include <string>
 
 #include "core/config/nodeagent.pb.h"
@@ -12,8 +11,8 @@ namespace {
 
 class NodeagentCapabilitiesTest : public ::testing::Test {
 protected:
-  auto MakeConfig() -> strij::config::NodeAgentConfig {
-    strij::config::NodeAgentConfig config;
+  static auto MakeConfig() -> config::NodeAgentConfig {
+    config::NodeAgentConfig config;
     config.mutable_tlv_listener()->set_address("127.0.0.1");
     config.mutable_tlv_listener()->set_port(9090);
     auto* pool = config.add_pools();
@@ -22,11 +21,11 @@ protected:
     return config;
   }
 
-  void AddEchoHandler(strij::config::NodeAgentConfig* config, uint64_t concurrency = 0,
-                      const char* pool = nullptr, uint64_t amount = 0) {
+  static void AddEchoHandler(config::NodeAgentConfig* config, uint64_t concurrency = 0,
+                             const char* pool = nullptr, uint64_t amount = 0) {
     auto* ext = config->add_task_handlers();
     ext->set_name("echo");
-    strij::extensions::task_handlers::echo::EchoTaskHandlerConfig handler_config;
+    extensions::task_handlers::echo::EchoTaskHandlerConfig handler_config;
     handler_config.mutable_capacity()->set_concurrency(concurrency);
     if (pool != nullptr) {
       (*handler_config.mutable_capacity()->mutable_default_resources()->mutable_resources())[pool] =
@@ -85,7 +84,7 @@ TEST_F(NodeagentCapabilitiesTest, RoundTripsThroughProtobuf) {
   std::string serialized;
   ASSERT_TRUE(result.value().SerializeToString(&serialized));
 
-  strij::node::NodeCapabilities parsed;
+  node::NodeCapabilities parsed;
   ASSERT_TRUE(parsed.ParseFromString(serialized));
   EXPECT_EQ(parsed.node_id(), "node-xyz");
   EXPECT_EQ(parsed.address(), "127.0.0.1:9090");
@@ -96,7 +95,7 @@ TEST_F(NodeagentCapabilitiesTest, RoundTripsThroughProtobuf) {
 }
 
 TEST_F(NodeagentCapabilitiesTest, EmptyPoolsFailsStartup) {
-  strij::config::NodeAgentConfig config;
+  config::NodeAgentConfig config;
   config.mutable_tlv_listener()->set_port(9090);
   auto result = BuildNodeCapabilities(config, "node-abc");
   ASSERT_FALSE(result.ok());

@@ -6,3 +6,6 @@ Checks:
   - '-cppcoreguidelines-owning-memory'
   - '-readability-magic-numbers'
   - '-misc-non-private-member-variables-in-classes'
+  - '-concurrency-mt-unsafe'
+CheckOptions:
+  readability-function-cognitive-complexity.Threshold: 50

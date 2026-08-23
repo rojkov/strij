@@ -19,27 +19,26 @@ namespace {
 
 class RoundRobinSchedulerTest : public ::testing::Test {
 protected:
-  std::shared_ptr<strij::event::MockDispatcher> dispatcher_{
-      std::make_shared<strij::event::MockDispatcher>()};
-  strij::gateway::ResultReceiverStorage storage_;
+  std::shared_ptr<event::MockDispatcher> dispatcher_{std::make_shared<event::MockDispatcher>()};
+  gateway::ResultReceiverStorage storage_;
 
   // Creates a directory and brings every node into the connected state.
   auto MakeConnectedDirectory(std::initializer_list<std::string> ids)
-      -> std::unique_ptr<strij::gateway::NodeDirectory> {
-    auto directory = std::make_unique<strij::gateway::NodeDirectory>(
+      -> std::unique_ptr<gateway::NodeDirectory> {
+    auto directory = std::make_unique<gateway::NodeDirectory>(
         dispatcher_,
-        [](strij::io::Connection&) -> std::unique_ptr<strij::io::ProtocolParser> {
-          return std::make_unique<strij::io::TrivialParser>();
+        [](io::Connection&) -> io::ProtocolParserPtr {
+          return std::make_unique<io::TrivialParser>();
         },
         storage_);
     EXPECT_CALL(*dispatcher_, PrepareConnect(::testing::_, ::testing::_, ::testing::_, ::testing::_,
                                              ::testing::_))
         .WillRepeatedly(::testing::Return());
-    for (const auto& id : ids) {
-      directory->AddNode(id, "10.0.0.1:9090");
+    for (const auto& node_id : ids) {
+      directory->AddNode(node_id, "10.0.0.1:9090");
     }
-    for (const auto& id : ids) {
-      directory->GetNode(id)->HandleCompletion(0, 0, 0);
+    for (const auto& node_id : ids) {
+      directory->GetNode(node_id)->HandleCompletion(0, 0, 0);
     }
     return directory;
   }
@@ -71,11 +70,11 @@ TEST_F(RoundRobinSchedulerTest, ExcludesNodesNotAdvertisingRequiredProtocol) {
   auto* push_node = directory->GetNode("push");
   auto* probe_node = directory->GetNode("probe");
 
-  strij::node::NodeCapabilities push_caps;
+  node::NodeCapabilities push_caps;
   push_caps.add_scheduling_protocols()->set_name("push");
   push_node->StoreCapabilities(std::move(push_caps));
 
-  strij::node::NodeCapabilities probe_caps;
+  node::NodeCapabilities probe_caps;
   probe_caps.add_scheduling_protocols()->set_name("probe");
   probe_node->StoreCapabilities(std::move(probe_caps));
   // "quiet" stays connected without an advertisement: it is inside the
@@ -94,12 +93,11 @@ TEST_F(RoundRobinSchedulerTest, ExcludesNodesNotAdvertisingRequiredProtocol) {
 
 TEST_F(RoundRobinSchedulerTest, FactoryIsRegisteredAndCreatesScheduler) {
   auto* factory =
-      strij::extensions::Registry<strij::extensions::SchedulerFactory>::instance().GetFactory(
-          "round_robin");
+      extensions::Registry<extensions::SchedulerFactory>::instance().GetFactory("round_robin");
   ASSERT_NE(factory, nullptr);
   EXPECT_EQ(factory->Name(), "round_robin");
 
-  strij::extensions::FactoryContextImpl context(dispatcher_);
+  extensions::FactoryContextImpl context(dispatcher_);
   auto config = factory->CreateEmptyConfigProto();
   auto scheduler = factory->Create(*config, context);
   ASSERT_NE(scheduler, nullptr);

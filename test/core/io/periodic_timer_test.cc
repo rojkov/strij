@@ -10,7 +10,7 @@ namespace strij::io {
 namespace {
 
 TEST(PeriodicTimerTest, StartArmsReadOnTimerFd) {
-  auto dispatcher = std::make_shared<strij::event::MockDispatcher>();
+  auto dispatcher = std::make_shared<event::MockDispatcher>();
   PeriodicTimer timer(dispatcher, [] {});
 
   EXPECT_CALL(*dispatcher,
@@ -20,7 +20,7 @@ TEST(PeriodicTimerTest, StartArmsReadOnTimerFd) {
 }
 
 TEST(PeriodicTimerTest, EachTickFiresCallbackAndRearms) {
-  auto dispatcher = std::make_shared<strij::event::MockDispatcher>();
+  auto dispatcher = std::make_shared<event::MockDispatcher>();
   int ticks = 0;
   PeriodicTimer timer(dispatcher, [&ticks] { ++ticks; });
 
@@ -36,7 +36,7 @@ TEST(PeriodicTimerTest, EachTickFiresCallbackAndRearms) {
 }
 
 TEST(PeriodicTimerTest, SubSecondIntervalsSupported) {
-  auto dispatcher = std::make_shared<strij::event::MockDispatcher>();
+  auto dispatcher = std::make_shared<event::MockDispatcher>();
   PeriodicTimer timer(dispatcher, [] {});
 
   EXPECT_CALL(*dispatcher,

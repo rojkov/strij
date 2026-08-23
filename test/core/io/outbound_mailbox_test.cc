@@ -19,8 +19,8 @@ namespace {
 class OutboundMailboxTest : public ::testing::Test {
 protected:
   void SetUp() override {
-    ASSERT_EQ(0, socketpair(AF_UNIX, SOCK_STREAM, 0, fds_));
-    dispatcher_ = std::make_shared<strij::event::MockDispatcher>();
+    ASSERT_EQ(0, socketpair(AF_UNIX, SOCK_STREAM, 0, fds_.data()));
+    dispatcher_ = std::make_shared<event::MockDispatcher>();
     // Suppress the PrepareRead issued by the Connection constructor.
     EXPECT_CALL(*dispatcher_,
                 PrepareRead(::testing::_, ::testing::_, ::testing::_, ::testing::_, ::testing::_))
@@ -38,9 +38,9 @@ protected:
         [](Connection&) -> ProtocolParserPtr { return std::make_unique<TrivialParser>(); });
   }
 
-  int fds_[2];
-  std::shared_ptr<strij::event::MockDispatcher> dispatcher_;
-  strij::event::DummyOwner owner_;
+  std::array<int, 2> fds_{};
+  std::shared_ptr<event::MockDispatcher> dispatcher_;
+  event::DummyOwner owner_;
 };
 
 // NOLINTBEGIN(modernize-use-trailing-return-type)
@@ -51,9 +51,9 @@ TEST_F(OutboundMailboxTest, EnqueueForwardsToConnectionWrite) {
 
   auto frame = std::vector<std::byte>{std::byte{0x01}, std::byte{0x02}, std::byte{0x03}};
   EXPECT_CALL(*dispatcher_, PrepareWrite(::testing::_, ::testing::_, ::testing::_,
-                                         ::testing::Truly([](std::span<const std::byte> s) {
-                                           return s.size() == 3 && s[0] == std::byte{0x01} &&
-                                                  s[2] == std::byte{0x03};
+                                         ::testing::Truly([](std::span<const std::byte> spn) {
+                                           return spn.size() == 3 && spn[0] == std::byte{0x01} &&
+                                                  spn[2] == std::byte{0x03};
                                          }),
                                          0))
       .Times(1);
@@ -74,15 +74,15 @@ TEST_F(OutboundMailboxTest, CloseFiresRegisteredCallbacksOnce) {
   auto conn = MakeConnection();
   auto mailbox = conn->Mailbox();
 
-  int a = 0;
-  int b = 0;
-  mailbox->RegisterOnClose([&a] { ++a; });
-  mailbox->RegisterOnClose([&b] { ++b; });
+  int a_counter = 0;
+  int b_counter = 0;
+  mailbox->RegisterOnClose([&a_counter] { ++a_counter; });
+  mailbox->RegisterOnClose([&b_counter] { ++b_counter; });
 
   conn.reset();
 
-  EXPECT_EQ(a, 1);
-  EXPECT_EQ(b, 1);
+  EXPECT_EQ(a_counter, 1);
+  EXPECT_EQ(b_counter, 1);
 }
 
 TEST_F(OutboundMailboxTest, UnregisterPreventsFiring) {

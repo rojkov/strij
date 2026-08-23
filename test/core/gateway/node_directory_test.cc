@@ -22,48 +22,51 @@
 namespace strij::gateway {
 namespace {
 
-using strij::extensions::NodeInfo;
+using extensions::NodeInfo;
 using ::testing::_;
 using ::testing::DoAll;
 using ::testing::SaveArg;
 
-auto Snapshot(std::initializer_list<NodeInfo> infos) -> std::vector<NodeInfo> {
-  return infos;
-}
+auto Snapshot(std::initializer_list<NodeInfo> infos) -> std::vector<NodeInfo> { return infos; }
 
 class NodeDirectoryTest : public ::testing::Test {
 protected:
-  std::shared_ptr<strij::event::MockDispatcher> dispatcher_{
-      std::make_shared<strij::event::MockDispatcher>()};
-  strij::gateway::ResultReceiverStorage storage_;
+  std::shared_ptr<event::MockDispatcher> dispatcher_{std::make_shared<event::MockDispatcher>()};
+  gateway::ResultReceiverStorage storage_;
 
   // A ConnectionFactory that reports parser destruction through a shared flag,
   // observable as the Connection being torn down.
-  auto MakeTrackingFactory(std::shared_ptr<bool> parser_destroyed) -> strij::io::ConnectionFactory {
-    return [parser_destroyed](strij::io::Connection&)
-               -> std::unique_ptr<strij::io::ProtocolParser> {
-      class TrackingParser final : public strij::io::ProtocolParser {
+  static auto MakeTrackingFactory(const std::shared_ptr<bool>& parser_destroyed)
+      -> io::ConnectionFactory {
+    return [parser_destroyed](io::Connection&) -> io::ProtocolParserPtr {
+      class TrackingParser final : public io::ProtocolParser {
       public:
-        explicit TrackingParser(std::shared_ptr<bool> destroyed) : destroyed_{std::move(destroyed)} {}
+        explicit TrackingParser(std::shared_ptr<bool> destroyed)
+            : destroyed_{std::move(destroyed)} {}
         ~TrackingParser() override { *destroyed_ = true; }
-        auto GetReadBuffer() -> std::span<std::byte> override {
-          return std::span<std::byte>(buf_.data(), buf_.size());
-        }
-        auto OnData(size_t /*bytes_read*/) -> strij::io::ProtocolParser::Action override {
-          return strij::io::ProtocolParser::Action::NeedMoreData;
+
+        TrackingParser(const TrackingParser&) = delete;
+        auto operator=(const TrackingParser&) -> TrackingParser& = delete;
+        TrackingParser(TrackingParser&&) noexcept = delete;
+        auto operator=(TrackingParser&&) noexcept -> TrackingParser& = delete;
+
+        auto GetReadBuffer() -> std::span<std::byte> override { return {buf_.data(), buf_.size()}; }
+        auto OnData(size_t /*bytes_read*/) -> io::ProtocolParser::Action override {
+          return io::ProtocolParser::Action::NeedMoreData;
         }
 
       private:
         std::shared_ptr<bool> destroyed_;
         std::array<std::byte, 128> buf_{};
       };
+
       return std::make_unique<TrackingParser>(parser_destroyed);
     };
   }
 
-  auto MakeTrivialFactory() -> strij::io::ConnectionFactory {
-    return [](strij::io::Connection&) -> std::unique_ptr<strij::io::ProtocolParser> {
-      return std::make_unique<strij::io::TrivialParser>();
+  static auto MakeTrivialFactory() -> io::ConnectionFactory {
+    return [](io::Connection&) -> io::ProtocolParserPtr {
+      return std::make_unique<io::TrivialParser>();
     };
   }
 };
@@ -79,16 +82,15 @@ TEST_F(NodeDirectoryTest, StartsEmpty) {
 TEST_F(NodeDirectoryTest, AddNodeStartsConnecting) {
   NodeDirectory directory(dispatcher_, MakeTrivialFactory(), storage_);
 
-  strij::event::Completable* node_completable = nullptr;
-  EXPECT_CALL(*dispatcher_,
-              PrepareConnect(_, _, _, _, _))
+  event::Completable* node_completable = nullptr;
+  EXPECT_CALL(*dispatcher_, PrepareConnect(_, _, _, _, _))
       .WillOnce(DoAll(SaveArg<0>(&node_completable), ::testing::Return()));
 
   directory.AddNode("n2", "10.0.0.3:9090");
 
   EXPECT_EQ(directory.GetNodeCount(), 1U);
   ASSERT_NE(directory.GetNode("n2"), nullptr);
-  EXPECT_EQ(directory.GetNode("n2")->GetStatus(), strij::gateway::Node::Status::kConnecting);
+  EXPECT_EQ(directory.GetNode("n2")->GetStatus(), gateway::Node::Status::kConnecting);
   EXPECT_NE(node_completable, nullptr);
 }
 
@@ -96,7 +98,7 @@ TEST_F(NodeDirectoryTest, RemoveNodeDropsAndClosesConnection) {
   auto parser_destroyed = std::make_shared<bool>(false);
   NodeDirectory directory(dispatcher_, MakeTrackingFactory(parser_destroyed), storage_);
 
-  strij::event::Completable* node_completable = nullptr;
+  event::Completable* node_completable = nullptr;
   EXPECT_CALL(*dispatcher_, PrepareConnect(_, _, _, _, _))
       .WillOnce(DoAll(SaveArg<0>(&node_completable), ::testing::Return()));
   directory.AddNode("n1", "10.0.0.1:9090");
@@ -210,7 +212,7 @@ TEST_F(NodeDirectoryTest, GetNextNodeReturnsNullWhenNoneAvailable) {
 TEST_F(NodeDirectoryTest, GetNextNodeReturnsConnectedNode) {
   NodeDirectory directory(dispatcher_, MakeTrivialFactory(), storage_);
 
-  strij::event::Completable* node_completable = nullptr;
+  event::Completable* node_completable = nullptr;
   EXPECT_CALL(*dispatcher_, PrepareConnect(_, _, _, _, _))
       .WillOnce(DoAll(SaveArg<0>(&node_completable), ::testing::Return()));
   directory.AddNode("n1", "10.0.0.1:9090");
@@ -245,9 +247,8 @@ TEST_F(NodeDirectoryTest, ReconcileResolvesRekeyedPlaceholderIdentity) {
 
 namespace {
 
-auto MakeCapabilities(std::initializer_list<std::string> protocols)
-    -> strij::node::NodeCapabilities {
-  strij::node::NodeCapabilities caps;
+auto MakeCapabilities(std::initializer_list<std::string> protocols) -> node::NodeCapabilities {
+  node::NodeCapabilities caps;
   for (const auto& protocol : protocols) {
     caps.add_scheduling_protocols()->set_name(protocol);
   }

@@ -1,8 +1,6 @@
 #include <unistd.h>
 
-#include <cstdio>
 #include <filesystem>
-#include <fstream>
 #include <string>
 #include <vector>
 
@@ -16,18 +14,21 @@
 namespace strij::config {
 namespace {
 
-std::string CreateTempFile(const std::string& content) {
+auto createTempFile(const std::string& content) -> std::string {
   auto dir = std::filesystem::temp_directory_path();
   auto path = dir / "strij_config_test_XXXXXX";
   std::string tmpl = path.string();
   std::vector<char> buf(tmpl.begin(), tmpl.end());
   buf.push_back('\0');
-  int fd = mkstemp(buf.data());
-  if (fd == -1)
+
+  int tmp_fd = mkstemp(buf.data());
+  if (tmp_fd == -1) {
     return "";
+  }
+
   std::string result(buf.data());
-  write(fd, content.data(), content.size());
-  close(fd);
+  write(tmp_fd, content.data(), content.size());
+  close(tmp_fd);
   return result;
 }
 
@@ -44,14 +45,14 @@ logging:
   output: "stdout"
   include_source_location: false
 )";
-  std::string path = CreateTempFile(yaml);
+  std::string path = createTempFile(yaml);
   ASSERT_FALSE(path.empty());
 
   auto result = LoadConfig<GatewayConfig>(path);
   ASSERT_TRUE(result.ok()) << result.status().message();
   const auto& config = result.value();
   EXPECT_EQ(config.http_listener().address(), "0.0.0.0");
-  EXPECT_EQ(config.http_listener().port(), 8081u);
+  EXPECT_EQ(config.http_listener().port(), 8081U);
   ASSERT_GE(config.node_connections_size(), 1);
   EXPECT_EQ(config.node_connections(0).address(), "127.0.0.1:9090");
   EXPECT_EQ(config.logging().level(), "info");
@@ -76,7 +77,7 @@ node_connections:
 logging:
   level: "info"
 )";
-  std::string path = CreateTempFile(yaml);
+  std::string path = createTempFile(yaml);
   ASSERT_FALSE(path.empty());
 
   auto result = LoadConfig<GatewayConfig>(path);
@@ -84,8 +85,9 @@ logging:
   const auto& config = result.value();
   ASSERT_TRUE(config.has_scheduler());
   EXPECT_EQ(config.scheduler().name(), "round_robin");
-  EXPECT_TRUE(config.scheduler().typed_config().Is<strij::extensions::schedulers::round_robin::
-                                                     RoundRobinSchedulerConfig>());
+  EXPECT_TRUE(config.scheduler()
+                  .typed_config()
+                  .Is<extensions::schedulers::round_robin::RoundRobinSchedulerConfig>());
 
   std::filesystem::remove(path);
 }
@@ -100,14 +102,14 @@ logging:
   format: "json"
   output: "stderr"
 )";
-  std::string path = CreateTempFile(yaml);
+  std::string path = createTempFile(yaml);
   ASSERT_FALSE(path.empty());
 
   auto result = LoadConfig<NodeAgentConfig>(path);
   ASSERT_TRUE(result.ok()) << result.status().message();
   const auto& config = result.value();
   EXPECT_EQ(config.tlv_listener().address(), "0.0.0.0");
-  EXPECT_EQ(config.tlv_listener().port(), 9090u);
+  EXPECT_EQ(config.tlv_listener().port(), 9090U);
   EXPECT_EQ(config.logging().level(), "debug");
   EXPECT_EQ(config.logging().format(), "json");
   EXPECT_EQ(config.logging().output(), "stderr");
@@ -141,7 +143,7 @@ task_handlers:
 heartbeat_interval:
   seconds: 5
 )";
-  std::string path = CreateTempFile(yaml);
+  std::string path = createTempFile(yaml);
   ASSERT_FALSE(path.empty());
 
   auto result = LoadConfig<NodeAgentConfig>(path);
@@ -149,18 +151,18 @@ heartbeat_interval:
   const auto& config = result.value();
   ASSERT_EQ(config.pools_size(), 2);
   EXPECT_EQ(config.pools(0).name(), "cpu");
-  EXPECT_EQ(config.pools(0).total(), 16u);
+  EXPECT_EQ(config.pools(0).total(), 16U);
   EXPECT_EQ(config.pools(1).name(), "gpu.h100");
-  EXPECT_EQ(config.pools(1).total(), 2u);
+  EXPECT_EQ(config.pools(1).total(), 2U);
   ASSERT_EQ(config.reservations_size(), 1);
   EXPECT_EQ(config.reservations(0).task_type(), "video-encode");
-  EXPECT_EQ(config.reservations(0).amount(), 1u);
+  EXPECT_EQ(config.reservations(0).amount(), 1U);
   ASSERT_EQ(config.task_handlers_size(), 1);
   EXPECT_EQ(config.task_handlers(0).name(), "echo");
-  strij::extensions::task_handlers::echo::EchoTaskHandlerConfig handler_config;
+  extensions::task_handlers::echo::EchoTaskHandlerConfig handler_config;
   ASSERT_TRUE(config.task_handlers(0).typed_config().UnpackTo(&handler_config));
-  EXPECT_EQ(handler_config.capacity().concurrency(), 1024u);
-  EXPECT_EQ(handler_config.capacity().default_resources().resources().at("cpu"), 2u);
+  EXPECT_EQ(handler_config.capacity().concurrency(), 1024U);
+  EXPECT_EQ(handler_config.capacity().default_resources().resources().at("cpu"), 2U);
   EXPECT_EQ(config.heartbeat_interval().seconds(), 5);
 
   std::filesystem::remove(path);
@@ -172,13 +174,13 @@ http_listener:
   address: "0.0.0.0"
   port: 99999
 )";
-  std::string path = CreateTempFile(yaml);
+  std::string path = createTempFile(yaml);
   ASSERT_FALSE(path.empty());
 
   auto result = LoadConfig<GatewayConfig>(path);
   EXPECT_FALSE(result.ok());
-  EXPECT_TRUE(result.status().message().find("out of range") != std::string::npos ||
-              result.status().message().find("port") != std::string::npos);
+  EXPECT_TRUE(result.status().message().contains("out of range") ||
+              result.status().message().contains("port"));
 
   std::filesystem::remove(path);
 }
@@ -191,12 +193,12 @@ http_listener:
   address: "0.0.0.0"
   port: 8081
 )";
-  std::string path = CreateTempFile(yaml);
+  std::string path = createTempFile(yaml);
   ASSERT_FALSE(path.empty());
 
   auto result = LoadConfig<GatewayConfig>(path);
   EXPECT_FALSE(result.ok());
-  EXPECT_TRUE(result.status().message().find("level") != std::string::npos);
+  EXPECT_TRUE(result.status().message().contains("level"));
 
   std::filesystem::remove(path);
 }
@@ -209,13 +211,13 @@ http_listener:
 node_connections:
   - address: "not-a-valid-address"
 )";
-  std::string path = CreateTempFile(yaml);
+  std::string path = createTempFile(yaml);
   ASSERT_FALSE(path.empty());
 
   auto result = LoadConfig<GatewayConfig>(path);
   EXPECT_FALSE(result.ok());
-  EXPECT_TRUE(result.status().message().find("address") != std::string::npos ||
-              result.status().message().find("pattern") != std::string::npos);
+  EXPECT_TRUE(result.status().message().contains("address") ||
+              result.status().message().contains("pattern"));
 
   std::filesystem::remove(path);
 }
@@ -225,7 +227,7 @@ TEST(ConfigLoaderTest, CliOverrides) {
       LoadConfig<GatewayConfig>("", {"http_listener.port=9090", "http_listener.address=10.0.0.1"});
   ASSERT_TRUE(result.ok()) << result.status().message();
   const auto& config = result.value();
-  EXPECT_EQ(config.http_listener().port(), 9090u);
+  EXPECT_EQ(config.http_listener().port(), 9090U);
   EXPECT_EQ(config.http_listener().address(), "10.0.0.1");
 }
 
@@ -236,7 +238,7 @@ TEST(ConfigLoaderTest, EnvOverridesPort) {
   auto result = LoadConfig<GatewayConfig>("");
   ASSERT_TRUE(result.ok()) << result.status().message();
   const auto& config = result.value();
-  EXPECT_EQ(config.http_listener().port(), 7070u);
+  EXPECT_EQ(config.http_listener().port(), 7070U);
   EXPECT_EQ(config.http_listener().address(), "10.0.0.1");
 
   unsetenv("STRIJ_GATEWAY_HTTP_LISTENER_PORT");
@@ -251,7 +253,7 @@ TEST(ConfigLoaderTest, EnvOverridesNodeAgent) {
   auto result = LoadConfig<NodeAgentConfig>("");
   ASSERT_TRUE(result.ok()) << result.status().message();
   const auto& config = result.value();
-  EXPECT_EQ(config.tlv_listener().port(), 8080u);
+  EXPECT_EQ(config.tlv_listener().port(), 8080U);
   EXPECT_EQ(config.tlv_listener().address(), "0.0.0.0");
   EXPECT_EQ(config.logging().level(), "error");
 
@@ -305,7 +307,7 @@ http_listener:
   port: 8081
 unknown_field: "test"
 )";
-  std::string path = CreateTempFile(yaml);
+  std::string path = createTempFile(yaml);
   ASSERT_FALSE(path.empty());
 
   auto result = LoadConfig<GatewayConfig>(path);
@@ -324,13 +326,13 @@ TEST(ConfigLoaderTest, NodeAgentCliOverrides) {
       LoadConfig<NodeAgentConfig>("", {"tlv_listener.port=7070", "tlv_listener.address=0.0.0.0"});
   ASSERT_TRUE(result.ok()) << result.status().message();
   const auto& config = result.value();
-  EXPECT_EQ(config.tlv_listener().port(), 7070u);
+  EXPECT_EQ(config.tlv_listener().port(), 7070U);
   EXPECT_EQ(config.tlv_listener().address(), "0.0.0.0");
 }
 
 TEST(ConfigLoaderTest, GetDefaultConfig) {
-  GatewayConfig config = GetDefaultConfig<GatewayConfig>();
-  EXPECT_EQ(config.http_listener().port(), 0u);
+  auto config = GetDefaultConfig<GatewayConfig>();
+  EXPECT_EQ(config.http_listener().port(), 0U);
 }
 
 } // namespace

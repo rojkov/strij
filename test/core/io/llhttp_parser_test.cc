@@ -1,4 +1,3 @@
-#include <array>
 #include <cstring>
 #include <string>
 #include <utility>
@@ -22,9 +21,9 @@ protected:
   // after the feed() call (matches the parser's zero-copy delivery contract).
   std::vector<CapturedRequest> received_;
   LlhttpParser parser_{[this](HttpRequest request) -> void {
-    received_.push_back({std::string(request.path),
-                         std::vector<std::byte>(request.body.begin(), request.body.end()),
-                         std::move(request.headers)});
+    received_.push_back({.path = std::string(request.path),
+                         .body = std::vector<std::byte>(request.body.begin(), request.body.end()),
+                         .headers = std::move(request.headers)});
   }};
 
   void feed(std::span<const std::byte> data) {
@@ -43,12 +42,11 @@ protected:
 // NOLINTBEGIN(modernize-use-trailing-return-type)
 
 TEST_F(LlhttpParserTest, CapturesPathAndBody) {
-  const std::string request =
-      "POST /tasks/echo HTTP/1.1\r\n"
-      "Host: localhost\r\n"
-      "Content-Length: 5\r\n"
-      "\r\n"
-      "hello";
+  const std::string request = "POST /tasks/echo HTTP/1.1\r\n"
+                              "Host: localhost\r\n"
+                              "Content-Length: 5\r\n"
+                              "\r\n"
+                              "hello";
   auto data = std::as_bytes(std::span(request.data(), request.size()));
   feed(data);
 
@@ -60,10 +58,9 @@ TEST_F(LlhttpParserTest, CapturesPathAndBody) {
 }
 
 TEST_F(LlhttpParserTest, CapturesPathWithoutBody) {
-  const std::string request =
-      "GET /tasks HTTP/1.1\r\n"
-      "Host: localhost\r\n"
-      "\r\n";
+  const std::string request = "GET /tasks HTTP/1.1\r\n"
+                              "Host: localhost\r\n"
+                              "\r\n";
   auto data = std::as_bytes(std::span(request.data(), request.size()));
   feed(data);
 
@@ -73,12 +70,11 @@ TEST_F(LlhttpParserTest, CapturesPathWithoutBody) {
 }
 
 TEST_F(LlhttpParserTest, CapturesPathWithQuery) {
-  const std::string request =
-      "POST /tasks/echo?param=1 HTTP/1.1\r\n"
-      "Host: localhost\r\n"
-      "Content-Length: 2\r\n"
-      "\r\n"
-      "ok";
+  const std::string request = "POST /tasks/echo?param=1 HTTP/1.1\r\n"
+                              "Host: localhost\r\n"
+                              "Content-Length: 2\r\n"
+                              "\r\n"
+                              "ok";
   auto data = std::as_bytes(std::span(request.data(), request.size()));
   feed(data);
 
@@ -87,11 +83,10 @@ TEST_F(LlhttpParserTest, CapturesPathWithQuery) {
 }
 
 TEST_F(LlhttpParserTest, PartialRequestNeedsMoreData) {
-  const std::string request =
-      "POST /tasks/echo HTTP/1.1\r\n"
-      "Host: localhost\r\n"
-      "Content-Length: 5\r\n"
-      "\r\n";
+  const std::string request = "POST /tasks/echo HTTP/1.1\r\n"
+                              "Host: localhost\r\n"
+                              "Content-Length: 5\r\n"
+                              "\r\n";
 
   auto data = std::as_bytes(std::span(request.data(), request.size()));
   feed(data);
@@ -106,11 +101,10 @@ TEST_F(LlhttpParserTest, PartialRequestNeedsMoreData) {
 }
 
 TEST_F(LlhttpParserTest, UrlSplitAcrossReads) {
-  const std::string request =
-      "POST /tasks/echo HTTP/1.1\r\n"
-      "Host: localhost\r\n"
-      "Content-Length: 0\r\n"
-      "\r\n";
+  const std::string request = "POST /tasks/echo HTTP/1.1\r\n"
+                              "Host: localhost\r\n"
+                              "Content-Length: 0\r\n"
+                              "\r\n";
 
   auto data = std::as_bytes(std::span(request.data(), request.size()));
 
@@ -126,12 +120,11 @@ TEST_F(LlhttpParserTest, UrlSplitAcrossReads) {
 }
 
 TEST_F(LlhttpParserTest, BodySplitAcrossReads) {
-  const std::string request =
-      "POST /tasks/echo HTTP/1.1\r\n"
-      "Host: localhost\r\n"
-      "Content-Length: 11\r\n"
-      "\r\n"
-      "hello world";
+  const std::string request = "POST /tasks/echo HTTP/1.1\r\n"
+                              "Host: localhost\r\n"
+                              "Content-Length: 11\r\n"
+                              "\r\n"
+                              "hello world";
 
   auto data = std::as_bytes(std::span(request.data(), request.size()));
 
@@ -143,18 +136,17 @@ TEST_F(LlhttpParserTest, BodySplitAcrossReads) {
   ASSERT_EQ(received_.size(), 1U);
   EXPECT_EQ(received_[0].path, "/tasks/echo");
   ASSERT_EQ(received_[0].body.size(), 11U);
-  const std::string body(reinterpret_cast<const char*>(received_[0].body.data()),
+  const std::string body(std::bit_cast<const char*>(received_[0].body.data()),
                          received_[0].body.size());
   EXPECT_EQ(body, "hello world");
 }
 
 TEST_F(LlhttpParserTest, CapturesHeaders) {
-  const std::string request =
-      "POST /tasks/echo HTTP/1.1\r\n"
-      "Host: localhost\r\n"
-      "x-strij-function: /usr/bin/cat\r\n"
-      "Content-Length: 0\r\n"
-      "\r\n";
+  const std::string request = "POST /tasks/echo HTTP/1.1\r\n"
+                              "Host: localhost\r\n"
+                              "x-strij-function: /usr/bin/cat\r\n"
+                              "Content-Length: 0\r\n"
+                              "\r\n";
   auto data = std::as_bytes(std::span(request.data(), request.size()));
   feed(data);
 
@@ -169,12 +161,11 @@ TEST_F(LlhttpParserTest, CapturesHeaders) {
 }
 
 TEST_F(LlhttpParserTest, HeaderValueSplitAcrossReads) {
-  const std::string request =
-      "POST /tasks/echo HTTP/1.1\r\n"
-      "Host: localhost\r\n"
-      "x-strij-function: /usr/bin/cat\r\n"
-      "Content-Length: 0\r\n"
-      "\r\n";
+  const std::string request = "POST /tasks/echo HTTP/1.1\r\n"
+                              "Host: localhost\r\n"
+                              "x-strij-function: /usr/bin/cat\r\n"
+                              "Content-Length: 0\r\n"
+                              "\r\n";
 
   auto data = std::as_bytes(std::span(request.data(), request.size()));
 
@@ -190,11 +181,10 @@ TEST_F(LlhttpParserTest, HeaderValueSplitAcrossReads) {
 }
 
 TEST_F(LlhttpParserTest, EmptyHeaderValueCaptured) {
-  const std::string request =
-      "POST /tasks/echo HTTP/1.1\r\n"
-      "x-strij-empty:\r\n"
-      "Content-Length: 0\r\n"
-      "\r\n";
+  const std::string request = "POST /tasks/echo HTTP/1.1\r\n"
+                              "x-strij-empty:\r\n"
+                              "Content-Length: 0\r\n"
+                              "\r\n";
   auto data = std::as_bytes(std::span(request.data(), request.size()));
   feed(data);
 

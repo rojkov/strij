@@ -1,10 +1,10 @@
-#include "core/extensions/function_resolver.hh"
-
 #include <memory>
 
-#include "core/extensions/factory_context.hh"
-#include "gtest/gtest.h"
 #include "test/mocks/event/mocks.hh"
+
+#include "core/extensions/factory_context.hh"
+#include "core/extensions/function_resolver.hh"
+#include "gtest/gtest.h"
 
 namespace strij::extensions {
 namespace {
@@ -33,7 +33,7 @@ TEST(LocalFunctionResolverTest, FunctionParameterConstant) {
 }
 
 TEST(FactoryContextImplTest, SharesResolverAcrossAccesses) {
-  auto dispatcher = std::make_shared<strij::event::MockDispatcher>();
+  auto dispatcher = std::make_shared<event::MockDispatcher>();
   auto resolver = std::make_unique<LocalFunctionResolver>();
   auto* raw = resolver.get();
 

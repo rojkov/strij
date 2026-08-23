@@ -1,5 +1,3 @@
-#include "extensions/task_handlers/piped_executable/piped_executable_task_handler.hh"
-
 #include <poll.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -10,14 +8,16 @@
 #include <utility>
 #include <vector>
 
+#include "test/mocks/event/mocks.hh"
+#include "test/mocks/extensions/extensions_mocks.hh"
+
 #include "core/extensions/function_resolver.hh"
 #include "core/task/task.pb.h"
 #include "extensions/task_handlers/piped_executable/child_process.hh"
 #include "extensions/task_handlers/piped_executable/piped_executable.pb.h"
+#include "extensions/task_handlers/piped_executable/piped_executable_task_handler.hh"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
-#include "test/mocks/event/mocks.hh"
-#include "test/mocks/extensions/extensions_mocks.hh"
 
 namespace strij::extensions::task_handlers {
 namespace {
@@ -38,7 +38,7 @@ constexpr uint8_t kExitPoll = 3;
 // Test ResultSender sharing state across the sender instances the handler
 // owns per task.
 struct SenderState {
-  std::vector<strij::task::TaskResult> sent;
+  std::vector<task::TaskResult> sent;
   std::move_only_function<void()> close_cb;
 };
 
@@ -46,7 +46,7 @@ class TestSender final : public ResultSender {
 public:
   explicit TestSender(std::shared_ptr<SenderState> state) : state_{std::move(state)} {}
 
-  void Send(strij::task::TaskResult result) override { state_->sent.push_back(std::move(result)); }
+  void Send(task::TaskResult result) override { state_->sent.push_back(std::move(result)); }
 
   auto RegisterOnClose(std::move_only_function<void()> close_cb) -> std::size_t override {
     state_->close_cb = std::move(close_cb);
@@ -61,19 +61,18 @@ private:
 };
 
 auto MakeTask(const std::string& id, const std::string& function, const std::string& body)
-    -> strij::task::Task {
-  strij::task::Task task;
+    -> task::Task {
+  task::Task task;
   task.set_id(id);
   task.set_type("piped_executable");
   task.set_body(body);
-  task.mutable_parameters()->insert(
-      {std::string(strij::extensions::kFunctionParameter), function});
+  task.mutable_parameters()->insert({std::string(extensions::kFunctionParameter), function});
   return task;
 }
 
 // Waits until the process behind `pidfd` has exited.
 auto WaitForExit(int pidfd) -> bool {
-  struct pollfd pfd {};
+  struct pollfd pfd{};
   pfd.fd = pidfd;
   pfd.events = POLLIN;
   return ::poll(&pfd, 1, 5000) > 0;
@@ -87,13 +86,13 @@ TEST(PipedExecutableTaskHandlerFactoryTest, NameIsPipedExecutable) {
 }
 
 TEST(PipedExecutableTaskHandlerFactoryTest, CreateUsesSharedResolverAndDispatcher) {
-  NiceMock<strij::event::MockDispatcher> dispatcher;
-  strij::extensions::LocalFunctionResolver resolver;
-  strij::extensions::MockFactoryContext context;
+  NiceMock<event::MockDispatcher> dispatcher;
+  extensions::LocalFunctionResolver resolver;
+  extensions::MockFactoryContext context;
   ON_CALL(context, Dispatcher()).WillByDefault(ReturnRef(dispatcher));
   ON_CALL(context, FunctionResolver()).WillByDefault(ReturnRef(resolver));
 
-  strij::extensions::task_handlers::piped_executable::PipedExecutableTaskHandlerConfig config;
+  extensions::task_handlers::piped_executable::PipedExecutableTaskHandlerConfig config;
   auto handler = PipedExecutableTaskHandlerFactory().Create(config, context);
 
   ASSERT_NE(handler, nullptr);
@@ -105,11 +104,11 @@ TEST(PipedExecutableTaskHandlerFactoryTest, CreateUsesSharedResolverAndDispatche
 }
 
 TEST(PipedExecutableTaskHandlerTest, MissingFunctionParameterSendsEmptyFinal) {
-  NiceMock<strij::event::MockDispatcher> dispatcher;
-  strij::extensions::LocalFunctionResolver resolver;
+  NiceMock<event::MockDispatcher> dispatcher;
+  extensions::LocalFunctionResolver resolver;
   PipedExecutableTaskHandler handler(dispatcher, resolver);
 
-  strij::task::Task task = MakeTask("42", "", "");
+  task::Task task = MakeTask("42", "", "");
   auto state = std::make_shared<SenderState>();
 
   handler.HandleTask(task, std::make_unique<TestSender>(state));
@@ -121,8 +120,8 @@ TEST(PipedExecutableTaskHandlerTest, MissingFunctionParameterSendsEmptyFinal) {
 }
 
 TEST(PipedExecutableTaskHandlerTest, SpawnFailureSendsEmptyFinal) {
-  NiceMock<strij::event::MockDispatcher> dispatcher;
-  strij::extensions::LocalFunctionResolver resolver;
+  NiceMock<event::MockDispatcher> dispatcher;
+  extensions::LocalFunctionResolver resolver;
   PipedExecutableTaskHandler handler(dispatcher, resolver);
 
   auto task = MakeTask("7", "/nonexistent/strij-binary", "payload");
@@ -137,13 +136,13 @@ TEST(PipedExecutableTaskHandlerTest, SpawnFailureSendsEmptyFinal) {
 }
 
 TEST(PipedExecutableTaskHandlerTest, HandleTaskSpawnsStreamsAndTeardowns) {
-  NiceMock<strij::event::MockDispatcher> dispatcher;
-  strij::extensions::LocalFunctionResolver resolver;
+  NiceMock<event::MockDispatcher> dispatcher;
+  extensions::LocalFunctionResolver resolver;
   PipedExecutableTaskHandler handler(dispatcher, resolver);
 
   int stdin_w = -1;
   int pidfd = -1;
-  strij::event::Completable* child_raw = nullptr;
+  event::Completable* child_raw = nullptr;
   EXPECT_CALL(dispatcher, PrepareWrite(_, _, _, _, -1))
       .WillOnce(DoAll(SaveArg<2>(&stdin_w), Return()));
   EXPECT_CALL(dispatcher, PreparePoll(_, kExitPoll, _, POLLIN))
@@ -168,7 +167,7 @@ TEST(PipedExecutableTaskHandlerTest, HandleTaskSpawnsStreamsAndTeardowns) {
   // the exit poll so the drain sees the data.
   ASSERT_TRUE(WaitForExit(pidfd));
 
-  strij::event::Command deferred{};
+  event::Command deferred{};
   EXPECT_CALL(dispatcher, SubmitCommand(_)).WillOnce(SaveArg<0>(&deferred));
 
   child->HandleCompletion(kExitPoll, POLLIN, 0);
@@ -183,20 +182,20 @@ TEST(PipedExecutableTaskHandlerTest, HandleTaskSpawnsStreamsAndTeardowns) {
   // Teardown: the close callback was unregistered and a DEFERRED_DELETE
   // command was submitted to the handler, which erases the map entry.
   EXPECT_EQ(state->close_cb, nullptr);
-  EXPECT_EQ(deferred.type_, strij::event::Command::DEFERRED_DELETE);
-  EXPECT_EQ(deferred.destination_, static_cast<strij::event::CommandHandler*>(&handler));
+  EXPECT_EQ(deferred.type_, event::Command::DEFERRED_DELETE);
+  EXPECT_EQ(deferred.destination_, static_cast<event::CommandHandler*>(&handler));
   EXPECT_EQ(deferred.args_, child_raw);
   handler.ProcessCommand(deferred);
 }
 
 TEST(PipedExecutableTaskHandlerTest, StreamsStdoutAsNonFinalChunks) {
-  NiceMock<strij::event::MockDispatcher> dispatcher;
-  strij::extensions::LocalFunctionResolver resolver;
+  NiceMock<event::MockDispatcher> dispatcher;
+  extensions::LocalFunctionResolver resolver;
   PipedExecutableTaskHandler handler(dispatcher, resolver);
 
   int pidfd = -1;
   int stdin_w = -1;
-  strij::event::Completable* child_raw = nullptr;
+  event::Completable* child_raw = nullptr;
   EXPECT_CALL(dispatcher, PrepareWrite(_, _, _, _, -1))
       .WillOnce(DoAll(SaveArg<2>(&stdin_w), Return()));
   EXPECT_CALL(dispatcher, PreparePoll(_, kExitPoll, _, POLLIN))
@@ -230,7 +229,7 @@ TEST(PipedExecutableTaskHandlerTest, StreamsStdoutAsNonFinalChunks) {
   child->HandleCompletion(kStdinWrite, 12, 0);
   ASSERT_TRUE(WaitForExit(pidfd));
 
-  strij::event::Command deferred{};
+  event::Command deferred{};
   EXPECT_CALL(dispatcher, SubmitCommand(_)).WillOnce(SaveArg<0>(&deferred));
 
   child->HandleCompletion(kStdoutRead, 0, 0);
@@ -248,12 +247,12 @@ TEST(PipedExecutableTaskHandlerTest, StreamsStdoutAsNonFinalChunks) {
 }
 
 TEST(PipedExecutableTaskHandlerTest, ConnectionCloseKillsChild) {
-  NiceMock<strij::event::MockDispatcher> dispatcher;
-  strij::extensions::LocalFunctionResolver resolver;
+  NiceMock<event::MockDispatcher> dispatcher;
+  extensions::LocalFunctionResolver resolver;
   PipedExecutableTaskHandler handler(dispatcher, resolver);
 
   int pidfd = -1;
-  strij::event::Completable* child_raw = nullptr;
+  event::Completable* child_raw = nullptr;
   EXPECT_CALL(dispatcher, PreparePoll(_, kExitPoll, _, POLLIN))
       .WillOnce(DoAll(SaveArg<0>(&child_raw), SaveArg<2>(&pidfd), Return()));
 
@@ -272,7 +271,7 @@ TEST(PipedExecutableTaskHandlerTest, ConnectionCloseKillsChild) {
 
   EXPECT_TRUE(WaitForExit(pidfd));
 
-  strij::event::Command deferred{};
+  event::Command deferred{};
   EXPECT_CALL(dispatcher, SubmitCommand(_)).WillOnce(SaveArg<0>(&deferred));
 
   child->HandleCompletion(kExitPoll, POLLIN, 0);
@@ -287,14 +286,14 @@ TEST(PipedExecutableTaskHandlerTest, ConnectionCloseKillsChild) {
 }
 
 TEST(PipedExecutableTaskHandlerTest, ConcurrentTasksAreIsolated) {
-  NiceMock<strij::event::MockDispatcher> dispatcher;
-  strij::extensions::LocalFunctionResolver resolver;
+  NiceMock<event::MockDispatcher> dispatcher;
+  extensions::LocalFunctionResolver resolver;
   PipedExecutableTaskHandler handler(dispatcher, resolver);
 
   int stdin_w_a = -1;
   int stdin_w_b = -1;
-  strij::event::Completable* child_a = nullptr;
-  strij::event::Completable* child_b = nullptr;
+  event::Completable* child_a = nullptr;
+  event::Completable* child_b = nullptr;
   EXPECT_CALL(dispatcher, PrepareWrite(_, _, _, _, -1))
       .WillOnce(DoAll(SaveArg<2>(&stdin_w_a), Return()))
       .WillOnce(DoAll(SaveArg<2>(&stdin_w_b), Return()));

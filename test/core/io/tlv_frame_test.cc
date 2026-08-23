@@ -25,7 +25,7 @@ TEST_F(SerializeTlvFrameTest, SerializesCorrectWireFormat) {
   EXPECT_EQ(static_cast<uint8_t>(frame[0]), TlvFrame::kTaskSubmission);
 
   uint32_t net_len{};
-  std::memcpy(&net_len, frame.data() + 1, 4);
+  std::memcpy(&net_len, std::next(frame.data(), 1), 4);
   uint32_t length = ntohl(net_len);
   EXPECT_EQ(length, value.size());
 
@@ -47,13 +47,13 @@ TEST_F(SerializeTlvFrameTest, SerializesEmptyValue) {
   EXPECT_EQ(static_cast<uint8_t>(frame[0]), TlvFrame::kHeartbeat);
 
   uint32_t net_len{};
-  std::memcpy(&net_len, frame.data() + 1, 4);
+  std::memcpy(&net_len, std::next(frame.data(), 1), 4);
   uint32_t length = ntohl(net_len);
   EXPECT_EQ(length, 0U);
 }
 
 TEST_F(SerializeTlvFrameTest, RoundTripsSerializedTaskThroughTlvParser) {
-  strij::task::Task task;
+  task::Task task;
   task.set_id("42");
   task.set_type("echo");
   task.set_body("hello");
@@ -75,7 +75,7 @@ TEST_F(SerializeTlvFrameTest, RoundTripsSerializedTaskThroughTlvParser) {
   EXPECT_EQ(received_frames[0].type_id, TlvFrame::kTaskSubmission);
   EXPECT_EQ(received_frames[0].value.size(), serialized.size());
 
-  strij::task::Task parsed;
+  task::Task parsed;
   ASSERT_TRUE(parsed.ParseFromArray(received_frames[0].value.data(),
                                     static_cast<int>(received_frames[0].value.size())));
   EXPECT_EQ(parsed.id(), "42");

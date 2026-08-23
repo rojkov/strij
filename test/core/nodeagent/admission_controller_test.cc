@@ -7,16 +7,16 @@
 namespace strij::nodeagent {
 namespace {
 
-auto MakeCapabilities() -> strij::node::NodeCapabilities {
-  strij::node::NodeCapabilities caps;
+auto MakeCapabilities() -> node::NodeCapabilities {
+  node::NodeCapabilities caps;
   caps.set_node_id("node-test");
   caps.set_capability_version(1);
   return caps;
 }
 
 auto Resources(std::initializer_list<std::pair<std::string, uint64_t>> entries)
-    -> strij::node::ResourceRequirements {
-  strij::node::ResourceRequirements requirements;
+    -> node::ResourceRequirements {
+  node::ResourceRequirements requirements;
   for (const auto& [pool, amount] : entries) {
     requirements.mutable_resources()->insert({pool, amount});
   }
