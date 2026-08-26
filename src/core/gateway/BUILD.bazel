@@ -110,5 +110,6 @@ strij_cc_library(
         "//src/core/io:connection_lib",
         "//src/core/io:tlv_frame",
         "//src/core/logging:log_lib",
+        "//src/extensions/schedulers:scheduler_interface",
     ],
 )

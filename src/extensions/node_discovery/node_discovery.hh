@@ -46,7 +46,7 @@ public:
 
   [[nodiscard]] virtual auto Name() const -> std::string PURE;
   virtual auto CreateEmptyConfigProto() -> MessagePtr PURE;
-  virtual auto Create(const ::google::protobuf::Message& config, FactoryContext& context)
+  virtual auto Create(const ::google::protobuf::Message& config, GatewayFactoryContext& context)
       -> std::unique_ptr<NodeDiscovery> PURE;
 };
 

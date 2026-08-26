@@ -1,31 +1,34 @@
 #pragma once
 
 #include <memory>
+#include <span>
 #include <string>
 #include <string_view>
 
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "core/config/extensions.pb.h"
 #include "core/extensions/factory_context.hh"
-#include "core/gateway/node_directory.hh"
-#include "core/node/capabilities.pb.h"
+#include "core/gateway/result_receiver_storage.hh"
+#include "core/io/connection.hh"
+#include "core/io/tlv_frame.hh"
 #include "core/task/task.pb.h"
 #include "google/protobuf/message.h"
 #include "strij/common/pure.hh"
 
 namespace strij::extensions {
 
-// A task the gateway is considering for scheduling together with its resolved
-// hardware requirements. Both members stay valid for the duration of a
-// Scheduler::Choose() call.
-struct TaskOffer {
-  const task::Task* task;
-  const node::ResourceRequirements* requirements;
-};
-
-// A gateway scheduling policy. Choose() returns a connected node that
-// advertises RequiredProtocol() in its scheduling_protocols (or nullptr when no
-// eligible node exists).
+// A scheduling protocol extension, shared by the gateway and nodeagent halves
+// of the same wire protocol ("push" in v1). The gateway side submits tasks via
+// Schedule(); the optional TLV-frame facet (HandleFrame + HandledFrameTypes)
+// lets a scheduler own its side of a bidirectional protocol and makes the
+// nodeagent's inbound frame dispatcher protocol-agnostic.
+//
+// Contract: every task handed to Schedule() MUST eventually resolve through
+// `receiver` — either a result (Deliver with is_final=true) or an error
+// (DeliverError) — so the receiver never hangs. A gateway-side scheduler routes
+// to nodes whose advertisement lists RequiredProtocol() in
+// scheduling_protocols.
 class Scheduler {
 public:
   Scheduler() = default;
@@ -36,37 +39,81 @@ public:
   Scheduler(Scheduler&&) noexcept = delete;
   auto operator=(Scheduler&&) noexcept -> Scheduler& = delete;
 
+  // Fire-and-forget: submits `task` to the scheduling fabric, taking ownership
+  // of `receiver`. Must not block on a node round-trip.
+  virtual void Schedule(const task::Task& task, gateway::ResultReceiverPtr receiver) PURE;
   // The scheduling_protocol a candidate node must advertise (v1: "push").
   [[nodiscard]] virtual auto RequiredProtocol() const -> std::string_view PURE;
-  virtual auto Choose(gateway::NodeDirectory& dir, const TaskOffer& offer) -> gateway::Node* PURE;
+  // Routes an inbound wire frame of one of the types returned by
+  // HandledFrameTypes(). Returns OkStatus when the frame was handled (or was a
+  // legitimate no-op); a non-ok Status (e.g. NotFound when the frame type is
+  // unclaimed) signals the frame was dropped. Defaults to a no-op for schedulers
+  // with no inbound frames (pure gateway-side policies).
+  virtual auto HandleFrame(io::TlvFrame /*frame*/, io::Connection& /*conn*/) -> absl::Status {
+    return absl::OkStatus();
+  }
+  // The TLV frame type_ids this scheduler owns (e.g. {kTaskSubmission} for
+  // "push"). Empty = the scheduler never receives frames. Frame-type ownership
+  // is disjoint across scheduling protocols, so the nodeagent dispatcher can
+  // route by type_id alone.
+  [[nodiscard]] virtual auto HandledFrameTypes() const -> std::span<const uint8_t> { return {}; }
 };
 
 using SchedulerPtr = std::unique_ptr<Scheduler>;
 
-class SchedulerFactory {
+// Gateway-side scheduler factory, registered in Registry<GatewaySchedulerFactory>.
+class GatewaySchedulerFactory {
 public:
   using MessagePtr = std::unique_ptr<::google::protobuf::Message>;
 
-  SchedulerFactory() = default;
-  virtual ~SchedulerFactory() = default;
+  GatewaySchedulerFactory() = default;
+  virtual ~GatewaySchedulerFactory() = default;
 
-  SchedulerFactory(const SchedulerFactory&) = delete;
-  auto operator=(const SchedulerFactory&) -> SchedulerFactory& = delete;
-  SchedulerFactory(SchedulerFactory&&) noexcept = delete;
-  auto operator=(SchedulerFactory&&) noexcept -> SchedulerFactory& = delete;
+  GatewaySchedulerFactory(const GatewaySchedulerFactory&) = delete;
+  auto operator=(const GatewaySchedulerFactory&) -> GatewaySchedulerFactory& = delete;
+  GatewaySchedulerFactory(GatewaySchedulerFactory&&) noexcept = delete;
+  auto operator=(GatewaySchedulerFactory&&) noexcept -> GatewaySchedulerFactory& = delete;
 
   [[nodiscard]] virtual auto Name() const -> std::string PURE;
   virtual auto CreateEmptyConfigProto() -> MessagePtr PURE;
-  virtual auto Create(const ::google::protobuf::Message& config, FactoryContext& context)
+  virtual auto Create(const ::google::protobuf::Message& config, GatewayFactoryContext& context)
       -> SchedulerPtr PURE;
 };
 
-// Loads a scheduler from the gateway config's `scheduler` ExtensionConfig:
-// looks up the named factory in Registry<SchedulerFactory>, unpacks its
-// typed_config, and creates the instance. Returns InvalidArgumentError when no
-// scheduler is configured (null config) and NotFoundError when the name is not
-// registered.
-auto CreateScheduler(const config::ExtensionConfig* config, FactoryContext& context)
+// Nodeagent-side scheduler factory, registered in Registry<NodeSchedulerFactory>.
+class NodeSchedulerFactory {
+public:
+  using MessagePtr = std::unique_ptr<::google::protobuf::Message>;
+
+  NodeSchedulerFactory() = default;
+  virtual ~NodeSchedulerFactory() = default;
+
+  NodeSchedulerFactory(const NodeSchedulerFactory&) = delete;
+  auto operator=(const NodeSchedulerFactory&) -> NodeSchedulerFactory& = delete;
+  NodeSchedulerFactory(NodeSchedulerFactory&&) noexcept = delete;
+  auto operator=(NodeSchedulerFactory&&) noexcept -> NodeSchedulerFactory& = delete;
+
+  [[nodiscard]] virtual auto Name() const -> std::string PURE;
+  // The scheduling_protocol this scheduler implements; appended verbatim to the
+  // node's NodeCapabilities.scheduling_protocols (see BuildNodeCapabilities).
+  [[nodiscard]] virtual auto RequiredProtocol() const -> std::string_view PURE;
+  virtual auto CreateEmptyConfigProto() -> MessagePtr PURE;
+  virtual auto Create(const ::google::protobuf::Message& config, NodeagentFactoryContext& context)
+      -> SchedulerPtr PURE;
+};
+
+// Loads a gateway-side scheduler from a scheduler ExtensionConfig: looks up the
+// named factory in Registry<GatewaySchedulerFactory>, unpacks (or tolerates the
+// absence of) its typed_config, and creates the instance. NotFoundError when
+// the name is not registered.
+auto CreateGatewayScheduler(const config::ExtensionConfig& config, GatewayFactoryContext& context)
+    -> absl::StatusOr<SchedulerPtr>;
+
+// Loads a nodeagent-side scheduler from a scheduler ExtensionConfig: looks up
+// the named factory in Registry<NodeSchedulerFactory>, unpacks (or tolerates
+// the absence of) its typed_config, and creates the instance. NotFoundError when
+// the name is not registered.
+auto CreateNodeScheduler(const config::ExtensionConfig& config, NodeagentFactoryContext& context)
     -> absl::StatusOr<SchedulerPtr>;
 
 } // namespace strij::extensions

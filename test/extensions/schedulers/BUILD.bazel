@@ -6,9 +6,14 @@ strij_cc_test(
     deps = [
         "//api/core/config:config_cc_proto",
         "//api/extensions/schedulers/round_robin:round_robin_scheduler_cc_proto",
+        "//src/core/gateway:node_directory_lib",
+        "//src/core/gateway:result_receiver_storage",
         "//src/extensions/schedulers:scheduler_interface",
         "//src/extensions/schedulers/round_robin:round_robin_scheduler_lib",
+        "//test/mocks/common:common_mocks_lib",
         "//test/mocks/event:event_mocks_lib",
+        "//test/mocks/extensions:extensions_mocks_lib",
+        "@abseil-cpp//absl/status",
         "@googletest//:gtest_main",
     ],
 )

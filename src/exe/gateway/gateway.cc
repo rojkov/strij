@@ -8,11 +8,11 @@
 
 #include "absl/flags/flag.h"
 #include "absl/flags/parse.h"
+#include "absl/status/statusor.h"
 #include "core/common/signal_monitor.hh"
 #include "core/config/config_loader.hh"
 #include "core/event/dispatcher_impl.hh"
 #include "core/extensions/extension_registry.hh"
-#include "core/extensions/factory_context.hh"
 #include "core/gateway/gateway_http_handler.hh"
 #include "core/gateway/gateway_tlv_handler.hh"
 #include "core/gateway/http_result_receiver.hh"
@@ -26,7 +26,8 @@
 #include "core/io/tlv_parser.hh"
 #include "core/logging/log.hh"
 #include "core/logging/logger.hh"
-#include "extensions/schedulers/scheduler.hh"
+#include "extensions/schedulers/router/scheduler_router.hh"
+#include "gateway_factory_context.hh"
 #include "strij/event/dispatcher.hh"
 
 // Generated protobuf headers
@@ -77,11 +78,6 @@ auto main(int argc, char** argv) -> int {
     return 1;
   }
 
-  if (absl::GetFlag(FLAGS_validate_only)) {
-    LOG_INFO("Config validation passed");
-    return 0;
-  }
-
   // Apply CLI overrides
   if (absl::GetFlag(FLAGS_http_port) != 0) {
     config.mutable_http_listener()->set_port(absl::GetFlag(FLAGS_http_port));
@@ -107,13 +103,38 @@ auto main(int argc, char** argv) -> int {
   // Set log level from config
   // Note: Logger::GetInstance().SetLogLevel(config.logging().level());  // if available
 
+  // TODO: check why so many components are aware of state_tracker. I assumed it's needed for
+  // centralized schedulers only.
   strij::gateway::ExactStateTracker state_tracker;
   strij::gateway::ResultReceiverStorage storage{&state_tracker};
 
-  // Node discovery via extension registry
-  strij::extensions::FactoryContextImpl factory_context(dispatcher);
-  std::unique_ptr<strij::extensions::NodeDiscovery> node_discovery;
+  // The connection factory needs the NodeDirectory and the scheduler router,
+  // both of which are constructed after it, so back-pointers are filled in
+  // once the objects exist. Connections are only accepted during Run(), by
+  // which time both pointers are set.
+  strij::gateway::NodeDirectory* node_directory_ptr = nullptr;
+  strij::extensions::schedulers::SchedulerRouter* scheduler_router_ptr = nullptr;
+  auto connection_factory = [&storage, &state_tracker, &node_directory_ptr, &scheduler_router_ptr](
+                                strij::io::Connection& conn) -> strij::io::ProtocolParserPtr {
+    auto handler = std::make_unique<strij::gateway::GatewayTlvHandler>(
+        *node_directory_ptr, storage, scheduler_router_ptr, &state_tracker);
+    // Move the handler into the parser's callback via a named capture.
+    return std::make_unique<strij::io::TlvParser>(
+        [hdl = std::move(handler), &conn](strij::io::TlvFrame frame) -> void {
+          const absl::Status status = hdl->HandleFrame(frame, conn);
+          if (!status.ok()) {
+            LOG_WARNING("frame dropped: {}", status.message());
+          }
+        });
+  };
 
+  strij::gateway::NodeDirectory node_directory{dispatcher, std::move(connection_factory), storage};
+  node_directory_ptr = &node_directory;
+
+  strij::gateway::GatewayFactoryContextImpl factory_context(dispatcher, node_directory, storage);
+
+  // Node discovery via extension registry.
+  std::unique_ptr<strij::extensions::NodeDiscovery> node_discovery;
   const auto& ext = config.node_discovery();
   auto* factory =
       strij::extensions::Registry<strij::extensions::NodeDiscoveryFactory>::instance().GetFactory(
@@ -138,41 +159,23 @@ auto main(int argc, char** argv) -> int {
   node_discovery = factory->Create(*config_msg, factory_context);
   LOG_INFO("Node discovery extension '{}' loaded", ext.name());
 
-  // Scheduler via extension registry: required, no silent default.
-  const strij::config::ExtensionConfig* scheduler_config =
-      config.has_scheduler() ? &config.scheduler() : nullptr;
-  auto scheduler_result = strij::extensions::CreateScheduler(scheduler_config, factory_context);
-  if (!scheduler_result.ok()) {
-    LOG_ERROR("Config error: {}", scheduler_result.status().message());
+  // Schedulers via extension registry: required (at least one), no silent
+  // default. The router validates names and task_type bindings, so an unknown
+  // scheduler or an empty list fails startup (and --validate_only).
+  auto router_result = strij::extensions::schedulers::BuildSchedulerRouter(config, factory_context);
+  if (!router_result.ok()) {
+    LOG_ERROR("Config error: {}", router_result.status().message());
     return 1;
   }
+  auto scheduler_router = std::move(router_result).value();
+  scheduler_router_ptr = scheduler_router.get();
+  LOG_INFO("Loaded {} scheduler(s); requires protocol '{}'", config.schedulers().size(),
+           scheduler_router->RequiredProtocol());
 
-  auto scheduler = std::move(scheduler_result).value();
-  LOG_INFO("Scheduler '{}' loaded (requires protocol '{}')", config.scheduler().name(),
-           scheduler->RequiredProtocol());
-
-  // Node directory with async connect. Nodes are discovered dynamically and
-  // reconciled into the directory by repeated discovery snapshots. The
-  // connection factory needs the directory (to store advertisements and rekey
-  // records), so a back-pointer is filled in after construction.
-  strij::gateway::NodeDirectory* node_directory_ptr = nullptr;
-  auto connection_factory =
-      [&storage, &state_tracker, &node_directory_ptr](
-          strij::io::Connection& conn) -> std::unique_ptr<strij::io::ProtocolParser> {
-    auto handler = std::make_unique<strij::gateway::GatewayTlvHandler>(*node_directory_ptr, storage,
-                                                                       &state_tracker);
-    // Move the handler into the parser's callback via a named capture.
-    return std::make_unique<strij::io::TlvParser>(
-        [hdl = std::move(handler), &conn](strij::io::TlvFrame frame) -> void {
-          const absl::Status status = hdl->HandleFrame(frame, conn);
-          if (!status.ok()) {
-            LOG_WARNING("frame dropped: {}", status.message());
-          }
-        });
-  };
-
-  strij::gateway::NodeDirectory node_directory{dispatcher, std::move(connection_factory), storage};
-  node_directory_ptr = &node_directory;
+  if (absl::GetFlag(FLAGS_validate_only)) {
+    LOG_INFO("Config validation passed");
+    return 0;
+  }
 
   node_discovery->Start(
       [&node_directory](const std::vector<strij::extensions::NodeInfo>& nodes) -> void {
@@ -183,11 +186,11 @@ auto main(int argc, char** argv) -> int {
       dispatcher, config.http_listener().port(),
       [&](strij::io::Connection& conn) -> std::unique_ptr<strij::io::ProtocolParser> {
         auto handler = std::make_unique<strij::gateway::GatewayHttpHandler>(
-            node_directory, storage,
+            storage,
             [](strij::io::Connection& conn) -> strij::gateway::ResultReceiverPtr {
               return std::make_unique<strij::gateway::HttpResultReceiver>(conn);
             },
-            *scheduler, &state_tracker);
+            *scheduler_router);
         return std::make_unique<strij::io::LlhttpParser>(
             [hdl = std::move(handler), &conn](const strij::io::HttpRequest& request) -> void {
               hdl->HandleMessage(request, conn);

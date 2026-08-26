@@ -4,6 +4,9 @@
 #include <string>
 #include <string_view>
 
+#include "core/gateway/node_directory.hh"
+#include "core/gateway/result_receiver_storage.hh"
+#include "core/task/task.pb.h"
 #include "extensions/schedulers/scheduler.hh"
 #include "google/protobuf/message.h"
 
@@ -11,21 +14,36 @@ namespace strij::extensions::schedulers {
 
 // Preserves the pre-existing round-robin behavior: selects available (connected
 // and advertising the required protocol) nodes in rotation, advancing the
-// selection index on each call. Not requirements-aware.
+// selection index on each call. Not requirements-aware. Submits the task to the
+// chosen node's connection and resolves the receiver with an error when no node
+// is available.
 class RoundRobinScheduler final : public Scheduler {
 public:
+  RoundRobinScheduler(gateway::NodeDirectory& directory, gateway::ResultReceiverStorage& storage)
+      : directory_{directory}, storage_{storage} {}
+  ~RoundRobinScheduler() override = default;
+
+  RoundRobinScheduler(const RoundRobinScheduler&) = delete;
+  auto operator=(const RoundRobinScheduler&) -> RoundRobinScheduler& = delete;
+  RoundRobinScheduler(RoundRobinScheduler&&) noexcept = delete;
+  auto operator=(RoundRobinScheduler&&) noexcept -> RoundRobinScheduler& = delete;
+
+  void Schedule(const task::Task& task, gateway::ResultReceiverPtr receiver) override;
   [[nodiscard]] auto RequiredProtocol() const -> std::string_view override;
-  auto Choose(gateway::NodeDirectory& dir, const TaskOffer& offer) -> gateway::Node* override;
 
 private:
+  auto choose(gateway::NodeDirectory& dir) -> gateway::Node*;
+
+  gateway::NodeDirectory& directory_;
+  gateway::ResultReceiverStorage& storage_;
   size_t next_index_{0};
 };
 
-class RoundRobinSchedulerFactory final : public SchedulerFactory {
+class RoundRobinSchedulerFactory final : public GatewaySchedulerFactory {
 public:
   [[nodiscard]] auto Name() const -> std::string override;
   auto CreateEmptyConfigProto() -> MessagePtr override;
-  auto Create(const ::google::protobuf::Message& config, FactoryContext& context)
+  auto Create(const ::google::protobuf::Message& config, GatewayFactoryContext& context)
       -> SchedulerPtr override;
 };
 

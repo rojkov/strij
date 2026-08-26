@@ -36,7 +36,7 @@ auto StaticNodeDiscoveryFactory::CreateEmptyConfigProto() -> MessagePtr {
 }
 
 auto StaticNodeDiscoveryFactory::Create(const ::google::protobuf::Message& config,
-                                        FactoryContext& /*context*/)
+                                        GatewayFactoryContext& /*context*/)
     -> std::unique_ptr<NodeDiscovery> {
   const auto& typed = dynamic_cast<const strij::config::StaticNodeDiscoveryConfig&>(config);
 

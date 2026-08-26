@@ -1,44 +1,55 @@
 #include "extensions/schedulers/scheduler.hh"
 
-#include <memory>
-
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "core/config/extensions.pb.h"
 #include "core/extensions/extension_registry.hh"
-#include "core/extensions/factory_context.hh"
 #include "google/protobuf/any.pb.h"
 
 namespace strij::extensions {
 
-auto CreateScheduler(const config::ExtensionConfig* config, FactoryContext& context)
-    -> absl::StatusOr<SchedulerPtr> {
-  if (config == nullptr) {
-    return absl::InvalidArgumentError(
-        "gateway 'scheduler' extension is required; add a 'scheduler' section to the config, "
-        "e.g. 'scheduler: {name: \"round_robin\"}'");
-  }
+namespace {
 
-  auto* factory = Registry<SchedulerFactory>::instance().GetFactory(config->name());
+template <typename FactoryT, typename ContextT>
+auto createSchedulerFromExtension(const config::ExtensionConfig& ext, ContextT& context)
+    -> absl::StatusOr<SchedulerPtr> {
+  auto& registry = Registry<FactoryT>::instance();
+  auto* factory = registry.GetFactory(ext.name());
   if (factory == nullptr) {
-    const auto names = Registry<SchedulerFactory>::instance().GetRegisteredNames();
+    const auto names = registry.GetRegisteredNames();
     return absl::NotFoundError(
-        absl::StrCat("Scheduler '", config->name(),
+        absl::StrCat("Scheduler '", ext.name(),
                      "' is not registered. Registered: ", absl::StrJoin(names, ", ")));
   }
 
-  ::google::protobuf::Any unpacked;
-  unpacked.CopyFrom(config->typed_config());
   auto config_msg = factory->CreateEmptyConfigProto();
-  if (!unpacked.UnpackTo(config_msg.get())) {
-    return absl::InvalidArgumentError(absl::StrCat("Failed to unpack typed_config for scheduler '",
-                                                   config->name(), "': unknown type '",
-                                                   unpacked.type_url(), "'"));
+  // Tolerate a scheduler without a packed typed_config (e.g. push and
+  // round_robin ship no serialized payload): the factory defaults apply.
+  if (!ext.typed_config().type_url().empty()) {
+    ::google::protobuf::Any unpacked;
+    unpacked.CopyFrom(ext.typed_config());
+    if (!unpacked.UnpackTo(config_msg.get())) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("Failed to unpack typed_config for scheduler '", ext.name(),
+                       "': unknown type '", unpacked.type_url(), "'"));
+    }
   }
 
   return factory->Create(*config_msg, context);
+}
+
+} // namespace
+
+auto CreateGatewayScheduler(const config::ExtensionConfig& config, GatewayFactoryContext& context)
+    -> absl::StatusOr<SchedulerPtr> {
+  return createSchedulerFromExtension<GatewaySchedulerFactory>(config, context);
+}
+
+auto CreateNodeScheduler(const config::ExtensionConfig& config, NodeagentFactoryContext& context)
+    -> absl::StatusOr<SchedulerPtr> {
+  return createSchedulerFromExtension<NodeSchedulerFactory>(config, context);
 }
 
 } // namespace strij::extensions

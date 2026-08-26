@@ -47,6 +47,7 @@ strij_cc_library(
         "//src/core/extensions:extension_registry_lib",
         "//src/core/logging:log_lib",
         "//src/core/utils:task_id_lib",
+        "//src/extensions/schedulers:scheduler_interface",
         "//src/extensions/task_handlers:task_handlers_interface",
         "@abseil-cpp//absl/status",
         "@abseil-cpp//absl/status:statusor",
@@ -61,16 +62,31 @@ strij_cc_library(
     hdrs = ["nodeagent_tlv_handler.hh"],
     visibility = ["//visibility:public"],
     deps = [
+        "//api/core/node:node_cc_proto",
+        "//src/core/io:connection_lib",
+        "//src/core/io:tlv_frame",
+        "//src/core/logging:log_lib",
+        "//src/extensions/schedulers:scheduler_interface",
+    ],
+)
+
+strij_cc_library(
+    name = "run_task_service_lib",
+    srcs = ["run_task_service.cc"],
+    hdrs = ["run_task_service.hh"],
+    visibility = ["//visibility:public"],
+    deps = [
         ":admission_controller_lib",
         ":admission_tracking_sender_lib",
         ":result_sender_lib",
         ":task_handler_manager_lib",
-        "//api/core/node:node_cc_proto",
         "//api/core/task:task_cc_proto",
         "//src/core/io:connection_lib",
         "//src/core/io:tlv_frame",
         "//src/core/logging:log_lib",
+        "//src/extensions/task_handlers:task_handlers_interface",
         "@abseil-cpp//absl/status",
+        "@protobuf",
     ],
 )
 

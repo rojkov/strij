@@ -1,8 +1,3 @@
-#include <memory>
-
-#include "test/mocks/event/mocks.hh"
-
-#include "core/extensions/factory_context.hh"
 #include "core/extensions/function_resolver.hh"
 #include "gtest/gtest.h"
 
@@ -30,17 +25,6 @@ TEST(LocalFunctionResolverTest, RejectsEmptyReference) {
 
 TEST(LocalFunctionResolverTest, FunctionParameterConstant) {
   EXPECT_EQ(kFunctionParameter, "function");
-}
-
-TEST(FactoryContextImplTest, SharesResolverAcrossAccesses) {
-  auto dispatcher = std::make_shared<event::MockDispatcher>();
-  auto resolver = std::make_unique<LocalFunctionResolver>();
-  auto* raw = resolver.get();
-
-  FactoryContextImpl context(dispatcher, std::move(resolver));
-
-  EXPECT_EQ(&context.FunctionResolver(), raw);
-  EXPECT_EQ(&context.FunctionResolver(), raw);
 }
 
 // NOLINTEND(modernize-use-trailing-return-type)

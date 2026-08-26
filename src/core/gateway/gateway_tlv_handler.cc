@@ -1,6 +1,7 @@
 #include "core/gateway/gateway_tlv_handler.hh"
 
 #include <cstddef>
+#include <cstdint>
 #include <span>
 #include <utility>
 
@@ -10,6 +11,7 @@
 #include "core/logging/log.hh"
 #include "core/node/capabilities.pb.h"
 #include "core/task/task.pb.h"
+#include "extensions/schedulers/scheduler.hh"
 
 namespace strij::gateway {
 
@@ -32,7 +34,14 @@ auto GatewayTlvHandler::HandleFrame(const io::TlvFrame& frame, io::Connection& c
     LOG_DEBUG("Received heartbeat");
     return absl::OkStatus();
   default:
-    return absl::InvalidArgumentError(std::format("Unknown TLV type_id: {}", frame.type_id));
+    // Frame-routing seam: a frame type the built-in cases don't own is the
+    // configured scheduler's to handle. The scheduler returns the Status — the
+    // router reports NotFound when no constituent claims the type. In v1 the
+    // router claims no types, so every frame reaching here is dropped.
+    if (scheduler_ == nullptr) {
+      return absl::InvalidArgumentError(std::format("Unknown TLV type_id: {}", frame.type_id));
+    }
+    return scheduler_->HandleFrame(frame, conn);
   }
 }
 

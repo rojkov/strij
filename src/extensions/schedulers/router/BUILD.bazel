@@ -1,0 +1,20 @@
+load("//bazel:build_system.bzl", "strij_cc_library")
+
+strij_cc_library(
+    name = "scheduler_router_lib",
+    srcs = ["scheduler_router.cc"],
+    hdrs = ["scheduler_router.hh"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//api/core/config:config_cc_proto",
+        "//api/core/task:task_cc_proto",
+        "//src/core/extensions:factory_context_lib",
+        "//src/core/gateway:result_receiver_storage",
+        "//src/core/io:connection_lib",
+        "//src/core/io:tlv_frame",
+        "//src/extensions/schedulers:scheduler_interface",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+    ],
+)

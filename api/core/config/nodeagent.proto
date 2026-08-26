@@ -14,6 +14,7 @@ message NodeAgentConfig {
   repeated strij.node.PoolReservation reservations = 8;
   google.protobuf.Duration heartbeat_interval = 10;
   repeated ExtensionConfig task_handlers = 6;
+  repeated ExtensionConfig schedulers = 9 [(strij.config.required) = true];
   // RESERVED for future (v2+)
   // google.protobuf.Duration connection_timeout = 3;
   // google.protobuf.Duration heartbeat_interval = 4; // active in v2, see above

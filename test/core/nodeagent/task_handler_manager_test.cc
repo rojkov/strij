@@ -58,7 +58,7 @@ TEST(TaskHandlerManagerTest, RemoveHandlerErasesType) {
 }
 
 TEST(TaskHandlerManagerTest, EmptyListBuildsEmptyManager) {
-  extensions::MockFactoryContext context;
+  extensions::MockNodeagentFactoryContext context;
   ::google::protobuf::RepeatedPtrField<config::ExtensionConfig> configs;
 
   auto result = BuildTaskHandlerManager(configs, context);
@@ -68,7 +68,7 @@ TEST(TaskHandlerManagerTest, EmptyListBuildsEmptyManager) {
 }
 
 TEST(TaskHandlerManagerTest, UnknownHandlerNameReturnsError) {
-  extensions::MockFactoryContext context;
+  extensions::MockNodeagentFactoryContext context;
   ::google::protobuf::RepeatedPtrField<config::ExtensionConfig> configs;
   auto* ext = configs.Add();
   ext->set_name("no_such_handler");
@@ -91,7 +91,7 @@ TEST(TaskHandlerManagerTest, BuildInstantiatesHandlerFromConfig) {
   extensions::Registry<extensions::TaskHandlerFactory>::instance().RegisterFactory(
       "mock", factory.release());
 
-  extensions::MockFactoryContext context;
+  extensions::MockNodeagentFactoryContext context;
   ::google::protobuf::RepeatedPtrField<config::ExtensionConfig> configs;
   auto* ext = configs.Add();
   ext->set_name("mock");
@@ -106,7 +106,7 @@ TEST(TaskHandlerManagerTest, BuildInstantiatesHandlerFromConfig) {
 }
 
 TEST(TaskHandlerManagerTest, BuildInstantiatesPipedExecutableHandlerFromConfig) {
-  extensions::MockFactoryContext context;
+  extensions::MockNodeagentFactoryContext context;
   extensions::LocalFunctionResolver resolver;
   event::MockDispatcher dispatcher;
   ON_CALL(context, Dispatcher()).WillByDefault(ReturnRef(dispatcher));

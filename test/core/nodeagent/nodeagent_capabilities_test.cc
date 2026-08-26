@@ -15,6 +15,7 @@ protected:
     config::NodeAgentConfig config;
     config.mutable_tlv_listener()->set_address("127.0.0.1");
     config.mutable_tlv_listener()->set_port(9090);
+    config.add_schedulers()->set_name("push");
     auto* pool = config.add_pools();
     pool->set_name("cpu");
     pool->set_total(16);
@@ -114,6 +115,24 @@ TEST_F(NodeagentCapabilitiesTest, UnregisteredTaskHandlerFails) {
   auto result = BuildNodeCapabilities(config, "node-abc");
   ASSERT_FALSE(result.ok());
   EXPECT_TRUE(result.status().message().find("ghost") != std::string::npos);
+}
+
+TEST_F(NodeagentCapabilitiesTest, UnregisteredSchedulerFails) {
+  auto config = MakeConfig();
+  config.add_schedulers()->set_name("ghost");
+  auto result = BuildNodeCapabilities(config, "node-abc");
+  ASSERT_FALSE(result.ok());
+  EXPECT_TRUE(result.status().message().find("ghost") != std::string::npos);
+}
+
+TEST_F(NodeagentCapabilitiesTest, DuplicateSchedulerProtocolIsDeduplicated) {
+  auto config = MakeConfig();
+  config.add_schedulers()->set_name("push");
+  config.add_schedulers()->set_name("push");
+  auto result = BuildNodeCapabilities(config, "node-abc");
+  ASSERT_TRUE(result.ok());
+  ASSERT_EQ(result.value().scheduling_protocols_size(), 1);
+  EXPECT_EQ(result.value().scheduling_protocols(0).name(), "push");
 }
 
 TEST_F(NodeagentCapabilitiesTest, HandlerCapacityCarriesConcurrencyOnly) {

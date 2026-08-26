@@ -3,8 +3,11 @@
 #include <unistd.h>
 
 #include <array>
+#include <cstddef>
 #include <cstring>
 #include <memory>
+#include <span>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -17,8 +20,11 @@
 #include "core/node/capabilities.pb.h"
 #include "core/nodeagent/admission_controller.hh"
 #include "core/nodeagent/nodeagent_tlv_handler.hh"
+#include "core/nodeagent/run_task_service.hh"
 #include "core/nodeagent/task_handler_manager.hh"
 #include "core/task/task.pb.h"
+#include "extensions/schedulers/push/push_local_scheduler.hh"
+#include "extensions/schedulers/scheduler.hh"
 #include "extensions/task_handlers/echo/echo_task_handler.hh"
 #include "gtest/gtest.h"
 
@@ -114,13 +120,20 @@ TEST_F(NodeagentTlvHandlerTest, EchoesTaskAsTaskResult) {
   auto wire = io::SerializeTlvFrame(io::TlvFrame::kTaskSubmission,
                                     std::as_bytes(std::span(serialized.data(), serialized.size())));
 
+  auto manager = MakeEchoManager();
+  auto admission = MakeAdmission();
+  auto caps = MakeCapabilities();
+  RunTaskService run_task_service(manager, admission);
+  extensions::schedulers::PushLocalScheduler scheduler(run_task_service);
+
   // When Connection::Write submits, perform the actual write to the socket.
   EXPECT_CALL(*dispatcher_, PrepareWrite(::testing::_, ::testing::_, ::testing::_, ::testing::_, 0))
       .WillOnce(::testing::Invoke([this](event::Completable*, uint8_t, int,
                                          std::span<const std::byte> buf,
                                          off_t) { ::write(fds_[0], buf.data(), buf.size()); }));
 
-  NodeagentTlvHandler handler(MakeEchoManager(), MakeCapabilities(), MakeAdmission());
+  std::vector<extensions::Scheduler*> schedulers{&scheduler};
+  NodeagentTlvHandler handler(schedulers, caps);
   handler.HandleFrame(
       {.type_id = io::TlvFrame::kTaskSubmission, .value = std::as_bytes(std::span(serialized))},
       *conn_);
@@ -149,8 +162,13 @@ TEST_F(NodeagentTlvHandlerTest, DropsMalformedTask) {
   EXPECT_CALL(*dispatcher_, PrepareWrite(::testing::_, ::testing::_, ::testing::_, ::testing::_, 0))
       .Times(0);
 
-  NodeagentTlvHandler handler(std::make_shared<TaskHandlerManager>(), MakeCapabilities(),
-                              MakeAdmission());
+  auto manager = std::make_shared<TaskHandlerManager>();
+  auto admission = MakeAdmission();
+  auto caps = MakeCapabilities();
+  RunTaskService run_task_service(manager, admission);
+  extensions::schedulers::PushLocalScheduler scheduler(run_task_service);
+  std::vector<extensions::Scheduler*> schedulers{&scheduler};
+  NodeagentTlvHandler handler(schedulers, caps);
   handler.HandleFrame({.type_id = io::TlvFrame::kTaskSubmission, .value = garbage}, *conn_);
 
   std::array<std::byte, 16> buf{};
@@ -172,7 +190,13 @@ TEST_F(NodeagentTlvHandlerTest, DropsTaskWithNoRegisteredHandler) {
   EXPECT_CALL(*dispatcher_, PrepareWrite(::testing::_, ::testing::_, ::testing::_, ::testing::_, 0))
       .Times(0);
 
-  NodeagentTlvHandler handler(MakeEchoManager(), MakeCapabilities(), MakeAdmission());
+  auto manager = std::make_shared<TaskHandlerManager>();
+  auto admission = MakeAdmission();
+  auto caps = MakeCapabilities();
+  RunTaskService run_task_service(manager, admission);
+  extensions::schedulers::PushLocalScheduler scheduler(run_task_service);
+  std::vector<extensions::Scheduler*> schedulers{&scheduler};
+  NodeagentTlvHandler handler(schedulers, caps);
   handler.HandleFrame(
       {.type_id = io::TlvFrame::kTaskSubmission, .value = std::as_bytes(std::span(serialized))},
       *conn_);
@@ -196,6 +220,11 @@ TEST_F(NodeagentTlvHandlerTest, AsyncHandlerRetainsSenderAndSendsTwice) {
   auto* raw = handler.get();
   manager->AddHandler("retaining", std::move(handler));
 
+  auto admission = MakeAdmission();
+  auto caps = MakeCapabilities();
+  RunTaskService run_task_service(manager, admission);
+  extensions::schedulers::PushLocalScheduler scheduler(run_task_service);
+
   // When Connection::Write submits, perform the write to the socket and
   // complete it immediately so the next queued buffer drains.
   EXPECT_CALL(*dispatcher_, PrepareWrite(::testing::_, ::testing::_, ::testing::_, ::testing::_, 0))
@@ -205,7 +234,8 @@ TEST_F(NodeagentTlvHandlerTest, AsyncHandlerRetainsSenderAndSendsTwice) {
         conn_->HandleCompletion(tag, static_cast<int>(buf.size()), 0);
       }));
 
-  NodeagentTlvHandler handler_wrapper(manager, MakeCapabilities(), MakeAdmission());
+  std::vector<extensions::Scheduler*> schedulers{&scheduler};
+  NodeagentTlvHandler handler_wrapper(schedulers, caps);
   handler_wrapper.HandleFrame(
       {.type_id = io::TlvFrame::kTaskSubmission, .value = std::as_bytes(std::span(serialized))},
       *conn_);
@@ -253,7 +283,12 @@ TEST_F(NodeagentTlvHandlerTest, SendAdvertisementWritesCapabilitiesAsFirstFrame)
   caps->set_capability_version(1);
   caps->add_update_channels()->set_kind("heartbeat");
 
-  NodeagentTlvHandler handler(MakeEchoManager(), caps, MakeAdmission());
+  auto manager = MakeEchoManager();
+  auto admission = MakeAdmission();
+  RunTaskService run_task_service(manager, admission);
+  extensions::schedulers::PushLocalScheduler scheduler(run_task_service);
+  std::vector<extensions::Scheduler*> schedulers{&scheduler};
+  NodeagentTlvHandler handler(schedulers, caps);
   handler.SendAdvertisement(*conn_);
 
   std::array<std::byte, 1024> buf{};
@@ -292,7 +327,10 @@ TEST_F(NodeagentTlvHandlerTest, RejectsTaskWhenPoolExhausted) {
                                          std::span<const std::byte> buf,
                                          off_t) { ::write(fds_[0], buf.data(), buf.size()); }));
 
-  NodeagentTlvHandler handler(manager, caps, admission);
+  RunTaskService run_task_service(manager, admission);
+  extensions::schedulers::PushLocalScheduler scheduler(run_task_service);
+  std::vector<extensions::Scheduler*> schedulers{&scheduler};
+  NodeagentTlvHandler handler(schedulers, caps);
 
   task::Task first;
   first.set_id("1");
@@ -349,7 +387,10 @@ TEST_F(NodeagentTlvHandlerTest, RejectsTaskAtConcurrencyLimit) {
                                          std::span<const std::byte> buf,
                                          off_t) { ::write(fds_[0], buf.data(), buf.size()); }));
 
-  NodeagentTlvHandler handler(manager, caps, admission);
+  RunTaskService run_task_service(manager, admission);
+  extensions::schedulers::PushLocalScheduler scheduler(run_task_service);
+  std::vector<extensions::Scheduler*> schedulers{&scheduler};
+  NodeagentTlvHandler handler(schedulers, caps);
 
   task::Task first;
   first.set_id("1");
@@ -398,6 +439,7 @@ TEST_F(NodeagentTlvHandlerTest, CompletionReleasesReservedCapacity) {
   auto* handler_cap = caps->add_handlers();
   handler_cap->set_task_type("echo");
 
+  auto manager = MakeEchoManager();
   auto admission = std::make_shared<AdmissionController>(*caps);
   EXPECT_EQ(admission->SharedFree("cpu"), 16U);
 
@@ -406,7 +448,10 @@ TEST_F(NodeagentTlvHandlerTest, CompletionReleasesReservedCapacity) {
                                          std::span<const std::byte> buf,
                                          off_t) { ::write(fds_[0], buf.data(), buf.size()); }));
 
-  NodeagentTlvHandler handler(MakeEchoManager(), caps, admission);
+  RunTaskService run_task_service(manager, admission);
+  extensions::schedulers::PushLocalScheduler scheduler(run_task_service);
+  std::vector<extensions::Scheduler*> schedulers{&scheduler};
+  NodeagentTlvHandler handler(schedulers, caps);
 
   task::Task task;
   task.set_id("1");
