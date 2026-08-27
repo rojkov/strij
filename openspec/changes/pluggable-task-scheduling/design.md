@@ -15,7 +15,7 @@ The target architecture is probe-based scheduling at cluster scale, deferred adm
 - Gateway configured with multiple schedulers dispatched by task type, with a default fallback; `GatewayHttpHandler` becomes fire-and-forget `Schedule`.
 - Nodeagent local scheduler pluggable; the initial `"push"` local scheduler preserves current behavior byte-for-byte; `NodeagentTlvHandler` becomes a thin dispatcher; the execution path is extracted into a core-owned `RunTask` service.
 - Nodeagent schedulers adopt the `event::CommandHandler` role so node-internal events never leak into the shared interface.
-- No wire change; existing configs keep working (unset nodeagent scheduler defaults to `push`; legacy single gateway `scheduler` normalizes to a default entry).
+- No wire change. The nodeagent's local schedulers are explicitly required in config — startup fails when the `schedulers` list is empty, mirroring the gateway's required-scheduler rule.
 
 **Non-Goals:**
 - The probe protocol, the capacity-released event's first consumer, data-dependency fetching, and child-task submission. These are designed-for and sketched below, but not implemented.
@@ -47,7 +47,7 @@ FactoryContext (base: Dispatcher, Logger)
  └── NodeagentFactoryContext (+ FunctionResolver, AdmissionController, RunTaskService)
 ```
 
-Each binary provides its own implementation; a scheduler factory fails fast at construction if the context lacks a service it needs. `FunctionResolver` moves out of the shared context into the nodeagent side (the gateway never used it).
+Each binary provides its own implementation; a scheduler factory fails fast at construction if the context lacks a service it needs. `FunctionResolver` moves out of the shared context into the nodeagent side (the gateway never used it). This re-binds `NodeDiscoveryFactory::Create` and `TaskHandlerFactory::Create` to `GatewayFactoryContext`/`NodeagentFactoryContext` respectively, and touches test mocks that construct `FactoryContextImpl`; that churn is accepted.
 
 - *Alternative considered*: keep one `FactoryContext` with optional accessors. Rejected — leaks gateway services (e.g. `NodeDirectory`) into the nodeagent and invites downcasting.
 
@@ -71,7 +71,7 @@ The router is a composite `Scheduler`; `GatewayHttpHandler` holds only a `Schedu
 
 ```
 Connection ──► NodeagentTlvHandler (dispatcher)
-                  │  type ∈ scheduler.HandledFrameTypes()  ──► scheduler.HandleFrame
+                  │  TLV frame type_id → local scheduler lookup (union of HandledFrameTypes)
                   │  (kNodeAdvertisement still emitted first; kNodeState broadcasting
                   │   stays with StateReporter)
                   ▼
@@ -82,7 +82,9 @@ PushLocalScheduler::HandleFrame(kTaskSubmission) ──► RunTask(parsed Task, 
    → handler.HandleTask                                  │
 ```
 
-`RunTask` is the current `HandleFrame` body extracted verbatim into a core service reachable via `NodeagentFactoryContext`. The push local scheduler is then ~5 lines. The dispatcher keeps `SendAdvertisement`; nothing else moves.
+`RunTask` is the current `HandleFrame` body extracted verbatim into a core service reachable via `NodeagentFactoryContext`. The push local scheduler is then ~5 lines.
+
+**Dispatch key is the TLV frame `type_id`, not the task type.** The dispatcher keys on the `uint8_t TlvFrame::type_id` (the first wire byte: `kTaskSubmission=0`, ...), *not* on the `Task.type()` string (e.g. `"echo"`), which lives inside the frame payload and is only consulted later by `RunTask`'s `GetHandler(type)`. Nor is it a separate protocol identifier: each scheduling protocol owns a disjoint *range* of TLV frame type ids (`push` owns `kTaskSubmission`; a future probe owns probe/pull/grant/cancel ids), so the frame's `type_id` alone determines both the protocol and the owning scheduler. The dispatcher builds a `TLV type_id → scheduler` dispatch table from the union of all configured local schedulers' `HandledFrameTypes()` (ownership is disjoint per protocol, so no conflicts) and keeps `SendAdvertisement`; nothing else moves.
 
 ### D6: Nodeagent schedulers also implement `event::CommandHandler`
 
@@ -93,17 +95,17 @@ Node-internal events (first consumer: the Phase 1 capacity-released signal) are 
 
 ### D7: Advertisement derives from schedulers
 
-`BuildNodeCapabilities` appends `RequiredProtocol()` for the configured local scheduler(s) to `scheduling_protocols` instead of the hardcoded `"push"`. With the default `push` scheduler this reproduces today's advertisement.
+`BuildNodeCapabilities` appends each configured local scheduler's `RequiredProtocol()` to `scheduling_protocols` (the union) instead of the hardcoded `"push"`. With a `push` local scheduler configured this reproduces today's advertisement.
 
 ### D8: Config schema
 
 ```
 GatewayConfig.schedulers : repeated SchedulerConfig
 SchedulerConfig          { ExtensionConfig extension; string task_type; }  // empty = default
-NodeAgentConfig.scheduler: ExtensionConfig                                  // optional; default "push"
+NodeAgentConfig.schedulers: repeated ExtensionConfig                        // at least one required
 ```
 
-The gateway loader SHALL also accept the legacy single `scheduler:` YAML section and normalize it to one default `SchedulerConfig`, so old gateway configs load unmodified.
+`SchedulerConfig` nests the full `ExtensionConfig` under an `extension` field (option A) so the router builder reuses the existing `ExtensionConfig` unpacking code and sibling per-scheduler fields can be added later without disturbing the extension payload. The nodeagent mirrors the gateway with `repeated schedulers` (plain `ExtensionConfig` entries, at least one required): each entry yields one local scheduler instance, one instance per protocol, so a node can serve gateways running different schedulers. An empty/unset list fails startup — the active scheduling protocols are an explicit operator decision on both ends; existing nodeagent configs must declare `schedulers: [{name: "push"}]`. No legacy `scheduler:` → `schedulers:` normalization is needed on either side: both configs change as plain breaking changes.
 
 ## Risks / Trade-offs
 
@@ -115,8 +117,8 @@ The gateway loader SHALL also accept the legacy single `scheduler:` YAML section
 
 ## Migration Plan
 
-1. **Phase 0A (nodeagent, land first)** — context split + `Scheduler` interface + `RunTask` + push local scheduler + dispatcher + advertisement union. Wire-safe and self-contained; existing nodeagent configs need no changes (push default).
-2. **Phase 0B (gateway)** — `GatewaySchedulerFactory`/router + `Schedule` conversion of `round_robin`/`capability_aware` + `GatewayHttpHandler` + loader normalization of legacy `scheduler`.
+1. **Phase 0A (nodeagent, land first)** — context split + `Scheduler` interface + `RunTask` + push local scheduler + dispatcher + advertisement union. Wire-safe and self-contained; a **breaking config change**: nodeagent configs must declare `schedulers: [{name: "push"}]` or startup fails.
+2. **Phase 0B (gateway)** — `GatewaySchedulerFactory`/router + `Schedule` conversion of `round_robin`/`capability_aware` + `GatewayHttpHandler` + `schedulers` config (breaking: `scheduler` → `schedulers`, no legacy loading).
 3. **Rollback** — revert the affected binary; since the wire is byte-identical and config loaders accept both forms, old and new builds interoperate.
 
 ## Future phases (designed-for, not built)
@@ -141,7 +143,7 @@ The boundary principle this phase plan rests on: **ingress is protocol-owned, ex
 
 **Wire and routing**:
 - New global TLV ids in `TlvFrame`: `kTaskProbe`, `kTaskProbeCancel` (gateway→node), `kTaskPull` (node→gateway), `kTaskGrant`/`kTaskDecline` (gateway→node). Global allocation keeps both ends coherent by construction (D1/D2 of the earlier TLV discussion: extension-declared ids risk silent mid-protocol drift between independently built endpoints).
-- **Implicit routing by type-id is now required, not just convenient**: per-type gateway schedulers mean one gateway↔node connection carries several protocols at once (push for type A, probe for type B). The "activate one protocol per connection" handshake is incompatible with that, so routing stays on `HandledFrameTypes()` and the advertisement's `scheduling_protocols` is a union.
+- **Implicit routing by TLV frame `type_id` is now required, not just convenient**: per-type gateway schedulers mean one gateway↔node connection carries several protocols at once (push for type A, probe for type B). The "activate one protocol per connection" handshake is incompatible with that, so routing stays on `HandledFrameTypes()` and the advertisement's `scheduling_protocols` is a union.
 - The gateway's `GatewayTlvHandler` routes `kTaskPull` frames to the probe scheduler's `HandleFrame`; the nodeagent's dispatcher routes `kTaskProbe`/`kTaskProbeCancel`/`kTaskGrant`/`kTaskDecline` to the probe local scheduler.
 
 **Gateway probe scheduler** (`GatewaySchedulerFactory`):
@@ -198,7 +200,7 @@ gateway                node A                    node B
 - **Local run**: if capacity allows, the local scheduler routes the child straight into `RunTask` with a receiver-backed sender.
 - **Forward**: otherwise it submits the child to a gateway via an egress `GatewayClient`. Preferred routing: reuse a live gateway connection with an upstream submission frame (the gateway treats it as a normal task through its router), falling back to an outbound connection when none is live.
 - **Two-hop result routing for forwarded children**: gateway → result frame → nodeagent connection → the node's local receiver registry (a `task.id → parent receiver` map, the nodeagent mirror of `ResultReceiverStorage`) → parent. The nodeagent's inbound handler recognizes child-result ids and delivers locally instead of treating them as submissions.
-- **Decision ownership**: local-run-or-forward belongs to the nodeagent local scheduler — it is the node's capacity authority. The child path is deliberately *not* probe-based: the parent is local, so the probe dance is pointless; the policy is "run immediately if capacity, else forward", and the gateway then schedules the forwarded child with its normal per-type router.
+- **Decision ownership**: with several local schedulers configured, `Schedule` for children dispatches to a single submission scheduler — the node's capacity authority. Phase 4 adds task-type matching to the nodeagent's scheduler entries (the gateway `SchedulerConfig` shape), so child tasks route to the scheduler owning that type, with a default fallback mirroring the gateway router. The child path is deliberately *not* probe-based: the parent is local, so the probe dance is pointless; the policy is "run immediately if capacity, else forward", and the gateway then schedules the forwarded child with its normal per-type router.
 - The nodeagent local receiver registry and `GatewayClient` both enter `NodeagentFactoryContext` as this phase lands.
 
 ### Phase 5 — Hardening
@@ -210,6 +212,5 @@ gateway                node A                    node B
 
 ## Open Questions
 
-- **`SchedulerConfig` naming**: `extension` vs flat `name`/`typed_config` fields inside `SchedulerConfig` — the former nests cleanly, the latter matches existing YAML style. Leaning `extension`.
-- **Legacy gateway config**: confirm the loader should silently normalize `scheduler:` → `schedulers:` rather than fail on the old shape (recommended: normalize).
-- **`FunctionResolver` removal from the shared context** touches `NodeDiscoveryFactory` and any test mocks that construct `FactoryContextImpl` — confirm this churn is acceptable in Phase 0B (it is a natural consequence of D2).
+None. All decisions resolved during design.
+

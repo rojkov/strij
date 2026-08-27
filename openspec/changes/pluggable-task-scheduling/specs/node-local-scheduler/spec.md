@@ -2,7 +2,7 @@
 
 ### Requirement: Node local scheduler extension interface
 
-The system SHALL define nodeagent-side local scheduler extensions implementing the same `Scheduler` interface as gateway schedulers: `Schedule(const task::Task&, ResultReceiverPtr)` (fire-and-forget), `RequiredProtocol() -> std::string_view`, `HandleFrame(io::TlvFrame, io::Connection&)` (default no-op), and `HandledFrameTypes() -> std::span<const uint8_t>` (default empty). A `NodeSchedulerFactory` SHALL be registered in `Registry<NodeSchedulerFactory>` via the existing `REGISTER_FACTORY` macros, following the `ExtensionConfig` configuration pattern, and SHALL be created with a `NodeagentFactoryContext` exposing Dispatcher, Logger, FunctionResolver, AdmissionController, and a RunTask service. The nodeagent SHALL construct exactly one local scheduler instance from its configuration; that instance MAY implement more than one scheduling protocol.
+The system SHALL define nodeagent-side local scheduler extensions implementing the same `Scheduler` interface as gateway schedulers: `Schedule(const task::Task&, ResultReceiverPtr)` (fire-and-forget), `RequiredProtocol() -> std::string_view`, `HandleFrame(io::TlvFrame, io::Connection&)` (default no-op), and `HandledFrameTypes() -> std::span<const uint8_t>` (default empty). A `NodeSchedulerFactory` SHALL be registered in `Registry<NodeSchedulerFactory>` via the existing `REGISTER_FACTORY` macros, following the `ExtensionConfig` configuration pattern, and SHALL be created with a `NodeagentFactoryContext` exposing Dispatcher, Logger, FunctionResolver, AdmissionController, and a RunTask service. The nodeagent SHALL construct one local scheduler instance per `NodeAgentConfig.schedulers` entry; each instance implements a single scheduling protocol (its `RequiredProtocol()`), so a node can serve gateways running different schedulers by hosting one instance per protocol. All instances SHALL share the node's `AdmissionController` and `RunTask` service; frame dispatch SHALL be by TLV type-id, so instance ownership never overlaps.
 
 #### Scenario: Node scheduler factory is registered and created
 
@@ -62,12 +62,12 @@ The system SHALL provide a `"push"` local scheduler registered in `Registry<Node
 
 ### Requirement: NodeagentTlvHandler is a frame dispatcher
 
-`NodeagentTlvHandler` SHALL become a thin dispatcher. It SHALL route frames by `type_id` to the configured local scheduler when the type is in the scheduler's `HandledFrameTypes()`, and SHALL continue to own the core connection responsibilities (sending the `kNodeAdvertisement` first frame) while core-owned frames such as `kNodeState` broadcasting SHALL remain handled by their existing components. Frames handled by neither the local scheduler nor core SHALL be dropped.
+`NodeagentTlvHandler` SHALL become a thin dispatcher. It SHALL route frames by the TLV frame `type_id` (the `uint8_t` `TlvFrame::type_id` field, e.g. `kTaskSubmission`) to the local scheduler whose `HandledFrameTypes()` contains that type, and SHALL continue to own the core connection responsibilities (sending the `kNodeAdvertisement` first frame) while core-owned frames such as `kNodeState` broadcasting SHALL remain handled by their existing components. The dispatch key SHALL be the TLV frame `type_id`, NOT the `Task.type()` string (which lives in the frame payload and is only consulted later by `RunTask`). Frames handled by no local scheduler and by no core component SHALL be dropped.
 
-#### Scenario: Submission frames route to the local scheduler
+#### Scenario: Submission frames route to the local scheduler that handles them
 
-- **WHEN** a `kTaskSubmission` frame arrives and the configured local scheduler handles that type
-- **THEN** the dispatcher SHALL forward the frame to the scheduler's `HandleFrame`
+- **WHEN** a `kTaskSubmission` frame arrives and a configured local scheduler lists that type in its `HandledFrameTypes()`
+- **THEN** the dispatcher SHALL forward the frame to that scheduler's `HandleFrame`
 
 #### Scenario: Unhandled frame types are dropped
 
