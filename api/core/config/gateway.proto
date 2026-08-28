@@ -10,10 +10,19 @@ message GatewayConfig {
   repeated NodeConnection node_connections = 2;
   Logging logging = 3;
   ExtensionConfig node_discovery = 4;
-  // Required: names the scheduling policy (e.g. "round_robin",
-  // "capability_aware"). The gateway fails to start when unset or when the name
-  // is not registered.
-  ExtensionConfig scheduler = 5;
+  // Required (at least one): the scheduling policies this gateway routes with.
+  // The gateway fails to start when unset or when a name is not registered.
+  repeated SchedulerConfig schedulers = 5 [(strij.config.required) = true];
+}
+
+// One configured scheduler instance. `task_type` binds the scheduler to a
+// specific task type; an empty `task_type` marks it as the default scheduler
+// used for any type without an explicit entry. The gateway fails to start on
+// duplicate task_type bindings (or duplicate defaults) so routing stays
+// unambiguous.
+message SchedulerConfig {
+  ExtensionConfig extension = 1;
+  string task_type = 2;
 }
 
 message HttpListener {

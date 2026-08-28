@@ -88,7 +88,7 @@ TEST(PipedExecutableTaskHandlerFactoryTest, NameIsPipedExecutable) {
 TEST(PipedExecutableTaskHandlerFactoryTest, CreateUsesSharedResolverAndDispatcher) {
   NiceMock<event::MockDispatcher> dispatcher;
   extensions::LocalFunctionResolver resolver;
-  extensions::MockFactoryContext context;
+  extensions::MockNodeagentFactoryContext context;
   ON_CALL(context, Dispatcher()).WillByDefault(ReturnRef(dispatcher));
   ON_CALL(context, FunctionResolver()).WillByDefault(ReturnRef(resolver));
 

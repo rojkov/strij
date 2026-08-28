@@ -64,36 +64,47 @@ public:
   void DeliverError(std::string_view /*reason*/) override {}
 };
 
-// Deterministic scheduler for handler wiring tests: returns a fixed node (or
-// nullptr) and records every offer it receives. Records by value so the
-// recorded data stays valid after HandleMessage returns.
-struct RecordedOffer {
-  std::string task_type;
-  std::map<std::string, uint64_t> resources;
-};
-
+// Deterministic scheduler for handler wiring tests: records every task it is
+// asked to schedule, writes the submission frame to a fixed node's connection
+// (or declines with an error), and registers the receiver in the given storage
+// when a node is selected. Records by value so recorded data stays valid after
+// HandleMessage returns.
 class StubScheduler : public extensions::Scheduler {
 public:
-  explicit StubScheduler(gateway::Node* node, std::vector<RecordedOffer>* offers = nullptr)
-      : node_{node}, offers_{offers} {}
+  StubScheduler(gateway::Node* node, gateway::ResultReceiverStorage* storage,
+                std::vector<task::Task>* recorded)
+      : node_{node}, storage_{storage}, recorded_{recorded} {}
+
+  void Schedule(const task::Task& task, gateway::ResultReceiverPtr receiver) override {
+    if (recorded_ != nullptr) {
+      recorded_->push_back(task);
+    }
+    if (node_ == nullptr) {
+      receiver->DeliverError("stub scheduler declined");
+      return;
+    }
+    if (storage_ != nullptr) {
+      storage_->Put(task.id(), std::move(receiver), std::string(node_->GetNodeId()));
+    } else {
+      (void)receiver;
+    }
+
+    std::string serialized;
+    task.SerializeToString(&serialized);
+    auto frame = io::SerializeTlvFrame(
+        io::TlvFrame::kTaskSubmission,
+        std::as_bytes(std::span(serialized.data(), serialized.size())));
+    node_->GetConnection()->Write(frame);
+  }
 
   auto RequiredProtocol() const -> std::string_view override { return "push"; }
-  auto Choose(gateway::NodeDirectory& /*dir*/, const extensions::TaskOffer& offer)
-      -> gateway::Node* override {
-    if (offers_ != nullptr) {
-      RecordedOffer recorded;
-      recorded.task_type = offer.task->type();
-      for (const auto& [pool, amount] : offer.requirements->resources()) {
-        recorded.resources[pool] = amount;
-      }
-      offers_->push_back(std::move(recorded));
-    }
-    return node_;
-  }
+  void HandleFrame(io::TlvFrame /*frame*/, io::Connection& /*conn*/) override {}
+  auto HandledFrameTypes() const -> std::span<const uint8_t> override { return {}; }
 
 private:
   gateway::Node* node_;
-  std::vector<RecordedOffer>* offers_;
+  gateway::ResultReceiverStorage* storage_;
+  std::vector<task::Task>* recorded_;
 };
 
 auto SerializeTaskResult(const task::TaskResult& result) -> std::string {
@@ -658,9 +669,9 @@ TEST_F(GatewayHttpHandlerTest, HandleMessageForwardsParametersToNode) {
   ASSERT_NE(node_completable, nullptr);
   node_completable->HandleCompletion(0, 0, 0);
 
-  extensions::schedulers::RoundRobinScheduler scheduler;
+  extensions::schedulers::RoundRobinScheduler scheduler(directory, node_storage);
   GatewayHttpHandler handler(
-      directory, storage_,
+      storage_,
       [](io::Connection&) -> std::unique_ptr<ResultReceiver> {
         return std::make_unique<NullReceiver>();
       },
@@ -731,10 +742,10 @@ TEST_F(GatewayHttpHandlerTest, RoutesTaskThroughScheduler) {
   node_completable->HandleCompletion(0, 0, 0);
 
   // The scheduler overrides round-robin and always picks node "B".
-  std::vector<RecordedOffer> offers;
-  StubScheduler scheduler(directory.GetNode("B"), &offers);
+  std::vector<task::Task> recorded;
+  StubScheduler scheduler(directory.GetNode("B"), &node_storage2, &recorded);
   GatewayHttpHandler handler(
-      directory, storage_,
+      storage_,
       [](io::Connection&) -> std::unique_ptr<ResultReceiver> {
         return std::make_unique<NullReceiver>();
       },
@@ -754,11 +765,12 @@ TEST_F(GatewayHttpHandlerTest, RoutesTaskThroughScheduler) {
   // The task was routed to the node the scheduler selected.
   EXPECT_EQ(written_to, static_cast<event::Completable*>(directory.GetNode("B")->GetConnection()));
 
-  // The scheduler saw exactly one offer with the resolved requirements.
-  ASSERT_EQ(offers.size(), 1U);
-  EXPECT_EQ(offers[0].task_type, "echo");
-  ASSERT_EQ(offers[0].resources.size(), 1U);
-  EXPECT_EQ(offers[0].resources.at("cpu"), 2U);
+  // The scheduler saw exactly one task with the resolved requirements.
+  ASSERT_EQ(recorded.size(), 1U);
+  EXPECT_EQ(recorded[0].type(), "echo");
+  ASSERT_TRUE(recorded[0].has_requirements());
+  ASSERT_EQ(recorded[0].requirements().resources().size(), 1U);
+  EXPECT_EQ(recorded[0].requirements().resources().at("cpu"), 2U);
 
   // And the serialized task carried the same type.
   std::vector<io::TlvFrame> received_frames;
@@ -780,7 +792,7 @@ TEST_F(GatewayHttpHandlerTest, RoutesTaskThroughScheduler) {
   close(fds[1]);
 }
 
-TEST_F(GatewayHttpHandlerTest, ReturnsServiceUnavailableWhenNoNodeSelected) {
+TEST_F(GatewayHttpHandlerTest, DeclinedScheduleResolvesReceiverWithoutHttpError) {
   std::array<int, 2> fds{};
   ASSERT_EQ(0, socketpair(AF_UNIX, SOCK_STREAM, 0, fds.data()));
   auto dispatcher = std::make_shared<event::MockDispatcher>();
@@ -809,26 +821,31 @@ TEST_F(GatewayHttpHandlerTest, ReturnsServiceUnavailableWhenNoNodeSelected) {
   ASSERT_NE(node_completable, nullptr);
   node_completable->HandleCompletion(0, 0, 0);
 
-  // The scheduler declines the offer, so the gateway must respond 503.
-  StubScheduler scheduler(nullptr);
+  // The handler defers to the scheduler: a declined schedule (e.g. no node)
+  // resolves the receiver through DeliverError instead of the handler writing
+  // an HTTP response itself. Nothing is written to the wire by the handler.
+  std::vector<task::Task> recorded;
+  StubScheduler scheduler(nullptr, nullptr, &recorded);
+  auto errors = std::make_shared<std::vector<std::string>>();
   GatewayHttpHandler handler(
-      directory, storage_,
-      [](io::Connection&) -> std::unique_ptr<ResultReceiver> {
-        return std::make_unique<NullReceiver>();
+      storage_,
+      [errors](io::Connection&) -> std::unique_ptr<ResultReceiver> {
+        return std::make_unique<MockReceiver>(nullptr, nullptr, errors);
       },
       scheduler);
 
-  std::span<const std::byte> written;
   EXPECT_CALL(*dispatcher,
               PrepareWrite(::testing::_, ::testing::_, ::testing::_, ::testing::_, ::testing::_))
-      .WillOnce(::testing::DoAll(::testing::SaveArg<3>(&written), ::testing::Return()));
+      .Times(0);
 
   io::HttpRequest request{.path = "/tasks/echo", .body = {}, .headers = {}};
   handler.HandleMessage(request, http_conn);
 
-  std::string response(std::bit_cast<const char*>(written.data()), written.size());
-  EXPECT_NE(response.find("503"), std::string::npos);
-  EXPECT_NE(response.find("Service Unavailable"), std::string::npos);
+  // The scheduler declined and resolved the receiver out-of-band.
+  ASSERT_EQ(recorded.size(), 1U);
+  EXPECT_EQ(recorded[0].type(), "echo");
+  ASSERT_EQ(errors->size(), 1U);
+  EXPECT_EQ((*errors)[0], "stub scheduler declined");
 
   close(fds[0]);
   close(fds[1]);

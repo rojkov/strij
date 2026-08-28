@@ -27,7 +27,7 @@ auto EchoTaskHandlerFactory::CreateEmptyConfigProto() -> MessagePtr {
 }
 
 auto EchoTaskHandlerFactory::Create(const ::google::protobuf::Message& /*config*/,
-                                    FactoryContext& /*context*/) -> TaskHandlerPtr {
+                                    NodeagentFactoryContext& /*context*/) -> TaskHandlerPtr {
   return std::make_unique<EchoTaskHandler>();
 }
 

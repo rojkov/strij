@@ -29,6 +29,6 @@ using TaskHandlerManagerSharedPtr = std::shared_ptr<TaskHandlerManager>;
 
 auto BuildTaskHandlerManager(
     const ::google::protobuf::RepeatedPtrField<config::ExtensionConfig>& configs,
-    extensions::FactoryContext& context) -> absl::StatusOr<TaskHandlerManagerSharedPtr>;
+    extensions::NodeagentFactoryContext& context) -> absl::StatusOr<TaskHandlerManagerSharedPtr>;
 
 } // namespace strij::nodeagent

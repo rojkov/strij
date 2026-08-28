@@ -3,14 +3,21 @@
 #include <algorithm>
 #include <cstdint>
 #include <memory>
+#include <span>
 #include <string>
 #include <string_view>
+#include <utility>
+#include <vector>
 
 #include "core/extensions/extension_registry.hh"
 #include "core/extensions/factory_context.hh"
 #include "core/gateway/node.hh"
 #include "core/gateway/node_directory.hh"
+#include "core/gateway/result_receiver_storage.hh"
+#include "core/io/connection.hh"
+#include "core/io/tlv_frame.hh"
 #include "core/node/capabilities.pb.h"
+#include "core/task/task.pb.h"
 #include "extensions/schedulers/capability_aware/capability_aware.pb.h"
 #include "extensions/schedulers/scheduler.hh"
 
@@ -96,10 +103,10 @@ auto nodeInFlight(const node::NodeState* state) -> uint64_t {
   return state == nullptr ? 0 : state->in_flight();
 }
 
-// Whether the node can currently take the offer: it declares a handler for the
+// Whether the node can currently take the task: it declares a handler for the
 // task type (or declares no handlers at all), has per-type concurrency
 // headroom, and every required pool has enough shared-free capacity.
-auto eligible(const gateway::Node* node, const TaskOffer& offer) -> bool {
+auto eligible(const gateway::Node* node, const task::Task& task) -> bool {
   const auto* caps = node->GetCapabilities();
   // A node without an advertisement cannot be verified; exclude it until the
   // advertisement arrives.
@@ -109,7 +116,7 @@ auto eligible(const gateway::Node* node, const TaskOffer& offer) -> bool {
 
   const auto* state = node->GetState();
 
-  const auto& task_type = offer.task->type();
+  const auto& task_type = task.type();
   const auto* handler = findHandler(caps, task_type);
 
   if (caps->handlers_size() > 0 && handler == nullptr) {
@@ -122,7 +129,7 @@ auto eligible(const gateway::Node* node, const TaskOffer& offer) -> bool {
     return false;
   }
 
-  return std::ranges::all_of(offer.requirements->resources(), [&](const auto& resource) -> bool {
+  return std::ranges::all_of(task.requirements().resources(), [&](const auto& resource) -> bool {
     const auto& [pool, amount] = resource;
     const uint64_t total = poolTotal(caps, pool);
     const uint64_t reserved = poolReserved(caps, pool);
@@ -136,12 +143,12 @@ auto eligible(const gateway::Node* node, const TaskOffer& offer) -> bool {
 
 // Load metric: fraction of the per-type concurrency limit in use when a limit
 // is declared, otherwise neutral (1.0). Lower is less loaded.
-auto loadRatio(const gateway::Node* node, const TaskOffer& offer) -> double {
+auto loadRatio(const gateway::Node* node, const task::Task& task) -> double {
   const auto* state = node->GetState();
-  const auto* handler = findHandler(node->GetCapabilities(), offer.task->type());
+  const auto* handler = findHandler(node->GetCapabilities(), task.type());
   if (handler != nullptr && handler->concurrency() > 0) {
     const uint64_t concurrency = handler->concurrency();
-    const uint64_t used = std::min(typeInFlight(state, offer.task->type()), concurrency);
+    const uint64_t used = std::min(typeInFlight(state, task.type()), concurrency);
 
     return static_cast<double>(used) / static_cast<double>(concurrency);
   }
@@ -153,18 +160,18 @@ auto loadRatio(const gateway::Node* node, const TaskOffer& offer) -> double {
 
 auto CapabilityAwareScheduler::RequiredProtocol() const -> std::string_view { return "push"; }
 
-auto CapabilityAwareScheduler::Choose(gateway::NodeDirectory& dir, const TaskOffer& offer)
+auto CapabilityAwareScheduler::choose(gateway::NodeDirectory& dir, const task::Task& task)
     -> gateway::Node* {
   gateway::Node* best = nullptr;
   double best_ratio = 0.0;
   uint64_t best_in_flight = 0;
 
   for (gateway::Node* node : dir.GetCandidates(RequiredProtocol())) {
-    if (!eligible(node, offer)) {
+    if (!eligible(node, task)) {
       continue;
     }
 
-    const double ratio = loadRatio(node, offer);
+    const double ratio = loadRatio(node, task);
     const uint64_t in_flight = nodeInFlight(node->GetState());
 
     if (best == nullptr || ratio < best_ratio ||
@@ -178,6 +185,27 @@ auto CapabilityAwareScheduler::Choose(gateway::NodeDirectory& dir, const TaskOff
   return best;
 }
 
+void CapabilityAwareScheduler::Schedule(const task::Task& task,
+                                        gateway::ResultReceiverPtr receiver) {
+  gateway::Node* node = choose(directory_, task);
+  if (node == nullptr) {
+    receiver->DeliverError("no eligible node for task submission");
+    return;
+  }
+
+  std::string serialized;
+  if (!task.SerializeToString(&serialized)) {
+    receiver->DeliverError("failed to serialize task for submission");
+    return;
+  }
+
+  storage_.Put(task.id(), std::move(receiver), std::string(node->GetNodeId()));
+
+  auto frame = io::SerializeTlvFrame(
+      io::TlvFrame::kTaskSubmission, std::as_bytes(std::span(serialized.data(), serialized.size())));
+  node->GetConnection()->Write(frame);
+}
+
 auto CapabilityAwareSchedulerFactory::Name() const -> std::string { return "capability_aware"; }
 
 auto CapabilityAwareSchedulerFactory::CreateEmptyConfigProto() -> MessagePtr {
@@ -186,12 +214,13 @@ auto CapabilityAwareSchedulerFactory::CreateEmptyConfigProto() -> MessagePtr {
 }
 
 auto CapabilityAwareSchedulerFactory::Create(const ::google::protobuf::Message& /*config*/,
-                                             FactoryContext& /*context*/) -> SchedulerPtr {
-  return std::make_unique<CapabilityAwareScheduler>();
+                                             GatewayFactoryContext& context) -> SchedulerPtr {
+  return std::make_unique<CapabilityAwareScheduler>(context.NodeDirectory(),
+                                                    context.ResultReceiverStorage());
 }
 
 } // namespace strij::extensions::schedulers
 
 REGISTER_FACTORY_FULLY_QUALIFIED(strij::extensions::schedulers::CapabilityAwareSchedulerFactory,
-                                 strij::extensions::SchedulerFactory,
+                                 strij::extensions::GatewaySchedulerFactory,
                                  capability_aware_scheduler_registrar)

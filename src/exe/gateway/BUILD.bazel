@@ -2,7 +2,11 @@ load("//bazel:build_system.bzl", "strij_cc_binary")
 
 strij_cc_binary(
     name = "gateway",
-    srcs = ["gateway.cc"],
+    srcs = [
+        "gateway.cc",
+        "gateway_factory_context.cc",
+        "gateway_factory_context.hh",
+    ],
     deps = [
         "//src/core/common:signal_monitor_lib",
         "//src/core/config:config_loader_lib",
@@ -16,6 +20,7 @@ strij_cc_binary(
         "//src/core/gateway:gateway_http_handler_lib",
         "//src/core/gateway:gateway_tlv_handler_lib",
         "//src/core/gateway:node_directory_lib",
+        "//src/core/gateway:result_receiver_storage",
         "//src/core/io:llhttp_parser_lib",
         "//src/core/io:tcp_listener_lib",
         "//src/core/io:tlv_parser_lib",
@@ -25,6 +30,7 @@ strij_cc_binary(
         "//src/extensions/schedulers:scheduler_interface",
         "//src/extensions/schedulers/capability_aware:capability_aware_scheduler_lib",
         "//src/extensions/schedulers/round_robin:round_robin_scheduler_lib",
+        "//src/extensions/schedulers/router:scheduler_router_lib",
         "@abseil-cpp//absl/flags:parse",
         "@protobuf//:protobuf",
     ],

@@ -2,6 +2,9 @@ tlv_listener:
   address: "0.0.0.0"
   port: 9090
 
+schedulers:
+  - name: "push"
+
 pools:
   - name: "cpu"
     total: 16

@@ -549,8 +549,14 @@ auto validateMessage(const google::protobuf::Message& message, const std::string
     field_path += field->name();
 
     if (field->cpp_type() == google::protobuf::FieldDescriptor::CPPTYPE_MESSAGE) {
+      const auto& ext_opts = field->options();
       if (field->is_repeated()) {
         int size = reflection->FieldSize(message, field);
+        if (size == 0 && ext_opts.HasExtension(strij::config::required) &&
+            ext_opts.GetExtension(strij::config::required)) {
+          return absl::InvalidArgumentError(
+              absl::StrCat("Required field '", field_path, "' is not set"));
+        }
         for (int j = 0; j < size; ++j) {
           auto status =
               validateMessage(reflection->GetRepeatedMessage(message, field, j), field_path);

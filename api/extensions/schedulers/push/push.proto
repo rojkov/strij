@@ -1,0 +1,7 @@
+syntax = "proto3";
+
+package strij.extensions.schedulers;
+
+// PushLocalScheduler needs no configuration; the message exists so the node
+// scheduler factory can always hand a typed config to Create().
+message PushSchedulerConfig {}

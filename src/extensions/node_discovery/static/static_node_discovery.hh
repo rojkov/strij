@@ -22,7 +22,7 @@ class StaticNodeDiscoveryFactory : public NodeDiscoveryFactory {
 public:
   [[nodiscard]] auto Name() const -> std::string override;
   auto CreateEmptyConfigProto() -> MessagePtr override;
-  auto Create(const ::google::protobuf::Message& config, FactoryContext& context)
+  auto Create(const ::google::protobuf::Message& config, GatewayFactoryContext& context)
       -> std::unique_ptr<NodeDiscovery> override;
 };
 

@@ -82,7 +82,7 @@ public:
 
   [[nodiscard]] virtual auto Name() const -> std::string PURE;
   virtual auto CreateEmptyConfigProto() -> MessagePtr PURE;
-  virtual auto Create(const ::google::protobuf::Message& config, FactoryContext& context)
+  virtual auto Create(const ::google::protobuf::Message& config, NodeagentFactoryContext& context)
       -> TaskHandlerPtr PURE;
   // Parses the operator-declared capacity (concurrency limit) out of the
   // factory's config message. The default implementation declares no

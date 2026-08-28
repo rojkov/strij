@@ -1,6 +1,7 @@
 #include "core/gateway/gateway_tlv_handler.hh"
 
 #include <cstddef>
+#include <cstdint>
 #include <span>
 #include <utility>
 
@@ -10,6 +11,7 @@
 #include "core/logging/log.hh"
 #include "core/node/capabilities.pb.h"
 #include "core/task/task.pb.h"
+#include "extensions/schedulers/scheduler.hh"
 
 namespace strij::gateway {
 
@@ -19,6 +21,18 @@ auto GatewayTlvHandler::owningNode(io::Connection& conn) -> Node* {
 
 auto GatewayTlvHandler::HandleFrame(const io::TlvFrame& frame, io::Connection& conn)
     -> absl::Status {
+  // Frame-routing seam: a frame type claimed by the configured scheduler
+  // (HandledFrameTypes) is the scheduler's to own; everything else falls into
+  // the built-in gateway frames below. In v1 the router claims no types.
+  if (scheduler_ != nullptr) {
+    for (const uint8_t type_id : scheduler_->HandledFrameTypes()) {
+      if (type_id == frame.type_id) {
+        scheduler_->HandleFrame(frame, conn);
+        return absl::OkStatus();
+      }
+    }
+  }
+
   switch (frame.type_id) {
   case io::TlvFrame::kNodeAdvertisement:
     return handleNodeAdvertisementFrame(frame, conn);

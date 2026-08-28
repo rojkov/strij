@@ -18,10 +18,15 @@ data:
           - "nodeagent-0.strij.svc.cluster.local:9090"
           - "nodeagent-1.strij.svc.cluster.local:9090"
 
-    scheduler:
-      name: "capability_aware"
-      typed_config:
-        "@type": "type.googleapis.com/strij.extensions.schedulers.capability_aware.CapabilityAwareSchedulerConfig"
+    schedulers:
+      - extension:
+          name: "capability_aware"
+          typed_config:
+            "@type": "type.googleapis.com/strij.extensions.schedulers.capability_aware.CapabilityAwareSchedulerConfig"
+
+      - extension:
+          name: "round_robin"
+        task_type: "echo"
 
     logging:
       level: "info"
@@ -39,6 +44,9 @@ data:
     tlv_listener:
       address: "0.0.0.0"
       port: 9090
+
+    schedulers:
+      - name: "push"
 
     pools:
       - name: "cpu"

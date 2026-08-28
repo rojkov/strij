@@ -3,26 +3,45 @@
 #include <string>
 #include <string_view>
 
+#include "core/gateway/node_directory.hh"
+#include "core/gateway/result_receiver_storage.hh"
+#include "core/task/task.pb.h"
 #include "extensions/schedulers/scheduler.hh"
 #include "google/protobuf/message.h"
 
 namespace strij::extensions::schedulers {
 
-// Excludes nodes whose shared-free pool capacity is below the offer's
+// Excludes nodes whose shared-free pool capacity is below the task's
 // ResourceRequirements or whose per-type concurrency is exhausted, then picks
 // the least-loaded eligible node (lowest used-concurrency ratio, then lowest
-// node-wide in-flight count).
+// node-wide in-flight count). Submits the task to the chosen node's connection
+// and resolves the receiver with an error when no node is eligible.
 class CapabilityAwareScheduler final : public Scheduler {
 public:
+  CapabilityAwareScheduler(gateway::NodeDirectory& directory, gateway::ResultReceiverStorage& storage)
+      : directory_{directory}, storage_{storage} {}
+  ~CapabilityAwareScheduler() override = default;
+
+  CapabilityAwareScheduler(const CapabilityAwareScheduler&) = delete;
+  auto operator=(const CapabilityAwareScheduler&) -> CapabilityAwareScheduler& = delete;
+  CapabilityAwareScheduler(CapabilityAwareScheduler&&) noexcept = delete;
+  auto operator=(CapabilityAwareScheduler&&) noexcept -> CapabilityAwareScheduler& = delete;
+
+  void Schedule(const task::Task& task, gateway::ResultReceiverPtr receiver) override;
   [[nodiscard]] auto RequiredProtocol() const -> std::string_view override;
-  auto Choose(gateway::NodeDirectory& dir, const TaskOffer& offer) -> gateway::Node* override;
+
+private:
+  auto choose(gateway::NodeDirectory& dir, const task::Task& task) -> gateway::Node*;
+
+  gateway::NodeDirectory& directory_;
+  gateway::ResultReceiverStorage& storage_;
 };
 
-class CapabilityAwareSchedulerFactory final : public SchedulerFactory {
+class CapabilityAwareSchedulerFactory final : public GatewaySchedulerFactory {
 public:
   [[nodiscard]] auto Name() const -> std::string override;
   auto CreateEmptyConfigProto() -> MessagePtr override;
-  auto Create(const ::google::protobuf::Message& config, FactoryContext& context)
+  auto Create(const ::google::protobuf::Message& config, GatewayFactoryContext& context)
       -> SchedulerPtr override;
 };
 

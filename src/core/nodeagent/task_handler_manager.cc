@@ -28,7 +28,8 @@ auto TaskHandlerManager::empty() const -> bool { return handlers_.empty(); }
 
 auto BuildTaskHandlerManager(
     const ::google::protobuf::RepeatedPtrField<config::ExtensionConfig>& configs,
-    extensions::FactoryContext& context) -> absl::StatusOr<std::shared_ptr<TaskHandlerManager>> {
+    extensions::NodeagentFactoryContext& context)
+    -> absl::StatusOr<std::shared_ptr<TaskHandlerManager>> {
   auto manager = std::make_shared<TaskHandlerManager>();
 
   if (configs.empty()) {

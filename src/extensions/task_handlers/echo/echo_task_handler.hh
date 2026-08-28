@@ -17,7 +17,7 @@ class EchoTaskHandlerFactory final : public TaskHandlerFactory {
 public:
   [[nodiscard]] auto Name() const -> std::string override;
   auto CreateEmptyConfigProto() -> MessagePtr override;
-  auto Create(const ::google::protobuf::Message& config, FactoryContext& context)
+  auto Create(const ::google::protobuf::Message& config, NodeagentFactoryContext& context)
       -> TaskHandlerPtr override;
   auto ParseConfig(const ::google::protobuf::Message& config)
       -> absl::StatusOr<node::HandlerCapacity> override;

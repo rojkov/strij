@@ -1,11 +1,13 @@
 #include <memory>
+#include <vector>
 
 #include "absl/flags/flag.h"
 #include "absl/flags/parse.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "core/common/signal_monitor.hh"
 #include "core/config/config_loader.hh"
 #include "core/event/dispatcher_impl.hh"
-#include "core/extensions/factory_context.hh"
 #include "core/extensions/function_resolver.hh"
 #include "core/io/periodic_timer.hh"
 #include "core/io/tcp_listener.hh"
@@ -15,8 +17,11 @@
 #include "core/nodeagent/admission_controller.hh"
 #include "core/nodeagent/capabilities.hh"
 #include "core/nodeagent/nodeagent_tlv_handler.hh"
+#include "core/nodeagent/run_task_service.hh"
 #include "core/nodeagent/state_reporter.hh"
 #include "core/nodeagent/task_handler_manager.hh"
+#include "nodeagent_factory_context.hh"
+#include "extensions/schedulers/scheduler.hh"
 
 // Generated protobuf headers
 #include "core/config/nodeagent.pb.h"
@@ -53,23 +58,9 @@ auto main(int argc, char** argv) -> int {
   const strij::event::DispatcherSharedPtr dispatcher =
       std::make_shared<strij::event::DispatcherImpl>();
 
-  // Build the task handler manager from config. This must run before the
-  // --validate_only short-circuit so that unknown handler names fail validation.
-  auto function_resolver = std::make_unique<strij::extensions::LocalFunctionResolver>();
-  strij::extensions::FactoryContextImpl factory_context(dispatcher, std::move(function_resolver));
-  auto manager_result =
-      strij::nodeagent::BuildTaskHandlerManager(config.task_handlers(), factory_context);
-  if (!manager_result.ok()) {
-    LOG_ERROR("Task handler config error: {}", manager_result.status().message());
-    return 1;
-  }
-
-  const std::shared_ptr<strij::nodeagent::TaskHandlerManager>& task_handler_manager =
-      manager_result.value();
-
   // Build and validate the node capabilities advertisement from config. Runs
-  // before --validate_only so that bad pools/reservations/handlers fail
-  // validation too. The node_id is stable for the lifetime of this process.
+  // before --validate_only so that bad pools/reservations/handlers/schedulers
+  // fail validation too. The node_id is stable for the lifetime of this process.
   const std::string node_id = strij::nodeagent::GenerateNodeId();
   auto capabilities_result = strij::nodeagent::BuildNodeCapabilities(config, node_id);
   if (!capabilities_result.ok()) {
@@ -80,9 +71,59 @@ auto main(int argc, char** argv) -> int {
   const std::shared_ptr<const strij::node::NodeCapabilities> capabilities =
       std::make_shared<strij::node::NodeCapabilities>(std::move(capabilities_result).value());
 
+  // Admission controller tracks per-pool/per-type usage; both the task handlers
+  // and (via the factory context) the configured schedulers share it.
+  const auto admission = std::make_shared<strij::nodeagent::AdmissionController>(*capabilities);
+
+  auto function_resolver = std::make_unique<strij::extensions::LocalFunctionResolver>();
+  strij::nodeagent::NodeagentFactoryContextImpl factory_context(dispatcher,
+                                                                std::move(function_resolver),
+                                                                admission);
+
+  // Build the task handler manager from config. This must run before the
+  // --validate_only short-circuit so that unknown handler names fail validation.
+  auto manager_result =
+      strij::nodeagent::BuildTaskHandlerManager(config.task_handlers(), factory_context);
+  if (!manager_result.ok()) {
+    LOG_ERROR("Task handler config error: {}", manager_result.status().message());
+    return 1;
+  }
+
   if (absl::GetFlag(FLAGS_validate_only)) {
     LOG_INFO("Config validation passed");
     return 0;
+  }
+
+  const std::shared_ptr<strij::nodeagent::TaskHandlerManager>& task_handler_manager =
+      manager_result.value();
+
+  // The RunTask service is the schedulers' only route to task execution; it is
+  // installed into the factory context two-phase so that scheduler factories
+  // created below can reach it.
+  auto run_task_service =
+      std::make_unique<strij::nodeagent::RunTaskService>(task_handler_manager, admission);
+  factory_context.SetRunTaskService(*run_task_service);
+
+  // One local scheduler instance per configured scheduler entry, shared by
+  // every accepted connection's frame dispatcher. Failing to start when the
+  // list is empty or any name is unknown is intentional: a misconfigured node
+  // must not silently advertise a scheduling protocol.
+  std::vector<strij::extensions::SchedulerPtr> local_schedulers;
+  std::vector<strij::extensions::Scheduler*> scheduler_pointers;
+  scheduler_pointers.reserve(static_cast<size_t>(config.schedulers().size()));
+  local_schedulers.reserve(static_cast<size_t>(config.schedulers().size()));
+  for (const auto& ext : config.schedulers()) {
+    auto scheduler_result = strij::extensions::CreateNodeScheduler(ext, factory_context);
+    if (!scheduler_result.ok()) {
+      LOG_ERROR("Scheduler config error: {}", scheduler_result.status().message());
+      return 1;
+    }
+    scheduler_pointers.push_back(scheduler_result.value().get());
+    local_schedulers.push_back(std::move(scheduler_result).value());
+  }
+  if (local_schedulers.empty()) {
+    LOG_ERROR("No schedulers configured for this node");
+    return 1;
   }
 
   // Apply CLI overrides
@@ -107,10 +148,8 @@ auto main(int argc, char** argv) -> int {
 
   LOG_REGISTER_THREAD();
 
-  // Admission controller tracks per-pool/per-type usage derived from admissions
-  // and completions; the state reporter broadcasts periodic kNodeState
-  // snapshots to every established connection at heartbeat_interval.
-  const auto admission = std::make_shared<strij::nodeagent::AdmissionController>(*capabilities);
+  // The state reporter broadcasts periodic kNodeState snapshots to every
+  // established connection at heartbeat_interval.
   auto state_reporter = std::make_shared<strij::nodeagent::StateReporter>(admission, node_id);
   strij::io::PeriodicTimer state_timer(dispatcher,
                                        [state_reporter]() { state_reporter->Broadcast(); });
@@ -118,10 +157,10 @@ auto main(int argc, char** argv) -> int {
 
   strij::io::TcpListener listener{
       dispatcher, config.tlv_listener().port(),
-      [task_handler_manager, capabilities, admission,
+      [capabilities, &scheduler_pointers,
        state_reporter](strij::io::Connection& conn) -> std::unique_ptr<strij::io::ProtocolParser> {
-        auto handler = std::make_unique<strij::nodeagent::NodeagentTlvHandler>(
-            task_handler_manager, capabilities, admission);
+        auto handler = std::make_unique<strij::nodeagent::NodeagentTlvHandler>(scheduler_pointers,
+                                                                               capabilities);
         handler->SendAdvertisement(conn);
         state_reporter->AddConnection(conn.Mailbox());
         return std::make_unique<strij::io::TlvParser>(

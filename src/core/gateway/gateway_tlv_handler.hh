@@ -6,6 +6,10 @@
 #include "core/io/connection.hh"
 #include "core/io/tlv_frame.hh"
 
+namespace strij::extensions {
+class Scheduler;
+}
+
 namespace strij::gateway {
 
 // The capability version this gateway understands. v1 mismatch is a warning,
@@ -15,8 +19,10 @@ inline constexpr uint32_t kSupportedCapabilityVersion = 1;
 class GatewayTlvHandler final {
 public:
   GatewayTlvHandler(NodeDirectory& directory, ResultReceiverStorage& storage,
+                    extensions::Scheduler* scheduler = nullptr,
                     ExactStateTracker* state_tracker = nullptr)
-      : directory_{directory}, storage_{storage}, state_tracker_{state_tracker} {}
+      : directory_{directory}, storage_{storage}, scheduler_{scheduler},
+        state_tracker_{state_tracker} {}
   ~GatewayTlvHandler() = default;
 
   GatewayTlvHandler(const GatewayTlvHandler&) = delete;
@@ -39,6 +45,10 @@ private:
 
   NodeDirectory& directory_;
   ResultReceiverStorage& storage_;
+  // Optional inbound-frame routing seam: a configured scheduler claiming one of
+  // the connection's frame types (HandledFrameTypes) owns it. Null when no
+  // router is installed (unit tests).
+  extensions::Scheduler* scheduler_;
   // Optional exact state accounting; null in unit tests that don't need it.
   ExactStateTracker* state_tracker_;
 };

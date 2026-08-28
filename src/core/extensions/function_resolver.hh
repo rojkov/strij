@@ -1,5 +1,6 @@
 #pragma once
 
+#include <memory>
 #include <string>
 #include <string_view>
 
@@ -48,5 +49,7 @@ public:
   // FunctionResolver
   auto Resolve(std::string_view reference) -> absl::StatusOr<std::string> override;
 };
+
+using FunctionResolverPtr = std::unique_ptr<FunctionResolver>;
 
 } // namespace strij::extensions

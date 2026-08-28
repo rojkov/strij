@@ -2,13 +2,28 @@
 
 #include <memory>
 
-#include "core/extensions/function_resolver.hh"
 #include "core/logging/logger.hh"
 #include "strij/common/pure.hh"
 #include "strij/event/dispatcher.hh"
 
+namespace strij::gateway {
+class NodeDirectory;
+class ResultReceiverStorage;
+} // namespace strij::gateway
+
+namespace strij::nodeagent {
+class AdmissionController;
+class RunTaskService;
+using AdmissionControllerSharedPtr = std::shared_ptr<AdmissionController>;
+} // namespace strij::nodeagent
+
 namespace strij::extensions {
 
+class FunctionResolver;
+
+// Base services shared by every extension factory category. Factory contexts
+// are constructed once per process and handed to extension factories at Create;
+// extensions must not retain the context past their owner's lifetime.
 class FactoryContext {
 public:
   FactoryContext() = default;
@@ -22,29 +37,23 @@ public:
   virtual auto Dispatcher() -> event::Dispatcher& PURE;
   // TODO: Is Logger() really needed?
   virtual auto Logger() -> logging::Logger& PURE;
-  // Shared resolver for the `function` task parameter; built once at nodeagent
-  // startup and shared by all function-consuming task handler factories.
-  virtual auto FunctionResolver() -> extensions::FunctionResolver& PURE;
 };
 
-using FactoryContextPtr = std::unique_ptr<FactoryContext>;
-
-class FactoryContextImpl : public FactoryContext {
+// Gateway-side extension services. Only gateway scheduler extensions and node
+// discovery extensions are created with this context.
+class GatewayFactoryContext : public FactoryContext {
 public:
-  // TODO: Consider making the function_resolver argument non-optional and always passing a resolver
-  // (even if it's a LocalFunctionResolver). This would simplify the code and avoid potential null
-  // dereferences. This may imply having different factory context implementations for gateway and
-  // nodeagent.
-  FactoryContextImpl(event::DispatcherSharedPtr dispatcher,
-                     std::unique_ptr<extensions::FunctionResolver> function_resolver = nullptr);
+  virtual auto NodeDirectory() -> gateway::NodeDirectory& PURE;
+  virtual auto ResultReceiverStorage() -> gateway::ResultReceiverStorage& PURE;
+};
 
-  auto Dispatcher() -> event::Dispatcher& override;
-  auto Logger() -> logging::Logger& override;
-  auto FunctionResolver() -> extensions::FunctionResolver& override;
-
-private:
-  event::DispatcherSharedPtr dispatcher_;
-  std::unique_ptr<extensions::FunctionResolver> function_resolver_;
+// Nodeagent-side extension services. Only nodeagent scheduler extensions and
+// task handler extensions are created with this context.
+class NodeagentFactoryContext : public FactoryContext {
+public:
+  virtual auto FunctionResolver() -> extensions::FunctionResolver& PURE;
+  virtual auto AdmissionController() -> nodeagent::AdmissionControllerSharedPtr PURE;
+  virtual auto RunTaskService() -> nodeagent::RunTaskService& PURE;
 };
 
 } // namespace strij::extensions

@@ -1,26 +1,50 @@
 #include <cstdint>
 #include <memory>
+#include <span>
 #include <string>
 #include <string_view>
 #include <utility>
 
 #include "test/mocks/common/common_mocks.hh"
 #include "test/mocks/event/mocks.hh"
+#include "test/mocks/extensions/extensions_mocks.hh"
 
 #include "core/extensions/extension_registry.hh"
-#include "core/gateway/node.hh"
 #include "core/gateway/node_directory.hh"
 #include "core/gateway/result_receiver_storage.hh"
+#include "core/io/connection.hh"
 #include "core/io/protocol_parser.hh"
 #include "core/node/capabilities.pb.h"
 #include "core/task/task.pb.h"
 #include "extensions/schedulers/capability_aware/capability_aware_scheduler.hh"
 #include "extensions/schedulers/scheduler.hh"
-#include "google/protobuf/map.h"
 #include "gtest/gtest.h"
 
 namespace strij::extensions::schedulers {
 namespace {
+
+using ::testing::_;
+using ::testing::DoAll;
+using ::testing::Return;
+using ::testing::ReturnRef;
+using ::testing::SaveArg;
+
+class RecordingReceiver final : public gateway::ResultReceiver {
+public:
+  explicit RecordingReceiver(std::shared_ptr<std::vector<std::string>> errors)
+      : errors_{std::move(errors)} {}
+
+  void Deliver(std::span<const std::byte> /*value*/, bool /*is_final*/) override {}
+  void DeliverError(std::string_view reason) override { errors_->emplace_back(reason); }
+
+  std::shared_ptr<std::vector<std::string>> errors_;
+};
+
+auto MakeReceiver() -> std::pair<gateway::ResultReceiverPtr, std::shared_ptr<std::vector<std::string>>> {
+  auto errors = std::make_shared<std::vector<std::string>>();
+  auto receiver = std::make_unique<RecordingReceiver>(errors);
+  return {std::move(receiver), std::move(errors)};
+}
 
 class CapabilityAwareSchedulerTest : public ::testing::Test {
 protected:
@@ -35,9 +59,8 @@ protected:
           return std::make_unique<io::TrivialParser>();
         },
         storage_);
-    EXPECT_CALL(*dispatcher_, PrepareConnect(::testing::_, ::testing::_, ::testing::_, ::testing::_,
-                                             ::testing::_))
-        .WillRepeatedly(::testing::Return());
+    EXPECT_CALL(*dispatcher_, PrepareConnect(_, _, _, _, _)).WillRepeatedly(Return());
+    EXPECT_CALL(*dispatcher_, PrepareRead(_, _, _, _, _)).WillRepeatedly(Return());
     for (const auto& node_id : ids) {
       directory->AddNode(node_id, "10.0.0.1:9090");
     }
@@ -47,229 +70,195 @@ protected:
     return directory;
   }
 
-  static void AddProtocol(node::NodeCapabilities* caps, std::string_view name) {
-    caps->add_scheduling_protocols()->set_name(name);
+  static void AddProtocol(node::NodeCapabilities& caps, std::string_view name) {
+    caps.add_scheduling_protocols()->set_name(std::string(name));
   }
 
-  static void AddPool(node::NodeCapabilities* caps, std::string_view name, uint64_t total) {
-    auto* pool = caps->add_pools();
-    pool->set_name(name);
-    pool->set_total(total);
+  static void AddPool(node::NodeCapabilities& caps, const std::string& name, uint64_t total) {
+    caps.add_pools()->set_name(name);
+    caps.mutable_pools()->rbegin()->set_total(total);
   }
 
-  static void AddReservation(node::NodeCapabilities* caps, std::string_view task_type,
-                             std::string_view pool, uint64_t amount) {
-    auto* reservation = caps->add_reservations();
-    reservation->set_task_type(task_type);
-    reservation->set_pool(pool);
-    reservation->set_amount(amount);
-  }
-
-  static void AddHandler(node::NodeCapabilities* caps, std::string_view task_type,
+  static void AddHandler(node::NodeCapabilities& caps, const std::string& task_type,
                          uint64_t concurrency) {
-    auto* handler = caps->add_handlers();
+    auto* handler = caps.add_handlers();
     handler->set_task_type(task_type);
     handler->set_concurrency(concurrency);
   }
 
-  static void SetPoolInUse(node::NodeState* state, std::string_view name, uint64_t in_use) {
-    auto* usage = state->add_pools();
-    usage->set_pool(name);
-    usage->set_in_use(in_use);
-  }
-
-  static void SetTypeInFlight(node::NodeState* state, std::string_view task_type,
+  static void SetTypeInFlight(node::NodeState& state, const std::string& task_type,
                               uint64_t in_flight) {
-    auto* usage = state->add_type_usage();
+    auto* usage = state.add_type_usage();
     usage->set_task_type(task_type);
     usage->set_in_flight(in_flight);
   }
 
-  // Builds an offer that stays alive for the duration of the test.
-  auto MakeOffer(std::string task_type,
-                 std::initializer_list<std::pair<const std::string, uint64_t>> resources)
-      -> TaskOffer {
-    task_.set_type(std::move(task_type));
-    requirements_.mutable_resources()->clear();
-    for (const auto& [pool, amount] : resources) {
-      (*requirements_.mutable_resources())[pool] = amount;
-    }
-    return TaskOffer{.task = &task_, .requirements = &requirements_};
+  static void SetNodeWideInFlight(node::NodeState& state, uint64_t in_flight) {
+    state.set_in_flight(in_flight);
   }
 
-private:
-  task::Task task_;
-  node::ResourceRequirements requirements_;
+  static auto MakePinnedTask(const std::string& id, const std::string& type,
+                             std::initializer_list<std::pair<const std::string, uint64_t>> resources)
+      -> task::Task {
+    task::Task task;
+    task.set_id(id);
+    task.set_type(type);
+    for (const auto& [pool, amount] : resources) {
+      (*task.mutable_requirements()->mutable_resources())[pool] = amount;
+    }
+    return task;
+  }
 };
 
 // NOLINTBEGIN(modernize-use-trailing-return-type)
 
 TEST_F(CapabilityAwareSchedulerTest, ExcludesNodeWithoutRequiredPoolCapacity) {
-  auto directory = MakeConnectedDirectory({"full", "free"});
-  auto* full = directory->GetNode("full");
-  auto* free = directory->GetNode("free");
-
-  node::NodeCapabilities full_caps;
-  AddProtocol(&full_caps, "push");
-  AddPool(&full_caps, "gpu.h100", 1);
-  full->StoreCapabilities(std::move(full_caps));
-  node::NodeState full_state;
-  full_state.set_in_flight(1);
-  SetPoolInUse(&full_state, "gpu.h100", 1);
-  full->UpdateState(std::move(full_state));
+  auto directory = MakeConnectedDirectory({"free", "quota"});
 
   node::NodeCapabilities free_caps;
-  AddProtocol(&free_caps, "push");
-  AddPool(&free_caps, "gpu.h100", 2);
-  free->StoreCapabilities(std::move(free_caps));
+  AddProtocol(free_caps, "push");
+  AddPool(free_caps, "cpu", 4);
+  directory->GetNode("free")->StoreCapabilities(std::move(free_caps));
 
-  CapabilityAwareScheduler scheduler;
-  auto offer = MakeOffer("inference", {{"gpu.h100", 1}});
+  node::NodeCapabilities quota_caps;
+  AddProtocol(quota_caps, "push");
+  AddPool(quota_caps, "cpu", 2);
+  directory->GetNode("quota")->StoreCapabilities(std::move(quota_caps));
 
-  // "full" has zero shared-free gpu.h100 and is excluded.
-  EXPECT_EQ(scheduler.Choose(*directory, offer), free);
+  CapabilityAwareScheduler scheduler(*directory, storage_);
+
+  auto* expected_conn = directory->GetNode("free")->GetConnection();
+  event::Completable* written_to = nullptr;
+  EXPECT_CALL(*dispatcher_, PrepareWrite(_, _, _, _, _))
+      .WillOnce(DoAll(SaveArg<0>(&written_to), Return()));
+
+  scheduler.Schedule(MakePinnedTask("1", "echo", {{"cpu", 4}}),
+                     MakeReceiver().first);
+  EXPECT_EQ(written_to, static_cast<event::Completable*>(expected_conn));
 }
 
-TEST_F(CapabilityAwareSchedulerTest, ExcludesNodeAtConcurrencyLimit) {
-  auto directory = MakeConnectedDirectory({"saturated", "free"});
-  auto* saturated = directory->GetNode("saturated");
-  auto* free = directory->GetNode("free");
+TEST_F(CapabilityAwareSchedulerTest, ExcludesNodeWithoutHandlerForTaskType) {
+  auto directory = MakeConnectedDirectory({"echo_node", "cv_node"});
 
-  node::NodeCapabilities caps;
-  node::NodeCapabilities caps_copy;
-  AddProtocol(&caps, "push");
-  AddPool(&caps, "cpu", 16);
-  AddHandler(&caps, "echo", 2);
-  caps_copy.CopyFrom(caps);
-  saturated->StoreCapabilities(std::move(caps));
-  free->StoreCapabilities(std::move(caps_copy));
+  node::NodeCapabilities echo_caps;
+  AddProtocol(echo_caps, "push");
+  AddHandler(echo_caps, "echo", 0);
+  directory->GetNode("echo_node")->StoreCapabilities(std::move(echo_caps));
 
-  node::NodeState saturated_state;
-  saturated_state.set_in_flight(2);
-  SetTypeInFlight(&saturated_state, "echo", 2);
-  saturated->UpdateState(std::move(saturated_state));
+  node::NodeCapabilities cv_caps;
+  AddProtocol(cv_caps, "push");
+  AddHandler(cv_caps, "cv", 0);
+  directory->GetNode("cv_node")->StoreCapabilities(std::move(cv_caps));
 
-  CapabilityAwareScheduler scheduler;
-  auto offer = MakeOffer("echo", {});
+  CapabilityAwareScheduler scheduler(*directory, storage_);
 
-  EXPECT_EQ(scheduler.Choose(*directory, offer), free);
+  auto* expected_conn = directory->GetNode("cv_node")->GetConnection();
+  event::Completable* written_to = nullptr;
+  EXPECT_CALL(*dispatcher_, PrepareWrite(_, _, _, _, _))
+      .WillOnce(DoAll(SaveArg<0>(&written_to), Return()));
+
+  scheduler.Schedule(MakePinnedTask("1", "cv", {}), MakeReceiver().first);
+  EXPECT_EQ(written_to, static_cast<event::Completable*>(expected_conn));
 }
 
 TEST_F(CapabilityAwareSchedulerTest, ChoosesLeastLoadedNodeByConcurrencyRatio) {
-  auto directory = MakeConnectedDirectory({"loaded", "light"});
-  auto* loaded = directory->GetNode("loaded");
-  auto* light = directory->GetNode("light");
+  auto directory = MakeConnectedDirectory({"light", "loaded"});
 
-  node::NodeCapabilities caps;
-  node::NodeCapabilities caps_copy;
-  AddProtocol(&caps, "push");
-  AddHandler(&caps, "echo", 100);
-  caps_copy.CopyFrom(caps);
-  loaded->StoreCapabilities(std::move(caps));
-  light->StoreCapabilities(std::move(caps_copy));
-
-  node::NodeState loaded_state;
-  loaded_state.set_in_flight(5);
-  SetTypeInFlight(&loaded_state, "echo", 5);
-  loaded->UpdateState(std::move(loaded_state));
+  node::NodeCapabilities light_caps;
+  AddProtocol(light_caps, "push");
+  AddHandler(light_caps, "echo", 10);
+  directory->GetNode("light")->StoreCapabilities(std::move(light_caps));
 
   node::NodeState light_state;
-  light_state.set_in_flight(2);
-  SetTypeInFlight(&light_state, "echo", 2);
-  light->UpdateState(std::move(light_state));
+  SetTypeInFlight(light_state, "echo", 1);
+  directory->GetNode("light")->UpdateState(std::move(light_state));
 
-  CapabilityAwareScheduler scheduler;
-  auto offer = MakeOffer("echo", {});
+  node::NodeCapabilities loaded_caps;
+  AddProtocol(loaded_caps, "push");
+  AddHandler(loaded_caps, "echo", 10);
+  directory->GetNode("loaded")->StoreCapabilities(std::move(loaded_caps));
 
-  EXPECT_EQ(scheduler.Choose(*directory, offer), light);
+  node::NodeState loaded_state;
+  SetTypeInFlight(loaded_state, "echo", 5);
+  directory->GetNode("loaded")->UpdateState(std::move(loaded_state));
+
+  CapabilityAwareScheduler scheduler(*directory, storage_);
+
+  auto* expected_conn = directory->GetNode("light")->GetConnection();
+  event::Completable* written_to = nullptr;
+  EXPECT_CALL(*dispatcher_, PrepareWrite(_, _, _, _, _))
+      .WillOnce(DoAll(SaveArg<0>(&written_to), Return()));
+
+  scheduler.Schedule(MakePinnedTask("1", "echo", {}), MakeReceiver().first);
+  EXPECT_EQ(written_to, static_cast<event::Completable*>(expected_conn));
 }
 
 TEST_F(CapabilityAwareSchedulerTest, TieBreaksByNodeWideInFlightCount) {
   auto directory = MakeConnectedDirectory({"busy", "idle"});
-  auto* busy = directory->GetNode("busy");
-  auto* idle = directory->GetNode("idle");
 
-  // No per-type concurrency declared: both nodes have an equal (neutral) load
-  // ratio, so the node-wide in-flight count decides.
-  node::NodeCapabilities caps;
-  node::NodeCapabilities caps_copy;
-  AddProtocol(&caps, "push");
-  caps_copy.CopyFrom(caps);
-  busy->StoreCapabilities(std::move(caps));
-  idle->StoreCapabilities(std::move(caps_copy));
+  node::NodeCapabilities busy_caps;
+  AddProtocol(busy_caps, "push");
+  AddHandler(busy_caps, "echo", 0);
+  directory->GetNode("busy")->StoreCapabilities(std::move(busy_caps));
 
   node::NodeState busy_state;
-  busy_state.set_in_flight(5);
-  busy->UpdateState(std::move(busy_state));
+  SetNodeWideInFlight(busy_state, 100);
+  directory->GetNode("busy")->UpdateState(std::move(busy_state));
+
+  node::NodeCapabilities idle_caps;
+  AddProtocol(idle_caps, "push");
+  AddHandler(idle_caps, "echo", 0);
+  directory->GetNode("idle")->StoreCapabilities(std::move(idle_caps));
 
   node::NodeState idle_state;
-  idle_state.set_in_flight(2);
-  idle->UpdateState(std::move(idle_state));
+  SetNodeWideInFlight(idle_state, 2);
+  directory->GetNode("idle")->UpdateState(std::move(idle_state));
 
-  CapabilityAwareScheduler scheduler;
-  auto offer = MakeOffer("echo", {});
+  CapabilityAwareScheduler scheduler(*directory, storage_);
 
-  EXPECT_EQ(scheduler.Choose(*directory, offer), idle);
+  auto* expected_conn = directory->GetNode("idle")->GetConnection();
+  event::Completable* written_to = nullptr;
+  EXPECT_CALL(*dispatcher_, PrepareWrite(_, _, _, _, _))
+      .WillOnce(DoAll(SaveArg<0>(&written_to), Return()));
+
+  scheduler.Schedule(MakePinnedTask("1", "echo", {}), MakeReceiver().first);
+  EXPECT_EQ(written_to, static_cast<event::Completable*>(expected_conn));
 }
 
-TEST_F(CapabilityAwareSchedulerTest, ExcludesNodesNotAdvertisingRequiredProtocol) {
-  auto directory = MakeConnectedDirectory({"probe_only", "push_node"});
-  auto* probe_only = directory->GetNode("probe_only");
-  auto* push_node = directory->GetNode("push_node");
+TEST_F(CapabilityAwareSchedulerTest, DeliversErrorWhenNoEligibleNode) {
+  auto directory = MakeConnectedDirectory({"saturated"});
 
-  node::NodeCapabilities probe_caps;
-  AddProtocol(&probe_caps, "probe");
-  AddPool(&probe_caps, "cpu", 8);
-  probe_only->StoreCapabilities(std::move(probe_caps));
+  node::NodeCapabilities caps;
+  AddProtocol(caps, "push");
+  AddHandler(caps, "echo", 1);
+  directory->GetNode("saturated")->StoreCapabilities(std::move(caps));
 
-  node::NodeCapabilities push_caps;
-  AddProtocol(&push_caps, "push");
-  AddPool(&push_caps, "cpu", 8);
-  push_node->StoreCapabilities(std::move(push_caps));
+  node::NodeState state;
+  SetTypeInFlight(state, "echo", 1);
+  directory->GetNode("saturated")->UpdateState(std::move(state));
 
-  CapabilityAwareScheduler scheduler;
-  auto offer = MakeOffer("echo", {{"cpu", 1}});
+  CapabilityAwareScheduler scheduler(*directory, storage_);
+  EXPECT_CALL(*dispatcher_, PrepareWrite(_, _, _, _, _)).Times(0);
 
-  EXPECT_EQ(scheduler.Choose(*directory, offer), push_node);
-}
+  auto receiver = MakeReceiver();
+  scheduler.Schedule(MakePinnedTask("1", "echo", {}), std::move(receiver.first));
 
-TEST_F(CapabilityAwareSchedulerTest, ExcludesNodeWithoutMatchingHandler) {
-  auto directory = MakeConnectedDirectory({"video_only", "generic"});
-  auto* video_only = directory->GetNode("video_only");
-  auto* generic = directory->GetNode("generic");
-
-  node::NodeCapabilities video_caps;
-  AddProtocol(&video_caps, "push");
-  AddHandler(&video_caps, "video-encode", 4);
-  video_only->StoreCapabilities(std::move(video_caps));
-
-  node::NodeCapabilities generic_caps;
-  AddProtocol(&generic_caps, "push");
-  generic->StoreCapabilities(std::move(generic_caps));
-
-  CapabilityAwareScheduler scheduler;
-  auto offer = MakeOffer("echo", {});
-
-  // "video_only" declares handlers but none for "echo".
-  EXPECT_EQ(scheduler.Choose(*directory, offer), generic);
-}
-
-TEST_F(CapabilityAwareSchedulerTest, ReturnsNullWhenNoEligibleNode) {
-  auto directory = MakeConnectedDirectory({"no_caps"});
-  // A connected node that has not advertised yet is excluded until it does.
-  CapabilityAwareScheduler scheduler;
-  auto offer = MakeOffer("echo", {{"cpu", 1}});
-
-  EXPECT_EQ(scheduler.Choose(*directory, offer), nullptr);
+  ASSERT_EQ(receiver.second->size(), 1U);
+  EXPECT_NE(receiver.second->at(0).find("no eligible node"), std::string::npos);
+  EXPECT_EQ(storage_.Get("1"), nullptr);
 }
 
 TEST_F(CapabilityAwareSchedulerTest, FactoryIsRegisteredAndCreatesScheduler) {
-  auto* factory =
-      extensions::Registry<extensions::SchedulerFactory>::instance().GetFactory("capability_aware");
+  auto* factory = extensions::Registry<extensions::GatewaySchedulerFactory>::instance()
+                      .GetFactory("capability_aware");
   ASSERT_NE(factory, nullptr);
   EXPECT_EQ(factory->Name(), "capability_aware");
 
-  extensions::FactoryContextImpl context(dispatcher_);
+  auto directory = MakeConnectedDirectory({"node"});
+  extensions::MockGatewayFactoryContext context;
+  ON_CALL(context, NodeDirectory()).WillByDefault(ReturnRef(*directory));
+  ON_CALL(context, ResultReceiverStorage()).WillByDefault(ReturnRef(storage_));
+
   auto config = factory->CreateEmptyConfigProto();
   auto scheduler = factory->Create(*config, context);
   ASSERT_NE(scheduler, nullptr);

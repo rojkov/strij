@@ -60,7 +60,7 @@ TEST_F(StaticNodeDiscoveryTest, FactoryCreatesDiscoveryWithDerivedIdentity) {
   config::StaticNodeDiscoveryConfig config;
   config.add_addresses("10.0.0.1:9090");
 
-  extensions::MockFactoryContext context;
+  extensions::MockGatewayFactoryContext context;
   StaticNodeDiscoveryFactory factory;
   auto discovery = factory.Create(config, context);
 

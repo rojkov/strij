@@ -83,7 +83,7 @@ auto PipedExecutableTaskHandlerFactory::CreateEmptyConfigProto() -> MessagePtr {
 }
 
 auto PipedExecutableTaskHandlerFactory::Create(const ::google::protobuf::Message& /*config*/,
-                                               FactoryContext& context) -> TaskHandlerPtr {
+                                               NodeagentFactoryContext& context) -> TaskHandlerPtr {
   return std::make_unique<PipedExecutableTaskHandler>(context.Dispatcher(),
                                                       context.FunctionResolver());
 }

@@ -1,6 +1,7 @@
 #include "core/nodeagent/capabilities.hh"
 
 #include <cstdint>
+#include <set>
 #include <string>
 #include <unordered_map>
 
@@ -11,6 +12,7 @@
 #include "core/extensions/extension_registry.hh"
 #include "core/node/capabilities.pb.h"
 #include "core/utils/task_id.hh"
+#include "extensions/schedulers/scheduler.hh"
 #include "extensions/task_handlers/task_handlers.hh"
 #include "google/protobuf/any.pb.h"
 #include "google/protobuf/message.h"
@@ -94,7 +96,38 @@ auto BuildNodeCapabilities(const config::NodeAgentConfig& config, const std::str
   }
 
   caps.add_update_channels()->set_kind(std::string(kHeartbeatChannelKind));
-  caps.add_scheduling_protocols()->set_name(std::string(kPushSchedulingProtocol));
+
+  // Derive the advertised scheduling protocols from the configured nodeagent
+  // schedulers. Each entry must resolve to a registered NodeSchedulerFactory
+  // and its typed_config must unpack (an empty typed_config is tolerated). The
+  // deduplicated protocol union is what gateway-side schedulers match nodes on.
+  std::set<std::string> protocols;
+  auto& scheduler_registry = extensions::Registry<extensions::NodeSchedulerFactory>::instance();
+  for (const auto& ext : config.schedulers()) {
+    auto* factory = scheduler_registry.GetFactory(ext.name());
+    if (factory == nullptr) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Scheduler '", ext.name(),
+          "' is not registered. Ensure the extension library is linked and the name matches a "
+          "registered factory."));
+    }
+
+    if (!ext.typed_config().type_url().empty()) {
+      ::google::protobuf::Any unpacked;
+      unpacked.CopyFrom(ext.typed_config());
+      auto config_msg = factory->CreateEmptyConfigProto();
+      if (!unpacked.UnpackTo(config_msg.get())) {
+        return absl::InvalidArgumentError(
+            absl::StrCat("Failed to unpack typed_config for scheduler '", ext.name(),
+                         "': unknown type '", unpacked.type_url(), "'"));
+      }
+    }
+
+    protocols.emplace(factory->RequiredProtocol());
+  }
+  for (const auto& protocol : protocols) {
+    caps.add_scheduling_protocols()->set_name(protocol);
+  }
 
   return caps;
 }

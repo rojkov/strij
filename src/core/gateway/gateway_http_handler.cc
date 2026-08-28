@@ -12,10 +12,10 @@
 #include "core/gateway/requirements_resolver.hh"
 #include "core/io/connection.hh"
 #include "core/io/llhttp_parser.hh"
-#include "core/io/tlv_frame.hh"
 #include "core/logging/log.hh"
 #include "core/task/task.pb.h"
 #include "core/utils/task_id.hh"
+#include "extensions/schedulers/scheduler.hh"
 
 namespace strij::gateway {
 
@@ -59,8 +59,6 @@ namespace {
 
 constexpr int kStatusBadRequest = 400;
 constexpr int kStatusNotFound = 404;
-constexpr int kStatusInternalServerError = 500;
-constexpr int kStatusServiceUnavailable = 503;
 
 void writeErrorResponse(io::Connection& conn, int status, std::string_view reason) {
   auto response = std::format("HTTP/1.1 {} {}\r\nContent-Length: 0\r\nContent-Type: "
@@ -95,39 +93,23 @@ void GatewayHttpHandler::HandleMessage(const io::HttpRequest& request, io::Conne
   const ParamsOnlyRequirementsResolver resolver;
   *task.mutable_requirements() =
       resolver.Resolve(FunctionRef{.type = task.type(), .id = ""}, task.parameters());
-  const extensions::TaskOffer offer{.task = &task, .requirements = &task.requirements()};
 
-  auto* node = scheduler_.Choose(node_directory_, offer);
-  if (node == nullptr) {
-    writeErrorResponse(conn, kStatusServiceUnavailable, "Service Unavailable");
-    return;
-  }
-
-  auto* nodeagent_conn = node->GetConnection();
-
+  // Fire-and-forget: the scheduler takes ownership of the receiver and MUST
+  // eventually resolve it (a result or an error), so the HTTP client never
+  // hangs. The scheduler decides node selection, storage registration, and the
+  // kTaskSubmission write. Node-selection and frame-writing are deliberately
+  // absent here.
   auto receiver = make_receiver_(conn);
-  storage_.Put(task_id, std::move(receiver), std::string(node->GetNodeId()));
 
   // Clean up the receiver if the HTTP client drops before the task completes.
+  // Registered before Schedule so a synchronous error delivery (e.g. no node)
+  // cannot race the close callback: both run on the event-loop thread.
   conn.Mailbox()->RegisterOnClose(
       [&storage = storage_, task_id]() { storage.NotifyClientDisconnected(task_id); });
 
-  if (state_tracker_ != nullptr) {
-    state_tracker_->RecordSubmission(task_id, node->GetNodeId(), task.requirements());
-  }
+  scheduler_.Schedule(task, std::move(receiver));
 
-  std::string serialized;
-  if (!task.SerializeToString(&serialized)) {
-    writeErrorResponse(conn, kStatusInternalServerError, "Internal Failure");
-    return;
-  }
-
-  auto frame =
-      io::SerializeTlvFrame(io::TlvFrame::kTaskSubmission,
-                            std::as_bytes(std::span(serialized.data(), serialized.size())));
-  nodeagent_conn->Write(frame);
-
-  LOG_DEBUG("Submitted task {} (type {}) to nodeagent", task_id, task_type.value());
+  LOG_DEBUG("Submitted task {} (type {}) to scheduler", task_id, task_type.value());
 }
 
 } // namespace strij::gateway
