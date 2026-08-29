@@ -5,6 +5,7 @@
 #include <string>
 #include <string_view>
 
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "core/config/extensions.pb.h"
 #include "core/extensions/factory_context.hh"
@@ -43,11 +44,14 @@ public:
   virtual void Schedule(const task::Task& task, gateway::ResultReceiverPtr receiver) PURE;
   // The scheduling_protocol a candidate node must advertise (v1: "push").
   [[nodiscard]] virtual auto RequiredProtocol() const -> std::string_view PURE;
-  // Routes an inbound wire frame of one of the types returned by
-  // HandledFrameTypes(). Defaults to a no-op for schedulers with no inbound
-  // frames (pure gateway-side policies).
-  // TODO: make it return status and turn `frame` to rvalue.
-  virtual void HandleFrame(io::TlvFrame frame, io::Connection& conn) {}
+// Routes an inbound wire frame of one of the types returned by
+  // HandledFrameTypes(). Returns OkStatus when the frame was handled (or was a
+  // legitimate no-op); a non-ok Status (e.g. NotFound when the frame type is
+  // unclaimed) signals the frame was dropped. Defaults to a no-op for schedulers
+  // with no inbound frames (pure gateway-side policies).
+  virtual auto HandleFrame(io::TlvFrame frame, io::Connection& conn) -> absl::Status {
+    return absl::OkStatus();
+  }
   // The TLV frame type_ids this scheduler owns (e.g. {kTaskSubmission} for
   // "push"). Empty = the scheduler never receives frames. Frame-type ownership
   // is disjoint across scheduling protocols, so the nodeagent dispatcher can

@@ -48,9 +48,10 @@ private:
 
   NodeDirectory& directory_;
   ResultReceiverStorage& storage_;
-  // Optional inbound-frame routing seam: a configured scheduler claiming one of
-  // the connection's frame types (HandledFrameTypes) owns it. Null when no
-  // router is installed (unit tests).
+  // Optional inbound-frame routing seam: a frame type not owned by a built-in
+  // handler is handed to the scheduler, which routes it (and reports via its
+  // return Status whether it was claimed). Null when no router is installed
+  // (unit tests).
   extensions::Scheduler* scheduler_;
   // Optional exact state accounting; null in unit tests that don't need it.
   ExactStateTracker* state_tracker_;

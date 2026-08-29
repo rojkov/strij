@@ -5,6 +5,7 @@
 #include <string>
 #include <utility>
 
+#include "absl/status/status.h"
 #include "core/io/connection.hh"
 #include "core/io/tlv_frame.hh"
 #include "core/logging/log.hh"
@@ -46,7 +47,11 @@ void NodeagentTlvHandler::HandleFrame(io::TlvFrame frame, io::Connection& conn) 
     return;
   }
 
-  iter->second->HandleFrame(std::move(frame), conn);
+  const absl::Status status = iter->second->HandleFrame(frame, conn);
+  if (!status.ok()) {
+    LOG_WARNING("Scheduler dropped frame type {}: {}", static_cast<int>(frame.type_id),
+                status.message());
+  }
 }
 
 } // namespace strij::nodeagent

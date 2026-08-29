@@ -83,13 +83,15 @@ void SchedulerRouter::Schedule(const task::Task& task, gateway::ResultReceiverPt
 
 auto SchedulerRouter::RequiredProtocol() const -> std::string_view { return required_protocol_; }
 
-void SchedulerRouter::HandleFrame(io::TlvFrame frame, io::Connection& conn) {
+auto SchedulerRouter::HandleFrame(io::TlvFrame frame, io::Connection& conn) -> absl::Status {
   Scheduler* owner = findFrameOwner(frame.type_id);
   if (owner == nullptr) {
-    return;
+    return absl::NotFoundError(
+        absl::StrCat("no constituent scheduler owns frame type ",
+                     static_cast<int>(frame.type_id)));
   }
 
-  owner->HandleFrame(std::move(frame), conn);
+  return owner->HandleFrame(frame, conn);
 }
 
 auto SchedulerRouter::HandledFrameTypes() const -> std::span<const uint8_t> {

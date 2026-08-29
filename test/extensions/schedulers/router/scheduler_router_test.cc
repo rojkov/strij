@@ -17,6 +17,7 @@
 #include "core/io/connection.hh"
 #include "core/io/protocol_parser.hh"
 #include "core/io/tlv_frame.hh"
+#include "absl/status/status.h"
 #include "core/task/task.pb.h"
 #include "extensions/schedulers/round_robin/round_robin_scheduler.hh"
 #include "extensions/schedulers/router/scheduler_router.hh"
@@ -40,8 +41,10 @@ public:
     held_receivers_.push_back(std::move(receiver));
   }
   [[nodiscard]] auto RequiredProtocol() const -> std::string_view override { return protocol_; }
-  void HandleFrame(io::TlvFrame frame, io::Connection& /*conn*/) override {
+  [[nodiscard]] auto HandleFrame(io::TlvFrame frame, io::Connection& /*conn*/)
+      -> absl::Status override {
     handled_frames_.push_back(frame.type_id);
+    return absl::OkStatus();
   }
   [[nodiscard]] auto HandledFrameTypes() const -> std::span<const uint8_t> override {
     return handled_types_;
@@ -177,8 +180,10 @@ TEST_F(SchedulerRouterTest, RoutesFramesToOwningScheduler) {
                         return std::make_unique<io::TrivialParser>();
                       });
 
-  router->HandleFrame(io::TlvFrame{0, {}}, conn);
-  router->HandleFrame(io::TlvFrame{2, {}}, conn);
+  EXPECT_TRUE(router->HandleFrame(io::TlvFrame{0, {}}, conn).ok());
+  EXPECT_TRUE(router->HandleFrame(io::TlvFrame{2, {}}, conn).ok());
+
+  EXPECT_FALSE(router->HandleFrame(io::TlvFrame{5, {}}, conn).ok());
 
   ASSERT_EQ(a->handled_frames_.size(), 1U);
   EXPECT_EQ(a->handled_frames_[0], 0U);

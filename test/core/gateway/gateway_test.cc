@@ -13,6 +13,8 @@
 #include "test/mocks/common/common_mocks.hh"
 #include "test/mocks/event/mocks.hh"
 
+#include "absl/status/status.h"
+
 #include "core/gateway/exact_state_tracker.hh"
 #include "core/gateway/gateway_http_handler.hh"
 #include "core/gateway/gateway_tlv_handler.hh"
@@ -98,7 +100,10 @@ public:
   }
 
   auto RequiredProtocol() const -> std::string_view override { return "push"; }
-  void HandleFrame(io::TlvFrame /*frame*/, io::Connection& /*conn*/) override {}
+  [[nodiscard]] auto HandleFrame(io::TlvFrame /*frame*/, io::Connection& /*conn*/)
+      -> absl::Status override {
+    return absl::OkStatus();
+  }
   auto HandledFrameTypes() const -> std::span<const uint8_t> override { return {}; }
 
 private:

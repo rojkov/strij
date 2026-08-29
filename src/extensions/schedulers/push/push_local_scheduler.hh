@@ -37,7 +37,7 @@ public:
 
   void Schedule(const task::Task& task, gateway::ResultReceiverPtr receiver) override;
   [[nodiscard]] auto RequiredProtocol() const -> std::string_view override;
-  void HandleFrame(io::TlvFrame frame, io::Connection& conn) override;
+  auto HandleFrame(io::TlvFrame frame, io::Connection& conn) -> absl::Status override;
   [[nodiscard]] auto HandledFrameTypes() const -> std::span<const uint8_t> override;
 
   void ProcessCommand(event::Command /*cmd*/) override {}

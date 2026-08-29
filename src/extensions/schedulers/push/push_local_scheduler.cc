@@ -4,6 +4,7 @@
 #include <span>
 #include <string_view>
 
+#include "absl/status/status.h"
 #include "core/extensions/extension_registry.hh"
 #include "core/io/connection.hh"
 #include "core/io/tlv_frame.hh"
@@ -36,15 +37,16 @@ void PushLocalScheduler::Schedule(const task::Task& /*task*/, gateway::ResultRec
 
 auto PushLocalScheduler::RequiredProtocol() const -> std::string_view { return "push"; }
 
-void PushLocalScheduler::HandleFrame(io::TlvFrame frame, io::Connection& conn) {
+auto PushLocalScheduler::HandleFrame(io::TlvFrame frame, io::Connection& conn) -> absl::Status {
   task::Task task;
   // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast)
   if (!task.ParseFromArray(reinterpret_cast<const char*>(frame.value.data()),
                            static_cast<int>(frame.value.size()))) {
     LOG_WARNING("Malformed Task frame dropped");
-    return;
+    return absl::InvalidArgumentError("malformed Task frame dropped");
   }
   run_task_service_.RunTask(task, conn);
+  return absl::OkStatus();
 }
 
 auto PushLocalScheduler::HandledFrameTypes() const -> std::span<const uint8_t> {
