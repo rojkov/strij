@@ -16,18 +16,6 @@
 
 namespace strij::extensions::schedulers {
 
-namespace {
-
-// TODO: why extension registration without macro?
-// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
-const auto registered = [] -> bool {
-  Registry<NodeSchedulerFactory>::instance().RegisterFactory(PushLocalSchedulerFactory().Name(),
-                                                             new PushLocalSchedulerFactory());
-  return true;
-}();
-
-} // namespace
-
 void PushLocalScheduler::Schedule(const task::Task& /*task*/, gateway::ResultReceiverPtr receiver) {
   // The push protocol never schedules outbound: gateways pick nodes, a node
   // cannot push tasks elsewhere. Resolve the receiver (which could otherwise
@@ -63,3 +51,7 @@ auto PushLocalSchedulerFactory::Create(const ::google::protobuf::Message& /*conf
 }
 
 } // namespace strij::extensions::schedulers
+
+REGISTER_FACTORY_FULLY_QUALIFIED(strij::extensions::schedulers::PushLocalSchedulerFactory,
+                                 strij::extensions::NodeSchedulerFactory,
+                                 push_local_scheduler_registrar)
