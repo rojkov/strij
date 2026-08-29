@@ -125,6 +125,7 @@ auto BuildNodeCapabilities(const config::NodeAgentConfig& config, const std::str
 
     protocols.emplace(factory->RequiredProtocol());
   }
+
   for (const auto& protocol : protocols) {
     caps.add_scheduling_protocols()->set_name(protocol);
   }

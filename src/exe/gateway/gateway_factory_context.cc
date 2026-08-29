@@ -1,6 +1,5 @@
 #include "gateway_factory_context.hh"
 
-#include <memory>
 #include <utility>
 
 #include "core/extensions/factory_context.hh"

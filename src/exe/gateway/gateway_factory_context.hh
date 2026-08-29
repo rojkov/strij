@@ -1,7 +1,5 @@
 #pragma once
 
-#include <memory>
-
 #include "core/extensions/factory_context.hh"
 #include "core/gateway/node_directory.hh"
 #include "core/gateway/result_receiver_storage.hh"

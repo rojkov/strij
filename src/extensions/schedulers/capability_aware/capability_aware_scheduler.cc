@@ -7,7 +7,6 @@
 #include <string>
 #include <string_view>
 #include <utility>
-#include <vector>
 
 #include "core/extensions/extension_registry.hh"
 #include "core/extensions/factory_context.hh"
@@ -160,7 +159,7 @@ auto loadRatio(const gateway::Node* node, const task::Task& task) -> double {
 
 auto CapabilityAwareScheduler::RequiredProtocol() const -> std::string_view { return "push"; }
 
-auto CapabilityAwareScheduler::choose(gateway::NodeDirectory& dir, const task::Task& task)
+auto CapabilityAwareScheduler::choose(gateway::NodeDirectory& dir, const task::Task& task) const
     -> gateway::Node* {
   gateway::Node* best = nullptr;
   double best_ratio = 0.0;
@@ -201,8 +200,9 @@ void CapabilityAwareScheduler::Schedule(const task::Task& task,
 
   storage_.Put(task.id(), std::move(receiver), std::string(node->GetNodeId()));
 
-  auto frame = io::SerializeTlvFrame(
-      io::TlvFrame::kTaskSubmission, std::as_bytes(std::span(serialized.data(), serialized.size())));
+  auto frame =
+      io::SerializeTlvFrame(io::TlvFrame::kTaskSubmission,
+                            std::as_bytes(std::span(serialized.data(), serialized.size())));
   node->GetConnection()->Write(frame);
 }
 

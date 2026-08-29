@@ -18,7 +18,8 @@ namespace strij::extensions::schedulers {
 // and resolves the receiver with an error when no node is eligible.
 class CapabilityAwareScheduler final : public Scheduler {
 public:
-  CapabilityAwareScheduler(gateway::NodeDirectory& directory, gateway::ResultReceiverStorage& storage)
+  CapabilityAwareScheduler(gateway::NodeDirectory& directory,
+                           gateway::ResultReceiverStorage& storage)
       : directory_{directory}, storage_{storage} {}
   ~CapabilityAwareScheduler() override = default;
 
@@ -31,7 +32,7 @@ public:
   [[nodiscard]] auto RequiredProtocol() const -> std::string_view override;
 
 private:
-  auto choose(gateway::NodeDirectory& dir, const task::Task& task) -> gateway::Node*;
+  auto choose(gateway::NodeDirectory& dir, const task::Task& task) const -> gateway::Node*;
 
   gateway::NodeDirectory& directory_;
   gateway::ResultReceiverStorage& storage_;

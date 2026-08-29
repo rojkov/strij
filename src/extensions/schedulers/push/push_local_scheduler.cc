@@ -2,9 +2,7 @@
 
 #include <memory>
 #include <span>
-#include <string>
 #include <string_view>
-#include <utility>
 
 #include "core/extensions/extension_registry.hh"
 #include "core/io/connection.hh"
@@ -19,17 +17,17 @@ namespace strij::extensions::schedulers {
 
 namespace {
 
+// TODO: why extension registration without macro?
 // NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
-const auto registered = [] {
-  Registry<NodeSchedulerFactory>::instance().RegisterFactory(
-      PushLocalSchedulerFactory().Name(), new PushLocalSchedulerFactory());
+const auto registered = [] -> bool {
+  Registry<NodeSchedulerFactory>::instance().RegisterFactory(PushLocalSchedulerFactory().Name(),
+                                                             new PushLocalSchedulerFactory());
   return true;
 }();
 
 } // namespace
 
-void PushLocalScheduler::Schedule(const task::Task& /*task*/,
-                                  gateway::ResultReceiverPtr receiver) {
+void PushLocalScheduler::Schedule(const task::Task& /*task*/, gateway::ResultReceiverPtr receiver) {
   // The push protocol never schedules outbound: gateways pick nodes, a node
   // cannot push tasks elsewhere. Resolve the receiver (which could otherwise
   // hang) so a hypothetical caller can never leak it.
@@ -50,7 +48,7 @@ void PushLocalScheduler::HandleFrame(io::TlvFrame frame, io::Connection& conn) {
 }
 
 auto PushLocalScheduler::HandledFrameTypes() const -> std::span<const uint8_t> {
-  return std::span<const uint8_t>(&io::TlvFrame::kTaskSubmission, 1);
+  return {&io::TlvFrame::kTaskSubmission, 1};
 }
 
 auto PushLocalSchedulerFactory::CreateEmptyConfigProto() -> MessagePtr {

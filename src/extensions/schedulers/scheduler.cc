@@ -1,8 +1,5 @@
 #include "extensions/schedulers/scheduler.hh"
 
-#include <memory>
-#include <utility>
-
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
@@ -34,9 +31,9 @@ auto createSchedulerFromExtension(const config::ExtensionConfig& ext, ContextT& 
     ::google::protobuf::Any unpacked;
     unpacked.CopyFrom(ext.typed_config());
     if (!unpacked.UnpackTo(config_msg.get())) {
-      return absl::InvalidArgumentError(absl::StrCat(
-          "Failed to unpack typed_config for scheduler '", ext.name(),
-          "': unknown type '", unpacked.type_url(), "'"));
+      return absl::InvalidArgumentError(
+          absl::StrCat("Failed to unpack typed_config for scheduler '", ext.name(),
+                       "': unknown type '", unpacked.type_url(), "'"));
     }
   }
 

@@ -7,7 +7,9 @@
 #include "core/io/tlv_frame.hh"
 
 namespace strij::extensions {
+
 class Scheduler;
+
 }
 
 namespace strij::gateway {
@@ -19,6 +21,7 @@ inline constexpr uint32_t kSupportedCapabilityVersion = 1;
 class GatewayTlvHandler final {
 public:
   GatewayTlvHandler(NodeDirectory& directory, ResultReceiverStorage& storage,
+                    // TODO: I don't like default parameters, they make code error prone.
                     extensions::Scheduler* scheduler = nullptr,
                     ExactStateTracker* state_tracker = nullptr)
       : directory_{directory}, storage_{storage}, scheduler_{scheduler},

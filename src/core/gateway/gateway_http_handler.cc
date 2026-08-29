@@ -86,8 +86,7 @@ void GatewayHttpHandler::HandleMessage(const io::HttpRequest& request, io::Conne
   task::Task task;
   task.set_id(task_id);
   task.set_type(task_type->data(), task_type->size());
-  // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast)
-  task.set_body(reinterpret_cast<const char*>(request.body.data()), request.body.size());
+  task.set_body(std::bit_cast<const char*>(request.body.data()), request.body.size());
   PopulateParametersFromHeaders(task, request.headers);
 
   const ParamsOnlyRequirementsResolver resolver;
@@ -105,7 +104,7 @@ void GatewayHttpHandler::HandleMessage(const io::HttpRequest& request, io::Conne
   // Registered before Schedule so a synchronous error delivery (e.g. no node)
   // cannot race the close callback: both run on the event-loop thread.
   conn.Mailbox()->RegisterOnClose(
-      [&storage = storage_, task_id]() { storage.NotifyClientDisconnected(task_id); });
+      [&storage = storage_, task_id]() -> void { storage.NotifyClientDisconnected(task_id); });
 
   scheduler_.Schedule(task, std::move(receiver));
 

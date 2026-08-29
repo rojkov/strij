@@ -24,7 +24,7 @@ namespace strij::extensions::schedulers {
 
 namespace {
 
-bool inTypes(std::span<const uint8_t> types, uint8_t type_id) {
+auto in_types(std::span<const uint8_t> types, uint8_t type_id) -> bool {
   return std::ranges::find(types, type_id) != types.end();
 }
 
@@ -37,6 +37,7 @@ SchedulerRouter::SchedulerRouter(std::vector<RoutedScheduler> schedulers)
     if (required_protocol_.empty()) {
       required_protocol_ = routed.scheduler->RequiredProtocol();
     }
+
     for (const uint8_t type_id : routed.scheduler->HandledFrameTypes()) {
       if (seen_types.insert(type_id).second) {
         handled_types_.push_back(type_id);
@@ -54,15 +55,17 @@ auto SchedulerRouter::findSchedulerFor(const task::Task& task) -> Scheduler* {
       return routed.scheduler.get();
     }
   }
+
   return fallback;
 }
 
 auto SchedulerRouter::findFrameOwner(uint8_t type_id) -> Scheduler* {
   for (auto& routed : schedulers_) {
-    if (inTypes(routed.scheduler->HandledFrameTypes(), type_id)) {
+    if (in_types(routed.scheduler->HandledFrameTypes(), type_id)) {
       return routed.scheduler.get();
     }
   }
+
   return nullptr;
 }
 
@@ -71,8 +74,10 @@ void SchedulerRouter::Schedule(const task::Task& task, gateway::ResultReceiverPt
   if (scheduler == nullptr) {
     receiver->DeliverError(
         absl::StrCat("no scheduler configured for task type '", task.type(), "'"));
+
     return;
   }
+
   scheduler->Schedule(task, std::move(receiver));
 }
 
@@ -83,10 +88,13 @@ void SchedulerRouter::HandleFrame(io::TlvFrame frame, io::Connection& conn) {
   if (owner == nullptr) {
     return;
   }
+
   owner->HandleFrame(std::move(frame), conn);
 }
 
-auto SchedulerRouter::HandledFrameTypes() const -> std::span<const uint8_t> { return handled_types_; }
+auto SchedulerRouter::HandledFrameTypes() const -> std::span<const uint8_t> {
+  return handled_types_;
+}
 
 auto BuildSchedulerRouter(const config::GatewayConfig& config, GatewayFactoryContext& context)
     -> absl::StatusOr<std::unique_ptr<SchedulerRouter>> {
@@ -106,17 +114,19 @@ auto BuildSchedulerRouter(const config::GatewayConfig& config, GatewayFactoryCon
             "GatewayConfig.schedulers has more than one default scheduler (entry with empty "
             "task_type)");
       }
+
       has_default = true;
     } else if (!bound_types.insert(scheduler_config.task_type()).second) {
-      return absl::InvalidArgumentError(
-          absl::StrCat("GatewayConfig.schedulers binds task_type '", scheduler_config.task_type(),
-                       "' more than once"));
+      return absl::InvalidArgumentError(absl::StrCat("GatewayConfig.schedulers binds task_type '",
+                                                     scheduler_config.task_type(),
+                                                     "' more than once"));
     }
 
     auto scheduler_result = CreateGatewayScheduler(scheduler_config.extension(), context);
     if (!scheduler_result.ok()) {
       return scheduler_result.status();
     }
+
     routed.push_back(
         SchedulerRouter::RoutedScheduler{.scheduler = std::move(scheduler_result).value(),
                                          .task_type = scheduler_config.task_type()});

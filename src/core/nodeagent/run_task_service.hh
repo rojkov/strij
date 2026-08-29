@@ -4,7 +4,6 @@
 #include <string_view>
 
 #include "core/io/connection.hh"
-#include "core/io/tlv_frame.hh"
 #include "core/nodeagent/admission_controller.hh"
 #include "core/nodeagent/task_handler_manager.hh"
 #include "core/task/task.pb.h"
@@ -33,7 +32,8 @@ public:
   void RunTask(const task::Task& task, io::Connection& conn);
 
 private:
-  static void sendTaskRejected(io::Connection& conn, const task::Task& task, std::string_view reason);
+  static void sendTaskRejected(io::Connection& conn, const task::Task& task,
+                               std::string_view reason);
 
   std::shared_ptr<TaskHandlerManager> manager_;
   std::shared_ptr<AdmissionController> admission_;

@@ -46,6 +46,7 @@ public:
   // Routes an inbound wire frame of one of the types returned by
   // HandledFrameTypes(). Defaults to a no-op for schedulers with no inbound
   // frames (pure gateway-side policies).
+  // TODO: make it return status and turn `frame` to rvalue.
   virtual void HandleFrame(io::TlvFrame frame, io::Connection& conn) {}
   // The TLV frame type_ids this scheduler owns (e.g. {kTaskSubmission} for
   // "push"). Empty = the scheduler never receives frames. Frame-type ownership

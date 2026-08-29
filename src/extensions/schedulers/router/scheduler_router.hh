@@ -28,7 +28,7 @@ class SchedulerRouter final : public Scheduler {
 public:
   struct RoutedScheduler {
     SchedulerPtr scheduler;
-    std::string task_type;  // empty = default
+    std::string task_type; // empty = default
   };
 
   // `schedulers` must be non-empty, with at most one default (empty task_type)

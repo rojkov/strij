@@ -8,7 +8,6 @@
 #include "core/config/gateway.pb.h"
 #include "core/config/nodeagent.pb.h"
 #include "extensions/schedulers/capability_aware/capability_aware.pb.h"
-#include "extensions/schedulers/round_robin/round_robin.pb.h"
 #include "extensions/task_handlers/echo/echo_task_handler.pb.h"
 #include "gtest/gtest.h"
 
@@ -266,8 +265,8 @@ schedulers:
   std::string path = createTempFile(yaml);
   ASSERT_FALSE(path.empty());
 
-  auto result =
-      LoadConfig<GatewayConfig>(path, {"http_listener.port=9090", "http_listener.address=10.0.0.1"});
+  auto result = LoadConfig<GatewayConfig>(
+      path, {"http_listener.port=9090", "http_listener.address=10.0.0.1"});
   ASSERT_TRUE(result.ok()) << result.status().message();
   const auto& config = result.value();
   EXPECT_EQ(config.http_listener().port(), 9090U);

@@ -49,8 +49,9 @@ void RoundRobinScheduler::Schedule(const task::Task& task, gateway::ResultReceiv
 
   storage_.Put(task.id(), std::move(receiver), std::string(node->GetNodeId()));
 
-  auto frame = io::SerializeTlvFrame(
-      io::TlvFrame::kTaskSubmission, std::as_bytes(std::span(serialized.data(), serialized.size())));
+  auto frame =
+      io::SerializeTlvFrame(io::TlvFrame::kTaskSubmission,
+                            std::as_bytes(std::span(serialized.data(), serialized.size())));
   node->GetConnection()->Write(frame);
 }
 

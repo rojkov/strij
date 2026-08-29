@@ -26,8 +26,8 @@
 #include "core/io/tlv_parser.hh"
 #include "core/logging/log.hh"
 #include "core/logging/logger.hh"
-#include "gateway_factory_context.hh"
 #include "extensions/schedulers/router/scheduler_router.hh"
+#include "gateway_factory_context.hh"
 #include "strij/event/dispatcher.hh"
 
 // Generated protobuf headers
@@ -103,6 +103,8 @@ auto main(int argc, char** argv) -> int {
   // Set log level from config
   // Note: Logger::GetInstance().SetLogLevel(config.logging().level());  // if available
 
+  // TODO: check why so many components are aware of state_tracker. I assumed it's needed for
+  // centralized schedulers only.
   strij::gateway::ExactStateTracker state_tracker;
   strij::gateway::ResultReceiverStorage storage{&state_tracker};
 
@@ -112,9 +114,8 @@ auto main(int argc, char** argv) -> int {
   // which time both pointers are set.
   strij::gateway::NodeDirectory* node_directory_ptr = nullptr;
   strij::extensions::schedulers::SchedulerRouter* scheduler_router_ptr = nullptr;
-  auto connection_factory =
-      [&storage, &state_tracker, &node_directory_ptr,
-       &scheduler_router_ptr](strij::io::Connection& conn) -> std::unique_ptr<strij::io::ProtocolParser> {
+  auto connection_factory = [&storage, &state_tracker, &node_directory_ptr, &scheduler_router_ptr](
+                                strij::io::Connection& conn) -> strij::io::ProtocolParserPtr {
     auto handler = std::make_unique<strij::gateway::GatewayTlvHandler>(
         *node_directory_ptr, storage, scheduler_router_ptr, &state_tracker);
     // Move the handler into the parser's callback via a named capture.

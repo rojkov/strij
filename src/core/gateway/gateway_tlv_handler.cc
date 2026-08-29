@@ -28,6 +28,8 @@ auto GatewayTlvHandler::HandleFrame(const io::TlvFrame& frame, io::Connection& c
     for (const uint8_t type_id : scheduler_->HandledFrameTypes()) {
       if (type_id == frame.type_id) {
         scheduler_->HandleFrame(frame, conn);
+        // TODO: rather make scheduler's HandleFrame return status and move it as the default
+        // handler for an unknown type below.
         return absl::OkStatus();
       }
     }

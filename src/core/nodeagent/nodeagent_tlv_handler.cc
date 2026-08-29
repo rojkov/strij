@@ -24,6 +24,7 @@ NodeagentTlvHandler::NodeagentTlvHandler(std::span<extensions::Scheduler*> sched
         LOG_WARNING("Duplicate frame type {} claim ignored", static_cast<int>(type_id));
         continue;
       }
+
       dispatcher_table_.emplace(type_id, scheduler);
     }
   }
@@ -32,18 +33,20 @@ NodeagentTlvHandler::NodeagentTlvHandler(std::span<extensions::Scheduler*> sched
 void NodeagentTlvHandler::SendAdvertisement(io::Connection& conn) {
   std::string serialized;
   capabilities_->SerializeToString(&serialized);
-  auto frame = io::SerializeTlvFrame(
-      io::TlvFrame::kNodeAdvertisement, std::as_bytes(std::span(serialized.data(), serialized.size())));
+  auto frame =
+      io::SerializeTlvFrame(io::TlvFrame::kNodeAdvertisement,
+                            std::as_bytes(std::span(serialized.data(), serialized.size())));
   conn.Write(frame);
 }
 
 void NodeagentTlvHandler::HandleFrame(io::TlvFrame frame, io::Connection& conn) {
-  auto it = dispatcher_table_.find(frame.type_id);
-  if (it == dispatcher_table_.end()) {
+  auto iter = dispatcher_table_.find(frame.type_id);
+  if (iter == dispatcher_table_.end()) {
     LOG_WARNING("No scheduler owns frame type {}", static_cast<int>(frame.type_id));
     return;
   }
-  it->second->HandleFrame(std::move(frame), conn);
+
+  iter->second->HandleFrame(std::move(frame), conn);
 }
 
 } // namespace strij::nodeagent

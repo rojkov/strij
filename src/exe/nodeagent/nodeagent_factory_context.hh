@@ -1,7 +1,5 @@
 #pragma once
 
-#include <memory>
-
 #include "core/extensions/factory_context.hh"
 #include "core/extensions/function_resolver.hh"
 #include "core/logging/logger.hh"

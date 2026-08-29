@@ -4,7 +4,6 @@
 #include "absl/flags/flag.h"
 #include "absl/flags/parse.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/str_cat.h"
 #include "core/common/signal_monitor.hh"
 #include "core/config/config_loader.hh"
 #include "core/event/dispatcher_impl.hh"
@@ -20,8 +19,8 @@
 #include "core/nodeagent/run_task_service.hh"
 #include "core/nodeagent/state_reporter.hh"
 #include "core/nodeagent/task_handler_manager.hh"
-#include "nodeagent_factory_context.hh"
 #include "extensions/schedulers/scheduler.hh"
+#include "nodeagent_factory_context.hh"
 
 // Generated protobuf headers
 #include "core/config/nodeagent.pb.h"
@@ -76,9 +75,8 @@ auto main(int argc, char** argv) -> int {
   const auto admission = std::make_shared<strij::nodeagent::AdmissionController>(*capabilities);
 
   auto function_resolver = std::make_unique<strij::extensions::LocalFunctionResolver>();
-  strij::nodeagent::NodeagentFactoryContextImpl factory_context(dispatcher,
-                                                                std::move(function_resolver),
-                                                                admission);
+  strij::nodeagent::NodeagentFactoryContextImpl factory_context(
+      dispatcher, std::move(function_resolver), admission);
 
   // Build the task handler manager from config. This must run before the
   // --validate_only short-circuit so that unknown handler names fail validation.

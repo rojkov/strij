@@ -7,14 +7,18 @@
 #include "strij/event/dispatcher.hh"
 
 namespace strij::gateway {
+
 class NodeDirectory;
 class ResultReceiverStorage;
+
 } // namespace strij::gateway
 
 namespace strij::nodeagent {
+
 class AdmissionController;
 class RunTaskService;
 using AdmissionControllerSharedPtr = std::shared_ptr<AdmissionController>;
+
 } // namespace strij::nodeagent
 
 namespace strij::extensions {
