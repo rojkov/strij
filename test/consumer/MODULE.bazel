@@ -1,0 +1,83 @@
+module(
+    name = "strij_consumer",
+    version = "0.0.1",
+)
+
+# Consume Strij as any third-party module would. `local_path_override` makes
+# this workspace resolve @strij to the repo root; a real consumer would use a
+# registry version or git_override instead. This file intentionally mirrors the
+# root module graph: repo rules and overrides declared in a dependency's
+# MODULE.bazel (http_archive for the vendored C deps, gtest/protobuf patches,
+# the hedron dev_dependency) are honoured only for the root module, so a
+# consumer must redeclare them. See Group 6 follow-up in
+# openspec/changes/extension-api-layout/.
+bazel_dep(name = "strij", version = "0.1.0")
+local_path_override(module_name = "strij", path = "../..")
+
+bazel_dep(name = "rules_cc", version = "0.2.17")
+bazel_dep(name = "platforms", version = "1.0.0")
+bazel_dep(name = "googletest", version = "1.17.0")
+bazel_dep(name = "abseil-cpp", version = "20260107.1")
+bazel_dep(name = "protobuf", version = "33.4")
+bazel_dep(name = "rules_proto", version = "7.1.0")
+bazel_dep(name = "rules_python", version = "1.8.0")
+bazel_dep(name = "rules_foreign_cc", version = "0.15.1")
+
+single_version_override(
+    module_name = "googletest",
+    patch_strip = 1,
+    patches = ["//patches/googletest:0001-import-functions-from-rules_cc.patch"],
+    version = "1.17.0",
+)
+
+single_version_override(
+    module_name = "protobuf",
+    patch_strip = 1,
+    patches = ["//patches/protobuf:0001-disable-musttail-for-coverage-compat.patch"],
+    version = "33.4",
+)
+
+_ALL_CONTENT = """\
+filegroup(
+    name = "all_srcs",
+    srcs = glob(["**"]),
+	visibility = ["//visibility:public"],
+)
+"""
+
+http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+
+http_archive(
+    name = "liburing",
+    build_file_content = _ALL_CONTENT,
+    sha256 = "5f80964108981c6ad979c735f0b4877d5f49914c2a062f8e88282f26bf61de0c",
+    strip_prefix = "liburing-liburing-2.14",
+    urls = ["https://github.com/axboe/liburing/archive/refs/tags/liburing-2.14.tar.gz"],
+)
+
+http_archive(
+    name = "llhttp",
+    build_file_content = _ALL_CONTENT,
+    sha256 = "86a8c16759fdcc7aa2c9841fbe8ba2e77ea98be7d5d45615f2604776d0ff78c7",
+    strip_prefix = "llhttp-release-v9.4.1",
+    urls = ["https://github.com/nodejs/llhttp/archive/refs/tags/release/v9.4.1.tar.gz"],
+)
+
+http_archive(
+    name = "yaml_cpp",
+    build_file_content = """\
+load("@rules_cc//cc:defs.bzl", "cc_library")
+
+cc_library(
+    name = "yaml_cpp",
+    srcs = glob(["src/**/*.cpp"]),
+    hdrs = glob(["include/**/*.h"]) + glob(["src/**/*.h"]),
+    includes = ["include", "src"],
+    visibility = ["//visibility:public"],
+    copts = ["-DYAML_CPP_STATIC_DEFINE"],
+)
+""",
+    sha256 = "43e6a9fcb146ad871515f0d0873947e5d497a1c9c60c58cb102a97b47208b7c3",
+    strip_prefix = "yaml-cpp-yaml-cpp-0.7.0",
+    urls = ["https://github.com/jbeder/yaml-cpp/archive/refs/tags/yaml-cpp-0.7.0.tar.gz"],
+)

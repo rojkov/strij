@@ -1,0 +1,51 @@
+load("//bazel:build_system.bzl", "strij_cc_library")
+load("//bazel:strij_binaries.bzl", "strij_nodeagent_binary")
+
+# The nodeagent framework: RunNodeagent(), flag definitions, the concrete
+# NodeagentFactoryContextImpl, and a thin main(). Extension implementations stay
+# out of this library and are linked at the binary via strij_nodeagent_binary.
+strij_cc_library(
+    name = "nodeagent_framework",
+    srcs = [
+        "nodeagent.cc",
+        "nodeagent_factory_context.cc",
+        "nodeagent_framework.cc",
+    ],
+    hdrs = [
+        "nodeagent_factory_context.hh",
+        "nodeagent_framework.hh",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//api/nodeagent/config:nodeagent_config_cc_proto",
+        "//include/strij/extensions:extension_registry_lib",
+        "//include/strij/extensions:factory_context_lib",
+        "//include/strij/extensions:scheduler_interface",
+        "//src/common/core/common:signal_monitor_lib",
+        "//src/common/core/config:config_loader_lib",
+        "//src/common/core/event:dispatcher_impl_lib",
+        "//src/common/core/io:periodic_timer_lib",
+        "//src/common/core/io:tcp_listener_lib",
+        "//src/common/core/io:tlv_parser_lib",
+        "//src/common/core/logging:log_lib",
+        "//src/common/extensions:scheduler_loader_lib",
+        "//src/nodeagent/core:admission_controller_lib",
+        "//src/nodeagent/core:capabilities_lib",
+        "//src/nodeagent/core:function_resolver_lib",
+        "//src/nodeagent/core:nodeagent_tlv_handler_lib",
+        "//src/nodeagent/core:run_task_service_lib",
+        "//src/nodeagent/core:state_reporter_lib",
+        "//src/nodeagent/core:task_handler_manager_lib",
+        "@abseil-cpp//absl/flags:parse",
+    ],
+    alwayslink = True,
+)
+
+strij_nodeagent_binary(
+    name = "nodeagent",
+    extensions = [
+        "//src/nodeagent/extensions/schedulers/push:push_local_scheduler_lib",
+        "//src/nodeagent/extensions/task_handlers/echo:echo_task_handler_lib",
+        "//src/nodeagent/extensions/task_handlers/piped_executable:piped_executable_task_handler_lib",
+    ],
+)

@@ -1,0 +1,22 @@
+load("//bazel:build_system.bzl", "strij_cc_test")
+
+strij_cc_test(
+    name = "round_robin_scheduler_test",
+    srcs = ["round_robin_scheduler_test.cc"],
+    deps = [
+        "//api/common/node:node_cc_proto",
+        "//api/common/task:task_cc_proto",
+        "//include/strij/extensions:extension_registry_lib",
+        "//src/gateway/core:node_directory_lib",
+        "//src/gateway/core:result_receiver_storage",
+        "//src/common/core/io:connection_lib",
+        "//src/common/core/io:tlv_frame",
+        "//src/common/core/io:tlv_parser_lib",
+        "//src/gateway/extensions/schedulers/round_robin:round_robin_scheduler_lib",
+        "//include/strij/extensions:scheduler_interface",
+        "//test/mocks/common:common_mocks_lib",
+        "//test/mocks/event:event_mocks_lib",
+        "//test/mocks/extensions:extensions_mocks_lib",
+        "@googletest//:gtest_main",
+    ],
+)

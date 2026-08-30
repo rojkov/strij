@@ -1,0 +1,20 @@
+load("@protobuf//bazel:cc_proto_library.bzl", "cc_proto_library")
+load("@rules_proto//proto:defs.bzl", "proto_library")
+
+proto_library(
+    name = "nodeagent_config_proto",
+    srcs = ["nodeagent.proto"],
+    strip_import_prefix = "/api",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//api/common/config:config_proto",
+        "//api/common/node:node_proto",
+        "@protobuf//:duration_proto",
+    ],
+)
+
+cc_proto_library(
+    name = "nodeagent_config_cc_proto",
+    visibility = ["//visibility:public"],
+    deps = [":nodeagent_config_proto"],
+)

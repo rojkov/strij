@@ -4,7 +4,7 @@ strij_cc_test_library(
     name = "extensions_mocks_lib",
     hdrs = ["extensions_mocks.hh"],
     deps = [
-        "//src/core/extensions:factory_context_lib",
-        "//src/extensions/task_handlers:task_handlers_interface",
+        "//include/strij/extensions:factory_context_lib",
+        "//src/nodeagent/extensions/task_handlers:task_handlers_interface",
     ],
 )

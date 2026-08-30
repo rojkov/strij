@@ -1,0 +1,137 @@
+load("//bazel:build_system.bzl", "strij_cc_library")
+
+strij_cc_library(
+    name = "admission_controller_lib",
+    srcs = ["admission_controller.cc"],
+    hdrs = ["admission_controller.hh"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//api/common/node:node_cc_proto",
+        "//include/strij/nodeagent:admission_controller_interface",
+        "//src/common/core/logging:log_lib",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/strings",
+    ],
+)
+
+strij_cc_library(
+    name = "admission_tracking_sender_lib",
+    hdrs = ["admission_tracking_sender.hh"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":admission_controller_lib",
+        ":result_sender_lib",
+        "//src/nodeagent/extensions/task_handlers:task_handlers_interface",
+    ],
+)
+
+strij_cc_library(
+    name = "state_reporter_lib",
+    srcs = ["state_reporter.cc"],
+    hdrs = ["state_reporter.hh"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":admission_controller_lib",
+        "//src/common/core/io:connection_lib",
+        "//src/common/core/io:tlv_frame",
+    ],
+)
+
+strij_cc_library(
+    name = "capabilities_lib",
+    srcs = ["capabilities.cc"],
+    hdrs = ["capabilities.hh"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//api/common/node:node_cc_proto",
+        "//api/nodeagent/config:nodeagent_config_cc_proto",
+        "//include/strij/extensions:extension_registry_lib",
+        "//include/strij/extensions:scheduler_interface",
+        "//src/common/core/logging:log_lib",
+        "//src/common/core/utils:task_id_lib",
+        "//src/nodeagent/extensions/task_handlers:task_handlers_interface",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@protobuf",
+    ],
+)
+
+strij_cc_library(
+    name = "nodeagent_tlv_handler_lib",
+    srcs = ["nodeagent_tlv_handler.cc"],
+    hdrs = ["nodeagent_tlv_handler.hh"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//api/common/node:node_cc_proto",
+        "//include/strij/extensions:scheduler_interface",
+        "//src/common/core/io:connection_lib",
+        "//src/common/core/io:tlv_frame",
+        "//src/common/core/logging:log_lib",
+    ],
+)
+
+strij_cc_library(
+    name = "run_task_service_lib",
+    srcs = ["run_task_service.cc"],
+    hdrs = ["run_task_service.hh"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":admission_controller_lib",
+        ":admission_tracking_sender_lib",
+        ":result_sender_lib",
+        ":task_handler_manager_lib",
+        "//api/common/task:task_cc_proto",
+        "//include/strij/nodeagent:run_task_service_interface",
+        "//src/common/core/io:connection_lib",
+        "//src/common/core/io:tlv_frame",
+        "//src/common/core/logging:log_lib",
+        "//src/nodeagent/extensions/task_handlers:task_handlers_interface",
+        "@abseil-cpp//absl/status",
+        "@protobuf",
+    ],
+)
+
+strij_cc_library(
+    name = "result_sender_lib",
+    srcs = ["result_sender.cc"],
+    hdrs = ["result_sender.hh"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//api/common/task:task_cc_proto",
+        "//src/common/core/io:connection_lib",
+        "//src/common/core/io:tlv_frame",
+        "//src/nodeagent/extensions/task_handlers:task_handlers_interface",
+    ],
+)
+
+strij_cc_library(
+    name = "task_handler_manager_lib",
+    srcs = ["task_handler_manager.cc"],
+    hdrs = ["task_handler_manager.hh"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//api/common/config:config_cc_proto",
+        "//include/strij/extensions:extension_registry_lib",
+        "//include/strij/extensions:factory_context_lib",
+        "//src/common/core/logging:log_lib",
+        "//src/nodeagent/extensions/task_handlers:task_handlers_interface",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@protobuf",
+    ],
+)
+
+strij_cc_library(
+    name = "function_resolver_lib",
+    srcs = ["function_resolver.cc"],
+    hdrs = ["function_resolver.hh"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//include/strij/common:pure_lib",
+        "//include/strij/nodeagent:function_resolver_interface",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+    ],
+)

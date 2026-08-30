@@ -1,0 +1,115 @@
+#include <sys/socket.h>
+#include <unistd.h>
+
+#include <cstddef>
+#include <memory>
+#include <vector>
+
+#include "test/mocks/common/common_mocks.hh"
+#include "test/mocks/event/mocks.hh"
+
+#include "common/core/io/connection.hh"
+#include "common/core/io/outbound_mailbox.hh"
+#include "common/core/io/protocol_parser.hh"
+#include "gtest/gtest.h"
+
+namespace strij::io {
+namespace {
+
+class OutboundMailboxTest : public ::testing::Test {
+protected:
+  void SetUp() override {
+    ASSERT_EQ(0, socketpair(AF_UNIX, SOCK_STREAM, 0, fds_.data()));
+    dispatcher_ = std::make_shared<event::MockDispatcher>();
+    // Suppress the PrepareRead issued by the Connection constructor.
+    EXPECT_CALL(*dispatcher_,
+                PrepareRead(::testing::_, ::testing::_, ::testing::_, ::testing::_, ::testing::_))
+        .WillOnce(::testing::Return());
+  }
+
+  void TearDown() override {
+    close(fds_[0]);
+    close(fds_[1]);
+  }
+
+  auto MakeConnection() -> ConnectionPtr {
+    return std::make_unique<Connection>(
+        fds_[0], dispatcher_, &owner_,
+        [](Connection&) -> ProtocolParserPtr { return std::make_unique<TrivialParser>(); });
+  }
+
+  std::array<int, 2> fds_{};
+  std::shared_ptr<event::MockDispatcher> dispatcher_;
+  event::DummyOwner owner_;
+};
+
+// NOLINTBEGIN(modernize-use-trailing-return-type)
+
+TEST_F(OutboundMailboxTest, EnqueueForwardsToConnectionWrite) {
+  auto conn = MakeConnection();
+  auto mailbox = conn->Mailbox();
+
+  auto frame = std::vector<std::byte>{std::byte{0x01}, std::byte{0x02}, std::byte{0x03}};
+  EXPECT_CALL(*dispatcher_, PrepareWrite(::testing::_, ::testing::_, ::testing::_,
+                                         ::testing::Truly([](std::span<const std::byte> spn) {
+                                           return spn.size() == 3 && spn[0] == std::byte{0x01} &&
+                                                  spn[2] == std::byte{0x03};
+                                         }),
+                                         0))
+      .Times(1);
+  mailbox->Enqueue(frame);
+}
+
+TEST_F(OutboundMailboxTest, EnqueueAfterCloseIsNoOp) {
+  auto conn = MakeConnection();
+  auto mailbox = conn->Mailbox();
+  conn.reset();
+
+  EXPECT_CALL(*dispatcher_, PrepareWrite(::testing::_, ::testing::_, ::testing::_, ::testing::_, 0))
+      .Times(0);
+  mailbox->Enqueue(std::vector<std::byte>{std::byte{0x42}});
+}
+
+TEST_F(OutboundMailboxTest, CloseFiresRegisteredCallbacksOnce) {
+  auto conn = MakeConnection();
+  auto mailbox = conn->Mailbox();
+
+  int a_counter = 0;
+  int b_counter = 0;
+  mailbox->RegisterOnClose([&a_counter] { ++a_counter; });
+  mailbox->RegisterOnClose([&b_counter] { ++b_counter; });
+
+  conn.reset();
+
+  EXPECT_EQ(a_counter, 1);
+  EXPECT_EQ(b_counter, 1);
+}
+
+TEST_F(OutboundMailboxTest, UnregisterPreventsFiring) {
+  auto conn = MakeConnection();
+  auto mailbox = conn->Mailbox();
+
+  int fired = 0;
+  auto token = mailbox->RegisterOnClose([&fired] { ++fired; });
+  mailbox->UnregisterOnClose(token);
+
+  conn.reset();
+
+  EXPECT_EQ(fired, 0);
+}
+
+TEST_F(OutboundMailboxTest, RegisterOnClosedMailboxFiresImmediately) {
+  auto conn = MakeConnection();
+  auto mailbox = conn->Mailbox();
+  conn.reset();
+
+  int fired = 0;
+  mailbox->RegisterOnClose([&fired] { ++fired; });
+
+  EXPECT_EQ(fired, 1);
+}
+
+// NOLINTEND(modernize-use-trailing-return-type)
+
+} // namespace
+} // namespace strij::io

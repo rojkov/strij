@@ -1,0 +1,53 @@
+load("//bazel:build_system.bzl", "strij_cc_library")
+load("//bazel:strij_binaries.bzl", "strij_gateway_binary")
+
+# The gateway framework: RunGateway(), flag definitions, the concrete
+# GatewayFactoryContextImpl, and a thin main(). Extension implementations stay
+# out of this library and are linked at the binary via strij_gateway_binary.
+strij_cc_library(
+    name = "gateway_framework",
+    srcs = [
+        "gateway.cc",
+        "gateway_framework.cc",
+        "gateway_factory_context.cc",
+    ],
+    hdrs = [
+        "gateway_framework.hh",
+        "gateway_factory_context.hh",
+    ],
+    visibility = ["//visibility:public"],
+    alwayslink = True,
+    deps = [
+        "//api/gateway/config:gateway_config_cc_proto",
+        "//api/common/task:task_cc_proto",
+        "//src/common/core/common:signal_monitor_lib",
+        "//src/common/core/config:config_loader_lib",
+        "//src/common/core/event:dispatcher_impl_lib",
+        "//include/strij/extensions:extension_registry_lib",
+        "//include/strij/extensions:factory_context_lib",
+        "//src/gateway/core:exact_state_tracker_lib",
+        "//src/gateway/core:gateway_http_handler_lib",
+        "//src/gateway/core:gateway_tlv_handler_lib",
+        "//src/gateway/core:http_result_receiver_lib",
+        "//src/gateway/core:node_directory_lib",
+        "//src/gateway/core:result_receiver_storage",
+        "//src/common/core/io:llhttp_parser_lib",
+        "//src/common/core/io:tcp_listener_lib",
+        "//src/common/core/io:tlv_parser_lib",
+        "//src/common/core/logging:log_lib",
+        "//src/gateway/extensions/node_discovery:node_discovery_interface",
+        "//include/strij/extensions:scheduler_interface",
+        "//src/gateway/core/scheduler_router:scheduler_router_lib",
+        "@abseil-cpp//absl/flags:parse",
+        "@protobuf//:protobuf",
+    ],
+)
+
+strij_gateway_binary(
+    name = "gateway",
+    extensions = [
+        "//src/gateway/extensions/node_discovery/static:static_node_discovery_lib",
+        "//src/gateway/extensions/schedulers/capability_aware:capability_aware_scheduler_lib",
+        "//src/gateway/extensions/schedulers/round_robin:round_robin_scheduler_lib",
+    ],
+)

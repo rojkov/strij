@@ -12,6 +12,7 @@ strij_cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":command_interface",
+        ":completable_interface",
         "//include/strij/common:pure_lib",
     ],
 )

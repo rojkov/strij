@@ -1,0 +1,22 @@
+load("@protobuf//bazel:cc_proto_library.bzl", "cc_proto_library")
+load("@rules_proto//proto:defs.bzl", "proto_library")
+
+proto_library(
+    name = "config_proto",
+    srcs = [
+        "extensions.proto",
+        "options.proto",
+    ],
+    strip_import_prefix = "/api",
+    visibility = ["//visibility:public"],
+    deps = [
+        "@protobuf//:any_proto",
+        "@protobuf//:descriptor_proto",
+    ],
+)
+
+cc_proto_library(
+    name = "config_cc_proto",
+    visibility = ["//visibility:public"],
+    deps = [":config_proto"],
+)

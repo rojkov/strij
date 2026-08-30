@@ -1,0 +1,32 @@
+load("//bazel:build_system.bzl", "strij_cc_library")
+
+strij_cc_library(
+    name = "log_frontend_lib",
+    srcs = ["log_frontend.cc"],
+    hdrs = ["log_frontend.hh"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//include/strij/event:completable_interface",
+        "//include/strij/event:dispatcher_interface",
+        "//rigtorp:spsc_queue_lib",
+    ],
+)
+
+strij_cc_library(
+    name = "logger_lib",
+    srcs = ["logger.cc"],
+    hdrs = ["logger.hh"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":log_frontend_lib",
+        "//src/common/core/event:dispatcher_impl_lib",
+        "@abseil-cpp//absl/synchronization",
+    ],
+)
+
+strij_cc_library(
+    name = "log_lib",
+    hdrs = ["log.hh"],
+    visibility = ["//visibility:public"],
+    deps = ["logger_lib"],
+)

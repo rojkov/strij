@@ -1,0 +1,33 @@
+syntax = "proto3";
+
+package strij.task;
+
+import "common/node/capabilities.proto";
+
+message Task {
+  string id = 1;
+  string type = 2;
+  bytes body = 3;
+  map<string, string> parameters = 4;
+  // Authoritative hardware requirements of the task, resolved at the gateway
+  // (e.g. from `resources.*` parameters) and carried to the nodeagent. The
+  // nodeagent admits against these; absence means empty requirements.
+  strij.node.ResourceRequirements requirements = 5;
+}
+
+message TaskResult {
+  string id = 1;
+  bytes body = 2;
+  // Absence means final. proto3 forbids explicit defaults on optional
+  // fields, so consumers must treat `!has_is_final() || is_final()` as
+  // final; producers of single-shot results may leave it unset.
+  optional bool is_final = 3;
+}
+
+// Sent by a nodeagent when a submitted task was NOT admitted (kTaskRejected).
+// `id` matches the originating Task.id; `reason` describes why (e.g. a pool
+// was exhausted or the task type is at its concurrency limit).
+message TaskRejected {
+  string id = 1;
+  string reason = 2;
+}

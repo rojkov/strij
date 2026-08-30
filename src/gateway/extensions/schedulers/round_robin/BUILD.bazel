@@ -1,0 +1,24 @@
+load("//bazel:build_system.bzl", "strij_cc_library")
+
+strij_cc_library(
+    name = "round_robin_scheduler_lib",
+    srcs = ["round_robin_scheduler.cc"],
+    hdrs = ["round_robin_scheduler.hh"],
+    visibility = [
+        "//src/gateway/exe:__pkg__",
+        "//test:__subpackages__",
+    ],
+    deps = [
+        "//api/common/node:node_cc_proto",
+        "//api/common/task:task_cc_proto",
+        "//api/gateway/extensions/schedulers/round_robin:round_robin_scheduler_cc_proto",
+        "//include/strij/extensions:extension_registry_lib",
+        "//include/strij/extensions:factory_context_lib",
+        "//include/strij/extensions:scheduler_interface",
+        "//src/common/core/io:connection_lib",
+        "//src/common/core/io:tlv_frame",
+        "//src/gateway/core:node_directory_lib",
+        "//src/gateway/core:result_receiver_storage",
+    ],
+    alwayslink = True,
+)

@@ -1,0 +1,23 @@
+load("//bazel:build_system.bzl", "strij_cc_library")
+
+strij_cc_library(
+    name = "push_local_scheduler_lib",
+    srcs = ["push_local_scheduler.cc"],
+    hdrs = ["push_local_scheduler.hh"],
+    visibility = [
+        "//src/nodeagent/exe:__pkg__",
+        "//test:__subpackages__",
+    ],
+    deps = [
+        "//api/common/task:task_cc_proto",
+        "//api/nodeagent/extensions/schedulers/push:push_scheduler_cc_proto",
+        "//include/strij/event:command_handler_interface",
+        "//include/strij/extensions:extension_registry_lib",
+        "//include/strij/extensions:scheduler_interface",
+        "//src/common/core/io:connection_lib",
+        "//src/common/core/io:tlv_frame",
+        "//src/common/core/logging:log_lib",
+        "//src/nodeagent/core:run_task_service_lib",
+    ],
+    alwayslink = True,
+)

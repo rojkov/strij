@@ -1,0 +1,10 @@
+load("//bazel:build_system.bzl", "strij_cc_test")
+
+strij_cc_test(
+    name = "task_protocol_test",
+    srcs = ["task_protocol_test.cc"],
+    deps = [
+        "//api/common/task:task_cc_proto",
+        "@googletest//:gtest_main",
+    ],
+)

@@ -1,0 +1,21 @@
+load("//bazel:build_system.bzl", "strij_cc_library")
+
+strij_cc_library(
+    name = "config_loader_lib",
+    srcs = ["config_loader.cc"],
+    hdrs = ["config_loader.hh"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//api/common/config:config_cc_proto",
+        "//api/gateway/config:gateway_config_cc_proto",
+        "//api/nodeagent/config:nodeagent_config_cc_proto",
+        "//src/common/core/logging:log_lib",
+        "@abseil-cpp//absl/flags:parse",
+        "@abseil-cpp//absl/flags:usage",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@protobuf",
+        "@yaml_cpp",
+    ],
+)

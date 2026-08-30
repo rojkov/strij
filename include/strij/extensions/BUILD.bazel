@@ -1,0 +1,34 @@
+load("//bazel:build_system.bzl", "strij_cc_library")
+
+strij_cc_library(
+    name = "extension_registry_lib",
+    hdrs = ["extension_registry.hh"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//include/strij/common:pure_lib",
+    ],
+)
+
+strij_cc_library(
+    name = "factory_context_lib",
+    hdrs = ["factory_context.hh"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//include/strij/common:pure_lib",
+        "//include/strij/event:dispatcher_interface",
+    ],
+)
+
+strij_cc_library(
+    name = "scheduler_interface",
+    hdrs = ["scheduler.hh"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//api/common/task:task_cc_proto",
+        "//include/strij/common:pure_lib",
+        "//include/strij/extensions:factory_context_lib",
+        "//include/strij/gateway:result_receiver_storage_interface",
+        "@abseil-cpp//absl/status",
+        "@protobuf//:protobuf",
+    ],
+)

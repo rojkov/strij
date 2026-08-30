@@ -1,0 +1,16 @@
+load("@protobuf//bazel:cc_proto_library.bzl", "cc_proto_library")
+load("@rules_proto//proto:defs.bzl", "proto_library")
+
+proto_library(
+    name = "gateway_config_proto",
+    srcs = ["gateway.proto"],
+    strip_import_prefix = "/api",
+    visibility = ["//visibility:public"],
+    deps = ["//api/common/config:config_proto"],
+)
+
+cc_proto_library(
+    name = "gateway_config_cc_proto",
+    visibility = ["//visibility:public"],
+    deps = [":gateway_config_proto"],
+)
