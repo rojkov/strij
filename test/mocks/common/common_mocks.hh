@@ -4,7 +4,7 @@
 #include <cstddef>
 
 #include "strij/event/command_handler.hh"
-#include "core/io/protocol_parser.hh"
+#include "common/core/io/protocol_parser.hh"
 
 namespace strij::io {
 

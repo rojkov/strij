@@ -1,0 +1,696 @@
+#include "common/core/config/config_loader.hh"
+
+#include <cctype>
+#include <cstdint>
+#include <cstdlib>
+#include <filesystem>
+#include <memory>
+#include <regex>
+#include <string>
+#include <string_view>
+#include <utility>
+#include <vector>
+
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_split.h"
+#include "common/core/logging/log.hh"
+#include "google/protobuf/any.pb.h"
+#include "google/protobuf/descriptor.h"
+#include "google/protobuf/message.h"
+#include "google/protobuf/text_format.h"
+#include "yaml-cpp/yaml.h"
+
+// Generated protobuf headers
+#include "gateway/config/gateway.pb.h"
+#include "nodeagent/config/nodeagent.pb.h"
+#include "common/config/options.pb.h"
+
+namespace strij::config {
+
+namespace {
+
+// Forward declarations
+auto setFieldFromString(google::protobuf::Message* message,
+                        const google::protobuf::FieldDescriptor* field, const std::string& value,
+                        const google::protobuf::Reflection* reflection) -> absl::Status;
+
+auto mergeYamlIntoProto(const YAML::Node& yaml, google::protobuf::Message* message,
+                        const std::string& prefix) -> absl::Status;
+
+/// Returns true if the given file path exists on disk.
+auto fileExists(const std::string& path) -> bool { return std::filesystem::exists(path); }
+
+/// Looks up a protobuf message type by its fully-qualified name in the generated descriptor pool.
+auto resolveMessageType(const std::string& type_name) -> const google::protobuf::Descriptor* {
+  return google::protobuf::DescriptorPool::generated_pool()->FindMessageTypeByName(type_name);
+}
+
+/// Converts all characters in the string view to uppercase.
+auto toUpper(std::string_view str) -> std::string {
+  std::string result;
+  result.reserve(str.size());
+  for (const char chr : str) {
+    result += static_cast<char>(std::toupper(chr));
+  }
+  return result;
+}
+
+/// Parses a YAML file at the given path and returns the root YAML node.
+auto parseYamlFile(const std::string& path) -> absl::StatusOr<YAML::Node> {
+  try {
+    return YAML::LoadFile(path);
+  } catch (const YAML::Exception& e) {
+    return absl::InvalidArgumentError(absl::StrCat("YAML parse error in '", path, "' at line ",
+                                                   e.mark.line + 1, ", column ", e.mark.column + 1,
+                                                   ": ", e.what()));
+  }
+}
+
+/// Handles a YAML node representing a google.protobuf.Any field by resolving the @type,
+/// creating the concrete message, populating it from YAML, and packing it into the Any.
+auto mergeAnyYamlField(const YAML::Node& any_yaml, google::protobuf::Message* message,
+                       const google::protobuf::FieldDescriptor* field, const std::string& full_path)
+    -> absl::Status {
+  const auto* field_msg_type = field->message_type();
+  if (field_msg_type == nullptr || field_msg_type->full_name() != "google.protobuf.Any") {
+    return absl::OkStatus();
+  }
+
+  if (!any_yaml["@type"]) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Field '", full_path, "': google.protobuf.Any requires '@type' key"));
+  }
+
+  auto type_name = any_yaml["@type"].as<std::string>();
+  const std::string type_prefix = "type.googleapis.com/";
+  if (type_name.starts_with(type_prefix)) {
+    type_name = type_name.substr(type_prefix.size());
+  }
+
+  const google::protobuf::Descriptor* actual_type = resolveMessageType(type_name);
+  if (actual_type == nullptr) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Field '", full_path, "': unknown type '", type_name, "'"));
+  }
+
+  auto* msg_factory = google::protobuf::MessageFactory::generated_factory();
+  if (msg_factory == nullptr) {
+    return absl::InternalError(
+        absl::StrCat("Field '", full_path, "': could not get message factory"));
+  }
+
+  const google::protobuf::Message* prototype = msg_factory->GetPrototype(actual_type);
+  if (prototype == nullptr) {
+    return absl::InternalError(absl::StrCat(
+        "Field '", full_path, "': could not get prototype for type '", type_name, "'"));
+  }
+
+  const std::unique_ptr<google::protobuf::Message> owned_msg(prototype->New());
+  if (owned_msg == nullptr) {
+    return absl::InternalError(absl::StrCat(
+        "Field '", full_path, "': could not create message for type '", type_name, "'"));
+  }
+
+  YAML::Node inner_yaml;
+  for (const auto& kv_inner : any_yaml) {
+    const auto key = kv_inner.first.as<std::string>();
+    if (key != "@type") {
+      inner_yaml[key] = kv_inner.second;
+    }
+  }
+
+  auto status = mergeYamlIntoProto(inner_yaml, owned_msg.get(), full_path);
+  if (!status.ok()) {
+    return status;
+  }
+
+  const auto* reflection = message->GetReflection();
+  auto* any_field = reflection->MutableMessage(message, field);
+  auto* any_msg = dynamic_cast<::google::protobuf::Any*>(any_field);
+  if (any_msg != nullptr) {
+    any_msg->PackFrom(*owned_msg);
+  }
+
+  return absl::OkStatus();
+}
+
+/// Recursively merges a YAML map into a protobuf message, handling nested messages,
+/// repeated fields, and google.protobuf.Any fields.
+// NOLINTNEXTLINE(readability-function-cognitive-complexity)
+auto mergeYamlIntoProto(const YAML::Node& yaml, google::protobuf::Message* message,
+                        const std::string& prefix) -> absl::Status {
+  const auto* descriptor = message->GetDescriptor();
+  const auto* reflection = message->GetReflection();
+
+  for (const auto& key_value : yaml) {
+    const auto key = key_value.first.as<std::string>();
+    const auto& value = key_value.second;
+    const std::string full_path = prefix.empty() ? key : absl::StrCat(prefix, ".", key);
+
+    const auto* field = descriptor->FindFieldByName(key);
+    if (field == nullptr) {
+      LOG_WARNING("Unknown field '{}' ignored", full_path);
+      continue;
+    }
+
+    if (field->is_repeated()) {
+      const auto* field_msg_type = field->message_type();
+      const bool is_map_entry = field_msg_type != nullptr && field_msg_type->options().map_entry();
+      if (is_map_entry && value.IsMap()) {
+        // proto map fields are repeated MapEntry messages; accept a YAML map.
+        const auto* key_field = field_msg_type->FindFieldByName("key");
+        const auto* value_field = field_msg_type->FindFieldByName("value");
+
+        for (const auto& iter : value) {
+          auto* sub_msg = reflection->AddMessage(message, field);
+          const auto* sub_reflection = sub_msg->GetReflection();
+
+          auto status =
+              setFieldFromString(sub_msg, key_field, iter.first.as<std::string>(), sub_reflection);
+          if (!status.ok()) {
+            return status;
+          }
+          status = setFieldFromString(sub_msg, value_field, iter.second.as<std::string>(),
+                                      sub_reflection);
+          if (!status.ok()) {
+            return status;
+          }
+        }
+      } else if (!value.IsSequence()) {
+        return absl::InvalidArgumentError(
+            absl::StrCat("Field '", full_path, "' expected sequence"));
+      } else {
+        for (const auto& item : value) {
+          if (field->cpp_type() == google::protobuf::FieldDescriptor::CPPTYPE_MESSAGE) {
+            auto* sub_msg = reflection->AddMessage(message, field);
+            auto status = mergeYamlIntoProto(item, sub_msg, full_path);
+            if (!status.ok()) {
+              return status;
+            }
+          } else if (field->cpp_type() == google::protobuf::FieldDescriptor::CPPTYPE_STRING) {
+            reflection->AddString(message, field, item.as<std::string>());
+          } else {
+            return absl::InvalidArgumentError(absl::StrCat(
+                "Repeated field '", full_path, "' only supports message or string type"));
+          }
+        }
+      }
+    } else if (field->cpp_type() == google::protobuf::FieldDescriptor::CPPTYPE_MESSAGE) {
+      if (!value.IsMap()) {
+        return absl::InvalidArgumentError(absl::StrCat("Field '", full_path, "' expected map"));
+      }
+
+      const auto* field_msg_type = field->message_type();
+      if (field_msg_type != nullptr && field_msg_type->full_name() == "google.protobuf.Any") {
+        auto status = mergeAnyYamlField(value, message, field, full_path);
+        if (!status.ok()) {
+          return status;
+        }
+      } else {
+        auto* sub_msg = reflection->MutableMessage(message, field);
+        auto status = mergeYamlIntoProto(value, sub_msg, full_path);
+        if (!status.ok()) {
+          return status;
+        }
+      }
+    } else {
+      auto status = setFieldFromString(message, field, value.as<std::string>(), reflection);
+      if (!status.ok()) {
+        return status;
+      }
+    }
+  }
+
+  return absl::OkStatus();
+}
+
+/// Discovers and applies environment variables for a repeated message field by iterating
+/// through indexed entries (e.g., PREFIX__0__FIELD, PREFIX__1__FIELD, ...).
+auto discoverRepeatedEnvFields(google::protobuf::Message* message,
+                               const google::protobuf::FieldDescriptor* field,
+                               const std::string& env_prefix, const std::string& path)
+    -> absl::Status {
+  const auto* sub_descriptor = field->message_type();
+  const auto* reflection = message->GetReflection();
+
+  for (int idx = 0;; ++idx) {
+    const std::string idx_prefix = path + "__" + std::to_string(idx) + "__";
+    bool any_found = false;
+    for (int j = 0; j < sub_descriptor->field_count(); ++j) {
+      const auto* sub_field = sub_descriptor->field(j);
+      if (sub_field->cpp_type() == google::protobuf::FieldDescriptor::CPPTYPE_MESSAGE) {
+        continue;
+      }
+
+      const std::string env_name = env_prefix + idx_prefix + toUpper(sub_field->name());
+      // NOLINTNEXTLINE(concurrency-mt-unsafe)
+      const char* val = std::getenv(env_name.c_str());
+      if (val != nullptr) {
+        if (!any_found) {
+          reflection->AddMessage(message, field);
+          any_found = true;
+        }
+        const int size = reflection->FieldSize(*message, field);
+        auto* sub_msg = reflection->MutableRepeatedMessage(message, field, size - 1);
+        const auto* sub_reflection = sub_msg->GetReflection();
+        const auto* actual_field = sub_descriptor->FindFieldByName(sub_field->name());
+        if (actual_field != nullptr) {
+          auto status = setFieldFromString(sub_msg, actual_field, std::string(val), sub_reflection);
+          if (!status.ok()) {
+            return status;
+          }
+        }
+      }
+    }
+    if (!any_found) {
+      break;
+    }
+  }
+
+  return absl::OkStatus();
+}
+
+/// Recursively traverses a protobuf message's fields, discovering and applying environment
+/// variables that match the naming convention (e.g., STRIJ_GATEWAY_FIELD_NAME).
+auto discoverAndApplyEnvVars(google::protobuf::Message* message, const std::string& env_prefix,
+                             const std::string& upper_prefix) -> absl::Status {
+  const auto* descriptor = message->GetDescriptor();
+  const auto* reflection = message->GetReflection();
+
+  for (int i = 0; i < descriptor->field_count(); ++i) {
+    const auto* field = descriptor->field(i);
+    const std::string path =
+        upper_prefix.empty() ? toUpper(field->name()) : upper_prefix + "_" + toUpper(field->name());
+
+    if (field->cpp_type() == google::protobuf::FieldDescriptor::CPPTYPE_MESSAGE) {
+      if (field->is_repeated()) {
+        auto status = discoverRepeatedEnvFields(message, field, env_prefix, path);
+        if (!status.ok()) {
+          return status;
+        }
+      } else {
+        auto status =
+            discoverAndApplyEnvVars(reflection->MutableMessage(message, field), env_prefix, path);
+        if (!status.ok()) {
+          return status;
+        }
+      }
+    } else {
+      const std::string env_name = env_prefix + path;
+      // NOLINTNEXTLINE(concurrency-mt-unsafe)
+      const char* val = std::getenv(env_name.c_str());
+      if (val != nullptr) {
+        auto status = setFieldFromString(message, field, std::string(val), reflection);
+        if (!status.ok()) {
+          return status;
+        }
+      }
+    }
+  }
+
+  return absl::OkStatus();
+}
+
+/// Constructs the environment variable prefix for a service (e.g., STRIJ_GATEWAY_) and
+/// triggers environment variable discovery and application.
+auto applyEnvOverrides(google::protobuf::Message* message, const std::string& service_prefix)
+    -> absl::Status {
+  const std::string env_prefix = absl::StrCat("STRIJ_", service_prefix, "_");
+  return discoverAndApplyEnvVars(message, env_prefix, "");
+}
+
+/// Recursively navigates into nested message fields using a dot-separated path and applies
+/// a CLI override value to the final field.
+auto applyCliOverridePath(google::protobuf::Message* current,
+                          const google::protobuf::Descriptor* descriptor,
+                          const google::protobuf::Reflection* reflection,
+                          const std::vector<std::string>& parts, size_t depth,
+                          const std::string& value, const std::string& path) -> absl::Status {
+  if (depth >= parts.size()) {
+    return absl::OkStatus();
+  }
+
+  const auto* field = descriptor->FindFieldByName(parts[depth]);
+  if (field == nullptr) {
+    LOG_WARNING("CLI override '{}': unknown field '{}'", path, parts[depth]);
+    return absl::OkStatus();
+  }
+
+  if (depth + 1 == parts.size()) {
+    if (field->is_repeated() &&
+        field->cpp_type() == google::protobuf::FieldDescriptor::CPPTYPE_MESSAGE) {
+      LOG_WARNING("CLI override for repeated message not supported: {}", path);
+      return absl::OkStatus();
+    }
+    return setFieldFromString(current, field, value, reflection);
+  }
+
+  if (field->cpp_type() != google::protobuf::FieldDescriptor::CPPTYPE_MESSAGE) {
+    LOG_WARNING("CLI override '{}': expected message field at '{}'", path, parts[depth]);
+    return absl::OkStatus();
+  }
+
+  auto* sub_msg = reflection->MutableMessage(current, field);
+  return applyCliOverridePath(sub_msg, sub_msg->GetDescriptor(), sub_msg->GetReflection(), parts,
+                              depth + 1, value, path);
+}
+
+/// Parses a list of CLI override strings (in "field.path=value" format) and applies each
+/// one to the protobuf message.
+auto applyCliOverridesInternal(google::protobuf::Message* message,
+                               const std::vector<std::string>& overrides) -> absl::Status {
+  for (const auto& override : overrides) {
+    const size_t eq_pos = override.find('=');
+    if (eq_pos == std::string::npos) {
+      continue;
+    }
+
+    const std::string path = override.substr(0, eq_pos);
+    const std::string value = override.substr(eq_pos + 1);
+    const std::vector<std::string> parts = absl::StrSplit(path, ".");
+
+    auto status = applyCliOverridePath(message, message->GetDescriptor(), message->GetReflection(),
+                                       parts, 0, value, path);
+    if (!status.ok()) {
+      return status;
+    }
+  }
+
+  return absl::OkStatus();
+}
+
+/// Sets a protobuf field's value from a string, handling type conversion for all supported
+/// field types (int32, uint32, int64, uint64, double, float, bool, string, enum).
+auto setFieldFromString(google::protobuf::Message* message,
+                        const google::protobuf::FieldDescriptor* field, const std::string& value,
+                        const google::protobuf::Reflection* reflection) -> absl::Status {
+  switch (field->cpp_type()) {
+  case google::protobuf::FieldDescriptor::CPPTYPE_INT32:
+  case google::protobuf::FieldDescriptor::CPPTYPE_INT64:
+    reflection->SetInt64(message, field, std::stoll(value));
+    break;
+  case google::protobuf::FieldDescriptor::CPPTYPE_UINT32:
+    reflection->SetUInt32(message, field, std::stoul(value));
+    break;
+  case google::protobuf::FieldDescriptor::CPPTYPE_UINT64:
+    reflection->SetUInt64(message, field, std::stoull(value));
+    break;
+  case google::protobuf::FieldDescriptor::CPPTYPE_DOUBLE:
+    reflection->SetDouble(message, field, std::stod(value));
+    break;
+  case google::protobuf::FieldDescriptor::CPPTYPE_FLOAT:
+    reflection->SetFloat(message, field, std::stof(value));
+    break;
+  case google::protobuf::FieldDescriptor::CPPTYPE_BOOL:
+    reflection->SetBool(message, field, value == "true" || value == "1" || value == "yes");
+    break;
+  case google::protobuf::FieldDescriptor::CPPTYPE_STRING:
+  case google::protobuf::FieldDescriptor::CPPTYPE_ENUM:
+    reflection->SetString(message, field, value);
+    break;
+  default:
+    return absl::InvalidArgumentError(
+        absl::StrCat("Unsupported field type for CLI override: ", field->full_name()));
+  }
+
+  return absl::OkStatus();
+}
+
+/// Holds the string representation and optional numeric value of a protobuf field for validation.
+struct FieldValueInfo {
+  std::string str_val_;
+  bool is_numeric_{false};
+  uint64_t num_val_{0};
+};
+
+/// Extracts a field's value from a protobuf message, returning both its string representation
+/// and numeric value (if applicable) for validation purposes.
+auto extractFieldValue(const google::protobuf::Message& message,
+                       const google::protobuf::FieldDescriptor* field,
+                       const google::protobuf::Reflection* reflection) -> FieldValueInfo {
+  const bool repeated = field->is_repeated();
+
+  switch (field->cpp_type()) {
+  case google::protobuf::FieldDescriptor::CPPTYPE_UINT32: {
+    const uint32_t val = repeated ? reflection->GetRepeatedUInt32(message, field, 0)
+                                  : reflection->GetUInt32(message, field);
+    return {.str_val_ = std::to_string(val), .is_numeric_ = true, .num_val_ = val};
+  }
+  case google::protobuf::FieldDescriptor::CPPTYPE_UINT64: {
+    const uint64_t val = repeated ? reflection->GetRepeatedUInt64(message, field, 0)
+                                  : reflection->GetUInt64(message, field);
+    return {.str_val_ = std::to_string(val), .is_numeric_ = true, .num_val_ = val};
+  }
+  case google::protobuf::FieldDescriptor::CPPTYPE_INT32:
+  case google::protobuf::FieldDescriptor::CPPTYPE_INT64: {
+    const int64_t val = repeated ? reflection->GetRepeatedInt64(message, field, 0)
+                                 : reflection->GetInt64(message, field);
+    return {.str_val_ = std::to_string(val),
+            .is_numeric_ = true,
+            .num_val_ = static_cast<uint64_t>(val)};
+  }
+  case google::protobuf::FieldDescriptor::CPPTYPE_DOUBLE:
+  case google::protobuf::FieldDescriptor::CPPTYPE_FLOAT: {
+    const double val = repeated ? reflection->GetRepeatedDouble(message, field, 0)
+                                : reflection->GetDouble(message, field);
+    return {.str_val_ = std::to_string(val)};
+  }
+  case google::protobuf::FieldDescriptor::CPPTYPE_BOOL: {
+    const bool val = repeated ? reflection->GetRepeatedBool(message, field, 0)
+                              : reflection->GetBool(message, field);
+    return {.str_val_ = val ? "true" : "false"};
+  }
+  case google::protobuf::FieldDescriptor::CPPTYPE_STRING:
+  case google::protobuf::FieldDescriptor::CPPTYPE_ENUM: {
+    return {.str_val_ = repeated ? reflection->GetRepeatedString(message, field, 0)
+                                 : reflection->GetString(message, field)};
+  }
+  default:
+    return {};
+  }
+}
+
+/// Validates a field value against constraint extensions (range_min, range_max, enum_values,
+/// pattern) defined in the field's options.
+auto validateFieldValue(const FieldValueInfo& info, const std::string& field_path,
+                        const google::protobuf::FieldOptions& ext_opts) -> absl::Status {
+  if (info.is_numeric_ && ext_opts.HasExtension(strij::config::range_min)) {
+    const std::string& min_str = ext_opts.GetExtension(strij::config::range_min);
+    const uint64_t min_val = std::stoull(min_str);
+    if (info.num_val_ < min_val) {
+      return absl::InvalidArgumentError(absl::StrCat("Field '", field_path, "': value ",
+                                                     info.str_val_, " below minimum ", min_str));
+    }
+  }
+
+  if (info.is_numeric_ && ext_opts.HasExtension(strij::config::range_max)) {
+    const std::string& max_str = ext_opts.GetExtension(strij::config::range_max);
+    const uint64_t max_val = std::stoull(max_str);
+    if (info.num_val_ > max_val) {
+      return absl::InvalidArgumentError(absl::StrCat("Field '", field_path, "': value ",
+                                                     info.str_val_, " exceeds maximum ", max_str));
+    }
+  }
+  const int enum_count = ext_opts.ExtensionSize(strij::config::enum_values);
+  if (enum_count > 0) {
+    bool valid = false;
+    std::string allowed_str;
+    for (int ei = 0; ei < enum_count; ++ei) {
+      const std::string& enum_val = ext_opts.GetExtension(strij::config::enum_values, ei);
+      if (ei > 0) {
+        allowed_str += ", ";
+      }
+      allowed_str += enum_val;
+      if (info.str_val_ == enum_val) {
+        valid = true;
+      }
+    }
+    if (!valid) {
+      return absl::InvalidArgumentError(absl::StrCat("Field '", field_path, "': value '",
+                                                     info.str_val_,
+                                                     "' not in allowed values: ", allowed_str));
+    }
+  }
+
+  if (ext_opts.HasExtension(strij::config::pattern)) {
+    const std::string& pattern_str = ext_opts.GetExtension(strij::config::pattern);
+    try {
+      const std::regex regexp(pattern_str);
+      if (!std::regex_match(info.str_val_, regexp)) {
+        return absl::InvalidArgumentError(absl::StrCat("Field '", field_path, "': value '",
+                                                       info.str_val_, "' does not match pattern '",
+                                                       pattern_str, "'"));
+      }
+    } catch (const std::regex_error&) {
+      LOG_WARNING("Invalid regex pattern for '{}': {}", field_path, pattern_str);
+    }
+  }
+
+  return absl::OkStatus();
+}
+
+/// Recursively validates a protobuf message and all its fields, checking required fields,
+/// value constraints, and nested message validation.
+// NOLINTNEXTLINE(readability-function-cognitive-complexity)
+auto validateMessage(const google::protobuf::Message& message, const std::string& prefix = {})
+    -> absl::Status {
+  const auto* descriptor = message.GetDescriptor();
+  const auto* reflection = message.GetReflection();
+
+  for (int i = 0; i < descriptor->field_count(); ++i) {
+    const auto* field = descriptor->field(i);
+
+    std::string field_path(prefix);
+    if (!prefix.empty()) {
+      field_path += ".";
+    }
+    field_path += field->name();
+
+    if (field->cpp_type() == google::protobuf::FieldDescriptor::CPPTYPE_MESSAGE) {
+      const auto& ext_opts = field->options();
+      if (field->is_repeated()) {
+        int size = reflection->FieldSize(message, field);
+        if (size == 0 && ext_opts.HasExtension(strij::config::required) &&
+            ext_opts.GetExtension(strij::config::required)) {
+          return absl::InvalidArgumentError(
+              absl::StrCat("Required field '", field_path, "' is not set"));
+        }
+        for (int j = 0; j < size; ++j) {
+          auto status =
+              validateMessage(reflection->GetRepeatedMessage(message, field, j), field_path);
+          if (!status.ok()) {
+            return status;
+          }
+        }
+      } else {
+        auto status = validateMessage(reflection->GetMessage(message, field), field_path);
+        if (!status.ok()) {
+          return status;
+        }
+      }
+      continue;
+    }
+
+    bool has_value = reflection->HasField(message, field);
+    if (field->is_repeated()) {
+      has_value = reflection->FieldSize(message, field) > 0;
+    }
+
+    const auto& ext_opts = field->options();
+
+    if (!has_value && ext_opts.HasExtension(strij::config::required) &&
+        ext_opts.GetExtension(strij::config::required)) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("Required field '", field_path, "' is not set"));
+    }
+
+    if (!has_value) {
+      continue;
+    }
+
+    const FieldValueInfo info = extractFieldValue(message, field, reflection);
+
+    auto status = validateFieldValue(info, field_path, ext_opts);
+    if (!status.ok()) {
+      return status;
+    }
+  }
+
+  return absl::OkStatus();
+}
+
+} // namespace
+
+template <typename T>
+auto LoadConfig(const std::string& config_file_path, const std::vector<std::string>& cli_overrides)
+    -> absl::StatusOr<T> {
+  T config = T::default_instance();
+
+  if (!config_file_path.empty() && fileExists(config_file_path)) {
+    auto yaml_result = parseYamlFile(config_file_path);
+    if (!yaml_result.ok()) {
+      return yaml_result.status();
+    }
+
+    const YAML::Node yaml = std::move(yaml_result).value();
+
+    if (!yaml.IsMap()) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("Config file '", config_file_path, "' must be a YAML map"));
+    }
+
+    auto status = mergeYamlIntoProto(yaml, &config, "");
+    if (!status.ok()) {
+      return status;
+    }
+  }
+
+  std::string service_prefix;
+  if constexpr (std::is_same_v<T, strij::config::GatewayConfig>) {
+    service_prefix = "GATEWAY";
+  } else if constexpr (std::is_same_v<T, strij::config::NodeAgentConfig>) {
+    service_prefix = "NODEAGENT";
+  }
+
+  if (!service_prefix.empty()) {
+    auto status = applyEnvOverrides(&config, service_prefix);
+    if (!status.ok()) {
+      return status;
+    }
+  }
+
+  if (!cli_overrides.empty()) {
+    auto status = applyCliOverridesInternal(&config, cli_overrides);
+    if (!status.ok()) {
+      return status;
+    }
+  }
+
+  auto status = validateMessage(config);
+  if (!status.ok()) {
+    return status;
+  }
+
+  return config;
+}
+
+template <typename T> auto ValidateConfig(const T& config) -> absl::Status {
+  return validateMessage(config);
+}
+
+template <typename T>
+auto ApplyCliOverrides(T& config, const std::vector<std::string>& overrides) -> absl::Status {
+  return applyCliOverridesInternal(&config, overrides);
+}
+
+template <typename T> auto GetDefaultConfig() -> T { return T::default_instance(); }
+
+template <typename T> auto ConfigToYaml(const T& config) -> std::string {
+  std::string output;
+  google::protobuf::TextFormat::PrintToString(config, &output);
+  return output;
+}
+
+template auto LoadConfig<GatewayConfig>(const std::string&, const std::vector<std::string>&)
+    -> absl::StatusOr<GatewayConfig>;
+
+template auto LoadConfig<NodeAgentConfig>(const std::string&, const std::vector<std::string>&)
+    -> absl::StatusOr<NodeAgentConfig>;
+
+template auto ValidateConfig<GatewayConfig>(const GatewayConfig&) -> absl::Status;
+template auto ValidateConfig<NodeAgentConfig>(const NodeAgentConfig&) -> absl::Status;
+
+template auto ApplyCliOverrides<GatewayConfig>(GatewayConfig&, const std::vector<std::string>&)
+    -> absl::Status;
+template auto ApplyCliOverrides<NodeAgentConfig>(NodeAgentConfig&, const std::vector<std::string>&)
+    -> absl::Status;
+
+template auto GetDefaultConfig<GatewayConfig>() -> GatewayConfig;
+template auto GetDefaultConfig<NodeAgentConfig>() -> NodeAgentConfig;
+
+template auto ConfigToYaml<GatewayConfig>(const GatewayConfig&) -> std::string;
+template auto ConfigToYaml<NodeAgentConfig>(const NodeAgentConfig&) -> std::string;
+
+} // namespace strij::config

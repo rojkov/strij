@@ -1,0 +1,115 @@
+load("//bazel:build_system.bzl", "strij_cc_library")
+
+strij_cc_library(
+    name = "result_receiver_storage",
+    srcs = ["result_receiver_storage.cc"],
+    hdrs = ["result_receiver_storage.hh"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":exact_state_tracker_lib",
+        "//include/strij/common:pure_lib",
+    ],
+)
+
+strij_cc_library(
+    name = "http_result_receiver_lib",
+    srcs = ["http_result_receiver.cc"],
+    hdrs = ["http_result_receiver.hh"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":result_receiver_storage",
+        "//src/common/core/io:connection_lib",
+    ],
+)
+
+strij_cc_library(
+    name = "node_lib",
+    srcs = ["node.cc"],
+    hdrs = ["node.hh"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":result_receiver_storage",
+        "//api/common/node:node_cc_proto",
+        "//include/strij/event:command_handler_interface",
+        "//include/strij/event:completable_interface",
+        "//include/strij/event:dispatcher_interface",
+        "//src/common/core/io:connection_lib",
+        "//src/common/core/logging:log_lib",
+        "//src/common/core/utils:errors_lib",
+    ],
+)
+
+strij_cc_library(
+    name = "node_directory_lib",
+    srcs = ["node_directory.cc"],
+    hdrs = ["node_directory.hh"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":node_lib",
+        ":result_receiver_storage",
+        "//include/strij/event:dispatcher_interface",
+        "//src/common/core/io:connection_lib",
+        "//src/common/core/logging:log_lib",
+        "//src/gateway/extensions/node_discovery:node_discovery_interface",
+    ],
+)
+
+strij_cc_library(
+    name = "exact_state_tracker_lib",
+    srcs = ["exact_state_tracker.cc"],
+    hdrs = ["exact_state_tracker.hh"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//api/common/node:node_cc_proto",
+    ],
+)
+
+strij_cc_library(
+    name = "requirements_resolver_lib",
+    srcs = ["requirements_resolver.cc"],
+    hdrs = ["requirements_resolver.hh"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//api/common/node:node_cc_proto",
+        "//src/common/core/logging:log_lib",
+        "@protobuf",
+    ],
+)
+
+strij_cc_library(
+    name = "gateway_http_handler_lib",
+    srcs = ["gateway_http_handler.cc"],
+    hdrs = ["gateway_http_handler.hh"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":exact_state_tracker_lib",
+        ":node_directory_lib",
+        ":requirements_resolver_lib",
+        ":result_receiver_storage",
+        "//api/common/task:task_cc_proto",
+        "//src/common/core/io:connection_lib",
+        "//src/common/core/io:llhttp_parser_lib",
+        "//src/common/core/io:tlv_frame",
+        "//src/common/core/logging:log_lib",
+        "//src/common/core/utils:task_id_lib",
+        "//src/common/extensions:scheduler_interface",
+    ],
+)
+
+strij_cc_library(
+    name = "gateway_tlv_handler_lib",
+    srcs = ["gateway_tlv_handler.cc"],
+    hdrs = ["gateway_tlv_handler.hh"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":exact_state_tracker_lib",
+        ":node_directory_lib",
+        ":result_receiver_storage",
+        "//api/common/node:node_cc_proto",
+        "//api/common/task:task_cc_proto",
+        "//src/common/core/io:connection_lib",
+        "//src/common/core/io:tlv_frame",
+        "//src/common/core/logging:log_lib",
+        "//src/common/extensions:scheduler_interface",
+    ],
+)

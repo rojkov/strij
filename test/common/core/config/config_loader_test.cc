@@ -1,0 +1,466 @@
+#include <unistd.h>
+
+#include <filesystem>
+#include <string>
+#include <vector>
+
+#include "common/core/config/config_loader.hh"
+#include "gateway/config/gateway.pb.h"
+#include "nodeagent/config/nodeagent.pb.h"
+#include "gateway/extensions/schedulers/capability_aware/capability_aware.pb.h"
+#include "nodeagent/extensions/task_handlers/echo/echo_task_handler.pb.h"
+#include "gtest/gtest.h"
+
+namespace strij::config {
+namespace {
+
+auto createTempFile(const std::string& content) -> std::string {
+  auto dir = std::filesystem::temp_directory_path();
+  auto path = dir / "strij_config_test_XXXXXX";
+  std::string tmpl = path.string();
+  std::vector<char> buf(tmpl.begin(), tmpl.end());
+  buf.push_back('\0');
+
+  int tmp_fd = mkstemp(buf.data());
+  if (tmp_fd == -1) {
+    return "";
+  }
+
+  std::string result(buf.data());
+  write(tmp_fd, content.data(), content.size());
+  close(tmp_fd);
+  return result;
+}
+
+TEST(ConfigLoaderTest, ValidGatewayYaml) {
+  std::string yaml = R"(
+http_listener:
+  address: "0.0.0.0"
+  port: 8081
+node_connections:
+  - address: "127.0.0.1:9090"
+schedulers:
+  - extension:
+      name: "round_robin"
+logging:
+  level: "info"
+  format: "text"
+  output: "stdout"
+  include_source_location: false
+)";
+  std::string path = createTempFile(yaml);
+  ASSERT_FALSE(path.empty());
+
+  auto result = LoadConfig<GatewayConfig>(path);
+  ASSERT_TRUE(result.ok()) << result.status().message();
+  const auto& config = result.value();
+  EXPECT_EQ(config.http_listener().address(), "0.0.0.0");
+  EXPECT_EQ(config.http_listener().port(), 8081U);
+  ASSERT_GE(config.node_connections_size(), 1);
+  EXPECT_EQ(config.node_connections(0).address(), "127.0.0.1:9090");
+  ASSERT_EQ(config.schedulers_size(), 1);
+  EXPECT_EQ(config.schedulers(0).extension().name(), "round_robin");
+  EXPECT_EQ(config.logging().level(), "info");
+  EXPECT_EQ(config.logging().format(), "text");
+  EXPECT_EQ(config.logging().output(), "stdout");
+  EXPECT_FALSE(config.logging().include_source_location());
+
+  std::filesystem::remove(path);
+}
+
+TEST(ConfigLoaderTest, GatewaySchedulerExtensionYaml) {
+  std::string yaml = R"(
+http_listener:
+  address: "0.0.0.0"
+  port: 8081
+schedulers:
+  - extension:
+      name: "capability_aware"
+      typed_config:
+        "@type": "type.googleapis.com/strij.extensions.schedulers.capability_aware.CapabilityAwareSchedulerConfig"
+    task_type: "echo"
+  - extension:
+      name: "round_robin"
+node_connections:
+  - address: "127.0.0.1:9090"
+logging:
+  level: "info"
+)";
+  std::string path = createTempFile(yaml);
+  ASSERT_FALSE(path.empty());
+
+  auto result = LoadConfig<GatewayConfig>(path);
+  ASSERT_TRUE(result.ok()) << result.status().message();
+  const auto& config = result.value();
+  ASSERT_EQ(config.schedulers_size(), 2);
+
+  // The typed entry binds its task_type and carries the packed typed_config.
+  const auto& typed = config.schedulers(0);
+  EXPECT_EQ(typed.extension().name(), "capability_aware");
+  EXPECT_EQ(typed.task_type(), "echo");
+  EXPECT_TRUE(typed.extension()
+                  .typed_config()
+                  .Is<extensions::schedulers::capability_aware::CapabilityAwareSchedulerConfig>());
+
+  // The untyped entry is the default scheduler.
+  const auto& default_scheduler = config.schedulers(1);
+  EXPECT_EQ(default_scheduler.extension().name(), "round_robin");
+  EXPECT_TRUE(default_scheduler.task_type().empty());
+
+  std::filesystem::remove(path);
+}
+
+TEST(ConfigLoaderTest, ValidNodeAgentYaml) {
+  std::string yaml = R"(
+tlv_listener:
+  address: "0.0.0.0"
+  port: 9090
+schedulers:
+  - name: "push"
+logging:
+  level: "debug"
+  format: "json"
+  output: "stderr"
+)";
+  std::string path = createTempFile(yaml);
+  ASSERT_FALSE(path.empty());
+
+  auto result = LoadConfig<NodeAgentConfig>(path);
+  ASSERT_TRUE(result.ok()) << result.status().message();
+  const auto& config = result.value();
+  EXPECT_EQ(config.tlv_listener().address(), "0.0.0.0");
+  EXPECT_EQ(config.tlv_listener().port(), 9090U);
+  ASSERT_EQ(config.schedulers_size(), 1);
+  EXPECT_EQ(config.schedulers(0).name(), "push");
+  EXPECT_EQ(config.logging().level(), "debug");
+  EXPECT_EQ(config.logging().format(), "json");
+  EXPECT_EQ(config.logging().output(), "stderr");
+
+  std::filesystem::remove(path);
+}
+
+TEST(ConfigLoaderTest, NodeAgentCapabilitiesYaml) {
+  std::string yaml = R"(
+tlv_listener:
+  address: "0.0.0.0"
+  port: 9090
+pools:
+  - name: "cpu"
+    total: 16
+  - name: "gpu.h100"
+    total: 2
+reservations:
+  - task_type: "video-encode"
+    pool: "gpu.h100"
+    amount: 1
+task_handlers:
+  - name: "echo"
+    typed_config:
+      "@type": "type.googleapis.com/strij.extensions.task_handlers.echo.EchoTaskHandlerConfig"
+      capacity:
+        concurrency: 1024
+heartbeat_interval:
+  seconds: 5
+schedulers:
+  - name: "push"
+)";
+  std::string path = createTempFile(yaml);
+  ASSERT_FALSE(path.empty());
+
+  auto result = LoadConfig<NodeAgentConfig>(path);
+  ASSERT_TRUE(result.ok()) << result.status().message();
+  const auto& config = result.value();
+  ASSERT_EQ(config.pools_size(), 2);
+  EXPECT_EQ(config.pools(0).name(), "cpu");
+  EXPECT_EQ(config.pools(0).total(), 16U);
+  EXPECT_EQ(config.pools(1).name(), "gpu.h100");
+  EXPECT_EQ(config.pools(1).total(), 2U);
+  ASSERT_EQ(config.reservations_size(), 1);
+  EXPECT_EQ(config.reservations(0).task_type(), "video-encode");
+  EXPECT_EQ(config.reservations(0).amount(), 1U);
+  ASSERT_EQ(config.task_handlers_size(), 1);
+  EXPECT_EQ(config.task_handlers(0).name(), "echo");
+  extensions::task_handlers::echo::EchoTaskHandlerConfig handler_config;
+  ASSERT_TRUE(config.task_handlers(0).typed_config().UnpackTo(&handler_config));
+  EXPECT_EQ(handler_config.capacity().concurrency(), 1024U);
+  EXPECT_EQ(config.heartbeat_interval().seconds(), 5);
+  ASSERT_EQ(config.schedulers_size(), 1);
+  EXPECT_EQ(config.schedulers(0).name(), "push");
+
+  std::filesystem::remove(path);
+}
+
+TEST(ConfigLoaderTest, InvalidPortOutOfRange) {
+  std::string yaml = R"(
+http_listener:
+  address: "0.0.0.0"
+  port: 99999
+schedulers:
+  - extension:
+      name: "round_robin"
+)";
+  std::string path = createTempFile(yaml);
+  ASSERT_FALSE(path.empty());
+
+  auto result = LoadConfig<GatewayConfig>(path);
+  EXPECT_FALSE(result.ok());
+  EXPECT_TRUE(result.status().message().contains("out of range") ||
+              result.status().message().contains("port"));
+
+  std::filesystem::remove(path);
+}
+
+TEST(ConfigLoaderTest, InvalidLogLevel) {
+  std::string yaml = R"(
+logging:
+  level: "verbose"
+http_listener:
+  address: "0.0.0.0"
+  port: 8081
+schedulers:
+  - extension:
+      name: "round_robin"
+)";
+  std::string path = createTempFile(yaml);
+  ASSERT_FALSE(path.empty());
+
+  auto result = LoadConfig<GatewayConfig>(path);
+  EXPECT_FALSE(result.ok());
+  EXPECT_TRUE(result.status().message().contains("level"));
+
+  std::filesystem::remove(path);
+}
+
+TEST(ConfigLoaderTest, InvalidAddressPattern) {
+  std::string yaml = R"(
+http_listener:
+  address: "0.0.0.0"
+  port: 8081
+schedulers:
+  - extension:
+      name: "round_robin"
+node_connections:
+  - address: "not-a-valid-address"
+)";
+  std::string path = createTempFile(yaml);
+  ASSERT_FALSE(path.empty());
+
+  auto result = LoadConfig<GatewayConfig>(path);
+  EXPECT_FALSE(result.ok());
+  EXPECT_TRUE(result.status().message().contains("address") ||
+              result.status().message().contains("pattern"));
+
+  std::filesystem::remove(path);
+}
+
+TEST(ConfigLoaderTest, CliOverrides) {
+  std::string yaml = R"(
+http_listener:
+  address: "127.0.0.1"
+  port: 8081
+schedulers:
+  - extension:
+      name: "round_robin"
+)";
+  std::string path = createTempFile(yaml);
+  ASSERT_FALSE(path.empty());
+
+  auto result = LoadConfig<GatewayConfig>(
+      path, {"http_listener.port=9090", "http_listener.address=10.0.0.1"});
+  ASSERT_TRUE(result.ok()) << result.status().message();
+  const auto& config = result.value();
+  EXPECT_EQ(config.http_listener().port(), 9090U);
+  EXPECT_EQ(config.http_listener().address(), "10.0.0.1");
+  ASSERT_EQ(config.schedulers_size(), 1);
+
+  std::filesystem::remove(path);
+}
+
+TEST(ConfigLoaderTest, EnvOverridesPort) {
+  std::string yaml = R"(
+http_listener:
+  address: "127.0.0.1"
+  port: 8081
+schedulers:
+  - extension:
+      name: "round_robin"
+)";
+  std::string path = createTempFile(yaml);
+  ASSERT_FALSE(path.empty());
+
+  setenv("STRIJ_GATEWAY_HTTP_LISTENER_PORT", "7070", 1);
+  setenv("STRIJ_GATEWAY_HTTP_LISTENER_ADDRESS", "10.0.0.1", 1);
+
+  auto result = LoadConfig<GatewayConfig>(path);
+  ASSERT_TRUE(result.ok()) << result.status().message();
+  const auto& config = result.value();
+  EXPECT_EQ(config.http_listener().port(), 7070U);
+  EXPECT_EQ(config.http_listener().address(), "10.0.0.1");
+  ASSERT_EQ(config.schedulers_size(), 1);
+
+  unsetenv("STRIJ_GATEWAY_HTTP_LISTENER_PORT");
+  unsetenv("STRIJ_GATEWAY_HTTP_LISTENER_ADDRESS");
+  std::filesystem::remove(path);
+}
+
+TEST(ConfigLoaderTest, EnvOverridesNodeAgent) {
+  std::string yaml = R"(
+tlv_listener:
+  address: "127.0.0.1"
+  port: 9090
+schedulers:
+  - name: "push"
+)";
+  std::string path = createTempFile(yaml);
+  ASSERT_FALSE(path.empty());
+
+  setenv("STRIJ_NODEAGENT_TLV_LISTENER_PORT", "8080", 1);
+  setenv("STRIJ_NODEAGENT_TLV_LISTENER_ADDRESS", "0.0.0.0", 1);
+  setenv("STRIJ_NODEAGENT_LOGGING_LEVEL", "error", 1);
+
+  auto result = LoadConfig<NodeAgentConfig>(path);
+  ASSERT_TRUE(result.ok()) << result.status().message();
+  const auto& config = result.value();
+  EXPECT_EQ(config.tlv_listener().port(), 8080U);
+  EXPECT_EQ(config.tlv_listener().address(), "0.0.0.0");
+  EXPECT_EQ(config.logging().level(), "error");
+  ASSERT_EQ(config.schedulers_size(), 1);
+
+  unsetenv("STRIJ_NODEAGENT_TLV_LISTENER_PORT");
+  unsetenv("STRIJ_NODEAGENT_TLV_LISTENER_ADDRESS");
+  unsetenv("STRIJ_NODEAGENT_LOGGING_LEVEL");
+  std::filesystem::remove(path);
+}
+
+TEST(ConfigLoaderTest, EnvOverridesArrayField) {
+  std::string yaml = R"(
+http_listener:
+  address: "127.0.0.1"
+  port: 8081
+schedulers:
+  - extension:
+      name: "round_robin"
+)";
+  std::string path = createTempFile(yaml);
+  ASSERT_FALSE(path.empty());
+
+  setenv("STRIJ_GATEWAY_HTTP_LISTENER_ADDRESS", "0.0.0.0", 1);
+  setenv("STRIJ_GATEWAY_HTTP_LISTENER_PORT", "8081", 1);
+  setenv("STRIJ_GATEWAY_NODE_CONNECTIONS__0__ADDRESS", "10.0.0.1:9090", 1);
+  setenv("STRIJ_GATEWAY_NODE_CONNECTIONS__1__ADDRESS", "10.0.0.2:9090", 1);
+
+  auto result = LoadConfig<GatewayConfig>(path);
+  ASSERT_TRUE(result.ok()) << result.status().message();
+  const auto& config = result.value();
+  ASSERT_GE(config.node_connections_size(), 2);
+  EXPECT_EQ(config.node_connections(0).address(), "10.0.0.1:9090");
+  EXPECT_EQ(config.node_connections(1).address(), "10.0.0.2:9090");
+  ASSERT_EQ(config.schedulers_size(), 1);
+
+  unsetenv("STRIJ_GATEWAY_HTTP_LISTENER_ADDRESS");
+  unsetenv("STRIJ_GATEWAY_HTTP_LISTENER_PORT");
+  unsetenv("STRIJ_GATEWAY_NODE_CONNECTIONS__0__ADDRESS");
+  unsetenv("STRIJ_GATEWAY_NODE_CONNECTIONS__1__ADDRESS");
+  std::filesystem::remove(path);
+}
+
+TEST(ConfigLoaderTest, ValidateConfig) {
+  GatewayConfig config;
+  config.mutable_http_listener()->set_address("0.0.0.0");
+  config.mutable_http_listener()->set_port(8081);
+  config.mutable_logging()->set_level("info");
+  config.add_schedulers()->mutable_extension()->set_name("round_robin");
+
+  auto status = ValidateConfig(config);
+  EXPECT_TRUE(status.ok());
+}
+
+TEST(ConfigLoaderTest, ValidateConfigInvalidPort) {
+  GatewayConfig config;
+  config.mutable_http_listener()->set_address("0.0.0.0");
+  config.mutable_http_listener()->set_port(99999);
+  config.add_schedulers()->mutable_extension()->set_name("round_robin");
+
+  auto status = ValidateConfig(config);
+  EXPECT_FALSE(status.ok());
+}
+
+TEST(ConfigLoaderTest, ValidateConfigMissingSchedulersFails) {
+  GatewayConfig config;
+  config.mutable_http_listener()->set_address("0.0.0.0");
+  config.mutable_http_listener()->set_port(8081);
+
+  auto status = ValidateConfig(config);
+  ASSERT_FALSE(status.ok());
+  EXPECT_NE(status.message().find("schedulers"), std::string::npos);
+}
+
+TEST(ConfigLoaderTest, UnknownFieldWarning) {
+  std::string yaml = R"(
+http_listener:
+  address: "0.0.0.0"
+  port: 8081
+schedulers:
+  - extension:
+      name: "round_robin"
+unknown_field: "test"
+)";
+  std::string path = createTempFile(yaml);
+  ASSERT_FALSE(path.empty());
+
+  auto result = LoadConfig<GatewayConfig>(path);
+  EXPECT_TRUE(result.ok()) << result.status().message();
+
+  std::filesystem::remove(path);
+}
+
+TEST(ConfigLoaderTest, MissingYamlFile) {
+  auto result = LoadConfig<GatewayConfig>("/nonexistent/config.yaml");
+  EXPECT_FALSE(result.ok());
+}
+
+TEST(ConfigLoaderTest, NodeAgentWithoutSchedulersIsRejected) {
+  std::string yaml = R"(
+tlv_listener:
+  address: "0.0.0.0"
+  port: 9090
+)";
+  std::string path = createTempFile(yaml);
+  ASSERT_FALSE(path.empty());
+
+  auto result = LoadConfig<NodeAgentConfig>(path);
+  EXPECT_FALSE(result.ok());
+  EXPECT_NE(result.status().message().find("schedulers"), std::string::npos);
+
+  std::filesystem::remove(path);
+}
+
+TEST(ConfigLoaderTest, NodeAgentCliOverrides) {
+  std::string yaml = R"(
+tlv_listener:
+  address: "127.0.0.1"
+  port: 9090
+schedulers:
+  - name: "push"
+)";
+  std::string path = createTempFile(yaml);
+  ASSERT_FALSE(path.empty());
+
+  auto result =
+      LoadConfig<NodeAgentConfig>(path, {"tlv_listener.port=7070", "tlv_listener.address=0.0.0.0"});
+  ASSERT_TRUE(result.ok()) << result.status().message();
+  const auto& config = result.value();
+  EXPECT_EQ(config.tlv_listener().port(), 7070U);
+  EXPECT_EQ(config.tlv_listener().address(), "0.0.0.0");
+  ASSERT_EQ(config.schedulers_size(), 1);
+
+  std::filesystem::remove(path);
+}
+
+TEST(ConfigLoaderTest, GetDefaultConfig) {
+  auto config = GetDefaultConfig<GatewayConfig>();
+  EXPECT_EQ(config.http_listener().port(), 0U);
+}
+
+} // namespace
+} // namespace strij::config

@@ -1,0 +1,13 @@
+load("//bazel:build_system.bzl", "strij_cc_library")
+
+strij_cc_library(
+    name = "static_node_discovery_lib",
+    srcs = ["static_node_discovery.cc"],
+    hdrs = ["static_node_discovery.hh"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//api/gateway/extensions/node_discovery/static:static_node_discovery_cc_proto",
+        "//src/gateway/extensions/node_discovery:node_discovery_interface",
+    ],
+    alwayslink = True,
+)

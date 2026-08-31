@@ -1,0 +1,45 @@
+#include "common/core/common/signal_monitor.hh"
+
+#include <err.h>
+
+#include <cassert>
+#include <csignal>
+#include <cstdint>
+#include <cstdio>
+
+#include "common/core/logging/log.hh"
+
+namespace strij::utils {
+
+SignalMonitor::SignalMonitor(event::DispatcherSharedPtr dispatcher)
+    : dispatcher_(std::move(dispatcher)) {
+
+  sigset_t mask;
+  sigemptyset(&mask);
+  sigaddset(&mask, SIGINT);
+  sigaddset(&mask, SIGTERM);
+
+  if (sigprocmask(SIG_BLOCK, &mask, nullptr) == -1) {
+    err(EXIT_FAILURE, "sigprocmask");
+  }
+
+  sfd_ = signalfd(-1, &mask, 0);
+  if (sfd_ == -1) {
+    err(EXIT_FAILURE, "signalfd");
+  }
+
+  dispatcher_->PrepareRead(
+      this, 0, sfd_, std::as_writable_bytes(std::span<struct signalfd_siginfo, 1>{&fdsi_, 1}), 0);
+}
+
+void SignalMonitor::HandleCompletion(uint8_t tag, int res, [[maybe_unused]] uint32_t flags) {
+  assert(dispatcher_ != nullptr);
+  assert(res >= 0);
+  LOG_DEBUG("handling signal. res={}", res);
+
+  // We are not going to re-arm reading from this fd -> closing...
+  close(sfd_);
+  dispatcher_->Shutdown();
+}
+
+} // namespace strij::utils
