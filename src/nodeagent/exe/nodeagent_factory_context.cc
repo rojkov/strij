@@ -14,12 +14,10 @@ namespace strij::nodeagent {
 NodeagentFactoryContextImpl::NodeagentFactoryContextImpl(
     event::DispatcherSharedPtr dispatcher, nodeagent::FunctionResolverPtr function_resolver,
     AdmissionControllerSharedPtr admission)
-    : dispatcher_{std::move(dispatcher)}, logger_{logging::Logger::GetInstance()},
-      function_resolver_{std::move(function_resolver)}, admission_{std::move(admission)} {}
+    : dispatcher_{std::move(dispatcher)}, function_resolver_{std::move(function_resolver)},
+      admission_{std::move(admission)} {}
 
 auto NodeagentFactoryContextImpl::Dispatcher() -> event::Dispatcher& { return *dispatcher_; }
-
-auto NodeagentFactoryContextImpl::Logger() -> logging::Logger& { return logger_; }
 
 auto NodeagentFactoryContextImpl::FunctionResolver() -> nodeagent::FunctionResolver& {
   return *function_resolver_;

@@ -34,13 +34,13 @@
 
 ## 4. Interface-ization of leaked consumed types
 
-- [ ] 4.1 Drop `Logger()` from the abstract `FactoryContext` (resolving the pre-existing TODO); verify no extension needs it
-- [ ] 4.2 Extract `gateway::NodeDirectory` into a `PURE` abstract contract under `include/` with `NodeDirectoryImpl` in `src/gateway/core/`
-- [ ] 4.3 Extract `gateway::ResultReceiverStorage` into an abstract contract with `ResultReceiverStorageImpl`
-- [ ] 4.4 Extract `nodeagent::AdmissionController`, `RunTaskService`, and `FunctionResolver` into abstract contracts with `*Impl` classes
-- [ ] 4.5 Move the abstract-contract headers into `include/strij/{common,gateway,nodeagent}/` and set `//visibility:public`
-- [ ] 4.6 Add the `Connection` seam-narrowing TODO to `Scheduler::HandleFrame` (accepted exclusion)
-- [ ] 4.7 Verify `make build && make test && make clang-tidy` green after interface-ization
+- [x] 4.1 Drop `Logger()` from the abstract `FactoryContext` (resolving the pre-existing TODO); verify no extension needs it
+- [x] 4.2 Extract `gateway::NodeDirectory` into a `PURE` abstract contract under `include/` with `NodeDirectoryImpl` in `src/gateway/core/`
+- [x] 4.3 Extract `gateway::ResultReceiverStorage` into an abstract contract with `ResultReceiverStorageImpl`
+- [x] 4.4 Extract `nodeagent::AdmissionController`, `RunTaskService`, and `FunctionResolver` into abstract contracts with `*Impl` classes
+- [x] 4.5 Move the abstract-contract headers into `include/strij/{common,gateway,nodeagent}/` and set `//visibility:public`
+- [x] 4.6 Add the `Connection` seam-narrowing TODO to `Scheduler::HandleFrame` (accepted exclusion)
+- [x] 4.7 Verify `make build && make test && make clang-tidy` green after interface-ization
 
 ## 5. Documentation and enforcement
 

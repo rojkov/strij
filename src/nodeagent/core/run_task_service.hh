@@ -4,32 +4,26 @@
 #include <string_view>
 
 #include "common/core/io/connection.hh"
-#include "nodeagent/core/admission_controller.hh"
 #include "nodeagent/core/task_handler_manager.hh"
-#include "common/task/task.pb.h"
+#include "strij/nodeagent/run_task_service.hh"
 
 namespace strij::nodeagent {
 
-// Runs admitted tasks to completion on the nodeagent event-loop thread. The
-// nodeagent schedulers own all inbound kTaskSubmission frames and delegate
-// execution here. NodeagentFactoryContext exposes this service so scheduler
-// factories can reach it without knowing the concrete handler manager.
-class RunTaskService final {
+// Runs admitted tasks to completion on the nodeagent event-loop thread.
+// Exposed through the abstract strij::nodeagent::RunTaskService contract.
+class RunTaskServiceImpl final : public RunTaskService {
 public:
-  RunTaskService(std::shared_ptr<TaskHandlerManager> manager,
-                 std::shared_ptr<AdmissionController> admission);
-  ~RunTaskService() = default;
+  explicit RunTaskServiceImpl(std::shared_ptr<TaskHandlerManager> manager,
+                              std::shared_ptr<AdmissionController> admission);
+  ~RunTaskServiceImpl() override = default;
 
-  RunTaskService(const RunTaskService&) = delete;
-  auto operator=(const RunTaskService&) -> RunTaskService& = delete;
-  RunTaskService(RunTaskService&&) noexcept = delete;
-  auto operator=(RunTaskService&&) noexcept -> RunTaskService& = delete;
+  RunTaskServiceImpl(const RunTaskServiceImpl&) = delete;
+  auto operator=(const RunTaskServiceImpl&) -> RunTaskServiceImpl& = delete;
+  RunTaskServiceImpl(RunTaskServiceImpl&&) noexcept = delete;
+  auto operator=(RunTaskServiceImpl&&) noexcept -> RunTaskServiceImpl& = delete;
 
-  // Admits `task` and runs it via its configured task handler, sending results
-  // back over `conn`. Sends a kTaskRejected frame on admission failure. Tasks
-  // with an unknown handler type are dropped with a warning. Runs synchronously
-  // on the caller's (event-loop) thread.
-  void RunTask(const task::Task& task, io::Connection& conn);
+  // RunTaskService
+  void RunTask(const task::Task& task, io::Connection& conn) override;
 
 private:
   static void sendTaskRejected(io::Connection& conn, const task::Task& task,

@@ -18,14 +18,12 @@ public:
                             gateway::ResultReceiverStorage& storage);
 
   auto Dispatcher() -> event::Dispatcher& override;
-  auto Logger() -> logging::Logger& override;
 
   auto NodeDirectory() -> gateway::NodeDirectory& override;
   auto ResultReceiverStorage() -> gateway::ResultReceiverStorage& override;
 
 private:
   event::DispatcherSharedPtr dispatcher_;
-  logging::Logger& logger_;
   gateway::NodeDirectory& node_directory_;
   gateway::ResultReceiverStorage& storage_;
 };

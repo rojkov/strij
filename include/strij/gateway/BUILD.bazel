@@ -1,0 +1,19 @@
+load("//bazel:build_system.bzl", "strij_cc_library")
+
+strij_cc_library(
+    name = "node_directory_interface",
+    hdrs = ["node_directory.hh"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//include/strij/common:pure_lib",
+    ],
+)
+
+strij_cc_library(
+    name = "result_receiver_storage_interface",
+    hdrs = ["result_receiver_storage.hh"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//include/strij/common:pure_lib",
+    ],
+)

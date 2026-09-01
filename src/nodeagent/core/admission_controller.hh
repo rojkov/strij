@@ -8,6 +8,7 @@
 
 #include "absl/status/status.h"
 #include "common/node/capabilities.pb.h"
+#include "strij/nodeagent/admission_controller.hh"
 
 namespace strij::nodeagent {
 
@@ -20,27 +21,18 @@ namespace strij::nodeagent {
 // (handler reservations are excluded from what gateways route on). A task type
 // is admitted only while its in-flight count is below the handler's concurrency
 // limit; a concurrency of 0 (or an undeclared type) means no limit.
-class AdmissionController {
+class AdmissionControllerImpl final : public AdmissionController {
 public:
-  explicit AdmissionController(const node::NodeCapabilities& capabilities);
+  explicit AdmissionControllerImpl(const node::NodeCapabilities& capabilities);
 
-  // Attempts to reserve capacity for a task of `task_type` requiring
-  // `requirements`. On success the pool and concurrency capacity is reserved;
-  // otherwise nothing is reserved and a descriptive error is returned.
+  // AdmissionController
   auto Admit(std::string_view task_type, const node::ResourceRequirements& requirements)
-      -> absl::Status;
-
-  // Releases capacity previously reserved by Admit(). Each Admit must be paired
-  // with exactly one Release (possibly via AdmissionScope).
-  void Release(std::string_view task_type, const node::ResourceRequirements& requirements);
-
-  // Builds the current kNodeState snapshot. `seq` is caller-owned (monotonic).
-  [[nodiscard]] auto BuildStateSnapshot(std::string node_id, uint64_t seq) const -> node::NodeState;
-
-  // Shared free capacity of a pool; 0 for undeclared pools.
-  [[nodiscard]] auto SharedFree(std::string_view pool) const -> uint64_t;
-  // Current in-flight count of a task type.
-  [[nodiscard]] auto InFlight(std::string_view task_type) const -> uint64_t;
+      -> absl::Status override;
+  void Release(std::string_view task_type, const node::ResourceRequirements& requirements) override;
+  [[nodiscard]] auto BuildStateSnapshot(std::string node_id, uint64_t seq) const
+      -> node::NodeState override;
+  [[nodiscard]] auto SharedFree(std::string_view pool) const -> uint64_t override;
+  [[nodiscard]] auto InFlight(std::string_view task_type) const -> uint64_t override;
 
 private:
   // std::less<> enables heterogeneous (string_view) lookups.
@@ -51,34 +43,5 @@ private:
   std::map<std::string, uint64_t, std::less<>> type_concurrency_map_;
   std::map<std::string, uint64_t, std::less<>> type_in_flight_map_;
 };
-
-using AdmissionControllerSharedPtr = std::shared_ptr<AdmissionController>;
-
-// RAII handle releasing admitted capacity when the owning result sender is
-// destroyed (a task that never reports a final result still releases its
-// reservation) and on the final result. Release() is idempotent. Owns a
-// shared_ptr to the controller so capacity can be released even if the scope
-// (retained by a long-lived task handler) outlives the call site.
-class AdmissionScope {
-public:
-  AdmissionScope(std::shared_ptr<AdmissionController> controller, std::string task_type,
-                 node::ResourceRequirements requirements);
-  ~AdmissionScope();
-
-  AdmissionScope(const AdmissionScope&) = delete;
-  auto operator=(const AdmissionScope&) -> AdmissionScope& = delete;
-  AdmissionScope(AdmissionScope&&) noexcept = delete;
-  auto operator=(AdmissionScope&&) noexcept -> AdmissionScope& = delete;
-
-  void Release();
-
-private:
-  std::shared_ptr<AdmissionController> controller_;
-  std::string task_type_;
-  node::ResourceRequirements requirements_;
-  bool released_{false};
-};
-
-using AdmissionScopePtr = std::unique_ptr<AdmissionScope>;
 
 } // namespace strij::nodeagent

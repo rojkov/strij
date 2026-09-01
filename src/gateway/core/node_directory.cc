@@ -11,18 +11,18 @@
 
 namespace strij::gateway {
 
-NodeDirectory::NodeDirectory(event::DispatcherSharedPtr dispatcher, io::ConnectionFactory factory,
+NodeDirectoryImpl::NodeDirectoryImpl(event::DispatcherSharedPtr dispatcher, io::ConnectionFactory factory,
                              ResultReceiverStorage& storage)
     : dispatcher_{std::move(dispatcher)}, factory_{std::move(factory)}, storage_{storage} {}
 
-void NodeDirectory::AddNode(const std::string& node_id, const std::string& address) {
+void NodeDirectoryImpl::AddNode(const std::string& node_id, const std::string& address) {
   auto node = std::make_unique<Node>(node_id, address, dispatcher_, factory_, storage_);
   Node* node_raw_ptr = node.get();
   nodes_.insert_or_assign(node_id, std::move(node));
   node_raw_ptr->StartConnect();
 }
 
-void NodeDirectory::RemoveNode(const std::string& node_id) {
+void NodeDirectoryImpl::RemoveNode(const std::string& node_id) {
   auto iter = nodes_.find(node_id);
   if (iter == nodes_.end()) {
     return;
@@ -43,7 +43,7 @@ void NodeDirectory::RemoveNode(const std::string& node_id) {
   nodes_.erase(iter);
 }
 
-void NodeDirectory::Reconcile(const std::vector<gateway::NodeInfo>& snapshot) {
+void NodeDirectoryImpl::Reconcile(const std::vector<gateway::NodeInfo>& snapshot) {
   std::set<std::string> present_ids;
   for (const auto& info : snapshot) {
     // Resolve placeholder identities that were rekeyed to a canonical id.
@@ -72,7 +72,7 @@ void NodeDirectory::Reconcile(const std::vector<gateway::NodeInfo>& snapshot) {
   }
 }
 
-void NodeDirectory::RekeyNode(const std::string& from_id, const std::string& to_id) {
+void NodeDirectoryImpl::RekeyNode(const std::string& from_id, const std::string& to_id) {
   if (from_id == to_id) {
     return;
   }
@@ -101,12 +101,12 @@ void NodeDirectory::RekeyNode(const std::string& from_id, const std::string& to_
   nodes_.erase(iter);
 }
 
-auto NodeDirectory::GetNode(const std::string& node_id) -> Node* {
+auto NodeDirectoryImpl::GetNode(const std::string& node_id) -> Node* {
   auto iter = nodes_.find(node_id);
   return iter != nodes_.end() ? iter->second.get() : nullptr;
 }
 
-auto NodeDirectory::GetNextNode() -> Node* {
+auto NodeDirectoryImpl::GetNextNode() -> Node* {
   if (nodes_.empty()) {
     return nullptr;
   }
@@ -126,7 +126,7 @@ auto NodeDirectory::GetNextNode() -> Node* {
   return nullptr;
 }
 
-auto NodeDirectory::GetCandidates(std::string_view protocol) -> std::vector<Node*> {
+auto NodeDirectoryImpl::GetCandidates(std::string_view protocol) -> std::vector<Node*> {
   std::vector<Node*> candidates;
   candidates.reserve(nodes_.size());
   for (const auto& [node_id, node] : nodes_) {
@@ -152,9 +152,9 @@ auto NodeDirectory::GetCandidates(std::string_view protocol) -> std::vector<Node
   return candidates;
 }
 
-auto NodeDirectory::GetNodeCount() const -> size_t { return nodes_.size(); }
+auto NodeDirectoryImpl::GetNodeCount() const -> size_t { return nodes_.size(); }
 
-auto NodeDirectory::GetAvailableCount() const -> size_t {
+auto NodeDirectoryImpl::GetAvailableCount() const -> size_t {
   return static_cast<size_t>(std::count_if(
       nodes_.begin(), nodes_.end(), [](const auto& entry) -> bool { return entry.second->IsAvailable(); }));
 }

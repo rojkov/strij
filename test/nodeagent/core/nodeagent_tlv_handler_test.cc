@@ -93,7 +93,7 @@ protected:
   }
 
   static auto MakeAdmission() -> std::shared_ptr<AdmissionController> {
-    return std::make_shared<AdmissionController>(*MakeCapabilities());
+    return std::make_shared<AdmissionControllerImpl>(*MakeCapabilities());
   }
 
   // Reads up to `size` bytes written by the handler into `buf`.
@@ -123,7 +123,7 @@ TEST_F(NodeagentTlvHandlerTest, EchoesTaskAsTaskResult) {
   auto manager = MakeEchoManager();
   auto admission = MakeAdmission();
   auto caps = MakeCapabilities();
-  RunTaskService run_task_service(manager, admission);
+  RunTaskServiceImpl run_task_service(manager, admission);
   nodeagent::schedulers::PushLocalScheduler scheduler(run_task_service);
 
   // When Connection::Write submits, perform the actual write to the socket.
@@ -165,7 +165,7 @@ TEST_F(NodeagentTlvHandlerTest, DropsMalformedTask) {
   auto manager = std::make_shared<TaskHandlerManager>();
   auto admission = MakeAdmission();
   auto caps = MakeCapabilities();
-  RunTaskService run_task_service(manager, admission);
+  RunTaskServiceImpl run_task_service(manager, admission);
   nodeagent::schedulers::PushLocalScheduler scheduler(run_task_service);
   std::vector<extensions::Scheduler*> schedulers{&scheduler};
   NodeagentTlvHandler handler(schedulers, caps);
@@ -193,7 +193,7 @@ TEST_F(NodeagentTlvHandlerTest, DropsTaskWithNoRegisteredHandler) {
   auto manager = std::make_shared<TaskHandlerManager>();
   auto admission = MakeAdmission();
   auto caps = MakeCapabilities();
-  RunTaskService run_task_service(manager, admission);
+  RunTaskServiceImpl run_task_service(manager, admission);
   nodeagent::schedulers::PushLocalScheduler scheduler(run_task_service);
   std::vector<extensions::Scheduler*> schedulers{&scheduler};
   NodeagentTlvHandler handler(schedulers, caps);
@@ -222,7 +222,7 @@ TEST_F(NodeagentTlvHandlerTest, AsyncHandlerRetainsSenderAndSendsTwice) {
 
   auto admission = MakeAdmission();
   auto caps = MakeCapabilities();
-  RunTaskService run_task_service(manager, admission);
+  RunTaskServiceImpl run_task_service(manager, admission);
   nodeagent::schedulers::PushLocalScheduler scheduler(run_task_service);
 
   // When Connection::Write submits, perform the write to the socket and
@@ -285,7 +285,7 @@ TEST_F(NodeagentTlvHandlerTest, SendAdvertisementWritesCapabilitiesAsFirstFrame)
 
   auto manager = MakeEchoManager();
   auto admission = MakeAdmission();
-  RunTaskService run_task_service(manager, admission);
+  RunTaskServiceImpl run_task_service(manager, admission);
   nodeagent::schedulers::PushLocalScheduler scheduler(run_task_service);
   std::vector<extensions::Scheduler*> schedulers{&scheduler};
   NodeagentTlvHandler handler(schedulers, caps);
@@ -319,7 +319,7 @@ TEST_F(NodeagentTlvHandlerTest, RejectsTaskWhenPoolExhausted) {
 
   auto manager = std::make_shared<TaskHandlerManager>();
   manager->AddHandler("retaining", std::make_unique<RetainingSenderHandler>());
-  auto admission = std::make_shared<AdmissionController>(*caps);
+  auto admission = std::make_shared<AdmissionControllerImpl>(*caps);
 
   // Only the rejected task writes a frame.
   EXPECT_CALL(*dispatcher_, PrepareWrite(::testing::_, ::testing::_, ::testing::_, ::testing::_, 0))
@@ -327,7 +327,7 @@ TEST_F(NodeagentTlvHandlerTest, RejectsTaskWhenPoolExhausted) {
                                          std::span<const std::byte> buf,
                                          off_t) { ::write(fds_[0], buf.data(), buf.size()); }));
 
-  RunTaskService run_task_service(manager, admission);
+  RunTaskServiceImpl run_task_service(manager, admission);
   nodeagent::schedulers::PushLocalScheduler scheduler(run_task_service);
   std::vector<extensions::Scheduler*> schedulers{&scheduler};
   NodeagentTlvHandler handler(schedulers, caps);
@@ -380,14 +380,14 @@ TEST_F(NodeagentTlvHandlerTest, RejectsTaskAtConcurrencyLimit) {
 
   auto manager = std::make_shared<TaskHandlerManager>();
   manager->AddHandler("retaining", std::make_unique<RetainingSenderHandler>());
-  auto admission = std::make_shared<AdmissionController>(*caps);
+  auto admission = std::make_shared<AdmissionControllerImpl>(*caps);
 
   EXPECT_CALL(*dispatcher_, PrepareWrite(::testing::_, ::testing::_, ::testing::_, ::testing::_, 0))
       .WillOnce(::testing::Invoke([this](event::Completable*, uint8_t, int,
                                          std::span<const std::byte> buf,
                                          off_t) { ::write(fds_[0], buf.data(), buf.size()); }));
 
-  RunTaskService run_task_service(manager, admission);
+  RunTaskServiceImpl run_task_service(manager, admission);
   nodeagent::schedulers::PushLocalScheduler scheduler(run_task_service);
   std::vector<extensions::Scheduler*> schedulers{&scheduler};
   NodeagentTlvHandler handler(schedulers, caps);
@@ -440,7 +440,7 @@ TEST_F(NodeagentTlvHandlerTest, CompletionReleasesReservedCapacity) {
   handler_cap->set_task_type("echo");
 
   auto manager = MakeEchoManager();
-  auto admission = std::make_shared<AdmissionController>(*caps);
+  auto admission = std::make_shared<AdmissionControllerImpl>(*caps);
   EXPECT_EQ(admission->SharedFree("cpu"), 16U);
 
   EXPECT_CALL(*dispatcher_, PrepareWrite(::testing::_, ::testing::_, ::testing::_, ::testing::_, 0))
@@ -448,7 +448,7 @@ TEST_F(NodeagentTlvHandlerTest, CompletionReleasesReservedCapacity) {
                                          std::span<const std::byte> buf,
                                          off_t) { ::write(fds_[0], buf.data(), buf.size()); }));
 
-  RunTaskService run_task_service(manager, admission);
+  RunTaskServiceImpl run_task_service(manager, admission);
   nodeagent::schedulers::PushLocalScheduler scheduler(run_task_service);
   std::vector<extensions::Scheduler*> schedulers{&scheduler};
   NodeagentTlvHandler handler(schedulers, caps);

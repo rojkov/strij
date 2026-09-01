@@ -20,7 +20,6 @@ public:
                               AdmissionControllerSharedPtr admission);
 
   auto Dispatcher() -> event::Dispatcher& override;
-  auto Logger() -> logging::Logger& override;
 
   auto FunctionResolver() -> nodeagent::FunctionResolver& override;
   auto AdmissionController() -> AdmissionControllerSharedPtr override;
@@ -30,7 +29,6 @@ public:
 
 private:
   event::DispatcherSharedPtr dispatcher_;
-  logging::Logger& logger_;
   nodeagent::FunctionResolverPtr function_resolver_;
   AdmissionControllerSharedPtr admission_;
   nodeagent::RunTaskService* run_task_service_{nullptr};

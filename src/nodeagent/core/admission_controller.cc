@@ -10,7 +10,7 @@
 
 namespace strij::nodeagent {
 
-AdmissionController::AdmissionController(const node::NodeCapabilities& capabilities) {
+AdmissionControllerImpl::AdmissionControllerImpl(const node::NodeCapabilities& capabilities) {
   for (const auto& pool : capabilities.pools()) {
     pool_total_map_[pool.name()] = pool.total();
   }
@@ -24,7 +24,7 @@ AdmissionController::AdmissionController(const node::NodeCapabilities& capabilit
   }
 }
 
-auto AdmissionController::Admit(std::string_view task_type,
+auto AdmissionControllerImpl::Admit(std::string_view task_type,
                                 const node::ResourceRequirements& requirements) -> absl::Status {
   for (const auto& [pool, amount] : requirements.resources()) {
     if (!pool_total_map_.contains(pool)) {
@@ -56,7 +56,7 @@ auto AdmissionController::Admit(std::string_view task_type,
   return absl::OkStatus();
 }
 
-void AdmissionController::Release(std::string_view task_type,
+void AdmissionControllerImpl::Release(std::string_view task_type,
                                   const node::ResourceRequirements& requirements) {
   for (const auto& [pool, amount] : requirements.resources()) {
     auto iter = pool_in_use_map_.find(pool);
@@ -83,7 +83,7 @@ void AdmissionController::Release(std::string_view task_type,
   }
 }
 
-auto AdmissionController::BuildStateSnapshot(std::string node_id, uint64_t seq) const
+auto AdmissionControllerImpl::BuildStateSnapshot(std::string node_id, uint64_t seq) const
     -> node::NodeState {
   node::NodeState state;
   state.set_node_id(std::move(node_id));
@@ -112,7 +112,7 @@ auto AdmissionController::BuildStateSnapshot(std::string node_id, uint64_t seq) 
   return state;
 }
 
-auto AdmissionController::SharedFree(std::string_view pool) const -> uint64_t {
+auto AdmissionControllerImpl::SharedFree(std::string_view pool) const -> uint64_t {
   const auto total_iter = pool_total_map_.find(pool);
   if (total_iter == pool_total_map_.end()) {
     return 0;
@@ -130,7 +130,7 @@ auto AdmissionController::SharedFree(std::string_view pool) const -> uint64_t {
   return total_iter->second > reserved + in_use ? total_iter->second - reserved - in_use : 0;
 }
 
-auto AdmissionController::InFlight(std::string_view task_type) const -> uint64_t {
+auto AdmissionControllerImpl::InFlight(std::string_view task_type) const -> uint64_t {
   const auto iter = type_in_flight_map_.find(task_type);
   return iter == type_in_flight_map_.end() ? 0 : iter->second;
 }

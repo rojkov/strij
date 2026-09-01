@@ -23,8 +23,8 @@ using ::testing::ReturnRef;
 class SchedulerFactoryTest : public ::testing::Test {
 protected:
   std::shared_ptr<event::MockDispatcher> dispatcher_{std::make_shared<event::MockDispatcher>()};
-  gateway::ResultReceiverStorage storage_;
-  gateway::NodeDirectory directory_{
+  gateway::ResultReceiverStorageImpl storage_;
+  gateway::NodeDirectoryImpl directory_{
       dispatcher_,
       [](io::Connection&) -> io::ProtocolParserPtr {
         return std::make_unique<io::TrivialParser>();

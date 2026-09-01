@@ -8,6 +8,7 @@ strij_cc_library(
     deps = [
         ":exact_state_tracker_lib",
         "//include/strij/common:pure_lib",
+        "//include/strij/gateway:result_receiver_storage_interface",
     ],
 )
 
@@ -48,6 +49,7 @@ strij_cc_library(
         ":node_lib",
         ":result_receiver_storage",
         "//include/strij/event:dispatcher_interface",
+        "//include/strij/gateway:node_directory_interface",
         "//src/common/core/io:connection_lib",
         "//src/common/core/logging:log_lib",
         "//src/gateway/extensions/node_discovery:node_discovery_interface",

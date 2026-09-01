@@ -11,29 +11,32 @@
 #include "common/core/io/connection.hh"
 #include "gateway/extensions/node_discovery/node_discovery.hh"
 #include "strij/event/dispatcher.hh"
+#include "strij/gateway/node_directory.hh"
 
 namespace strij::gateway {
 
 class ResultReceiverStorage;
 
-// Owns the pool of Node instances, keyed by the stable node_id. Membership is
-// driven by repeated discovery snapshots via Reconcile(); the gateway never
-// invents nodes.
-class NodeDirectory final {
+// Concrete node pool implementation: owns the set of Node instances keyed by
+// the stable node_id. Membership is driven by repeated discovery snapshots via
+// Reconcile(); the gateway never invents nodes. Consumed through the abstract
+// strij::gateway::NodeDirectory contract; extension authors SHALL NOT subclass
+// this Impl.
+class NodeDirectoryImpl final : public NodeDirectory {
 public:
-  NodeDirectory(event::DispatcherSharedPtr dispatcher, io::ConnectionFactory factory,
-                ResultReceiverStorage& storage);
-  ~NodeDirectory() = default;
+  NodeDirectoryImpl(event::DispatcherSharedPtr dispatcher, io::ConnectionFactory factory,
+                    ResultReceiverStorage& storage);
+  ~NodeDirectoryImpl() override = default;
 
-  NodeDirectory(const NodeDirectory&) = delete;
-  auto operator=(const NodeDirectory&) -> NodeDirectory& = delete;
-  NodeDirectory(NodeDirectory&&) noexcept = delete;
-  auto operator=(NodeDirectory&&) noexcept -> NodeDirectory& = delete;
+  NodeDirectoryImpl(const NodeDirectoryImpl&) = delete;
+  auto operator=(const NodeDirectoryImpl&) -> NodeDirectoryImpl& = delete;
+  NodeDirectoryImpl(NodeDirectoryImpl&&) noexcept = delete;
+  auto operator=(NodeDirectoryImpl&&) noexcept -> NodeDirectoryImpl& = delete;
 
   // Adds a node and starts connecting it. A no-op for an existing node_id.
-  void AddNode(const std::string& node_id, const std::string& address);
+  void AddNode(const std::string& node_id, const std::string& address) override;
   // Disconnects and drops the node. A no-op for an unknown node_id.
-  void RemoveNode(const std::string& node_id);
+  void RemoveNode(const std::string& node_id) override;
   // Diffs a full discovery snapshot against current membership: adds new
   // identities, removes gone ones, and reconnects existing ones whose address
   // changed. Snapshot entries whose node_id was previously rekeyed (see
@@ -44,15 +47,15 @@ public:
   // reconciliation snapshots referring to `from_id` resolve to `to_id`.
   void RekeyNode(const std::string& from_id, const std::string& to_id);
 
-  auto GetNode(const std::string& node_id) -> Node*;
-  auto GetNextNode() -> Node*;
+  auto GetNode(const std::string& node_id) -> Node* override;
+  auto GetNextNode() -> Node* override;
   // Returns connected nodes whose advertisement lists `protocol` in
   // scheduling_protocols. A node that is connected but has not advertised yet
   // is treated as eligible (the advertisement is the first frame on the
   // connection, so this only covers the handshake window).
-  auto GetCandidates(std::string_view protocol) -> std::vector<Node*>;
-  auto GetNodeCount() const -> size_t;
-  auto GetAvailableCount() const -> size_t;
+  auto GetCandidates(std::string_view protocol) -> std::vector<Node*> override;
+  auto GetNodeCount() const -> size_t override;
+  auto GetAvailableCount() const -> size_t override;
 
 private:
   event::DispatcherSharedPtr dispatcher_;

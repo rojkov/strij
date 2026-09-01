@@ -2,68 +2,50 @@
 
 #include <cstddef>
 #include <memory>
-#include <span>
 #include <string>
-#include <string_view>
 #include <unordered_map>
 
-#include "strij/common/pure.hh"
+#include "strij/gateway/result_receiver_storage.hh"
 
 namespace strij::gateway {
 
 class ExactStateTracker;
 
-class ResultReceiver {
+// Concrete per-task result receiver registry backing the gateway. Consumed
+// through the abstract strij::gateway::ResultReceiverStorage contract;
+// extension authors SHALL NOT subclass this Impl.
+class ResultReceiverStorageImpl final : public ResultReceiverStorage {
 public:
-  ResultReceiver() = default;
-  virtual ~ResultReceiver() = default;
-
-  ResultReceiver(const ResultReceiver&) = delete;
-  auto operator=(const ResultReceiver&) -> ResultReceiver& = delete;
-  ResultReceiver(ResultReceiver&&) noexcept = delete;
-  auto operator=(ResultReceiver&&) noexcept -> ResultReceiver& = delete;
-
-  // Delivers one result chunk of a task. `is_final` marks the last result.
-  virtual void Deliver(std::span<const std::byte> value, bool is_final) PURE;
-  // Delivers an error outcome (e.g. the node rejected the task); the client
-  // connection must not hang. Implementations may finalize their framing.
-  virtual void DeliverError(std::string_view reason) PURE;
-};
-
-using ResultReceiverPtr = std::unique_ptr<ResultReceiver>;
-
-class ResultReceiverStorage {
-public:
-  explicit ResultReceiverStorage(ExactStateTracker* state_tracker = nullptr)
+  explicit ResultReceiverStorageImpl(ExactStateTracker* state_tracker = nullptr)
       : state_tracker_{state_tracker} {}
 
-  void Put(std::string task_id, ResultReceiverPtr receiver, std::string node_id) {
+  void Put(std::string task_id, ResultReceiverPtr receiver, std::string node_id) override {
     receivers_.emplace(task_id, std::move(receiver));
     node_of_task_.emplace(std::move(task_id), std::move(node_id));
   }
 
-  auto Get(const std::string& task_id) -> ResultReceiver* {
+  auto Get(const std::string& task_id) -> ResultReceiver* override {
     auto iter = receivers_.find(task_id);
     return iter != receivers_.end() ? iter->second.get() : nullptr;
   }
 
-  void Erase(const std::string& task_id) {
+  void Erase(const std::string& task_id) override {
     receivers_.erase(task_id);
     node_of_task_.erase(task_id);
   }
 
-  auto Empty() const -> bool { return receivers_.empty(); }
-  auto Size() const -> size_t { return receivers_.size(); }
+  auto Empty() const -> bool override { return receivers_.empty(); }
+  auto Size() const -> size_t override { return receivers_.size(); }
 
   // Cleans up all receivers for tasks routed to `node_id`. Delivers errors to
   // still-connected HTTP clients, removes receivers, and records completions
   // in the state tracker.
-  void NotifyNodeDisconnected(const std::string& node_id);
+  void NotifyNodeDisconnected(const std::string& node_id) override;
 
   // Cleans up the receiver for a task whose HTTP client disconnected before
   // the task completed. Removes the receiver and records completion in the
   // state tracker so the node's in-flight accounting is unwound.
-  void NotifyClientDisconnected(const std::string& task_id);
+  void NotifyClientDisconnected(const std::string& task_id) override;
 
 private:
   ExactStateTracker* state_tracker_;

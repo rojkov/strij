@@ -38,8 +38,6 @@ public:
   auto operator=(FactoryContext&&) noexcept -> FactoryContext& = delete;
 
   virtual auto Dispatcher() -> event::Dispatcher& PURE;
-  // TODO: Is Logger() really needed?
-  virtual auto Logger() -> logging::Logger& PURE;
 };
 
 // Gateway-side extension services. Only gateway scheduler extensions and node

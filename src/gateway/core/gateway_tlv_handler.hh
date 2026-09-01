@@ -20,7 +20,7 @@ inline constexpr uint32_t kSupportedCapabilityVersion = 1;
 
 class GatewayTlvHandler final {
 public:
-  GatewayTlvHandler(NodeDirectory& directory, ResultReceiverStorage& storage,
+  GatewayTlvHandler(NodeDirectoryImpl& directory, ResultReceiverStorage& storage,
                     // TODO: I don't like default parameters, they make code error prone.
                     extensions::Scheduler* scheduler = nullptr,
                     ExactStateTracker* state_tracker = nullptr)
@@ -46,7 +46,7 @@ private:
   auto handleTaskRejectedFrame(const io::TlvFrame& frame, io::Connection& conn) -> absl::Status;
   auto handleTaskResultFrame(const io::TlvFrame& frame, io::Connection& conn) -> absl::Status;
 
-  NodeDirectory& directory_;
+  NodeDirectoryImpl& directory_;
   ResultReceiverStorage& storage_;
   // Optional inbound-frame routing seam: a frame type not owned by a built-in
   // handler is handed to the scheduler, which routes it (and reports via its

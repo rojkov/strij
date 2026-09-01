@@ -158,13 +158,13 @@ TEST_F(ParseTaskTypeTest, EmptyTypeForTasksPrefixWithQuery) {
 
 class GatewayTlvHandlerTest : public ::testing::Test {
 protected:
-  ResultReceiverStorage storage_;
+  ResultReceiverStorageImpl storage_;
   std::shared_ptr<event::MockDispatcher> dispatcher_{std::make_shared<event::MockDispatcher>()};
-  NodeDirectory directory_{dispatcher_,
-                           [](io::Connection&) -> io::ProtocolParserPtr {
-                             return std::make_unique<io::TrivialParser>();
-                           },
-                           storage_};
+  NodeDirectoryImpl directory_{dispatcher_,
+                               [](io::Connection&) -> io::ProtocolParserPtr {
+                                 return std::make_unique<io::TrivialParser>();
+                               },
+                               storage_};
   GatewayTlvHandler handler_{directory_, storage_};
 };
 
@@ -640,7 +640,7 @@ TEST(PopulateParametersFromHeadersTest, MultipleXStrijHeadersAreForwarded) {
 
 class GatewayHttpHandlerTest : public ::testing::Test {
 protected:
-  ResultReceiverStorage storage_;
+  ResultReceiverStorageImpl storage_;
 };
 
 TEST_F(GatewayHttpHandlerTest, HandleMessageForwardsParametersToNode) {
@@ -659,8 +659,8 @@ TEST_F(GatewayHttpHandlerTest, HandleMessageForwardsParametersToNode) {
 
   // Node directory with one node that we drive into the connected state by
   // simulating a successful connect completion.
-  gateway::ResultReceiverStorage node_storage;
-  gateway::NodeDirectory directory(
+  gateway::ResultReceiverStorageImpl node_storage;
+  gateway::NodeDirectoryImpl directory(
       dispatcher,
       [](io::Connection&) -> io::ProtocolParserPtr {
         return std::make_unique<io::TrivialParser>();
@@ -728,8 +728,8 @@ TEST_F(GatewayHttpHandlerTest, RoutesTaskThroughScheduler) {
                              return std::make_unique<io::TrivialParser>();
                            });
 
-  gateway::ResultReceiverStorage node_storage2;
-  gateway::NodeDirectory directory(
+  gateway::ResultReceiverStorageImpl node_storage2;
+  gateway::NodeDirectoryImpl directory(
       dispatcher,
       [](io::Connection&) -> io::ProtocolParserPtr {
         return std::make_unique<io::TrivialParser>();
@@ -811,8 +811,8 @@ TEST_F(GatewayHttpHandlerTest, DeclinedScheduleResolvesReceiverWithoutHttpError)
                              return std::make_unique<io::TrivialParser>();
                            });
 
-  gateway::ResultReceiverStorage node_storage3;
-  gateway::NodeDirectory directory(
+  gateway::ResultReceiverStorageImpl node_storage3;
+  gateway::NodeDirectoryImpl directory(
       dispatcher,
       [](io::Connection&) -> io::ProtocolParserPtr {
         return std::make_unique<io::TrivialParser>();
@@ -860,7 +860,7 @@ TEST_F(GatewayHttpHandlerTest, DeclinedScheduleResolvesReceiverWithoutHttpError)
 
 TEST_F(GatewayTlvHandlerTest, HttpDropErasesReceiver) {
   ExactStateTracker tracker;
-  ResultReceiverStorage storage{&tracker};
+  ResultReceiverStorageImpl storage{&tracker};
   std::vector<std::byte> delivered;
   storage.Put("t1", std::make_unique<MockReceiver>(&delivered), "node-A");
   tracker.RecordSubmission("t1", "node-A", {});
@@ -899,7 +899,7 @@ TEST_F(GatewayTlvHandlerTest, HttpDropErasesReceiver) {
 
 TEST(GatewayReceiverLifecycleTest, HttpDropRecordsCompletion) {
   ExactStateTracker tracker;
-  ResultReceiverStorage storage{&tracker};
+  ResultReceiverStorageImpl storage{&tracker};
 
   std::vector<std::byte> delivered;
   storage.Put("t1", std::make_unique<MockReceiver>(&delivered), "node-A");
@@ -915,7 +915,7 @@ TEST(GatewayReceiverLifecycleTest, HttpDropRecordsCompletion) {
 
 TEST(GatewayReceiverLifecycleTest, NodeDropDeliversErrorsAndRecordsCompletion) {
   ExactStateTracker tracker;
-  ResultReceiverStorage storage{&tracker};
+  ResultReceiverStorageImpl storage{&tracker};
 
   std::vector<std::byte> delivered_a;
   std::vector<std::byte> delivered_b;
@@ -947,13 +947,13 @@ TEST(GatewayReceiverLifecycleTest, NodeDropDeliversErrorsAndRecordsCompletion) {
 
 TEST(GatewayReceiverLifecycleTest, NodeDropNoReceiversIsNoop) {
   ExactStateTracker tracker;
-  ResultReceiverStorage storage{&tracker};
+  ResultReceiverStorageImpl storage{&tracker};
   storage.NotifyNodeDisconnected("nonexistent");
   EXPECT_TRUE(storage.Empty());
 }
 
 TEST(GatewayReceiverLifecycleTest, IdempotentDoubleErase) {
-  ResultReceiverStorage storage;
+  ResultReceiverStorageImpl storage;
 
   std::vector<std::byte> delivered;
   storage.Put("t1", std::make_unique<MockReceiver>(&delivered), "node-A");
@@ -969,7 +969,7 @@ TEST(GatewayReceiverLifecycleTest, IdempotentDoubleErase) {
 
 TEST(GatewayReceiverLifecycleTest, NodeDropDeliversErrorWhileHttpAlive) {
   ExactStateTracker tracker;
-  ResultReceiverStorage storage{&tracker};
+  ResultReceiverStorageImpl storage{&tracker};
 
   std::vector<std::byte> delivered;
   auto errors = std::make_shared<std::vector<std::string>>();

@@ -18,11 +18,11 @@
 
 namespace strij::nodeagent {
 
-RunTaskService::RunTaskService(std::shared_ptr<TaskHandlerManager> manager,
+RunTaskServiceImpl::RunTaskServiceImpl(std::shared_ptr<TaskHandlerManager> manager,
                                std::shared_ptr<AdmissionController> admission)
     : manager_{std::move(manager)}, admission_{std::move(admission)} {}
 
-void RunTaskService::sendTaskRejected(io::Connection& conn, const task::Task& task,
+void RunTaskServiceImpl::sendTaskRejected(io::Connection& conn, const task::Task& task,
                                       std::string_view reason) {
   task::TaskRejected rejected;
   rejected.set_id(task.id());
@@ -35,7 +35,7 @@ void RunTaskService::sendTaskRejected(io::Connection& conn, const task::Task& ta
   LOG_WARNING("Task {} rejected: {}", task.id(), reason);
 }
 
-void RunTaskService::RunTask(const task::Task& task, io::Connection& conn) {
+void RunTaskServiceImpl::RunTask(const task::Task& task, io::Connection& conn) {
   nodeagent::TaskHandler* handler = manager_->GetHandler(task.type());
   if (handler == nullptr) {
     LOG_WARNING("No task handler for type '{}'", task.type());

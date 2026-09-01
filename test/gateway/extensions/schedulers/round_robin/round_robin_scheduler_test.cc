@@ -60,11 +60,11 @@ auto MakeTask(const std::string& id, const std::string& type) -> task::Task {
 class RoundRobinSchedulerTest : public ::testing::Test {
 protected:
   std::shared_ptr<event::MockDispatcher> dispatcher_{std::make_shared<event::MockDispatcher>()};
-  gateway::ResultReceiverStorage storage_;
+  gateway::ResultReceiverStorageImpl storage_;
 
   auto MakeConnectedDirectory(std::initializer_list<std::string> ids)
       -> std::unique_ptr<gateway::NodeDirectory> {
-    auto directory = std::make_unique<gateway::NodeDirectory>(
+    auto directory = std::make_unique<gateway::NodeDirectoryImpl>(
         dispatcher_,
         [](io::Connection&) -> io::ProtocolParserPtr {
           return std::make_unique<io::TrivialParser>();

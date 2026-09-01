@@ -110,13 +110,13 @@ auto RunGateway(int argc, char** argv) -> int {
   // TODO: check why so many components are aware of state_tracker. I assumed it's needed for
   // centralized schedulers only.
   strij::gateway::ExactStateTracker state_tracker;
-  strij::gateway::ResultReceiverStorage storage{&state_tracker};
+  strij::gateway::ResultReceiverStorageImpl storage{&state_tracker};
 
   // The connection factory needs the NodeDirectory and the scheduler router,
   // both of which are constructed after it, so back-pointers are filled in
   // once the objects exist. Connections are only accepted during Run(), by
   // which time both pointers are set.
-  strij::gateway::NodeDirectory* node_directory_ptr = nullptr;
+  strij::gateway::NodeDirectoryImpl* node_directory_ptr = nullptr;
   strij::gateway::SchedulerRouter* scheduler_router_ptr = nullptr;
   auto connection_factory = [&storage, &state_tracker, &node_directory_ptr, &scheduler_router_ptr](
                                 strij::io::Connection& conn) -> strij::io::ProtocolParserPtr {
@@ -132,7 +132,7 @@ auto RunGateway(int argc, char** argv) -> int {
         });
   };
 
-  strij::gateway::NodeDirectory node_directory{dispatcher, std::move(connection_factory), storage};
+  strij::gateway::NodeDirectoryImpl node_directory{dispatcher, std::move(connection_factory), storage};
   node_directory_ptr = &node_directory;
 
   strij::gateway::GatewayFactoryContextImpl factory_context(dispatcher, node_directory, storage);

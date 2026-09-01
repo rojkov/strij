@@ -32,7 +32,7 @@ auto Snapshot(std::initializer_list<NodeInfo> infos) -> std::vector<NodeInfo> { 
 class NodeDirectoryTest : public ::testing::Test {
 protected:
   std::shared_ptr<event::MockDispatcher> dispatcher_{std::make_shared<event::MockDispatcher>()};
-  gateway::ResultReceiverStorage storage_;
+  gateway::ResultReceiverStorageImpl storage_;
 
   // A ConnectionFactory that reports parser destruction through a shared flag,
   // observable as the Connection being torn down.
@@ -74,13 +74,13 @@ protected:
 // NOLINTBEGIN(modernize-use-trailing-return-type)
 
 TEST_F(NodeDirectoryTest, StartsEmpty) {
-  NodeDirectory directory(dispatcher_, MakeTrivialFactory(), storage_);
+  NodeDirectoryImpl directory(dispatcher_, MakeTrivialFactory(), storage_);
   EXPECT_EQ(directory.GetNodeCount(), 0U);
   EXPECT_EQ(directory.GetAvailableCount(), 0U);
 }
 
 TEST_F(NodeDirectoryTest, AddNodeStartsConnecting) {
-  NodeDirectory directory(dispatcher_, MakeTrivialFactory(), storage_);
+  NodeDirectoryImpl directory(dispatcher_, MakeTrivialFactory(), storage_);
 
   event::Completable* node_completable = nullptr;
   EXPECT_CALL(*dispatcher_, PrepareConnect(_, _, _, _, _))
@@ -96,7 +96,7 @@ TEST_F(NodeDirectoryTest, AddNodeStartsConnecting) {
 
 TEST_F(NodeDirectoryTest, RemoveNodeDropsAndClosesConnection) {
   auto parser_destroyed = std::make_shared<bool>(false);
-  NodeDirectory directory(dispatcher_, MakeTrackingFactory(parser_destroyed), storage_);
+  NodeDirectoryImpl directory(dispatcher_, MakeTrackingFactory(parser_destroyed), storage_);
 
   event::Completable* node_completable = nullptr;
   EXPECT_CALL(*dispatcher_, PrepareConnect(_, _, _, _, _))
@@ -114,13 +114,13 @@ TEST_F(NodeDirectoryTest, RemoveNodeDropsAndClosesConnection) {
 }
 
 TEST_F(NodeDirectoryTest, RemoveUnknownNodeIsNoop) {
-  NodeDirectory directory(dispatcher_, MakeTrivialFactory(), storage_);
+  NodeDirectoryImpl directory(dispatcher_, MakeTrivialFactory(), storage_);
   directory.RemoveNode("10.0.0.6:9090");
   EXPECT_EQ(directory.GetNodeCount(), 0U);
 }
 
 TEST_F(NodeDirectoryTest, ReconcileAddsAndRemoves) {
-  NodeDirectory directory(dispatcher_, MakeTrivialFactory(), storage_);
+  NodeDirectoryImpl directory(dispatcher_, MakeTrivialFactory(), storage_);
 
   EXPECT_CALL(*dispatcher_, PrepareConnect(_, _, _, _, _)).Times(3);
   directory.Reconcile(Snapshot({NodeInfo{"A", "10.0.0.1:9090"}, NodeInfo{"B", "10.0.0.2:9090"}}));
@@ -134,7 +134,7 @@ TEST_F(NodeDirectoryTest, ReconcileAddsAndRemoves) {
 }
 
 TEST_F(NodeDirectoryTest, ReconcileUnchangedSnapshotIsNoop) {
-  NodeDirectory directory(dispatcher_, MakeTrivialFactory(), storage_);
+  NodeDirectoryImpl directory(dispatcher_, MakeTrivialFactory(), storage_);
 
   EXPECT_CALL(*dispatcher_, PrepareConnect(_, _, _, _, _)).Times(2);
   directory.Reconcile(Snapshot({NodeInfo{"A", "10.0.0.1:9090"}, NodeInfo{"B", "10.0.0.2:9090"}}));
@@ -145,7 +145,7 @@ TEST_F(NodeDirectoryTest, ReconcileUnchangedSnapshotIsNoop) {
 }
 
 TEST_F(NodeDirectoryTest, ReconcileReconnectsWhenAddressChanges) {
-  NodeDirectory directory(dispatcher_, MakeTrivialFactory(), storage_);
+  NodeDirectoryImpl directory(dispatcher_, MakeTrivialFactory(), storage_);
 
   EXPECT_CALL(*dispatcher_, PrepareConnect(_, _, _, _, _)).Times(2);
   directory.Reconcile(Snapshot({NodeInfo{"n1", "10.0.0.1:9090"}}));
@@ -160,7 +160,7 @@ TEST_F(NodeDirectoryTest, ReconcileReconnectsWhenAddressChanges) {
 }
 
 TEST_F(NodeDirectoryTest, ReconcileMultipleSnapshotsDriveMembership) {
-  NodeDirectory directory(dispatcher_, MakeTrivialFactory(), storage_);
+  NodeDirectoryImpl directory(dispatcher_, MakeTrivialFactory(), storage_);
 
   EXPECT_CALL(*dispatcher_, PrepareConnect(_, _, _, _, _)).Times(3);
   directory.Reconcile(Snapshot({NodeInfo{"A", "10.0.0.1:9090"}, NodeInfo{"B", "10.0.0.2:9090"}}));
@@ -174,7 +174,7 @@ TEST_F(NodeDirectoryTest, ReconcileMultipleSnapshotsDriveMembership) {
 }
 
 TEST_F(NodeDirectoryTest, RekeyNodeMovesRecordToCanonicalId) {
-  NodeDirectory directory(dispatcher_, MakeTrivialFactory(), storage_);
+  NodeDirectoryImpl directory(dispatcher_, MakeTrivialFactory(), storage_);
 
   EXPECT_CALL(*dispatcher_, PrepareConnect(_, _, _, _, _)).Times(1);
   directory.AddNode("10.0.0.4:9090", "10.0.0.4:9090");
@@ -187,7 +187,7 @@ TEST_F(NodeDirectoryTest, RekeyNodeMovesRecordToCanonicalId) {
 }
 
 TEST_F(NodeDirectoryTest, RekeyCollisionKeepsOriginalRecord) {
-  NodeDirectory directory(dispatcher_, MakeTrivialFactory(), storage_);
+  NodeDirectoryImpl directory(dispatcher_, MakeTrivialFactory(), storage_);
 
   EXPECT_CALL(*dispatcher_, PrepareConnect(_, _, _, _, _)).Times(2);
   directory.AddNode("10.0.0.4:9090", "10.0.0.4:9090");
@@ -201,7 +201,7 @@ TEST_F(NodeDirectoryTest, RekeyCollisionKeepsOriginalRecord) {
 }
 
 TEST_F(NodeDirectoryTest, GetNextNodeReturnsNullWhenNoneAvailable) {
-  NodeDirectory directory(dispatcher_, MakeTrivialFactory(), storage_);
+  NodeDirectoryImpl directory(dispatcher_, MakeTrivialFactory(), storage_);
 
   EXPECT_CALL(*dispatcher_, PrepareConnect(_, _, _, _, _)).WillRepeatedly(::testing::Return());
   directory.AddNode("n1", "10.0.0.1:9090");
@@ -210,7 +210,7 @@ TEST_F(NodeDirectoryTest, GetNextNodeReturnsNullWhenNoneAvailable) {
 }
 
 TEST_F(NodeDirectoryTest, GetNextNodeReturnsConnectedNode) {
-  NodeDirectory directory(dispatcher_, MakeTrivialFactory(), storage_);
+  NodeDirectoryImpl directory(dispatcher_, MakeTrivialFactory(), storage_);
 
   event::Completable* node_completable = nullptr;
   EXPECT_CALL(*dispatcher_, PrepareConnect(_, _, _, _, _))
@@ -223,7 +223,7 @@ TEST_F(NodeDirectoryTest, GetNextNodeReturnsConnectedNode) {
 }
 
 TEST_F(NodeDirectoryTest, ReconcileResolvesRekeyedPlaceholderIdentity) {
-  NodeDirectory directory(dispatcher_, MakeTrivialFactory(), storage_);
+  NodeDirectoryImpl directory(dispatcher_, MakeTrivialFactory(), storage_);
 
   EXPECT_CALL(*dispatcher_, PrepareConnect(_, _, _, _, _)).WillRepeatedly(::testing::Return());
   directory.AddNode("10.0.0.1:9090", "10.0.0.1:9090");
@@ -258,7 +258,7 @@ auto MakeCapabilities(std::initializer_list<std::string> protocols) -> node::Nod
 } // namespace
 
 TEST_F(NodeDirectoryTest, GetCandidatesFiltersByAdvertisingProtocol) {
-  NodeDirectory directory(dispatcher_, MakeTrivialFactory(), storage_);
+  NodeDirectoryImpl directory(dispatcher_, MakeTrivialFactory(), storage_);
 
   EXPECT_CALL(*dispatcher_, PrepareConnect(_, _, _, _, _)).WillRepeatedly(::testing::Return());
   directory.AddNode("push", "10.0.0.1:9090");

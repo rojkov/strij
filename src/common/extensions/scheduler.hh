@@ -9,7 +9,7 @@
 #include "absl/status/statusor.h"
 #include "common/config/extensions.pb.h"
 #include "common/extensions/factory_context.hh"
-#include "gateway/core/result_receiver_storage.hh"
+#include "strij/gateway/result_receiver_storage.hh"
 #include "common/core/io/connection.hh"
 #include "common/core/io/tlv_frame.hh"
 #include "common/task/task.pb.h"
@@ -49,6 +49,11 @@ public:
   // legitimate no-op); a non-ok Status (e.g. NotFound when the frame type is
   // unclaimed) signals the frame was dropped. Defaults to a no-op for schedulers
   // with no inbound frames (pure gateway-side policies).
+  //
+  // TODO(seam): narrow the `io::Connection&` dependency off the extension
+  // surface. Extension authors can't depend on the framework's concrete
+  // io::Connection; replace it with a small abstract connection/seam type so
+  // nodeagent schedulers never leak the framework type.
   virtual auto HandleFrame(io::TlvFrame /*frame*/, io::Connection& /*conn*/) -> absl::Status {
     return absl::OkStatus();
   }

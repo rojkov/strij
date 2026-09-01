@@ -34,12 +34,11 @@ public:
 };
 
 // Gateway-side factory context mock. Tests typically only exercise the two
-// gateway-specific accessors; the base Dispatcher()/Logger() are uninteresting
-// unless a factory under test actually uses them.
+// gateway-specific accessors; the base Dispatcher() is uninteresting unless a
+// factory under test actually uses it.
 class MockGatewayFactoryContext final : public GatewayFactoryContext {
 public:
   MOCK_METHOD(event::Dispatcher&, Dispatcher, (), (override));
-  MOCK_METHOD(logging::Logger&, Logger, (), (override));
   MOCK_METHOD(gateway::NodeDirectory&, NodeDirectory, (), (override));
   MOCK_METHOD(gateway::ResultReceiverStorage&, ResultReceiverStorage, (), (override));
 };
@@ -50,7 +49,6 @@ public:
 class MockNodeagentFactoryContext final : public NodeagentFactoryContext {
 public:
   MOCK_METHOD(event::Dispatcher&, Dispatcher, (), (override));
-  MOCK_METHOD(logging::Logger&, Logger, (), (override));
   MOCK_METHOD(strij::nodeagent::FunctionResolver&, FunctionResolver, (), (override));
   MOCK_METHOD(nodeagent::AdmissionControllerSharedPtr, AdmissionController, (), (override));
   MOCK_METHOD(nodeagent::RunTaskService&, RunTaskService, (), (override));

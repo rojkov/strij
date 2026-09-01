@@ -4,7 +4,7 @@
 
 namespace strij::gateway {
 
-void ResultReceiverStorage::NotifyNodeDisconnected(const std::string& node_id) {
+void ResultReceiverStorageImpl::NotifyNodeDisconnected(const std::string& node_id) {
   std::vector<std::string> task_ids;
   for (const auto& [task_id, nid] : node_of_task_) {
     if (nid == node_id) {
@@ -24,7 +24,7 @@ void ResultReceiverStorage::NotifyNodeDisconnected(const std::string& node_id) {
   }
 }
 
-void ResultReceiverStorage::NotifyClientDisconnected(const std::string& task_id) {
+void ResultReceiverStorageImpl::NotifyClientDisconnected(const std::string& task_id) {
   Erase(task_id);
   if (state_tracker_ != nullptr) {
     state_tracker_->RecordCompletion(task_id);
