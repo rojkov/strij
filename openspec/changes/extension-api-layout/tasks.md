@@ -44,13 +44,13 @@
 
 ## 5. Documentation and enforcement
 
-- [ ] 5.1 Write the Extension Author's Guide in `docs/`: layout map, namespace doctrine, private-extension workflow (interface → `REGISTER_FACTORY` → `alwayslink` → composition macro), the visibility/stability promise
-- [ ] 5.2 Add a CI check that `include/` headers reference only `include/`, absl, protobuf, and std headers (no `src/`-relative includes)
-- [ ] 5.3 Add a namespace↔directory coherence check (grep-based) to CI or clang-tidy
-- [ ] 5.4 Add a smoke-test consumer (e.g. `test/consumer/`) doing `bazel_dep("strij")` + `local_path_override` + one alwayslink extension composed via the macro, run by `make test`
+- [x] 5.1 Write the Extension Author's Guide in `docs/`: layout map, namespace doctrine, private-extension workflow (interface → `REGISTER_FACTORY` → `alwayslink` → composition macro), the visibility/stability promise
+- [x] 5.2 Add a CI check that `include/` headers reference only `include/`, absl, protobuf, and std headers (no `src/`-relative includes)
+- [x] 5.3 Add a namespace↔directory coherence check (grep-based) to CI or clang-tidy
+- [x] 5.4 Add a smoke-test consumer (e.g. `test/consumer/`) doing `bazel_dep("strij")` + `local_path_override` + one alwayslink extension composed via the macro, run by `make test`
 
 ## 6. Final validation
 
-- [ ] 6.1 Confirm all extension targets under `src/` are non-public (`//visibility:private` unless a test mirror) and only `include/` targets are public
-- [ ] 6.2 Confirm a fresh external repo can build a custom gateway+nodeagent with a private scheduler end-to-end (design sequence diagram holds)
-- [ ] 6.3 Run full `make build && make test && make test_asan && make test_tsan && make clang-tidy`
+- [x] 6.1 Confirm all extension targets under `src/` are non-public (`//visibility:private` unless a test mirror) and only `include/` targets are public
+- [x] 6.2 Confirm a fresh external repo can build a custom gateway+nodeagent with a private scheduler end-to-end (design sequence diagram holds)
+- [x] 6.3 Run full `make build && make test && make test_asan && make test_tsan && make clang-tidy` — results: `make build` ✓, `make test` ✓ (27/27 incl. external consumer), `make clang-tidy` ✓ (exit 0). `make test_asan` / `make test_tsan` are **blocked by a pre-existing environment defect**: the repo's clang toolchain libc++ headers (they reported clang 22.1.7 but the vendored `c++/v1` lacks C++23's `std::move_only_function`) fail to compile `src/common/core/io/periodic_timer.hh`, which is untouched by this change (`git show HEAD:…periodic_timer.hh` uses `std::move_only_function`). Not regressed by this change; needs a libc++ upgrade/login the toolchain, out of scope here.

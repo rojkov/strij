@@ -24,7 +24,7 @@
 #include "nodeagent/core/task_handler_manager.hh"
 #include "common/task/task.pb.h"
 #include "nodeagent/extensions/schedulers/push/push_local_scheduler.hh"
-#include "common/extensions/scheduler.hh"
+#include "strij/extensions/scheduler.hh"
 #include "nodeagent/extensions/task_handlers/echo/echo_task_handler.hh"
 #include "gtest/gtest.h"
 

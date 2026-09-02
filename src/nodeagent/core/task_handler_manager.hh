@@ -6,7 +6,7 @@
 
 #include "absl/status/statusor.h"
 #include "common/config/extensions.pb.h"
-#include "common/extensions/factory_context.hh"
+#include "strij/extensions/factory_context.hh"
 #include "nodeagent/extensions/task_handlers/task_handlers.hh"
 #include "google/protobuf/repeated_ptr_field.h"
 

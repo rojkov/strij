@@ -1,0 +1,66 @@
+load("@strij//bazel:build_system.bzl", "strij_cc_library", "strij_cc_test")
+load("@strij//bazel:strij_binaries.bzl", "strij_gateway_binary", "strij_nodeagent_binary")
+
+package(default_visibility = ["//visibility:private"])
+
+# A third-party scheduler extension written solely against @strij's public
+# contracts. It is consumed both:
+#   - in-repo (via the @strij self-reference) by `bazel test //...`, and
+#   - from the outer world by `cd test/consumer && bazel test //...`, where
+#     @strij is a real external repo (MODULE.bazel + local_path_override).
+strij_cc_library(
+    name = "consumer_scheduler_lib",
+    srcs = ["consumer_scheduler.cc"],
+    hdrs = ["consumer_scheduler.hh"],
+    deps = [
+        "@strij//api/common/config:config_cc_proto",
+        "@strij//api/common/task:task_cc_proto",
+        "@strij//include/strij/extensions:extension_registry_lib",
+        "@strij//include/strij/extensions:factory_context_lib",
+        "@strij//include/strij/extensions:scheduler_interface",
+        "@strij//include/strij/gateway:result_receiver_storage_interface",
+    ],
+    alwayslink = True,
+)
+
+strij_cc_test(
+    name = "consumer_scheduler_test",
+    srcs = ["consumer_scheduler_test.cc"],
+    deps = [
+        ":consumer_node_scheduler_lib",
+        ":consumer_scheduler_lib",
+        "@strij//include/strij/extensions:extension_registry_lib",
+        "@strij//include/strij/extensions:scheduler_interface",
+        "@googletest//:gtest_main",
+    ],
+)
+
+test_suite(
+    name = "consumer_tests",
+    tests = [":consumer_scheduler_test"],
+)
+
+strij_cc_library(
+    name = "consumer_node_scheduler_lib",
+    srcs = ["consumer_node_scheduler.cc"],
+    hdrs = ["consumer_node_scheduler.hh"],
+    deps = [
+        "@strij//api/common/config:config_cc_proto",
+        "@strij//api/common/task:task_cc_proto",
+        "@strij//include/strij/extensions:extension_registry_lib",
+        "@strij//include/strij/extensions:factory_context_lib",
+        "@strij//include/strij/extensions:scheduler_interface",
+        "@strij//include/strij/gateway:result_receiver_storage_interface",
+    ],
+    alwayslink = True,
+)
+
+strij_gateway_binary(
+    name = "consumer_gateway",
+    extensions = [":consumer_scheduler_lib"],
+)
+
+strij_nodeagent_binary(
+    name = "consumer_nodeagent",
+    extensions = [":consumer_node_scheduler_lib"],
+)

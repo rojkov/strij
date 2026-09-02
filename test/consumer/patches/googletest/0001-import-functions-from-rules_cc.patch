@@ -1,0 +1,38 @@
+From 551e94ce4994ca21f3d72d2b01fb93aaf8cdd846 Mon Sep 17 00:00:00 2001
+From: Dmitry Rozhkov <dmitry.rojkov@gmail.com>
+Date: Sat, 28 Mar 2026 13:16:51 +0000
+Subject: [PATCH] import functions from rules_cc
+
+---
+ BUILD.bazel  | 2 ++
+ MODULE.bazel | 1 +
+ 2 files changed, 3 insertions(+)
+
+diff --git a/BUILD.bazel b/BUILD.bazel
+index 53501454..7769eae4 100644
+--- a/BUILD.bazel
++++ b/BUILD.bazel
+@@ -29,6 +29,8 @@
+ # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ #
+ #   Bazel Build for Google C++ Testing Framework(Google Test)
++load("@rules_cc//cc:defs.bzl", "cc_library")
++load("@rules_cc//cc:defs.bzl", "cc_test")
+ 
+ package(default_visibility = ["//visibility:public"])
+ 
+diff --git a/MODULE.bazel b/MODULE.bazel
+index 5cb0b156..1c5224ee 100644
+--- a/MODULE.bazel
++++ b/MODULE.bazel
+@@ -52,6 +52,7 @@ bazel_dep(
+     version = "2024-07-02.bcr.1",
+ )
+ 
++bazel_dep(name = "rules_cc", version="0.2.17")
+ bazel_dep(
+     name = "rules_python",
+     version = "1.3.0",
+-- 
+2.43.0
+

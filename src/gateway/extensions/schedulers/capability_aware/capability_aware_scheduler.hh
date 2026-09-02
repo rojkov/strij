@@ -6,7 +6,7 @@
 #include "gateway/core/node_directory.hh"
 #include "gateway/core/result_receiver_storage.hh"
 #include "common/task/task.pb.h"
-#include "common/extensions/scheduler.hh"
+#include "strij/extensions/scheduler.hh"
 #include "google/protobuf/message.h"
 
 namespace strij::gateway::schedulers {

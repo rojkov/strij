@@ -13,12 +13,12 @@
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "gateway/config/gateway.pb.h"
-#include "common/extensions/factory_context.hh"
+#include "strij/extensions/factory_context.hh"
 #include "gateway/core/result_receiver_storage.hh"
 #include "common/core/io/connection.hh"
 #include "common/core/io/tlv_frame.hh"
 #include "common/task/task.pb.h"
-#include "common/extensions/scheduler.hh"
+#include "strij/extensions/scheduler.hh"
 
 namespace strij::gateway {
 
@@ -83,7 +83,7 @@ void SchedulerRouter::Schedule(const task::Task& task, gateway::ResultReceiverPt
 
 auto SchedulerRouter::RequiredProtocol() const -> std::string_view { return required_protocol_; }
 
-auto SchedulerRouter::HandleFrame(io::TlvFrame frame, io::Connection& conn) -> absl::Status {
+auto SchedulerRouter::HandleFrame(const io::TlvFrame& frame, io::Connection& conn) -> absl::Status {
   extensions::Scheduler* owner = findFrameOwner(frame.type_id);
   if (owner == nullptr) {
     return absl::NotFoundError(

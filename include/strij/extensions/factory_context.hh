@@ -2,7 +2,6 @@
 
 #include <memory>
 
-#include "common/core/logging/logger.hh"
 #include "strij/common/pure.hh"
 #include "strij/event/dispatcher.hh"
 

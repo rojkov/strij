@@ -10,7 +10,7 @@ strij_cc_library(
         "child_process.hh",
         "piped_executable_task_handler.hh",
     ],
-    visibility = ["//visibility:public"],
+    visibility = ["//src/nodeagent/exe:__pkg__", "//test:__subpackages__"],
     deps = [
         "//api/nodeagent/extensions/task_handlers/piped_executable:piped_executable_cc_proto",
         "//include/strij/event:command_handler_interface",

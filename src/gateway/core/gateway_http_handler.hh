@@ -10,7 +10,7 @@
 #include "common/core/io/connection.hh"
 #include "common/core/io/llhttp_parser.hh"
 #include "common/task/task.pb.h"
-#include "common/extensions/scheduler.hh"
+#include "strij/extensions/scheduler.hh"
 
 namespace strij::gateway {
 

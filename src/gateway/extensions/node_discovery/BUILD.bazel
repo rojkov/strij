@@ -5,8 +5,8 @@ strij_cc_library(
     hdrs = ["node_discovery.hh"],
     visibility = ["//visibility:public"],
     deps = [
-        "//src/common/extensions:extension_registry_lib",
-        "//src/common/extensions:factory_context_lib",
+        "//include/strij/extensions:extension_registry_lib",
+        "//include/strij/extensions:factory_context_lib",
         "@protobuf//:protobuf",
     ],
 )

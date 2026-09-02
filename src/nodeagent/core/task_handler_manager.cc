@@ -6,7 +6,7 @@
 
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
-#include "common/extensions/extension_registry.hh"
+#include "strij/extensions/extension_registry.hh"
 #include "common/core/logging/log.hh"
 #include "google/protobuf/any.pb.h"
 #include "google/protobuf/message.h"

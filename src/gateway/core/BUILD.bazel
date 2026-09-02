@@ -94,7 +94,7 @@ strij_cc_library(
         "//src/common/core/io:tlv_frame",
         "//src/common/core/logging:log_lib",
         "//src/common/core/utils:task_id_lib",
-        "//src/common/extensions:scheduler_interface",
+        "//include/strij/extensions:scheduler_interface",
     ],
 )
 
@@ -112,6 +112,6 @@ strij_cc_library(
         "//src/common/core/io:connection_lib",
         "//src/common/core/io:tlv_frame",
         "//src/common/core/logging:log_lib",
-        "//src/common/extensions:scheduler_interface",
+        "//include/strij/extensions:scheduler_interface",
     ],
 )

@@ -1,2 +1,8 @@
 llvm-project-build
 toolchain/clang
+# test/consumer is a nested Bazel workspace (external-module smoke test); its
+# own bazel outputs are symlinks that would confuse the root build.
+test/consumer/bazel-bin
+test/consumer/bazel-consumer
+test/consumer/bazel-out
+test/consumer/bazel-testlogs

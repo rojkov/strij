@@ -18,8 +18,17 @@ coverage:
 		--per_file_copt='external/protobuf\+.*@-DSTRIJ_COVERAGE' //...
 	./tools/generate_coverage.sh bazel-out/_coverage/_coverage_report.dat
 
-test:
+test: test_consumer
 	bazel test //...
+
+# Smoke-test consumability from a fresh external repo (test/consumer flips @strij
+# into a real external module via MODULE.bazel + local_path_override). Must run
+# before the root `bazel test //...` because root bazel owns the root workspace.
+test_consumer:
+	cd ${MAKEFILE_DIR}test/consumer && bazel build //... && bazel test //...
+
+build_consumer:
+	cd ${MAKEFILE_DIR}test/consumer && bazel build //...
 
 toolchain/abs_path.bzl:
 	echo "module_abs_path = \"${MAKEFILE_DIR}\"" > $@
@@ -39,6 +48,14 @@ clang-tidy: toolchain/abs_path.bzl
 		-clang-apply-replacements-binary=${LLVM_PATH}/bin/clang-apply-replacements \
 		-use-color
 
+check_includes:
+	python3 tools/check_include_purity.py
+
+check_namespaces:
+	python3 tools/check_namespace_coherence.py
+
+check: check_includes check_namespaces
+
 docker/artifacts/bazelisk-amd64.deb:
 	mkdir -p docker/artifacts
 	wget -O docker/artifacts/bazelisk-amd64.deb ${BAZELISK_URL}
@@ -49,4 +66,4 @@ env: docker/artifacts/bazelisk-amd64.deb
 llvm-toolchain:
 	./tools/build-llvm-project.sh ${LLVM_PROJECT_PATH}
 
-.PHONY: build compiledb coverage test test_asan test_tsan clang-tidy env
+.PHONY: build compiledb coverage test test_consumer build_consumer test_asan test_tsan clang-tidy check check_includes check_namespaces env

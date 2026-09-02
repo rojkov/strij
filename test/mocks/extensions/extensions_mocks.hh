@@ -5,7 +5,7 @@
 #include <memory>
 #include <string>
 
-#include "common/extensions/factory_context.hh"
+#include "strij/extensions/factory_context.hh"
 #include "nodeagent/extensions/task_handlers/task_handlers.hh"
 #include "gmock/gmock.h"
 

@@ -8,7 +8,7 @@
 #include "common/core/io/tlv_frame.hh"
 #include "nodeagent/core/run_task_service.hh"
 #include "common/task/task.pb.h"
-#include "common/extensions/scheduler.hh"
+#include "strij/extensions/scheduler.hh"
 #include "strij/event/command.hh"
 #include "strij/event/command_handler.hh"
 
@@ -37,7 +37,7 @@ public:
 
   void Schedule(const task::Task& task, gateway::ResultReceiverPtr receiver) override;
   [[nodiscard]] auto RequiredProtocol() const -> std::string_view override;
-  auto HandleFrame(io::TlvFrame frame, io::Connection& conn) -> absl::Status override;
+  auto HandleFrame(const io::TlvFrame& frame, io::Connection& conn) -> absl::Status override;
   [[nodiscard]] auto HandledFrameTypes() const -> std::span<const uint8_t> override;
 
   void ProcessCommand(event::Command /*cmd*/) override {}

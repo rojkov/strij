@@ -9,12 +9,13 @@
 
 #include "absl/status/statusor.h"
 #include "gateway/config/gateway.pb.h"
-#include "common/extensions/factory_context.hh"
+#include "strij/extensions/factory_context.hh"
 #include "gateway/core/result_receiver_storage.hh"
 #include "common/core/io/connection.hh"
 #include "common/core/io/tlv_frame.hh"
 #include "common/task/task.pb.h"
-#include "common/extensions/scheduler.hh"
+#include "strij/extensions/scheduler.hh"
+#include "common/extensions/scheduler_loader.hh"
 
 namespace strij::gateway {
 
@@ -43,7 +44,7 @@ public:
 
   void Schedule(const task::Task& task, gateway::ResultReceiverPtr receiver) override;
   [[nodiscard]] auto RequiredProtocol() const -> std::string_view override;
-  auto HandleFrame(io::TlvFrame frame, io::Connection& conn) -> absl::Status override;
+  auto HandleFrame(const io::TlvFrame& frame, io::Connection& conn) -> absl::Status override;
   [[nodiscard]] auto HandledFrameTypes() const -> std::span<const uint8_t> override;
 
   [[nodiscard]] auto RoutedSchedulerCount() const -> size_t { return schedulers_.size(); }

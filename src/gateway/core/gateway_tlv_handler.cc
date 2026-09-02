@@ -11,7 +11,7 @@
 #include "common/core/logging/log.hh"
 #include "common/node/capabilities.pb.h"
 #include "common/task/task.pb.h"
-#include "common/extensions/scheduler.hh"
+#include "strij/extensions/scheduler.hh"
 
 namespace strij::gateway {
 

@@ -10,7 +10,7 @@ strij_cc_test(
         "//src/gateway/core:result_receiver_storage",
         "//src/common/core/io:connection_lib",
         "//src/common/core/io:tlv_frame",
-        "//src/common/extensions:scheduler_interface",
+        "//include/strij/extensions:scheduler_interface",
         "//src/gateway/extensions/schedulers/round_robin:round_robin_scheduler_lib",
         "//src/gateway/core/scheduler_router:scheduler_router_lib",
         "//test/mocks/common:common_mocks_lib",

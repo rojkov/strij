@@ -6,7 +6,7 @@
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "common/extensions/extension_registry.hh"
+#include "strij/extensions/extension_registry.hh"
 #include "common/task/task.pb.h"
 #include "nodeagent/extensions/task_handlers/echo/echo_task_handler.pb.h"
 

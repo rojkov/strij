@@ -6,7 +6,7 @@
 #include <utility>
 #include <vector>
 
-#include "common/extensions/extension_registry.hh"
+#include "strij/extensions/extension_registry.hh"
 #include "gateway/extensions/node_discovery/static/static_node_discovery.pb.h"
 #include "google/protobuf/any.pb.h"
 

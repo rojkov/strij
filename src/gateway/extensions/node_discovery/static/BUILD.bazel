@@ -4,7 +4,7 @@ strij_cc_library(
     name = "static_node_discovery_lib",
     srcs = ["static_node_discovery.cc"],
     hdrs = ["static_node_discovery.hh"],
-    visibility = ["//visibility:public"],
+    visibility = ["//src/gateway/exe:__pkg__", "//test:__subpackages__"],
     deps = [
         "//api/gateway/extensions/node_discovery/static:static_node_discovery_cc_proto",
         "//src/gateway/extensions/node_discovery:node_discovery_interface",

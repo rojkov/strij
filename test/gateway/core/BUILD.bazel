@@ -17,7 +17,7 @@ strij_cc_test(
         "//src/common/core/io:tlv_frame",
         "//src/common/core/io:tlv_parser_lib",
         "//src/gateway/extensions/schedulers/round_robin:round_robin_scheduler_lib",
-        "//src/common/extensions:scheduler_interface",
+        "//include/strij/extensions:scheduler_interface",
         "//test/mocks/common:common_mocks_lib",
         "//test/mocks/event:event_mocks_lib",
         "@googletest//:gtest_main",

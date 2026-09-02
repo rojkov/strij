@@ -100,7 +100,7 @@ public:
   }
 
   auto RequiredProtocol() const -> std::string_view override { return "push"; }
-  [[nodiscard]] auto HandleFrame(io::TlvFrame /*frame*/, io::Connection& /*conn*/)
+  [[nodiscard]] auto HandleFrame(const io::TlvFrame& /*frame*/, io::Connection& /*conn*/)
       -> absl::Status override {
     return absl::OkStatus();
   }

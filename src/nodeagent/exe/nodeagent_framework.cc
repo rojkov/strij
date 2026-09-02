@@ -21,7 +21,8 @@
 #include "nodeagent/core/run_task_service.hh"
 #include "nodeagent/core/state_reporter.hh"
 #include "nodeagent/core/task_handler_manager.hh"
-#include "common/extensions/scheduler.hh"
+#include "strij/extensions/scheduler.hh"
+#include "common/extensions/scheduler_loader.hh"
 #include "nodeagent_factory_context.hh"
 
 // Generated protobuf headers

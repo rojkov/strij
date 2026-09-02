@@ -6,7 +6,7 @@
 #include <string>
 
 #include "absl/status/statusor.h"
-#include "common/extensions/factory_context.hh"
+#include "strij/extensions/factory_context.hh"
 #include "common/node/capabilities.pb.h"
 #include "common/task/task.pb.h"
 #include "google/protobuf/message.h"

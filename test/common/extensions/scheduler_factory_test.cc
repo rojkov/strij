@@ -11,7 +11,8 @@
 #include "gateway/core/result_receiver_storage.hh"
 #include "common/core/io/protocol_parser.hh"
 #include "gateway/extensions/schedulers/round_robin/round_robin.pb.h"
-#include "common/extensions/scheduler.hh"
+#include "strij/extensions/scheduler.hh"
+#include "common/extensions/scheduler_loader.hh"
 #include "gtest/gtest.h"
 
 namespace strij::gateway::schedulers {

@@ -8,8 +8,8 @@
 #include <string_view>
 #include <utility>
 
-#include "common/extensions/extension_registry.hh"
-#include "common/extensions/factory_context.hh"
+#include "strij/extensions/extension_registry.hh"
+#include "strij/extensions/factory_context.hh"
 #include "gateway/core/node.hh"
 #include "gateway/core/node_directory.hh"
 #include "gateway/core/result_receiver_storage.hh"
@@ -18,7 +18,7 @@
 #include "common/node/capabilities.pb.h"
 #include "common/task/task.pb.h"
 #include "gateway/extensions/schedulers/capability_aware/capability_aware.pb.h"
-#include "common/extensions/scheduler.hh"
+#include "strij/extensions/scheduler.hh"
 
 namespace strij::gateway::schedulers {
 

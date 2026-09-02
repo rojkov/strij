@@ -7,8 +7,8 @@
 #include <utility>
 #include <vector>
 
-#include "common/extensions/extension_registry.hh"
-#include "common/extensions/factory_context.hh"
+#include "strij/extensions/extension_registry.hh"
+#include "strij/extensions/factory_context.hh"
 #include "gateway/core/node.hh"
 #include "gateway/core/node_directory.hh"
 #include "gateway/core/result_receiver_storage.hh"
@@ -16,7 +16,7 @@
 #include "common/core/io/tlv_frame.hh"
 #include "common/task/task.pb.h"
 #include "gateway/extensions/schedulers/round_robin/round_robin.pb.h"
-#include "common/extensions/scheduler.hh"
+#include "strij/extensions/scheduler.hh"
 
 namespace strij::gateway::schedulers {
 

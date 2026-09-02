@@ -5,7 +5,7 @@
 #include <string>
 #include <vector>
 
-#include "common/extensions/factory_context.hh"
+#include "strij/extensions/factory_context.hh"
 #include "google/protobuf/message.h"
 #include "strij/common/pure.hh"
 

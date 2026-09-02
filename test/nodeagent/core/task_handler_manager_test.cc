@@ -6,7 +6,7 @@
 #include "test/mocks/extensions/extensions_mocks.hh"
 
 #include "common/config/extensions.pb.h"
-#include "common/extensions/extension_registry.hh"
+#include "strij/extensions/extension_registry.hh"
 #include "nodeagent/core/function_resolver.hh"
 #include "nodeagent/core/task_handler_manager.hh"
 #include "nodeagent/extensions/task_handlers/echo/echo_task_handler.pb.h"

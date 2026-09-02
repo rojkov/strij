@@ -6,7 +6,8 @@ strij_cc_test(
     deps = [
         "//api/common/config:config_cc_proto",
         "//api/gateway/extensions/schedulers/round_robin:round_robin_scheduler_cc_proto",
-        "//src/common/extensions:scheduler_interface",
+        "//include/strij/extensions:scheduler_interface",
+        "//src/common/extensions:scheduler_loader_lib",
         "//src/gateway/core:node_directory_lib",
         "//src/gateway/core:result_receiver_storage",
         "//src/gateway/extensions/schedulers/round_robin:round_robin_scheduler_lib",

@@ -1,10 +1,18 @@
 #pragma once
 
-#include "common/core/io/connection.hh"
 #include "common/task/task.pb.h"
 #include "strij/common/pure.hh"
 
-namespace strij::nodeagent {
+namespace strij {
+
+// Forward declared per the public-surface rule: the RunTaskService contract
+// only names io::Connection (the accepted concrete exclusion on the extension
+// surface); the impl pulls in the full type from src/.
+namespace io {
+class Connection;
+} // namespace io
+
+namespace nodeagent {
 
 // Pure-abstract contract for running admitted tasks to completion on the
 // nodeagent event-loop thread. NodeagentFactoryContext exposes this service so
@@ -27,3 +35,4 @@ public:
 };
 
 } // namespace strij::nodeagent
+} // namespace strij

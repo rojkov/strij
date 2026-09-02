@@ -4,7 +4,7 @@ strij_cc_library(
     name = "echo_task_handler_lib",
     srcs = ["echo_task_handler.cc"],
     hdrs = ["echo_task_handler.hh"],
-    visibility = ["//visibility:public"],
+    visibility = ["//src/nodeagent/exe:__pkg__", "//test:__subpackages__"],
     deps = [
         "//api/nodeagent/extensions/task_handlers/echo:echo_task_handler_cc_proto",
         "//src/nodeagent/extensions/task_handlers:task_handlers_interface",

@@ -6,17 +6,23 @@
 #include <string_view>
 
 #include "absl/status/status.h"
-#include "absl/status/statusor.h"
-#include "common/config/extensions.pb.h"
-#include "common/extensions/factory_context.hh"
-#include "strij/gateway/result_receiver_storage.hh"
-#include "common/core/io/connection.hh"
-#include "common/core/io/tlv_frame.hh"
 #include "common/task/task.pb.h"
 #include "google/protobuf/message.h"
 #include "strij/common/pure.hh"
+#include "strij/extensions/factory_context.hh"
+#include "strij/gateway/result_receiver_storage.hh"
 
-namespace strij::extensions {
+namespace strij {
+
+// Framework io types are forward-declared here (the accepted Connection
+// exclusion): HandleFrame names them in its signature, but the definitions live
+// in src/ (see TODO on narrowing the seam).
+namespace io {
+class Connection;
+struct TlvFrame;
+} // namespace io
+
+namespace extensions {
 
 // A scheduling protocol extension, shared by the gateway and nodeagent halves
 // of the same wire protocol ("push" in v1). The gateway side submits tasks via
@@ -54,7 +60,7 @@ public:
   // surface. Extension authors can't depend on the framework's concrete
   // io::Connection; replace it with a small abstract connection/seam type so
   // nodeagent schedulers never leak the framework type.
-  virtual auto HandleFrame(io::TlvFrame /*frame*/, io::Connection& /*conn*/) -> absl::Status {
+  virtual auto HandleFrame(const io::TlvFrame& /*frame*/, io::Connection& /*conn*/) -> absl::Status {
     return absl::OkStatus();
   }
   // The TLV frame type_ids this scheduler owns (e.g. {kTaskSubmission} for
@@ -67,6 +73,8 @@ public:
 using SchedulerPtr = std::unique_ptr<Scheduler>;
 
 } // namespace strij::extensions
+
+} // namespace strij
 
 namespace strij::gateway {
 
@@ -89,14 +97,6 @@ public:
   virtual auto Create(const ::google::protobuf::Message& config,
                       extensions::GatewayFactoryContext& context) -> extensions::SchedulerPtr PURE;
 };
-
-// Loads a gateway-side scheduler from a scheduler ExtensionConfig: looks up the
-// named factory in extensions::Registry<gateway::GatewaySchedulerFactory>,
-// unpacks (or tolerates the absence of) its typed_config, and creates the
-// instance. NotFoundError when the name is not registered.
-auto CreateGatewayScheduler(const config::ExtensionConfig& config,
-                            extensions::GatewayFactoryContext& context)
-    -> absl::StatusOr<extensions::SchedulerPtr>;
 
 } // namespace strij::gateway
 
@@ -125,13 +125,5 @@ public:
                       extensions::NodeagentFactoryContext& context)
       -> extensions::SchedulerPtr PURE;
 };
-
-// Loads a nodeagent-side scheduler from a scheduler ExtensionConfig: looks up
-// the named factory in extensions::Registry<nodeagent::NodeSchedulerFactory>,
-// unpacks (or tolerates the absence of) its typed_config, and creates the
-// instance. NotFoundError when the name is not registered.
-auto CreateNodeScheduler(const config::ExtensionConfig& config,
-                         extensions::NodeagentFactoryContext& context)
-    -> absl::StatusOr<extensions::SchedulerPtr>;
 
 } // namespace strij::nodeagent

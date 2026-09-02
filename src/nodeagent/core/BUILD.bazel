@@ -45,10 +45,10 @@ strij_cc_library(
     deps = [
         "//api/nodeagent/config:nodeagent_config_cc_proto",
         "//api/common/node:node_cc_proto",
-        "//src/common/extensions:extension_registry_lib",
+        "//include/strij/extensions:extension_registry_lib",
         "//src/common/core/logging:log_lib",
         "//src/common/core/utils:task_id_lib",
-        "//src/common/extensions:scheduler_interface",
+        "//include/strij/extensions:scheduler_interface",
         "//src/nodeagent/extensions/task_handlers:task_handlers_interface",
         "@abseil-cpp//absl/status",
         "@abseil-cpp//absl/status:statusor",
@@ -67,7 +67,7 @@ strij_cc_library(
         "//src/common/core/io:connection_lib",
         "//src/common/core/io:tlv_frame",
         "//src/common/core/logging:log_lib",
-        "//src/common/extensions:scheduler_interface",
+        "//include/strij/extensions:scheduler_interface",
     ],
 )
 
@@ -112,8 +112,8 @@ strij_cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//api/common/config:config_cc_proto",
-        "//src/common/extensions:extension_registry_lib",
-        "//src/common/extensions:factory_context_lib",
+        "//include/strij/extensions:extension_registry_lib",
+        "//include/strij/extensions:factory_context_lib",
         "//src/common/core/logging:log_lib",
         "//src/nodeagent/extensions/task_handlers:task_handlers_interface",
         "@abseil-cpp//absl/status",

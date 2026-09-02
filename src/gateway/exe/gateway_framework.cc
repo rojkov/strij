@@ -14,7 +14,7 @@
 #include "common/core/common/signal_monitor.hh"
 #include "common/core/config/config_loader.hh"
 #include "common/core/event/dispatcher_impl.hh"
-#include "common/extensions/extension_registry.hh"
+#include "strij/extensions/extension_registry.hh"
 #include "gateway/core/gateway_http_handler.hh"
 #include "gateway/core/gateway_tlv_handler.hh"
 #include "gateway/core/http_result_receiver.hh"

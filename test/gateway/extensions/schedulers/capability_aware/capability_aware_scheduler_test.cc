@@ -9,7 +9,7 @@
 #include "test/mocks/event/mocks.hh"
 #include "test/mocks/extensions/extensions_mocks.hh"
 
-#include "common/extensions/extension_registry.hh"
+#include "strij/extensions/extension_registry.hh"
 #include "gateway/core/node_directory.hh"
 #include "gateway/core/result_receiver_storage.hh"
 #include "common/core/io/connection.hh"
@@ -17,7 +17,7 @@
 #include "common/node/capabilities.pb.h"
 #include "common/task/task.pb.h"
 #include "gateway/extensions/schedulers/capability_aware/capability_aware_scheduler.hh"
-#include "common/extensions/scheduler.hh"
+#include "strij/extensions/scheduler.hh"
 #include "gtest/gtest.h"
 
 namespace strij::gateway::schedulers {

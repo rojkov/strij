@@ -16,7 +16,7 @@ def strij_gateway_binary(
     cc_binary(
         name = name,
         deps = [
-            "//src/gateway/exe:gateway_framework",
+            "@strij//src/gateway/exe:gateway_framework",
         ] + list(extensions) + list(deps),
         visibility = visibility,
         **kwargs
@@ -38,7 +38,7 @@ def strij_nodeagent_binary(
     cc_binary(
         name = name,
         deps = [
-            "//src/nodeagent/exe:nodeagent_framework",
+            "@strij//src/nodeagent/exe:nodeagent_framework",
         ] + list(extensions) + list(deps),
         visibility = visibility,
         **kwargs

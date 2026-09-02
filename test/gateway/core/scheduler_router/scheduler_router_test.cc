@@ -21,7 +21,7 @@
 #include "common/task/task.pb.h"
 #include "gateway/extensions/schedulers/round_robin/round_robin_scheduler.hh"
 #include "gateway/core/scheduler_router/scheduler_router.hh"
-#include "common/extensions/scheduler.hh"
+#include "strij/extensions/scheduler.hh"
 #include "gtest/gtest.h"
 
 namespace strij::gateway {
@@ -41,7 +41,7 @@ public:
     held_receivers_.push_back(std::move(receiver));
   }
   [[nodiscard]] auto RequiredProtocol() const -> std::string_view override { return protocol_; }
-  [[nodiscard]] auto HandleFrame(io::TlvFrame frame, io::Connection& /*conn*/)
+  [[nodiscard]] auto HandleFrame(const io::TlvFrame& frame, io::Connection& /*conn*/)
       -> absl::Status override {
     handled_frames_.push_back(frame.type_id);
     return absl::OkStatus();
