@@ -10,6 +10,6 @@ strij_cc_library(
         "//include/strij/extensions:extension_registry_lib",
         "//include/strij/extensions:factory_context_lib",
         "@abseil-cpp//absl/status:statusor",
-        "@protobuf//:protobuf",
+        "@protobuf",
     ],
 )

@@ -89,12 +89,12 @@ strij_cc_library(
         ":requirements_resolver_lib",
         ":result_receiver_storage",
         "//api/common/task:task_cc_proto",
+        "//include/strij/extensions:scheduler_interface",
         "//src/common/core/io:connection_lib",
         "//src/common/core/io:llhttp_parser_lib",
         "//src/common/core/io:tlv_frame",
         "//src/common/core/logging:log_lib",
         "//src/common/core/utils:task_id_lib",
-        "//include/strij/extensions:scheduler_interface",
     ],
 )
 
@@ -109,9 +109,9 @@ strij_cc_library(
         ":result_receiver_storage",
         "//api/common/node:node_cc_proto",
         "//api/common/task:task_cc_proto",
+        "//include/strij/extensions:scheduler_interface",
         "//src/common/core/io:connection_lib",
         "//src/common/core/io:tlv_frame",
         "//src/common/core/logging:log_lib",
-        "//include/strij/extensions:scheduler_interface",
     ],
 )

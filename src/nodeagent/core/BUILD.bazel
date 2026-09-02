@@ -43,12 +43,12 @@ strij_cc_library(
     hdrs = ["capabilities.hh"],
     visibility = ["//visibility:public"],
     deps = [
-        "//api/nodeagent/config:nodeagent_config_cc_proto",
         "//api/common/node:node_cc_proto",
+        "//api/nodeagent/config:nodeagent_config_cc_proto",
         "//include/strij/extensions:extension_registry_lib",
+        "//include/strij/extensions:scheduler_interface",
         "//src/common/core/logging:log_lib",
         "//src/common/core/utils:task_id_lib",
-        "//include/strij/extensions:scheduler_interface",
         "//src/nodeagent/extensions/task_handlers:task_handlers_interface",
         "@abseil-cpp//absl/status",
         "@abseil-cpp//absl/status:statusor",
@@ -64,10 +64,10 @@ strij_cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//api/common/node:node_cc_proto",
+        "//include/strij/extensions:scheduler_interface",
         "//src/common/core/io:connection_lib",
         "//src/common/core/io:tlv_frame",
         "//src/common/core/logging:log_lib",
-        "//include/strij/extensions:scheduler_interface",
     ],
 )
 

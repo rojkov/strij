@@ -8,16 +8,15 @@
 #include <string_view>
 #include <utility>
 
-#include "strij/extensions/extension_registry.hh"
-#include "strij/extensions/factory_context.hh"
-#include "gateway/core/node.hh"
-#include "gateway/core/node_directory.hh"
-#include "gateway/core/result_receiver_storage.hh"
 #include "common/core/io/connection.hh"
 #include "common/core/io/tlv_frame.hh"
 #include "common/node/capabilities.pb.h"
 #include "common/task/task.pb.h"
+#include "gateway/core/node.hh"
+#include "gateway/core/node_directory.hh"
 #include "gateway/extensions/schedulers/capability_aware/capability_aware.pb.h"
+#include "strij/extensions/extension_registry.hh"
+#include "strij/extensions/factory_context.hh"
 #include "strij/extensions/scheduler.hh"
 
 namespace strij::gateway::schedulers {
@@ -214,7 +213,8 @@ auto CapabilityAwareSchedulerFactory::CreateEmptyConfigProto() -> MessagePtr {
 }
 
 auto CapabilityAwareSchedulerFactory::Create(const ::google::protobuf::Message& /*config*/,
-                                             extensions::GatewayFactoryContext& context) -> extensions::SchedulerPtr {
+                                             extensions::GatewayFactoryContext& context)
+    -> extensions::SchedulerPtr {
   return std::make_unique<CapabilityAwareScheduler>(context.NodeDirectory(),
                                                     context.ResultReceiverStorage());
 }

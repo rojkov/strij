@@ -151,6 +151,7 @@ void TlvParser::setState(state new_state) {
   switch (new_state) {
   case empty: {
     assert(state_ == type_read || state_ == length_read || state_ == value_partially_copied);
+
     if (state_ == type_read) {
       // Zero-length value: deliver TlvFrame with empty value
       on_message_(TlvFrame{.type_id = frame_.type_id_, .value = std::span<const std::byte>{}});

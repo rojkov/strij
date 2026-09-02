@@ -4,11 +4,11 @@
 #include <string>
 #include <string_view>
 
-#include "gateway/core/node_directory.hh"
-#include "gateway/core/result_receiver_storage.hh"
 #include "common/task/task.pb.h"
-#include "strij/extensions/scheduler.hh"
+#include "gateway/core/node_directory.hh"
 #include "google/protobuf/message.h"
+#include "strij/extensions/scheduler.hh"
+#include "strij/gateway/result_receiver_storage.hh"
 
 namespace strij::gateway::schedulers {
 

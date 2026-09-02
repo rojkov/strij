@@ -27,6 +27,12 @@ public:
   using CloseCallback = std::move_only_function<void()>;
 
   explicit OutboundMailbox(Connection& conn);
+  ~OutboundMailbox() = default;
+
+  OutboundMailbox(const OutboundMailbox&) = delete;
+  auto operator=(const OutboundMailbox&) -> OutboundMailbox& = delete;
+  OutboundMailbox(OutboundMailbox&&) noexcept = delete;
+  auto operator=(OutboundMailbox&&) noexcept -> OutboundMailbox& = delete;
 
   void Enqueue(std::vector<std::byte> frame);
   auto RegisterOnClose(CloseCallback close_cb) -> std::size_t;

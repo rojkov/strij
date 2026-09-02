@@ -1,7 +1,7 @@
+#include "nodeagent_framework.hh"
+
 #include <memory>
 #include <vector>
-
-#include "nodeagent_framework.hh"
 
 #include "absl/flags/flag.h"
 #include "absl/flags/parse.h"
@@ -9,21 +9,21 @@
 #include "common/core/common/signal_monitor.hh"
 #include "common/core/config/config_loader.hh"
 #include "common/core/event/dispatcher_impl.hh"
-#include "nodeagent/core/function_resolver.hh"
 #include "common/core/io/periodic_timer.hh"
 #include "common/core/io/tcp_listener.hh"
 #include "common/core/io/tlv_frame.hh"
 #include "common/core/io/tlv_parser.hh"
 #include "common/core/logging/log.hh"
+#include "common/extensions/scheduler_loader.hh"
 #include "nodeagent/core/admission_controller.hh"
 #include "nodeagent/core/capabilities.hh"
+#include "nodeagent/core/function_resolver.hh"
 #include "nodeagent/core/nodeagent_tlv_handler.hh"
 #include "nodeagent/core/run_task_service.hh"
 #include "nodeagent/core/state_reporter.hh"
 #include "nodeagent/core/task_handler_manager.hh"
-#include "strij/extensions/scheduler.hh"
-#include "common/extensions/scheduler_loader.hh"
 #include "nodeagent_factory_context.hh"
+#include "strij/extensions/scheduler.hh"
 
 // Generated protobuf headers
 #include "nodeagent/config/nodeagent.pb.h"

@@ -13,9 +13,9 @@
 #include <string>
 #include <utility>
 
-#include "gateway/core/result_receiver_storage.hh"
 #include "common/core/logging/log.hh"
 #include "common/core/utils/errors.hh"
+#include "strij/gateway/result_receiver_storage.hh"
 
 namespace strij::gateway {
 

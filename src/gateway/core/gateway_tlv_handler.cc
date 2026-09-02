@@ -1,17 +1,14 @@
 #include "gateway/core/gateway_tlv_handler.hh"
 
 #include <cstddef>
-#include <cstdint>
 #include <span>
 #include <utility>
-
-#include "gateway/core/gateway_tlv_handler.hh"
 
 #include "common/core/io/tlv_frame.hh"
 #include "common/core/logging/log.hh"
 #include "common/node/capabilities.pb.h"
-#include "common/task/task.pb.h"
 #include "strij/extensions/scheduler.hh"
+#include "strij/gateway/result_receiver_storage.hh"
 
 namespace strij::gateway {
 

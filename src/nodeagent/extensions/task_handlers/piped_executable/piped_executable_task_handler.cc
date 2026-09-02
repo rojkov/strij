@@ -7,12 +7,11 @@
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "strij/extensions/extension_registry.hh"
-#include "nodeagent/core/function_resolver.hh"
 #include "common/core/logging/log.hh"
 #include "common/task/task.pb.h"
 #include "nodeagent/extensions/task_handlers/piped_executable/child_process.hh"
 #include "nodeagent/extensions/task_handlers/piped_executable/piped_executable.pb.h"
+#include "strij/extensions/extension_registry.hh"
 
 namespace strij::nodeagent::task_handlers {
 
@@ -79,19 +78,22 @@ void PipedExecutableTaskHandler::sendEmptyFinal(const task::Task& task, ResultSe
 auto PipedExecutableTaskHandlerFactory::Name() const -> std::string { return "piped_executable"; }
 
 auto PipedExecutableTaskHandlerFactory::CreateEmptyConfigProto() -> MessagePtr {
-  return std::make_unique<extensions::task_handlers::piped_executable::PipedExecutableTaskHandlerConfig>();
+  return std::make_unique<
+      extensions::task_handlers::piped_executable::PipedExecutableTaskHandlerConfig>();
 }
 
 auto PipedExecutableTaskHandlerFactory::Create(const ::google::protobuf::Message& /*config*/,
-                                               extensions::NodeagentFactoryContext& context) -> TaskHandlerPtr {
+                                               extensions::NodeagentFactoryContext& context)
+    -> TaskHandlerPtr {
   return std::make_unique<PipedExecutableTaskHandler>(context.Dispatcher(),
                                                       context.FunctionResolver());
 }
 
 auto PipedExecutableTaskHandlerFactory::ParseConfig(const ::google::protobuf::Message& config)
     -> absl::StatusOr<node::HandlerCapacity> {
-  const auto* piped_config =
-      dynamic_cast<const extensions::task_handlers::piped_executable::PipedExecutableTaskHandlerConfig*>(&config);
+  const auto* piped_config = dynamic_cast<
+      const extensions::task_handlers::piped_executable::PipedExecutableTaskHandlerConfig*>(
+      &config);
   if (piped_config == nullptr) {
     return absl::InvalidArgumentError("config is not a PipedExecutableTaskHandlerConfig");
   }
@@ -100,6 +102,6 @@ auto PipedExecutableTaskHandlerFactory::ParseConfig(const ::google::protobuf::Me
 
 } // namespace strij::nodeagent::task_handlers
 
-REGISTER_FACTORY_FULLY_QUALIFIED(
-    strij::nodeagent::task_handlers::PipedExecutableTaskHandlerFactory,
-    strij::nodeagent::TaskHandlerFactory, piped_executable_task_handler_registrar)
+REGISTER_FACTORY_FULLY_QUALIFIED(strij::nodeagent::task_handlers::PipedExecutableTaskHandlerFactory,
+                                 strij::nodeagent::TaskHandlerFactory,
+                                 piped_executable_task_handler_registrar)

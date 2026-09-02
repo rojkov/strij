@@ -1,11 +1,10 @@
 #pragma once
 
-#include "strij/extensions/factory_context.hh"
-#include "nodeagent/core/function_resolver.hh"
-#include "common/core/logging/logger.hh"
-#include "nodeagent/core/admission_controller.hh"
-#include "nodeagent/core/run_task_service.hh"
 #include "strij/event/dispatcher.hh"
+#include "strij/extensions/factory_context.hh"
+#include "strij/nodeagent/admission_controller.hh"
+#include "strij/nodeagent/function_resolver.hh"
+#include "strij/nodeagent/run_task_service.hh"
 
 namespace strij::nodeagent {
 

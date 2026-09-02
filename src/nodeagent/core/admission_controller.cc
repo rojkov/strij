@@ -25,7 +25,8 @@ AdmissionControllerImpl::AdmissionControllerImpl(const node::NodeCapabilities& c
 }
 
 auto AdmissionControllerImpl::Admit(std::string_view task_type,
-                                const node::ResourceRequirements& requirements) -> absl::Status {
+                                    const node::ResourceRequirements& requirements)
+    -> absl::Status {
   for (const auto& [pool, amount] : requirements.resources()) {
     if (!pool_total_map_.contains(pool)) {
       return absl::FailedPreconditionError(
@@ -57,7 +58,7 @@ auto AdmissionControllerImpl::Admit(std::string_view task_type,
 }
 
 void AdmissionControllerImpl::Release(std::string_view task_type,
-                                  const node::ResourceRequirements& requirements) {
+                                      const node::ResourceRequirements& requirements) {
   for (const auto& [pool, amount] : requirements.resources()) {
     auto iter = pool_in_use_map_.find(pool);
     if (iter == pool_in_use_map_.end()) {

@@ -23,9 +23,9 @@
 #include "yaml-cpp/yaml.h"
 
 // Generated protobuf headers
+#include "common/config/options.pb.h"
 #include "gateway/config/gateway.pb.h"
 #include "nodeagent/config/nodeagent.pb.h"
-#include "common/config/options.pb.h"
 
 namespace strij::config {
 

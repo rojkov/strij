@@ -1,12 +1,10 @@
+#include "gateway_framework.hh"
+
 #include <signal.h>
 
 #include <memory>
 #include <string>
 #include <utility>
-
-#include "gateway_framework.hh"
-
-#include "gateway/extensions/node_discovery/node_discovery.hh"
 
 #include "absl/flags/flag.h"
 #include "absl/flags/parse.h"
@@ -14,12 +12,6 @@
 #include "common/core/common/signal_monitor.hh"
 #include "common/core/config/config_loader.hh"
 #include "common/core/event/dispatcher_impl.hh"
-#include "strij/extensions/extension_registry.hh"
-#include "gateway/core/gateway_http_handler.hh"
-#include "gateway/core/gateway_tlv_handler.hh"
-#include "gateway/core/http_result_receiver.hh"
-#include "gateway/core/node_directory.hh"
-#include "gateway/core/result_receiver_storage.hh"
 #include "common/core/io/connection.hh"
 #include "common/core/io/llhttp_parser.hh"
 #include "common/core/io/protocol_parser.hh"
@@ -28,9 +20,16 @@
 #include "common/core/io/tlv_parser.hh"
 #include "common/core/logging/log.hh"
 #include "common/core/logging/logger.hh"
+#include "gateway/core/gateway_http_handler.hh"
+#include "gateway/core/gateway_tlv_handler.hh"
+#include "gateway/core/http_result_receiver.hh"
+#include "gateway/core/node_directory.hh"
+#include "gateway/core/result_receiver_storage.hh"
 #include "gateway/core/scheduler_router/scheduler_router.hh"
+#include "gateway/extensions/node_discovery/node_discovery.hh"
 #include "gateway_factory_context.hh"
 #include "strij/event/dispatcher.hh"
+#include "strij/extensions/extension_registry.hh"
 
 // Generated protobuf headers
 #include "gateway/config/gateway.pb.h"
@@ -132,7 +131,8 @@ auto RunGateway(int argc, char** argv) -> int {
         });
   };
 
-  strij::gateway::NodeDirectoryImpl node_directory{dispatcher, std::move(connection_factory), storage};
+  strij::gateway::NodeDirectoryImpl node_directory{dispatcher, std::move(connection_factory),
+                                                   storage};
   node_directory_ptr = &node_directory;
 
   strij::gateway::GatewayFactoryContextImpl factory_context(dispatcher, node_directory, storage);
@@ -171,6 +171,7 @@ auto RunGateway(int argc, char** argv) -> int {
     LOG_ERROR("Config error: {}", router_result.status().message());
     return 1;
   }
+
   auto scheduler_router = std::move(router_result).value();
   scheduler_router_ptr = scheduler_router.get();
   LOG_INFO("Loaded {} scheduler(s); requires protocol '{}'", config.schedulers().size(),

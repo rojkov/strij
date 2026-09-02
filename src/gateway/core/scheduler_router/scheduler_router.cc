@@ -12,13 +12,14 @@
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
-#include "gateway/config/gateway.pb.h"
-#include "strij/extensions/factory_context.hh"
-#include "gateway/core/result_receiver_storage.hh"
 #include "common/core/io/connection.hh"
 #include "common/core/io/tlv_frame.hh"
+#include "common/extensions/scheduler_loader.hh"
 #include "common/task/task.pb.h"
+#include "gateway/config/gateway.pb.h"
+#include "strij/extensions/factory_context.hh"
 #include "strij/extensions/scheduler.hh"
+#include "strij/gateway/result_receiver_storage.hh"
 
 namespace strij::gateway {
 
@@ -87,8 +88,7 @@ auto SchedulerRouter::HandleFrame(const io::TlvFrame& frame, io::Connection& con
   extensions::Scheduler* owner = findFrameOwner(frame.type_id);
   if (owner == nullptr) {
     return absl::NotFoundError(
-        absl::StrCat("no constituent scheduler owns frame type ",
-                     static_cast<int>(frame.type_id)));
+        absl::StrCat("no constituent scheduler owns frame type ", static_cast<int>(frame.type_id)));
   }
 
   return owner->HandleFrame(frame, conn);
@@ -98,7 +98,8 @@ auto SchedulerRouter::HandledFrameTypes() const -> std::span<const uint8_t> {
   return handled_types_;
 }
 
-auto BuildSchedulerRouter(const config::GatewayConfig& config, extensions::GatewayFactoryContext& context)
+auto BuildSchedulerRouter(const config::GatewayConfig& config,
+                          extensions::GatewayFactoryContext& context)
     -> absl::StatusOr<std::unique_ptr<SchedulerRouter>> {
   if (config.schedulers().empty()) {
     return absl::InvalidArgumentError(

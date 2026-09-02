@@ -29,10 +29,13 @@ auto ParamsOnlyRequirementsResolver::Resolve(
     } else {
       continue;
     }
+
     if (pool.empty()) {
       continue;
     }
+
     try {
+      // TODO: use abseil lib, get rid of try-except
       (*resources)[std::string(pool)] = std::stoull(value);
     } catch (const std::exception&) {
       LOG_WARNING("Ignoring unparseable resource amount for pool '{}': '{}'", pool, value);

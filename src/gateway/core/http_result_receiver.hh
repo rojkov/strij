@@ -4,8 +4,8 @@
 #include <span>
 #include <vector>
 
-#include "gateway/core/result_receiver_storage.hh"
 #include "common/core/io/connection.hh"
+#include "strij/gateway/result_receiver_storage.hh"
 
 namespace strij::gateway {
 

@@ -1,10 +1,8 @@
 #pragma once
 
-#include "strij/extensions/factory_context.hh"
 #include "gateway/core/node_directory.hh"
-#include "gateway/core/result_receiver_storage.hh"
-#include "common/core/logging/logger.hh"
 #include "strij/event/dispatcher.hh"
+#include "strij/extensions/factory_context.hh"
 
 namespace strij::gateway {
 

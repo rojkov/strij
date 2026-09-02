@@ -6,10 +6,10 @@
 
 #include "common/core/config/config_loader.hh"
 #include "gateway/config/gateway.pb.h"
-#include "nodeagent/config/nodeagent.pb.h"
 #include "gateway/extensions/schedulers/capability_aware/capability_aware.pb.h"
-#include "nodeagent/extensions/task_handlers/echo/echo_task_handler.pb.h"
 #include "gtest/gtest.h"
+#include "nodeagent/config/nodeagent.pb.h"
+#include "nodeagent/extensions/task_handlers/echo/echo_task_handler.pb.h"
 
 namespace strij::config {
 namespace {

@@ -7,15 +7,14 @@
 #include <utility>
 #include <vector>
 
-#include "strij/extensions/extension_registry.hh"
-#include "strij/extensions/factory_context.hh"
-#include "gateway/core/node.hh"
-#include "gateway/core/node_directory.hh"
-#include "gateway/core/result_receiver_storage.hh"
 #include "common/core/io/connection.hh"
 #include "common/core/io/tlv_frame.hh"
 #include "common/task/task.pb.h"
+#include "gateway/core/node.hh"
+#include "gateway/core/node_directory.hh"
 #include "gateway/extensions/schedulers/round_robin/round_robin.pb.h"
+#include "strij/extensions/extension_registry.hh"
+#include "strij/extensions/factory_context.hh"
 #include "strij/extensions/scheduler.hh"
 
 namespace strij::gateway::schedulers {
@@ -62,7 +61,8 @@ auto RoundRobinSchedulerFactory::CreateEmptyConfigProto() -> MessagePtr {
 }
 
 auto RoundRobinSchedulerFactory::Create(const ::google::protobuf::Message& /*config*/,
-                                        extensions::GatewayFactoryContext& context) -> extensions::SchedulerPtr {
+                                        extensions::GatewayFactoryContext& context)
+    -> extensions::SchedulerPtr {
   return std::make_unique<RoundRobinScheduler>(context.NodeDirectory(),
                                                context.ResultReceiverStorage());
 }

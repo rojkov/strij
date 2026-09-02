@@ -8,14 +8,12 @@
 #include <vector>
 
 #include "absl/status/statusor.h"
-#include "gateway/config/gateway.pb.h"
-#include "strij/extensions/factory_context.hh"
-#include "gateway/core/result_receiver_storage.hh"
 #include "common/core/io/connection.hh"
 #include "common/core/io/tlv_frame.hh"
 #include "common/task/task.pb.h"
+#include "gateway/config/gateway.pb.h"
+#include "strij/extensions/factory_context.hh"
 #include "strij/extensions/scheduler.hh"
-#include "common/extensions/scheduler_loader.hh"
 
 namespace strij::gateway {
 
@@ -66,7 +64,8 @@ private:
 // CreateGatewayScheduler and composes them into a router. Fails on an empty
 // list, an unknown scheduler name, or ambiguous bindings (duplicate task_type
 // or more than one default).
-auto BuildSchedulerRouter(const config::GatewayConfig& config, extensions::GatewayFactoryContext& context)
+auto BuildSchedulerRouter(const config::GatewayConfig& config,
+                          extensions::GatewayFactoryContext& context)
     -> absl::StatusOr<std::unique_ptr<SchedulerRouter>>;
 
 } // namespace strij::gateway

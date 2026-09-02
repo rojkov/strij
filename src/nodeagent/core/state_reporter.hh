@@ -6,10 +6,8 @@
 #include <utility>
 #include <vector>
 
-#include "nodeagent/core/admission_controller.hh"
-
 #include "common/core/io/outbound_mailbox.hh"
-#include "nodeagent/core/admission_controller.hh"
+#include "strij/nodeagent/admission_controller.hh"
 
 namespace strij::nodeagent {
 

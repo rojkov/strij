@@ -6,11 +6,11 @@
 
 #include "common/core/io/connection.hh"
 #include "common/core/io/tlv_frame.hh"
-#include "nodeagent/core/run_task_service.hh"
 #include "common/task/task.pb.h"
-#include "strij/extensions/scheduler.hh"
 #include "strij/event/command.hh"
 #include "strij/event/command_handler.hh"
+#include "strij/extensions/scheduler.hh"
+#include "strij/nodeagent/run_task_service.hh"
 
 namespace strij::nodeagent::schedulers {
 
@@ -51,8 +51,8 @@ public:
   [[nodiscard]] auto Name() const -> std::string override { return "push"; }
   [[nodiscard]] auto RequiredProtocol() const -> std::string_view override { return "push"; }
   auto CreateEmptyConfigProto() -> MessagePtr override;
-  auto Create(const ::google::protobuf::Message& config, extensions::NodeagentFactoryContext& context)
-      -> extensions::SchedulerPtr override;
+  auto Create(const ::google::protobuf::Message& config,
+              extensions::NodeagentFactoryContext& context) -> extensions::SchedulerPtr override;
 };
 
 } // namespace strij::nodeagent::schedulers

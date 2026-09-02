@@ -6,11 +6,11 @@
 #include <string>
 
 #include "absl/status/statusor.h"
-#include "strij/extensions/factory_context.hh"
 #include "common/node/capabilities.pb.h"
 #include "common/task/task.pb.h"
 #include "google/protobuf/message.h"
 #include "strij/common/pure.hh"
+#include "strij/extensions/factory_context.hh"
 
 namespace strij::nodeagent {
 
@@ -82,8 +82,8 @@ public:
 
   [[nodiscard]] virtual auto Name() const -> std::string PURE;
   virtual auto CreateEmptyConfigProto() -> MessagePtr PURE;
-  virtual auto Create(const ::google::protobuf::Message& config, extensions::NodeagentFactoryContext& context)
-      -> TaskHandlerPtr PURE;
+  virtual auto Create(const ::google::protobuf::Message& config,
+                      extensions::NodeagentFactoryContext& context) -> TaskHandlerPtr PURE;
   // Parses the operator-declared capacity (concurrency limit) out of the
   // factory's config message. The default implementation declares no
   // concurrency limit.

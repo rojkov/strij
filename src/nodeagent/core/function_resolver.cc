@@ -11,6 +11,7 @@ auto LocalFunctionResolver::Resolve(std::string_view reference) -> absl::StatusO
   if (reference.empty()) {
     return absl::InvalidArgumentError("empty function reference");
   }
+
   return std::string(reference);
 }
 

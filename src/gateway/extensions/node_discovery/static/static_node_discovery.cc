@@ -6,9 +6,9 @@
 #include <utility>
 #include <vector>
 
-#include "strij/extensions/extension_registry.hh"
 #include "gateway/extensions/node_discovery/static/static_node_discovery.pb.h"
 #include "google/protobuf/any.pb.h"
+#include "strij/extensions/extension_registry.hh"
 
 namespace strij::gateway::node_discovery {
 

@@ -10,20 +10,20 @@
 #include "common/core/io/connection.hh"
 #include "common/core/io/tlv_frame.hh"
 #include "common/core/logging/log.hh"
-#include "nodeagent/core/admission_controller.hh"
+#include "common/task/task.pb.h"
 #include "nodeagent/core/admission_tracking_sender.hh"
 #include "nodeagent/core/result_sender.hh"
-#include "common/task/task.pb.h"
 #include "nodeagent/extensions/task_handlers/task_handlers.hh"
+#include "strij/nodeagent/admission_controller.hh"
 
 namespace strij::nodeagent {
 
 RunTaskServiceImpl::RunTaskServiceImpl(std::shared_ptr<TaskHandlerManager> manager,
-                               std::shared_ptr<AdmissionController> admission)
+                                       std::shared_ptr<AdmissionController> admission)
     : manager_{std::move(manager)}, admission_{std::move(admission)} {}
 
 void RunTaskServiceImpl::sendTaskRejected(io::Connection& conn, const task::Task& task,
-                                      std::string_view reason) {
+                                          std::string_view reason) {
   task::TaskRejected rejected;
   rejected.set_id(task.id());
   rejected.set_reason(std::string(reason));

@@ -4,10 +4,6 @@
 #include <utility>
 
 #include "strij/extensions/factory_context.hh"
-#include "nodeagent/core/function_resolver.hh"
-#include "common/core/logging/logger.hh"
-#include "nodeagent/core/admission_controller.hh"
-#include "nodeagent/core/run_task_service.hh"
 
 namespace strij::nodeagent {
 

@@ -17,6 +17,7 @@ void ResultReceiverStorageImpl::NotifyNodeDisconnected(const std::string& node_i
     if (receiver != nullptr) {
       receiver->DeliverError("node disconnected");
     }
+
     Erase(task_id);
     if (state_tracker_ != nullptr) {
       state_tracker_->RecordCompletion(task_id);

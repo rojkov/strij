@@ -5,7 +5,6 @@
 #include <cassert>
 #include <csignal>
 #include <cstdint>
-#include <cstdio>
 
 #include "common/core/logging/log.hh"
 

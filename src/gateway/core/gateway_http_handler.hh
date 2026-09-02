@@ -6,7 +6,6 @@
 #include <string_view>
 #include <vector>
 
-#include "gateway/core/result_receiver_storage.hh"
 #include "common/core/io/connection.hh"
 #include "common/core/io/llhttp_parser.hh"
 #include "common/task/task.pb.h"
