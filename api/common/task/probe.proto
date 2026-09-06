@@ -1,0 +1,36 @@
+syntax = "proto3";
+
+package strij.task;
+
+import "common/node/capabilities.proto";
+
+// Probe scheduling protocol messages (Sparrow-style). The gateway probes a
+// small candidate set with TaskProbe (id, type, requirements — never the full
+// body); a node either claims the task with TaskPull (holding a preallocated
+// admission scope) or refuses with TaskDecline. The gateway then either grants
+// exactly one node (a full strij.task.Task, body included) or revokes the rest
+// with TaskProbeCancel. TaskProbeCancel is idempotent on the receiving side.
+message TaskProbe {
+  // Matches the originating Task.id.
+  string id = 1;
+  string type = 2;
+  // Authoritative admission requirements; absent means empty requirements.
+  strij.node.ResourceRequirements requirements = 3;
+}
+
+message TaskPull {
+  // Matches the originating Task.id the node is claiming.
+  string id = 1;
+}
+
+message TaskProbeCancel {
+  // Matches the originating Task.id being relinquished.
+  string id = 1;
+}
+
+message TaskDecline {
+  // Matches the originating Task.id being refused.
+  string id = 1;
+  // Why the node refused, e.g. "queue full" or "requirements unsatisfiable".
+  string reason = 2;
+}

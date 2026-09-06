@@ -15,6 +15,10 @@ NodeagentFactoryContextImpl::NodeagentFactoryContextImpl(
 
 auto NodeagentFactoryContextImpl::Dispatcher() -> event::Dispatcher& { return *dispatcher_; }
 
+auto NodeagentFactoryContextImpl::SharedDispatcher() -> event::DispatcherSharedPtr {
+  return dispatcher_;
+}
+
 auto NodeagentFactoryContextImpl::FunctionResolver() -> nodeagent::FunctionResolver& {
   return *function_resolver_;
 }

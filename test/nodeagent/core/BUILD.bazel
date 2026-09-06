@@ -30,6 +30,7 @@ strij_cc_test(
         "//api/common/node:node_cc_proto",
         "//api/nodeagent/extensions/task_handlers/echo:echo_task_handler_cc_proto",
         "//src/nodeagent/core:capabilities_lib",
+        "//src/nodeagent/extensions/schedulers/probe:probe_local_scheduler_lib",
         "//src/nodeagent/extensions/schedulers/push:push_local_scheduler_lib",
         "//src/nodeagent/extensions/task_handlers/echo:echo_task_handler_lib",
         "@googletest//:gtest_main",

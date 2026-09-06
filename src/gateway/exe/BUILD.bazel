@@ -48,6 +48,7 @@ strij_gateway_binary(
     extensions = [
         "//src/gateway/extensions/node_discovery/static:static_node_discovery_lib",
         "//src/gateway/extensions/schedulers/capability_aware:capability_aware_scheduler_lib",
+        "//src/gateway/extensions/schedulers/probe:probe_scheduler_lib",
         "//src/gateway/extensions/schedulers/round_robin:round_robin_scheduler_lib",
     ],
 )

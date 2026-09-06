@@ -469,6 +469,50 @@ TEST_F(NodeagentTlvHandlerTest, CompletionReleasesReservedCapacity) {
   EXPECT_EQ(admission->InFlight("echo"), 0U);
 }
 
+TEST_F(NodeagentTlvHandlerTest, RunsPreallocatedTaskWithoutDoubleAdmit) {
+  auto caps = std::make_shared<node::NodeCapabilities>();
+  caps->set_node_id("node-test");
+  caps->set_capability_version(1);
+  auto* pool = caps->add_pools();
+  pool->set_name("cpu");
+  pool->set_total(16);
+  auto* handler_cap = caps->add_handlers();
+  handler_cap->set_task_type("echo");
+
+  auto manager = MakeEchoManager();
+  auto admission = std::make_shared<AdmissionControllerImpl>(*caps, *dispatcher_);
+  EXPECT_EQ(admission->SharedFree("cpu"), 16U);
+
+  node::ResourceRequirements requirements;
+  (*requirements.mutable_resources())["cpu"] = 2;
+
+  // Reserve capacity up front exactly as the probe scheduler would before a
+  // grant arrives.
+  ASSERT_TRUE(admission->Admit("echo", requirements).ok());
+  EXPECT_EQ(admission->SharedFree("cpu"), 14U);
+  auto scope = std::make_unique<AdmissionScope>(admission, "echo", requirements);
+
+  // The scope-carrying variant must NOT admit again; the echo handler sends
+  // the final result immediately, releasing the preallocated scope.
+  EXPECT_CALL(*dispatcher_, PrepareWrite(::testing::_, ::testing::_, ::testing::_, ::testing::_, 0))
+      .WillOnce(::testing::Invoke([this](event::Completable*, uint8_t, int,
+                                         std::span<const std::byte> buf,
+                                         off_t) { ::write(fds_[0], buf.data(), buf.size()); }));
+
+  RunTaskServiceImpl run_task_service(manager, admission);
+
+  task::Task task;
+  task.set_id("1");
+  task.set_type("echo");
+  (*task.mutable_requirements()->mutable_resources())["cpu"] = 2;
+  run_task_service.RunTask(task, *conn_, std::move(scope));
+
+  // Capacity was reserved exactly once (by the caller) and released on the
+  // final result: a double admit would leave 14 shared-free.
+  EXPECT_EQ(admission->SharedFree("cpu"), 16U);
+  EXPECT_EQ(admission->InFlight("echo"), 0U);
+}
+
 // NOLINTEND(modernize-use-trailing-return-type)
 
 } // namespace

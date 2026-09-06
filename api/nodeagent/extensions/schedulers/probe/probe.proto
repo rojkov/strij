@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+package strij.extensions.schedulers.probe;
+
+// ProbeLocalScheduler config. Absent fields fall back to the defaults the
+// scheduler factory documents (queue_capacity 64, max_concurrent_preallocations 4).
+message ProbeSchedulerConfig {
+  // Upper bound on unfilled reservations awaiting freed capacity (probes the
+  // node has enqueued but not yet preallocated). A full queue declines new
+  // probes ("queue full").
+  optional uint32 queue_capacity = 1;
+
+  // How many queued probes the release-walk may preallocate in one pass (the
+  // overbooking dial). Bounds the eager drain of the backlog.
+  optional uint32 max_concurrent_preallocations = 2;
+}

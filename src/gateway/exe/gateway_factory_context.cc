@@ -14,6 +14,10 @@ GatewayFactoryContextImpl::GatewayFactoryContextImpl(event::DispatcherSharedPtr 
 
 auto GatewayFactoryContextImpl::Dispatcher() -> event::Dispatcher& { return *dispatcher_; }
 
+auto GatewayFactoryContextImpl::SharedDispatcher() -> event::DispatcherSharedPtr {
+  return dispatcher_;
+}
+
 auto GatewayFactoryContextImpl::NodeDirectory() -> gateway::NodeDirectory& {
   return node_directory_;
 }

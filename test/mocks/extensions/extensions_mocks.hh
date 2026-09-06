@@ -39,6 +39,7 @@ public:
 class MockGatewayFactoryContext final : public GatewayFactoryContext {
 public:
   MOCK_METHOD(event::Dispatcher&, Dispatcher, (), (override));
+  MOCK_METHOD(event::DispatcherSharedPtr, SharedDispatcher, (), (override));
   MOCK_METHOD(gateway::NodeDirectory&, NodeDirectory, (), (override));
   MOCK_METHOD(gateway::ResultReceiverStorage&, ResultReceiverStorage, (), (override));
 };
@@ -49,6 +50,7 @@ public:
 class MockNodeagentFactoryContext final : public NodeagentFactoryContext {
 public:
   MOCK_METHOD(event::Dispatcher&, Dispatcher, (), (override));
+  MOCK_METHOD(event::DispatcherSharedPtr, SharedDispatcher, (), (override));
   MOCK_METHOD(strij::nodeagent::FunctionResolver&, FunctionResolver, (), (override));
   MOCK_METHOD(nodeagent::AdmissionControllerSharedPtr, AdmissionController, (), (override));
   MOCK_METHOD(nodeagent::RunTaskService&, RunTaskService, (), (override));

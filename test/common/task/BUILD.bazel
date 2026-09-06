@@ -8,3 +8,12 @@ strij_cc_test(
         "@googletest//:gtest_main",
     ],
 )
+
+strij_cc_test(
+    name = "probe_protocol_test",
+    srcs = ["probe_protocol_test.cc"],
+    deps = [
+        "//api/common/task:probe_cc_proto",
+        "@googletest//:gtest_main",
+    ],
+)

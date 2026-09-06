@@ -2,6 +2,7 @@
 
 #include "common/task/task.pb.h"
 #include "strij/common/pure.hh"
+#include "strij/nodeagent/admission_controller.hh"
 
 namespace strij {
 
@@ -32,6 +33,15 @@ public:
   // with an unknown handler type are dropped with a warning. Runs synchronously
   // on the caller's (event-loop) thread.
   virtual void RunTask(const task::Task& task, io::Connection& conn) PURE;
+
+  // Runs a task whose capacity was already reserved by the caller. This is the
+  // execution path for schedulers that preallocate admission up front (e.g.
+  // probe scheduling): no Admit is called (a double-admit would never unwind)
+  // and no kTaskRejected is sent. `reserved` transfers ownership to the result
+  // sender, which releases the held capacity on the final result (or on
+  // destruction). Runs synchronously on the caller's (event-loop) thread.
+  virtual void RunTask(const task::Task& task, io::Connection& conn,
+                       AdmissionScopePtr reserved) PURE;
 };
 
 } // namespace strij::nodeagent

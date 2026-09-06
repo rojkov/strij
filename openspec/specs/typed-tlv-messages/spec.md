@@ -36,11 +36,15 @@ The TLV wire format SHALL encode `[type_id: 1 byte][length: 4 bytes][value: N by
 - **THEN** it SHALL invoke the callback with a `TlvFrame` containing type_id and the full value span
 
 ### Requirement: TLV type_id constants
-The system SHALL define constants for TLV type_ids: `kTaskSubmission = 0`, `kResult = 1`, `kHeartbeat = 2`, `kNodeAdvertisement = 3`, `kNodeState = 4`, `kTaskRejected = 5`.
+The system SHALL define constants for TLV type_ids: `kTaskSubmission = 0`, `kResult = 1`, `kHeartbeat = 2`, `kNodeAdvertisement = 3`, `kNodeState = 4`, `kTaskRejected = 5`, `kTaskProbe = 6`, `kTaskProbeCancel = 7`, `kTaskPull = 8`, `kTaskGrant = 9`, `kTaskDecline = 10`. Existing constants (0–5) SHALL remain unchanged and unrenumbered; endpoints not implementing the probe protocol SHALL drop frames of probe-protocol ids (6–10) as unknown.
 
 #### Scenario: Type constants are defined
 - **WHEN** code references `TlvFrame::kTaskSubmission`, `TlvFrame::kResult`, `TlvFrame::kHeartbeat`, `TlvFrame::kNodeAdvertisement`, `TlvFrame::kNodeState`, or `TlvFrame::kTaskRejected`
 - **THEN** they SHALL resolve to 0, 1, 2, 3, 4, and 5 respectively
+
+#### Scenario: Probe scheduling constants are defined
+- **WHEN** code references `TlvFrame::kTaskProbe`, `TlvFrame::kTaskProbeCancel`, `TlvFrame::kTaskPull`, `TlvFrame::kTaskGrant`, and `TlvFrame::kTaskDecline`
+- **THEN** they SHALL resolve to 6, 7, 8, 9, and 10 respectively
 
 ### Requirement: TLV wire format serialization
 The system SHALL provide a `SerializeTlvFrame(uint8_t type_id, std::span<const std::byte> value) -> std::vector<std::byte>` free function that serializes a TLV frame into the wire format `[type_id:1][length:4 network-order][value:N]`. The caller is responsible for composing the value content (e.g., serializing a `Task` or `TaskResult` protobuf message into the value span).
@@ -71,3 +75,16 @@ The system SHALL provide a `SerializeTlvFrame(uint8_t type_id, std::span<const s
 #### Scenario: Rejection frame carries TaskRejected
 - **WHEN** a nodeagent serializes a `kTaskRejected` frame whose value is a serialized `TaskRejected`
 - **THEN** a consumer parsing the frame value SHALL recover the original `TaskRejected`
+
+### Requirement: Probe scheduling TLV frame payloads
+`kTaskProbe` SHALL carry a serialized `strij.task.TaskProbe` message, `kTaskPull` a serialized `strij.task.TaskPull`, `kTaskProbeCancel` a serialized `strij.task.TaskProbeCancel`, `kTaskDecline` a serialized `strij.task.TaskDecline`, and `kTaskGrant` a serialized `strij.task.Task` message (the full task, body included).
+
+#### Scenario: Probe frame carries TaskProbe
+
+- **WHEN** a gateway serializes a `kTaskProbe` frame whose value is a serialized `TaskProbe`
+- **THEN** a consumer parsing the frame value SHALL recover the original `TaskProbe`
+
+#### Scenario: Grant frame carries the full Task
+
+- **WHEN** a gateway serializes a `kTaskGrant` frame whose value is a serialized `Task`
+- **THEN** a consumer parsing the frame value SHALL recover the original `Task` including its body

@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+package strij.extensions.schedulers.probe;
+
+// Gateway-side "probe" scheduler config. Absent fields fall back to the
+// documented defaults (candidate_count 2, probe_deadline_ms 1000).
+message ProbeRoleSchedulerConfig {
+  // How many candidates to probe per task. Clamped to the number of
+  // probe-eligible nodes; must be >= 1 (validated at factory create).
+  optional uint32 candidate_count = 1;
+
+  // How long a task's probe round may wait for a pull before the scheduler
+  // cancels the outstanding probes and errors the receiver. The deadline is
+  // swept by a ~100ms periodic timer.
+  optional uint32 probe_deadline_ms = 2;
+}

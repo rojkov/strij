@@ -38,7 +38,16 @@ auto createSchedulerFromExtension(const config::ExtensionConfig& ext, ContextT& 
     }
   }
 
-  return factory->Create(*config_msg, context);
+  auto scheduler = factory->Create(*config_msg, context);
+  // A factory returns nullptr to report an invalid/unsupported configuration
+  // (e.g. probe candidate_count < 1); surface it as a config error rather than
+  // installing a null scheduler.
+  if (scheduler == nullptr) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Scheduler factory '", ext.name(),
+                     "' rejected the configuration (Create returned null)"));
+  }
+  return scheduler;
 }
 
 } // namespace
