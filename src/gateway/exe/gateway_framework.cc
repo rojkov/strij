@@ -179,6 +179,7 @@ auto RunGateway(int argc, char** argv) -> int {
 
   if (absl::GetFlag(FLAGS_validate_only)) {
     LOG_INFO("Config validation passed");
+    logger.Stop();
     return 0;
   }
 
