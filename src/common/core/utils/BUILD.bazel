@@ -13,3 +13,9 @@ strij_cc_library(
     hdrs = ["task_id.hh"],
     visibility = ["//visibility:public"],
 )
+
+strij_cc_library(
+    name = "bounded_queue_lib",
+    hdrs = ["bounded_queue.hh"],
+    visibility = ["//visibility:public"],
+)

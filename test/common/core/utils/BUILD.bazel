@@ -1,6 +1,15 @@
 load("//bazel:build_system.bzl", "strij_cc_test")
 
 strij_cc_test(
+    name = "bounded_queue_test",
+    srcs = ["bounded_queue_test.cc"],
+    deps = [
+        "//src/common/core/utils:bounded_queue_lib",
+        "@googletest//:gtest_main",
+    ],
+)
+
+strij_cc_test(
     name = "task_id_test",
     srcs = ["task_id_test.cc"],
     deps = [

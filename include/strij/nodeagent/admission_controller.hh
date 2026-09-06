@@ -8,6 +8,7 @@
 #include "absl/status/status.h"
 #include "common/node/capabilities.pb.h"
 #include "strij/common/pure.hh"
+#include "strij/event/command_handler.hh"
 
 namespace strij::nodeagent {
 
@@ -35,6 +36,12 @@ public:
   // with exactly one Release (possibly via AdmissionScope).
   virtual void Release(std::string_view task_type,
                        const node::ResourceRequirements& requirements) PURE;
+
+  // Registers `observer` to receive CAPACITY_RELEASED commands (a pure wakeup,
+  // args_ == nullptr) on the event loop whenever this controller releases
+  // capacity. Called once at scheduler construction; schedulers and the
+  // controller are process-lifetime objects, so registration is never undone.
+  virtual void RegisterCapacityObserver(event::CommandHandler* observer) PURE;
 
   // Builds the current kNodeState snapshot. `seq` is caller-owned (monotonic).
   [[nodiscard]] virtual auto BuildStateSnapshot(std::string node_id, uint64_t seq) const

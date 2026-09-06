@@ -7,10 +7,13 @@
 #include "absl/strings/str_cat.h"
 #include "common/core/logging/log.hh"
 #include "common/node/capabilities.pb.h"
+#include "strij/event/command.hh"
 
 namespace strij::nodeagent {
 
-AdmissionControllerImpl::AdmissionControllerImpl(const node::NodeCapabilities& capabilities) {
+AdmissionControllerImpl::AdmissionControllerImpl(const node::NodeCapabilities& capabilities,
+                                                 event::Dispatcher& dispatcher)
+    : dispatcher_{dispatcher} {
   for (const auto& pool : capabilities.pools()) {
     pool_total_map_[pool.name()] = pool.total();
   }
@@ -81,6 +84,20 @@ void AdmissionControllerImpl::Release(std::string_view task_type,
 
   if (--in_flight_iter->second == 0) {
     type_in_flight_map_.erase(in_flight_iter);
+  }
+
+  notifyCapacityReleased();
+}
+
+void AdmissionControllerImpl::RegisterCapacityObserver(event::CommandHandler* observer) {
+  capacity_observers_.push_back(observer);
+}
+
+void AdmissionControllerImpl::notifyCapacityReleased() {
+  for (event::CommandHandler* observer : capacity_observers_) {
+    dispatcher_.SubmitCommand({.type_ = event::Command::CAPACITY_RELEASED,
+                               .destination_ = observer,
+                               .args_ = nullptr});
   }
 }
 

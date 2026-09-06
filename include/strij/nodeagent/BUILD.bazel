@@ -7,6 +7,7 @@ strij_cc_library(
     deps = [
         "//api/common/node:node_cc_proto",
         "//include/strij/common:pure_lib",
+        "//include/strij/event:command_handler_interface",
         "@abseil-cpp//absl/status:status",
     ],
 )

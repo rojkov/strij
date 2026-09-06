@@ -92,8 +92,8 @@ protected:
     return caps;
   }
 
-  static auto MakeAdmission() -> std::shared_ptr<AdmissionController> {
-    return std::make_shared<AdmissionControllerImpl>(*MakeCapabilities());
+  auto MakeAdmission() -> std::shared_ptr<AdmissionController> {
+    return std::make_shared<AdmissionControllerImpl>(*MakeCapabilities(), *dispatcher_);
   }
 
   // Reads up to `size` bytes written by the handler into `buf`.
@@ -319,7 +319,7 @@ TEST_F(NodeagentTlvHandlerTest, RejectsTaskWhenPoolExhausted) {
 
   auto manager = std::make_shared<TaskHandlerManager>();
   manager->AddHandler("retaining", std::make_unique<RetainingSenderHandler>());
-  auto admission = std::make_shared<AdmissionControllerImpl>(*caps);
+  auto admission = std::make_shared<AdmissionControllerImpl>(*caps, *dispatcher_);
 
   // Only the rejected task writes a frame.
   EXPECT_CALL(*dispatcher_, PrepareWrite(::testing::_, ::testing::_, ::testing::_, ::testing::_, 0))
@@ -380,7 +380,7 @@ TEST_F(NodeagentTlvHandlerTest, RejectsTaskAtConcurrencyLimit) {
 
   auto manager = std::make_shared<TaskHandlerManager>();
   manager->AddHandler("retaining", std::make_unique<RetainingSenderHandler>());
-  auto admission = std::make_shared<AdmissionControllerImpl>(*caps);
+  auto admission = std::make_shared<AdmissionControllerImpl>(*caps, *dispatcher_);
 
   EXPECT_CALL(*dispatcher_, PrepareWrite(::testing::_, ::testing::_, ::testing::_, ::testing::_, 0))
       .WillOnce(::testing::Invoke([this](event::Completable*, uint8_t, int,
@@ -440,7 +440,7 @@ TEST_F(NodeagentTlvHandlerTest, CompletionReleasesReservedCapacity) {
   handler_cap->set_task_type("echo");
 
   auto manager = MakeEchoManager();
-  auto admission = std::make_shared<AdmissionControllerImpl>(*caps);
+  auto admission = std::make_shared<AdmissionControllerImpl>(*caps, *dispatcher_);
   EXPECT_EQ(admission->SharedFree("cpu"), 16U);
 
   EXPECT_CALL(*dispatcher_, PrepareWrite(::testing::_, ::testing::_, ::testing::_, ::testing::_, 0))

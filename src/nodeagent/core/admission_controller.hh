@@ -4,9 +4,12 @@
 #include <map>
 #include <string>
 #include <string_view>
+#include <vector>
 
 #include "absl/status/status.h"
 #include "common/node/capabilities.pb.h"
+#include "strij/event/command_handler.hh"
+#include "strij/event/dispatcher.hh"
 #include "strij/nodeagent/admission_controller.hh"
 
 namespace strij::nodeagent {
@@ -22,7 +25,8 @@ namespace strij::nodeagent {
 // limit; a concurrency of 0 (or an undeclared type) means no limit.
 class AdmissionControllerImpl final : public AdmissionController {
 public:
-  explicit AdmissionControllerImpl(const node::NodeCapabilities& capabilities);
+  AdmissionControllerImpl(const node::NodeCapabilities& capabilities,
+                          event::Dispatcher& dispatcher);
 
   // AdmissionController
   auto Admit(std::string_view task_type, const node::ResourceRequirements& requirements)
@@ -32,8 +36,14 @@ public:
       -> node::NodeState override;
   [[nodiscard]] auto SharedFree(std::string_view pool) const -> uint64_t override;
   [[nodiscard]] auto InFlight(std::string_view task_type) const -> uint64_t override;
+  void RegisterCapacityObserver(event::CommandHandler* observer) override;
 
 private:
+  event::Dispatcher& dispatcher_;
+  std::vector<event::CommandHandler*> capacity_observers_;
+
+  void notifyCapacityReleased();
+
   // std::less<> enables heterogeneous (string_view) lookups.
   std::map<std::string, uint64_t, std::less<>> pool_total_map_;
   std::map<std::string, uint64_t, std::less<>> pool_reserved_map_;
