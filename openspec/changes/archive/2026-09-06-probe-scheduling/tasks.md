@@ -22,7 +22,7 @@
 
 ## 4. Gateway probe scheduler
 
-- [x] 4.1 Create the probe scheduler skeleton in `src/gateway/extensions/schedulers/probe/`: `ProbeScheduler` + `ProbeSchedulerFactory` (name `"probe"`, `RequiredProtocol()=="probe"`), owned frame types `{kTaskPull, kTaskDecline}`, config proto `ProbeRoleSchedulerConfig{candidate_count, probe_deadline}`
+- [x] 4.1 Create the probe scheduler skeleton in `src/gateway/extensions/schedulers/probe/`: `ProbeScheduler` + `ProbeSchedulerFactory` (name `"probe"`, `RequiredProtocol()=="probe"`), owned frame types `{kTaskPull, kTaskDecline}`, config proto `ProbeRoleSchedulerConfig{candidate_count, probe_deadline_ms}`
 - [x] 4.2 Implement `Schedule`: effective `k = min(candidate_count, GetCandidates("probe").size())` (default `candidate_count=2`); none → `DeliverError`; sample without replacement, deterministic in `task.id`; store per-task state {full Task, receiver, probed nodes, deadline} keyed by `task.id`; send `kTaskProbe` to each candidate
 - [x] 4.3 Implement `HandleFrame(kTaskPull)`: first-pull-wins → grant winner (full `Task`), `kTaskProbeCancel` to the other probed nodes, transfer receiver into `ResultReceiverStorage` with the winner's node id, erase probe state; a pull for a granted/unknown id → `kTaskProbeCancel` only
 - [x] 4.4 Implement `HandleFrame(kTaskDecline)`: drop the declining candidate; when all candidates have declined → `DeliverError(reason)` + erase probe state (no deadline wait)
@@ -34,5 +34,5 @@
 
 - [x] 5.1 Verify gateway + nodeagent config plumbing needs no changes beyond the new extension names (generic `ExtensionConfig`/`SchedulerConfig` unpacking) and document a probe scheduler config example (nodeagent `schedulers: [{name: "probe", ...}]`, gateway `schedulers: [{task_type: "", extension: {name: "probe", ...}}]`)
 - [x] 5.2 Confirm existing push/round-robin tests pass unchanged, demonstrating zero behavior change to v1 paths
-- [ ] 5.3 `openspec sync-specs` to fold the delta requirements into main specs (`probe-scheduling`, `typed-tlv-messages`, `task-protocol`, `node-local-scheduler`)
+- [x] 5.3 `openspec sync-specs` to fold the delta requirements into main specs (`probe-scheduling`, `typed-tlv-messages`, `task-protocol`, `node-local-scheduler`)
 - [x] 5.4 Run `make test` and `make check` (include purity + namespace coherence) and fix any fallout

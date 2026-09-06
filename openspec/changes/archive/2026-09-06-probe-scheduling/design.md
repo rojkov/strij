@@ -143,7 +143,7 @@ Cancel-at-grant is the **over-reservation valve**: loser nodes may already hold 
 
 ### D8: Deadline mechanism — periodic sweep for Phase 2
 
-The framework has only `PeriodicTimer` (fixed-interval timerfd + read). The probe scheduler owns a single `PeriodicTimer` (e.g. 100 ms cadence) and a probe-state map; each tick expires due deadlines (destroy → `DeliverError` + cancel to remaining probed nodes). Cost is O(probes-in-flight) per tick; the probe window is short-lived so steady-state map size is small. A min-heap + re-armable earliest-deadline timer is a Phase 5 refinement (also needed for the preallocation TTL), not Phase 2 scope. The deadline and `candidate_count` co-design: a healthy node returns a pull in ~1 RTT, so the default `probe_deadline` is a small multiple of expected RTT (1–2 s), configurable; the all-declined fast-path keeps operator-set deadlines from having to be tight.
+The framework has only `PeriodicTimer` (fixed-interval timerfd + read). The probe scheduler owns a single `PeriodicTimer` (e.g. 100 ms cadence) and a probe-state map; each tick expires due deadlines (destroy → `DeliverError` + cancel to remaining probed nodes). Cost is O(probes-in-flight) per tick; the probe window is short-lived so steady-state map size is small. A min-heap + re-armable earliest-deadline timer is a Phase 5 refinement (also needed for the preallocation TTL), not Phase 2 scope. The deadline and `candidate_count` co-design: a healthy node returns a pull in ~1 RTT, so the default `probe_deadline_ms` is a small multiple of expected RTT (1000 ms), configurable; the all-declined fast-path keeps operator-set deadlines from having to be tight.
 
 *Alternative considered*: per-task one-shot timerfds. Rejected — hundreds of probe tasks would mean hundreds of timerfds and CQE slots; one sweeping timer amortizes to zero framework churn.
 
@@ -160,10 +160,10 @@ nodeagent.schedulers[] probe:    ExtensionConfig{ name:"probe",
 gateway.schedulers[] probe:      SchedulerConfig{ task_type:"" (default or per-type),
                                    extension:{ name:"probe",
                                                typed_config: ProbeRoleSchedulerConfig{ candidate_count: 2,
-                                                                                      probe_deadline: 1s } } }
+                                                                                      probe_deadline_ms: 1000 } } }
 ```
 
-Defaults: `queue_capacity` and `max_concurrent_preallocations` are operator-tuned (no global default beyond "a queue exists"); gateway side defaults to `candidate_count = 2` and `probe_deadline = 1s`. Startup validation rejects `candidate_count < 1`; the deadline is clipped at the scheduler's tick granularity with no lower bound beyond that. Named `ProbeSchedulerConfig` on each side (`api/nodeagent/extensions/schedulers/probe/`, `api/gateway/extensions/schedulers/probe/`), registered via the existing factories. `BuildNodeCapabilities` picks up `"probe"` in `scheduling_protocols` automatically from `RequiredProtocol()` (Phase 0's D7). Both halves declare the same protocol name `"probe"`; the gateway router's per-type binding decides which task types route through probing.
+Defaults: `queue_capacity` and `max_concurrent_preallocations` are operator-tuned (no global default beyond "a queue exists"); gateway side defaults to `candidate_count = 2` and `probe_deadline_ms = 1000`. Startup validation rejects `candidate_count < 1`; the deadline is clipped at the scheduler's tick granularity with no lower bound beyond that. Named `ProbeSchedulerConfig` on each side (`api/nodeagent/extensions/schedulers/probe/`, `api/gateway/extensions/schedulers/probe/`), registered via the existing factories. `BuildNodeCapabilities` picks up `"probe"` in `scheduling_protocols` automatically from `RequiredProtocol()` (Phase 0's D7). Both halves declare the same protocol name `"probe"`; the gateway router's per-type binding decides which task types route through probing.
 
 ## Sequence (happy path + losers)
 
