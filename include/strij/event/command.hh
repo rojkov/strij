@@ -9,7 +9,11 @@ struct Command {
   // DEFERRED_DELETE: the destination (a CommandHandler owning the object in
   // args_) destroys it outside the completion stack. Mirrors the
   // Connection::onEndOfStream teardown pattern.
-  enum Type { ACTIVATE_READ, DEFERRED_DELETE } type_{};
+  //
+  // CAPACITY_RELEASED: a pure wakeup that node capacity may have been
+  // released. args_ is always nullptr; the receiver re-queries its sources of
+  // truth (e.g. the AdmissionController) instead of reading a payload.
+  enum Type { ACTIVATE_READ, DEFERRED_DELETE, CAPACITY_RELEASED } type_{};
   CommandHandler* destination_{nullptr};
   void* args_{nullptr};
 };

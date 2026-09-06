@@ -7,6 +7,8 @@ strij_cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//api/common/node:node_cc_proto",
+        "//include/strij/event:command_handler_interface",
+        "//include/strij/event:dispatcher_interface",
         "//include/strij/nodeagent:admission_controller_interface",
         "//src/common/core/logging:log_lib",
         "@abseil-cpp//absl/status",

@@ -42,7 +42,9 @@ strij_cc_test(
     srcs = ["admission_controller_test.cc"],
     deps = [
         "//api/common/node:node_cc_proto",
+        "//include/strij/event:command_handler_interface",
         "//src/nodeagent/core:admission_controller_lib",
+        "//test/mocks/event:event_mocks_lib",
         "@abseil-cpp//absl/status",
         "@googletest//:gtest_main",
     ],

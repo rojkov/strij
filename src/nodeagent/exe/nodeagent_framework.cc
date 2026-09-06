@@ -77,7 +77,8 @@ auto RunNodeagent(int argc, char** argv) -> int {
 
   // Admission controller tracks per-pool/per-type usage; both the task handlers
   // and (via the factory context) the configured schedulers share it.
-  const auto admission = std::make_shared<strij::nodeagent::AdmissionControllerImpl>(*capabilities);
+  const auto admission =
+      std::make_shared<strij::nodeagent::AdmissionControllerImpl>(*capabilities, *dispatcher);
 
   auto function_resolver = std::make_unique<strij::nodeagent::LocalFunctionResolver>();
   strij::nodeagent::NodeagentFactoryContextImpl factory_context(

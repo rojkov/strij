@@ -75,7 +75,7 @@ protected:
 
 TEST_F(StateReporterTest, BroadcastSendsNodeStateToRegisteredConnections) {
   auto caps = MakeCapabilities();
-  auto admission = std::make_shared<AdmissionControllerImpl>(*caps);
+  auto admission = std::make_shared<AdmissionControllerImpl>(*caps, *dispatcher_);
   ASSERT_TRUE(admission
                   ->Admit("echo",
                           [&] {
@@ -105,7 +105,7 @@ TEST_F(StateReporterTest, BroadcastSendsNodeStateToRegisteredConnections) {
 }
 
 TEST_F(StateReporterTest, SequenceIncrementsAcrossBroadcasts) {
-  auto admission = std::make_shared<AdmissionControllerImpl>(*MakeCapabilities());
+  auto admission = std::make_shared<AdmissionControllerImpl>(*MakeCapabilities(), *dispatcher_);
   auto reporter = std::make_shared<StateReporter>(admission, "node-x");
   reporter->AddConnection(conn_->Mailbox());
 
@@ -127,7 +127,7 @@ TEST_F(StateReporterTest, SequenceIncrementsAcrossBroadcasts) {
 }
 
 TEST_F(StateReporterTest, NoBroadcastWhenNoConnections) {
-  auto admission = std::make_shared<AdmissionControllerImpl>(*MakeCapabilities());
+  auto admission = std::make_shared<AdmissionControllerImpl>(*MakeCapabilities(), *dispatcher_);
   auto reporter = std::make_shared<StateReporter>(admission, "node-x");
 
   EXPECT_CALL(*dispatcher_,
@@ -137,7 +137,7 @@ TEST_F(StateReporterTest, NoBroadcastWhenNoConnections) {
 }
 
 TEST_F(StateReporterTest, ClosedConnectionIsUnregistered) {
-  auto admission = std::make_shared<AdmissionControllerImpl>(*MakeCapabilities());
+  auto admission = std::make_shared<AdmissionControllerImpl>(*MakeCapabilities(), *dispatcher_);
   auto reporter = std::make_shared<StateReporter>(admission, "node-x");
   reporter->AddConnection(conn_->Mailbox());
 

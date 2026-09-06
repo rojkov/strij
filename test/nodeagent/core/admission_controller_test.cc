@@ -1,8 +1,12 @@
 #include <string>
+#include <vector>
 
 #include "common/node/capabilities.pb.h"
 #include "nodeagent/core/admission_controller.hh"
+#include "strij/event/command.hh"
+#include "strij/event/command_handler.hh"
 #include "gtest/gtest.h"
+#include "test/mocks/event/mocks.hh"
 
 namespace strij::nodeagent {
 namespace {
@@ -23,9 +27,17 @@ auto Resources(std::initializer_list<std::pair<std::string, uint64_t>> entries)
   return requirements;
 }
 
+class RecordingCommandHandler final : public event::CommandHandler {
+public:
+  void ProcessCommand(event::Command cmd) override { commands_.push_back(cmd); }
+
+  std::vector<event::Command> commands_;
+};
+
 class AdmissionControllerTest : public ::testing::Test {
 protected:
-  AdmissionControllerImpl controller_{MakeCapabilities()};
+  event::MockDispatcher dispatcher_;
+  AdmissionControllerImpl controller_{MakeCapabilities(), dispatcher_};
 };
 
 TEST_F(AdmissionControllerTest, AdmissionReservesCapacity) {
@@ -34,7 +46,7 @@ TEST_F(AdmissionControllerTest, AdmissionReservesCapacity) {
   pool->set_name("cpu");
   pool->set_total(16);
 
-  AdmissionControllerImpl controller{caps};
+  AdmissionControllerImpl controller{caps, this->dispatcher_};
   EXPECT_EQ(controller.SharedFree("cpu"), 16U);
 
   auto status = controller.Admit("echo", Resources({{"cpu", 2}}));
@@ -56,7 +68,7 @@ TEST_F(AdmissionControllerTest, CompletionReleasesCapacity) {
   pool->set_name("cpu");
   pool->set_total(16);
 
-  AdmissionControllerImpl controller{caps};
+  AdmissionControllerImpl controller{caps, this->dispatcher_};
   ASSERT_TRUE(controller.Admit("echo", Resources({{"cpu", 2}})).ok());
 
   controller.Release("echo", Resources({{"cpu", 2}}));
@@ -76,7 +88,7 @@ TEST_F(AdmissionControllerTest, ReservationsAreExcludedFromSharedCapacity) {
   reservation->set_pool("gpu.h100");
   reservation->set_amount(1);
 
-  AdmissionControllerImpl controller{caps};
+  AdmissionControllerImpl controller{caps, this->dispatcher_};
 
   EXPECT_EQ(controller.SharedFree("gpu.h100"), 1U);
   ASSERT_TRUE(controller.Admit("echo", Resources({{"gpu.h100", 1}})).ok());
@@ -89,7 +101,7 @@ TEST_F(AdmissionControllerTest, RejectsWhenPoolExhausted) {
   pool->set_name("gpu.h100");
   pool->set_total(1);
 
-  AdmissionControllerImpl controller{caps};
+  AdmissionControllerImpl controller{caps, this->dispatcher_};
   ASSERT_TRUE(controller.Admit("echo", Resources({{"gpu.h100", 1}})).ok());
 
   auto status = controller.Admit("echo", Resources({{"gpu.h100", 1}}));
@@ -104,7 +116,7 @@ TEST_F(AdmissionControllerTest, RejectsAtConcurrencyLimit) {
   handler->set_task_type("echo");
   handler->set_concurrency(1);
 
-  AdmissionControllerImpl controller{caps};
+  AdmissionControllerImpl controller{caps, this->dispatcher_};
   ASSERT_TRUE(controller.Admit("echo", {}).ok());
 
   auto status = controller.Admit("echo", {});
@@ -119,7 +131,7 @@ TEST_F(AdmissionControllerTest, ZeroConcurrencyMeansNoLimit) {
   handler->set_task_type("echo");
   handler->set_concurrency(0);
 
-  AdmissionControllerImpl controller{caps};
+  AdmissionControllerImpl controller{caps, this->dispatcher_};
   for (int i = 0; i < 100; ++i) {
     EXPECT_TRUE(controller.Admit("echo", {}).ok()) << "iteration " << i;
   }
@@ -132,7 +144,7 @@ TEST_F(AdmissionControllerTest, RejectsUndeclaredPool) {
   pool->set_name("cpu");
   pool->set_total(16);
 
-  AdmissionControllerImpl controller{caps};
+  AdmissionControllerImpl controller{caps, this->dispatcher_};
   auto status = controller.Admit("echo", Resources({{"mem", 1024}}));
   EXPECT_FALSE(status.ok());
   EXPECT_NE(status.message().find("undeclared pool"), std::string::npos);
@@ -147,7 +159,7 @@ TEST_F(AdmissionControllerTest, SnapshotCarriesPoolAndTypeUsage) {
   handler->set_task_type("echo");
   handler->set_concurrency(8);
 
-  AdmissionControllerImpl controller{caps};
+  AdmissionControllerImpl controller{caps, this->dispatcher_};
   ASSERT_TRUE(controller.Admit("echo", Resources({{"cpu", 2}})).ok());
   ASSERT_TRUE(controller.Admit("echo", Resources({{"cpu", 3}})).ok());
 
@@ -163,7 +175,7 @@ TEST_F(AdmissionControllerTest, SnapshotCarriesPoolAndTypeUsage) {
 }
 
 TEST_F(AdmissionControllerTest, UnknownPoolReportsZeroSharedFree) {
-  AdmissionControllerImpl controller{MakeCapabilities()};
+  AdmissionControllerImpl controller{MakeCapabilities(), this->dispatcher_};
   EXPECT_EQ(controller.SharedFree("nope"), 0U);
 }
 
@@ -175,7 +187,7 @@ TEST_F(AdmissionControllerTest, ScopeReleasesOnDestruction) {
   pool->set_name("cpu");
   pool->set_total(4);
 
-  auto controller = std::make_shared<AdmissionControllerImpl>(caps);
+  auto controller = std::make_shared<AdmissionControllerImpl>(caps, this->dispatcher_);
   ASSERT_TRUE(controller->Admit("echo", Resources({{"cpu", 1}})).ok());
   {
     AdmissionScope scope(controller, "echo", Resources({{"cpu", 1}}));
@@ -190,12 +202,82 @@ TEST_F(AdmissionControllerTest, ScopeReleaseIsIdempotent) {
   pool->set_name("cpu");
   pool->set_total(4);
 
-  auto controller = std::make_shared<AdmissionControllerImpl>(caps);
+  auto controller = std::make_shared<AdmissionControllerImpl>(caps, this->dispatcher_);
   ASSERT_TRUE(controller->Admit("echo", Resources({{"cpu", 1}})).ok());
   AdmissionScope scope(controller, "echo", Resources({{"cpu", 1}}));
   scope.Release();
   scope.Release();
   EXPECT_EQ(controller->SharedFree("cpu"), 4U);
+}
+
+TEST_F(AdmissionControllerTest, ReleaseBroadcastsCapacityReleasedToRegisteredObserver) {
+  auto caps = MakeCapabilities();
+  auto* pool = caps.add_pools();
+  pool->set_name("cpu");
+  pool->set_total(4);
+
+  AdmissionControllerImpl controller{caps, this->dispatcher_};
+  RecordingCommandHandler observer;
+  controller.RegisterCapacityObserver(&observer);
+  ASSERT_TRUE(controller.Admit("echo", Resources({{"cpu", 1}})).ok());
+
+  event::Command submitted;
+  EXPECT_CALL(this->dispatcher_, SubmitCommand(::testing::_))
+      .WillOnce(::testing::SaveArg<0>(&submitted));
+
+  controller.Release("echo", Resources({{"cpu", 1}}));
+
+  EXPECT_EQ(submitted.type_, event::Command::CAPACITY_RELEASED);
+  EXPECT_EQ(submitted.destination_, &observer);
+  EXPECT_EQ(submitted.args_, nullptr);
+}
+
+TEST_F(AdmissionControllerTest, ReleaseWithNoObserversSubmitsNoCommands) {
+  auto caps = MakeCapabilities();
+  auto* pool = caps.add_pools();
+  pool->set_name("cpu");
+  pool->set_total(4);
+
+  AdmissionControllerImpl controller{caps, this->dispatcher_};
+  ASSERT_TRUE(controller.Admit("echo", Resources({{"cpu", 1}})).ok());
+
+  EXPECT_CALL(this->dispatcher_, SubmitCommand(::testing::_)).Times(0);
+  controller.Release("echo", Resources({{"cpu", 1}}));
+}
+
+TEST_F(AdmissionControllerTest, ReleaseBroadcastsOneCommandPerObserver) {
+  auto caps = MakeCapabilities();
+  auto* pool = caps.add_pools();
+  pool->set_name("cpu");
+  pool->set_total(4);
+
+  AdmissionControllerImpl controller{caps, this->dispatcher_};
+  RecordingCommandHandler observer_a;
+  RecordingCommandHandler observer_b;
+  controller.RegisterCapacityObserver(&observer_a);
+  controller.RegisterCapacityObserver(&observer_b);
+  ASSERT_TRUE(controller.Admit("echo", Resources({{"cpu", 1}})).ok());
+
+  EXPECT_CALL(this->dispatcher_, SubmitCommand(::testing::_)).Times(2);
+
+  controller.Release("echo", Resources({{"cpu", 1}}));
+}
+
+TEST_F(AdmissionControllerTest, UnderflowReleaseDoesNotBroadcast) {
+  auto caps = MakeCapabilities();
+  auto* pool = caps.add_pools();
+  pool->set_name("cpu");
+  pool->set_total(4);
+
+  AdmissionControllerImpl controller{caps, this->dispatcher_};
+  RecordingCommandHandler observer;
+  controller.RegisterCapacityObserver(&observer);
+
+  EXPECT_CALL(this->dispatcher_, SubmitCommand(::testing::_)).Times(0);
+
+  controller.Release("echo", Resources({{"cpu", 1}}));
+
+  EXPECT_TRUE(observer.commands_.empty());
 }
 
 // NOLINTEND(modernize-use-trailing-return-type)
