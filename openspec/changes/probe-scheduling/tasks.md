@@ -23,11 +23,12 @@
 ## 4. Gateway probe scheduler
 
 - [ ] 4.1 Create the probe scheduler skeleton in `src/gateway/extensions/schedulers/probe/`: `ProbeScheduler` + `ProbeSchedulerFactory` (name `"probe"`, `RequiredProtocol()=="probe"`), owned frame types `{kTaskPull, kTaskDecline}`, config proto `ProbeRoleSchedulerConfig{candidate_count, probe_deadline}`
-- [ ] 4.2 Implement `Schedule`: uniform sample of up to `candidate_count` from `NodeDirectory::GetCandidates("probe")`; none → `DeliverError`; store per-task state {full Task, receiver, probed nodes, deadline} keyed by `task.id`; send `kTaskProbe` to each candidate
+- [ ] 4.2 Implement `Schedule`: effective `k = min(candidate_count, GetCandidates("probe").size())` (default `candidate_count=2`); none → `DeliverError`; sample without replacement, deterministic in `task.id`; store per-task state {full Task, receiver, probed nodes, deadline} keyed by `task.id`; send `kTaskProbe` to each candidate
 - [ ] 4.3 Implement `HandleFrame(kTaskPull)`: first-pull-wins → grant winner (full `Task`), `kTaskProbeCancel` to the other probed nodes, transfer receiver into `ResultReceiverStorage` with the winner's node id, erase probe state; a pull for a granted/unknown id → `kTaskProbeCancel` only
 - [ ] 4.4 Implement `HandleFrame(kTaskDecline)`: drop the declining candidate; when all candidates have declined → `DeliverError(reason)` + erase probe state (no deadline wait)
 - [ ] 4.5 Implement the probe deadline with a `PeriodicTimer` sweep: expired tasks → `kTaskProbeCancel` to all outstanding probed nodes, `DeliverError`, erase state
-- [ ] 4.6 Add gateway-side unit tests: candidate sampling bounds; no-eligible immediate error; first-pull-wins; losers canceled at grant; late pull revoked (no double grant); all-declined immediate error; deadline expiry errors the receiver; receiver transfer to storage at grant; every-task-resolves
+- [ ] 4.6 Add gateway-side unit tests: candidate sampling bounds + clamp (k=1 on single node); deterministic per-task sampling; no-eligible immediate error; first-pull-wins; losers canceled at grant; late pull revoked (no double grant); all-declined immediate error; deadline expiry errors the receiver; receiver transfer to storage at grant; every-task-resolves
+- [ ] 4.7 Add startup validation: reject `candidate_count < 1` in the probe factory config parse
 
 ## 5. Config, integration, verification
 

@@ -115,7 +115,7 @@ with a configurable queue capacity and a `max_concurrent_preallocations` cap tha
 
 ```
 Schedule(task):
-  candidates = 2^k uniform sample of GetCandidates("probe")
+  k = min(candidate_count, candidate set size)   // clamp; task.id-seeded sample, no replacement
   none → DeliverError
   send kTaskProbe to each; state{task, receiver, probed, deadline} keyed by task.id
 
@@ -137,11 +137,13 @@ deadline sweep (PeriodicTimer tick):
 
 Cancel-at-grant is the **over-reservation valve**: loser nodes may already hold preallocations; canceling them returns that capacity immediately (each loser release re-triggers its own queue walk). The archive's stated goal —"admission policy keeps the window small" — is enforced by the gateway, not the node.
 
+**Candidate sampling.** Default `candidate_count = 2`: the power-of-two-choices benefit is concentrated in the 1→2 step (Sparrow ships d=2; gains beyond ~3 are marginal), and it keeps the over-reservation window narrow — every probed node that admit-and-pulls holds a real reservation, so k multiplies the losers waiting for grant-time cancellation. The effective sample clamps to the candidate set: a one-node probe-capable cluster degrades to k=1 (probe exactly one node; its decline or pull decides immediately), and an empty set delivers an error. The sample is drawn **without replacement, seeded by `task.id`** (per-`(task.id, node)` hash/PRNG) so successive tasks don't probe the same contended pair while the draw stays reproducible for tests. Multi-gateway pressure on a node's shared queue is acknowledged and left for Phase 5 (per-gateway quota), not "fixed" here.
+
 **Per node per task invariant:** the gateway emits *at most one* of `{grant, cancel}`. Cancel only ever goes to non-winners; a grant and cancel for the same `(node, task)` cannot coexist by construction. A node receiving cancel while it believes the task granted is a protocol bug → log-and-drop (never double-run).
 
 ### D8: Deadline mechanism — periodic sweep for Phase 2
 
-The framework has only `PeriodicTimer` (fixed-interval timerfd + read). The probe scheduler owns a single `PeriodicTimer` (e.g. 100 ms cadence) and a probe-state map; each tick expires due deadlines (destroy → `DeliverError` + cancel to remaining probed nodes). Cost is O(probes-in-flight) per tick; the probe window is short-lived so steady-state map size is small. A min-heap + re-armable earliest-deadline timer is a Phase 5 refinement (also needed for the preallocation TTL), not Phase 2 scope.
+The framework has only `PeriodicTimer` (fixed-interval timerfd + read). The probe scheduler owns a single `PeriodicTimer` (e.g. 100 ms cadence) and a probe-state map; each tick expires due deadlines (destroy → `DeliverError` + cancel to remaining probed nodes). Cost is O(probes-in-flight) per tick; the probe window is short-lived so steady-state map size is small. A min-heap + re-armable earliest-deadline timer is a Phase 5 refinement (also needed for the preallocation TTL), not Phase 2 scope. The deadline and `candidate_count` co-design: a healthy node returns a pull in ~1 RTT, so the default `probe_deadline` is a small multiple of expected RTT (1–2 s), configurable; the all-declined fast-path keeps operator-set deadlines from having to be tight.
 
 *Alternative considered*: per-task one-shot timerfds. Rejected — hundreds of probe tasks would mean hundreds of timerfds and CQE slots; one sweeping timer amortizes to zero framework churn.
 
@@ -157,11 +159,11 @@ nodeagent.schedulers[] probe:    ExtensionConfig{ name:"probe",
                                                                        max_concurrent_preallocations } }
 gateway.schedulers[] probe:      SchedulerConfig{ task_type:"" (default or per-type),
                                    extension:{ name:"probe",
-                                               typed_config: ProbeRoleSchedulerConfig{ candidate_count,
-                                                                                      probe_deadline } } }
+                                               typed_config: ProbeRoleSchedulerConfig{ candidate_count: 2,
+                                                                                      probe_deadline: 1s } } }
 ```
 
-Named `ProbeSchedulerConfig` on each side (`api/nodeagent/extensions/schedulers/probe/`, `api/gateway/extensions/schedulers/probe/`), registered via the existing factories. `BuildNodeCapabilities` picks up `"probe"` in `scheduling_protocols` automatically from `RequiredProtocol()` (Phase 0's D7). Both halves declare the same protocol name `"probe"`; the gateway router's per-type binding decides which task types route through probing.
+Defaults: `queue_capacity` and `max_concurrent_preallocations` are operator-tuned (no global default beyond "a queue exists"); gateway side defaults to `candidate_count = 2` and `probe_deadline = 1s`. Startup validation rejects `candidate_count < 1`; the deadline is clipped at the scheduler's tick granularity with no lower bound beyond that. Named `ProbeSchedulerConfig` on each side (`api/nodeagent/extensions/schedulers/probe/`, `api/gateway/extensions/schedulers/probe/`), registered via the existing factories. `BuildNodeCapabilities` picks up `"probe"` in `scheduling_protocols` automatically from `RequiredProtocol()` (Phase 0's D7). Both halves declare the same protocol name `"probe"`; the gateway router's per-type binding decides which task types route through probing.
 
 ## Sequence (happy path + losers)
 
@@ -190,6 +192,7 @@ gateway                             full node (both)          outcomes
 - **[Over-reservation]** Two probed nodes can both preallocate the same task; the loser releases on cancel/decline. The window is bounded by `max_concurrent_preallocations` and closed by grant-time cancellation. → Built-in; the release-broadcast makes reclamation automatic.
 - **[Preallocated-but-ungranted reservation leak]** If a gateway dies with probes in flight, nodes hold preallocations with no deadline (the node-side preallocation TTL is Phase 5). → Acknowledged; bounded by `max_concurrent_preallocations`; landed as a Phase 5 hardened timeout.
 - **[Deadline sweep cost]** O(n) per tick over the probing set. → Probe window is short-lived; refine to an earliest-deadline timer in Phase 5 at scale.
+- **[Correlated probe pairs]** A plain `take-k` from `GetCandidates()` can keep probing the same contended nodes task after task. → Task-id-seeded sampling decorrelates successive probes; k=2 already halves probe load vs larger k.
 - **[Duplicate-pull race]** Two pulls processed in the same batch → first (in CQE order) wins; the second gets a cancel. Deterministic per event-loop thread. → No special handling; covered by the cancel path.
 - **[Starvation of queued tasks needed but declined task]** A task enqueued with requirements that fit no pool gets a `FailedPrecondition` decline at arrival, never entering the queue. → The decision tree prevents "queue corpses".
 - **[Wire addition rolling out over a mixed fleet]** Old endpoints drop probe frames silently. → Additive ids; probe config is opt-in per side; mixed rollout degrades to push-and-probe-on-new-endpoints, never a crash.

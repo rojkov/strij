@@ -84,7 +84,7 @@ A pulled probe holds a real admission reservation: preallocated capacity that SH
 
 ### Requirement: Gateway candidate sampling
 
-A `"probe"` gateway scheduler SHALL implement `RequiredProtocol() == "probe"` and, on `Schedule(task, receiver)`, select a small candidate set — a uniform sample of up to a configured `candidate_count` from `NodeDirectory::GetCandidates("probe")` — and SHALL send `kTaskProbe` to each candidate. When no candidate advertises the probe protocol, `Schedule` SHALL deliver an error to the receiver immediately. The scheduler SHALL retain the full task, the receiver, and the probed set per task id.
+A `"probe"` gateway scheduler SHALL implement `RequiredProtocol() == "probe"` and, on `Schedule(task, receiver)`, select a candidate set from `NodeDirectory::GetCandidates("probe")`: a sample of exactly `min(candidate_count, candidates.size())` nodes, drawn uniformly **without replacement** from a draw deterministic in `task.id`, where `candidate_count` defaults to 2 and is overrideable in config. When no candidate advertises the probe protocol, `Schedule` SHALL deliver an error to the receiver immediately. The scheduler SHALL retain the full task, the receiver, and the probed set per task id.
 
 #### Scenario: No eligible nodes errors immediately
 
@@ -95,6 +95,16 @@ A `"probe"` gateway scheduler SHALL implement `RequiredProtocol() == "probe"` an
 
 - **WHEN** `Schedule` is called with `candidate_count = k` and at least `k` probe-capable nodes are available
 - **THEN** the scheduler SHALL send one `kTaskProbe` to each of `k` distinct candidate nodes, each carrying the task's id, type, and requirements
+
+#### Scenario: Sample clamps to the candidate set
+
+- **WHEN** `candidate_count = 2` but only one probe-capable node is available
+- **THEN** the scheduler SHALL probe exactly that one node (k=1) and SHALL NOT error
+
+#### Scenario: Sample is deterministic per task id
+
+- **WHEN** the same task id is scheduled twice against the same candidate set
+- **THEN** both draws SHALL select the same candidate subset, and different task ids SHALL be decorrelated across successive probes
 
 ### Requirement: Gateway race arbitration
 
@@ -117,7 +127,7 @@ The first `kTaskPull` for a task id SHALL win: the gateway SHALL send `kTaskGran
 
 ### Requirement: Gateway probe deadline and resolution
 
-Every task handed to a `"probe"` scheduler SHALL resolve: the receiver SHALL NOT hang. A per-task deadline SHALL bound the probing window; on expiry the gateway SHALL send `kTaskProbeCancel` to all still-outstanding probed nodes and deliver an error to the receiver. A `kTaskDecline` from a probed node SHALL remove that candidate; when all candidates have declined, the gateway SHALL deliver an error to the receiver immediately (no deadline wait). The receiver SHALL remain owned by the scheduler's probe state until grant or terminal error, then SHALL be transferred to `ResultReceiverStorage` keyed by task id with the winning node id, from which results are delivered by the existing result path.
+Every task handed to a `"probe"` scheduler SHALL resolve: the receiver SHALL NOT hang. A per-task deadline SHALL bound the probing window; on expiry the gateway SHALL send `kTaskProbeCancel` to all still-outstanding probed nodes and deliver an error to the receiver. The deadline SHALL default to 1s and be overrideable in config. A `kTaskDecline` from a probed node SHALL remove that candidate; when all candidates have declined, the gateway SHALL deliver an error to the receiver immediately (no deadline wait). The receiver SHALL remain owned by the scheduler's probe state until grant or terminal error, then SHALL be transferred to `ResultReceiverStorage` keyed by task id with the winning node id, from which results are delivered by the existing result path.
 
 #### Scenario: Deadline expires and errors the receiver
 
