@@ -14,3 +14,17 @@ cc_proto_library(
     visibility = ["//visibility:public"],
     deps = [":task_proto"],
 )
+
+proto_library(
+    name = "probe_proto",
+    srcs = ["probe.proto"],
+    strip_import_prefix = "/api",
+    visibility = ["//visibility:public"],
+    deps = ["//api/common/node:node_proto"],
+)
+
+cc_proto_library(
+    name = "probe_cc_proto",
+    visibility = ["//visibility:public"],
+    deps = [":probe_proto"],
+)

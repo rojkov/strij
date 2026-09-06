@@ -1,0 +1,28 @@
+# Sample Gateway config exercising the "probe" scheduler.
+# Run alongside nodeagent-probe-9090.yaml and nodeagent-probe-9091.yaml.
+http_listener:
+  address: "0.0.0.0"
+  port: 8081
+
+node_discovery:
+  name: "static"
+  typed_config:
+    "@type": "type.googleapis.com/strij.config.StaticNodeDiscoveryConfig"
+    addresses:
+      - "127.0.0.1:9090"
+      - "127.0.0.1:9091"
+
+schedulers:
+  # Bind every task type (empty task_type = default) to the "probe" scheduler.
+  - extension:
+      name: "probe"
+      typed_config:
+        "@type": "type.googleapis.com/strij.extensions.schedulers.probe.ProbeRoleSchedulerConfig"
+        candidate_count: 2
+        probe_deadline_ms: 1000
+
+logging:
+  level: "info"
+  format: "text"
+  output: "stdout"
+  include_source_location: false

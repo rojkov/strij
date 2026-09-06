@@ -24,6 +24,7 @@ public:
 
   // RunTaskService
   void RunTask(const task::Task& task, io::Connection& conn) override;
+  void RunTask(const task::Task& task, io::Connection& conn, AdmissionScopePtr reserved) override;
 
 private:
   static void sendTaskRejected(io::Connection& conn, const task::Task& task,

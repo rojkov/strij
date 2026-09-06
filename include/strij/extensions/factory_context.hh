@@ -37,6 +37,11 @@ public:
   auto operator=(FactoryContext&&) noexcept -> FactoryContext& = delete;
 
   virtual auto Dispatcher() -> event::Dispatcher& PURE;
+
+  // Owning handle to the event loop, for services that must retain it past the
+  // factory call (e.g. a PeriodicTimer sweep). The concrete context impls own
+  // the Dispatcher as a shared_ptr, so returning it is cheap.
+  virtual auto SharedDispatcher() -> event::DispatcherSharedPtr PURE;
 };
 
 // Gateway-side extension services. Only gateway scheduler extensions and node

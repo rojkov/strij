@@ -19,6 +19,7 @@ public:
                               AdmissionControllerSharedPtr admission);
 
   auto Dispatcher() -> event::Dispatcher& override;
+  auto SharedDispatcher() -> event::DispatcherSharedPtr override;
 
   auto FunctionResolver() -> nodeagent::FunctionResolver& override;
   auto AdmissionController() -> AdmissionControllerSharedPtr override;

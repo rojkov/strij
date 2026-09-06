@@ -1,13 +1,13 @@
 #include "strij/extensions/scheduler.hh"
-#include "common/extensions/scheduler_loader.hh"
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "common/config/extensions.pb.h"
-#include "strij/extensions/extension_registry.hh"
+#include "common/extensions/scheduler_loader.hh"
 #include "google/protobuf/any.pb.h"
+#include "strij/extensions/extension_registry.hh"
 
 namespace strij::extensions {
 
@@ -20,6 +20,7 @@ auto createSchedulerFromExtension(const config::ExtensionConfig& ext, ContextT& 
   auto* factory = registry.GetFactory(ext.name());
   if (factory == nullptr) {
     const auto names = registry.GetRegisteredNames();
+
     return absl::NotFoundError(
         absl::StrCat("Scheduler '", ext.name(),
                      "' is not registered. Registered: ", absl::StrJoin(names, ", ")));
@@ -38,7 +39,16 @@ auto createSchedulerFromExtension(const config::ExtensionConfig& ext, ContextT& 
     }
   }
 
-  return factory->Create(*config_msg, context);
+  auto scheduler = factory->Create(*config_msg, context);
+  // A factory returns nullptr to report an invalid/unsupported configuration
+  // (e.g. probe candidate_count < 1); surface it as a config error rather than
+  // installing a null scheduler.
+  if (scheduler == nullptr) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Scheduler factory '", ext.name(), "' rejected the configuration (Create returned null)"));
+  }
+
+  return scheduler;
 }
 
 } // namespace

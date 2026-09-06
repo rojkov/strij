@@ -55,4 +55,21 @@ void RunTaskServiceImpl::RunTask(const task::Task& task, io::Connection& conn) {
   handler->HandleTask(task, std::move(sender));
 }
 
+void RunTaskServiceImpl::RunTask(const task::Task& task, io::Connection& conn,
+                                 AdmissionScopePtr reserved) {
+  nodeagent::TaskHandler* handler = manager_->GetHandler(task.type());
+  if (handler == nullptr) {
+    LOG_WARNING("No task handler for type '{}'", task.type());
+    // The caller-held reservation must still be released so capacity never
+    // leaks; the AdmissionScope destructor does this.
+    return;
+  }
+
+  // The caller preallocated capacity (e.g. a probe scheduler's held scope).
+  // No Admit runs here — the reservation is already recorded.
+  auto sender = std::make_unique<AdmissionTrackingSender>(
+      std::make_unique<ConnectionResultSender>(conn.Mailbox()), std::move(reserved));
+  handler->HandleTask(task, std::move(sender));
+}
+
 } // namespace strij::nodeagent

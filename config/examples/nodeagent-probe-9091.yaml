@@ -1,0 +1,41 @@
+# Sample NodeAgent config #2 exercising the "probe" scheduler.
+# Listens on port 9091 (a different TCP port from nodeagent-probe-9090.yaml);
+# pair with gateway-probe.yaml and nodeagent-probe-9090.yaml.
+tlv_listener:
+  address: "0.0.0.0"
+  port: 9091
+
+schedulers:
+  - name: "probe"
+    typed_config:
+      "@type": "type.googleapis.com/strij.extensions.schedulers.probe.ProbeSchedulerConfig"
+      queue_capacity: 64
+      max_concurrent_preallocations: 4
+
+pools:
+  - name: "cpu"
+    total: 16
+
+reservations:
+  - task_type: "echo"
+    pool: "cpu"
+    amount: 1
+
+task_handlers:
+  - name: "echo"
+    typed_config:
+      "@type": "type.googleapis.com/strij.extensions.task_handlers.echo.EchoTaskHandlerConfig"
+      capacity:
+        concurrency: 1024
+  - name: "piped_executable"
+    typed_config:
+      "@type": "type.googleapis.com/strij.extensions.task_handlers.piped_executable.PipedExecutableTaskHandlerConfig"
+
+heartbeat_interval:
+  seconds: 5
+
+logging:
+  level: "debug"
+  format: "text"
+  output: "stdout"
+  include_source_location: false

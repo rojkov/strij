@@ -16,6 +16,7 @@ public:
                             gateway::ResultReceiverStorage& storage);
 
   auto Dispatcher() -> event::Dispatcher& override;
+  auto SharedDispatcher() -> event::DispatcherSharedPtr override;
 
   auto NodeDirectory() -> gateway::NodeDirectory& override;
   auto ResultReceiverStorage() -> gateway::ResultReceiverStorage& override;

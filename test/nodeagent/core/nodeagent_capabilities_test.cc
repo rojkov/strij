@@ -135,6 +135,16 @@ TEST_F(NodeagentCapabilitiesTest, DuplicateSchedulerProtocolIsDeduplicated) {
   EXPECT_EQ(result.value().scheduling_protocols(0).name(), "push");
 }
 
+TEST_F(NodeagentCapabilitiesTest, ProbeSchedulerAdvertisesProbeProtocol) {
+  auto config = MakeConfig();
+  config.add_schedulers()->set_name("probe");
+  auto result = BuildNodeCapabilities(config, "node-abc");
+  ASSERT_TRUE(result.ok());
+  ASSERT_EQ(result.value().scheduling_protocols_size(), 2);
+  EXPECT_EQ(result.value().scheduling_protocols(0).name(), "probe");
+  EXPECT_EQ(result.value().scheduling_protocols(1).name(), "push");
+}
+
 TEST_F(NodeagentCapabilitiesTest, HandlerCapacityCarriesConcurrencyOnly) {
   auto config = MakeConfig();
   AddEchoHandler(&config, /*concurrency=*/1024);
