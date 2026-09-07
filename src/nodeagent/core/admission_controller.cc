@@ -95,9 +95,8 @@ void AdmissionControllerImpl::RegisterCapacityObserver(event::CommandHandler* ob
 
 void AdmissionControllerImpl::notifyCapacityReleased() {
   for (event::CommandHandler* observer : capacity_observers_) {
-    dispatcher_.SubmitCommand({.type_ = event::Command::CAPACITY_RELEASED,
-                               .destination_ = observer,
-                               .args_ = nullptr});
+    dispatcher_.SubmitCommand(
+        {.type_ = event::Command::CAPACITY_RELEASED, .destination_ = observer, .args_ = nullptr});
   }
 }
 
@@ -125,6 +124,7 @@ auto AdmissionControllerImpl::BuildStateSnapshot(std::string node_id, uint64_t s
     usage->set_task_type(type);
     usage->set_in_flight(in_flight);
   }
+
   state.set_in_flight(node_in_flight);
 
   return state;

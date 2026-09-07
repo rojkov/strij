@@ -29,8 +29,7 @@ constexpr size_t kDefaultQueueCapacity = 64;
 constexpr size_t kDefaultMaxPreallocations = 4;
 
 auto parseMessage(const io::TlvFrame& frame, google::protobuf::Message& message) -> bool {
-  // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast)
-  return message.ParseFromArray(reinterpret_cast<const char*>(frame.value.data()),
+  return message.ParseFromArray(std::bit_cast<const char*>(frame.value.data()),
                                 static_cast<int>(frame.value.size()));
 }
 
@@ -45,7 +44,8 @@ ProbeLocalScheduler::ProbeLocalScheduler(nodeagent::RunTaskService& run_task_ser
   admission_->RegisterCapacityObserver(this);
 }
 
-void ProbeLocalScheduler::Schedule(const task::Task& /*task*/, gateway::ResultReceiverPtr receiver) {
+void ProbeLocalScheduler::Schedule(const task::Task& /*task*/,
+                                   gateway::ResultReceiverPtr receiver) {
   // The probe protocol schedules only via incoming probes; a node never pushes
   // tasks elsewhere. Resolve the receiver so a hypothetical caller can't leak
   // it.
@@ -54,10 +54,10 @@ void ProbeLocalScheduler::Schedule(const task::Task& /*task*/, gateway::ResultRe
 
 auto ProbeLocalScheduler::RequiredProtocol() const -> std::string_view { return "probe"; }
 
-void ProbeLocalScheduler::sendDecline(io::OutboundMailbox& mailbox, const std::string& id,
+void ProbeLocalScheduler::sendDecline(io::OutboundMailbox& mailbox, const std::string& task_id,
                                       std::string_view reason) {
   task::TaskDecline decline;
-  decline.set_id(id);
+  decline.set_id(task_id);
   decline.set_reason(std::string(reason));
 
   std::string serialized;
@@ -65,7 +65,7 @@ void ProbeLocalScheduler::sendDecline(io::OutboundMailbox& mailbox, const std::s
   const auto data = std::as_bytes(std::span(serialized.data(), serialized.size()));
   mailbox.Enqueue(io::SerializeTlvFrame(io::TlvFrame::kTaskDecline, data));
 
-  LOG_DEBUG("Task {} declined: {}", id, reason);
+  LOG_DEBUG("Task {} declined: {}", task_id, reason);
 }
 
 void ProbeLocalScheduler::walk() {
@@ -82,18 +82,17 @@ void ProbeLocalScheduler::walk() {
       break;
     }
 
-    const absl::Status status =
-        admission_->Admit(item->probe.type(), item->probe.requirements());
+    const absl::Status status = admission_->Admit(item->probe.type(), item->probe.requirements());
     if (status.ok()) {
       auto scope = std::make_unique<AdmissionScope>(admission_, item->probe.type(),
                                                     item->probe.requirements());
-      const std::string id = item->probe.id();
-      pull_pending_.insert_or_assign(id, PullPending{.probe = std::move(item->probe),
-                                                     .scope = std::move(scope)});
+      const std::string task_id = item->probe.id();
+      pull_pending_.insert_or_assign(
+          task_id, PullPending{.probe = std::move(item->probe), .scope = std::move(scope)});
 
       // Pull via the retained mailbox (D9): a no-op on stale connections.
       task::TaskPull pull;
-      pull.set_id(id);
+      pull.set_id(task_id);
       std::string serialized;
       pull.SerializeToString(&serialized);
       const auto data = std::as_bytes(std::span(serialized.data(), serialized.size()));
@@ -114,13 +113,13 @@ void ProbeLocalScheduler::walk() {
 }
 
 void ProbeLocalScheduler::handleProbe(const task::TaskProbe& probe,
-                                      std::shared_ptr<io::OutboundMailbox> pull_mailbox) {
+                                      const std::shared_ptr<io::OutboundMailbox>& pull_mailbox) {
   const absl::Status status = admission_->Admit(probe.type(), probe.requirements());
   if (status.ok()) {
     // Free capacity: preallocate a slot and claim the task.
-    auto scope =
-        std::make_unique<AdmissionScope>(admission_, probe.type(), probe.requirements());
-    pull_pending_.insert_or_assign(probe.id(), PullPending{.probe = probe, .scope = std::move(scope)});
+    auto scope = std::make_unique<AdmissionScope>(admission_, probe.type(), probe.requirements());
+    pull_pending_.insert_or_assign(probe.id(),
+                                   PullPending{.probe = probe, .scope = std::move(scope)});
 
     task::TaskPull pull;
     pull.set_id(probe.id());
@@ -144,11 +143,11 @@ void ProbeLocalScheduler::handleProbe(const task::TaskProbe& probe,
   }
 }
 
-auto ProbeLocalScheduler::removeQueued(const std::string& id) -> bool {
+auto ProbeLocalScheduler::removeQueued(const std::string& task_id) -> bool {
   std::vector<QueuedProbe> kept;
   bool found = false;
   while (auto item = queue_.TryPop()) {
-    if (item->probe.id() != id) {
+    if (item->probe.id() != task_id) {
       kept.push_back(std::move(*item));
     } else {
       found = true;
@@ -188,14 +187,14 @@ auto ProbeLocalScheduler::HandleFrame(const io::TlvFrame& frame, io::Connection&
       return absl::InvalidArgumentError("malformed Task frame dropped");
     }
 
-    auto it = pull_pending_.find(task.id());
-    if (it == pull_pending_.end()) {
+    auto iter = pull_pending_.find(task.id());
+    if (iter == pull_pending_.end()) {
       LOG_WARNING("Grant for task '{}' with no held reservation; dropped", task.id());
       return absl::OkStatus();
     }
 
-    PullPending pending = std::move(it->second);
-    pull_pending_.erase(it);
+    PullPending pending = std::move(iter->second);
+    pull_pending_.erase(iter);
     // The held preallocation transfers to the result sender: no second Admit.
     run_task_service_.RunTask(task, conn, std::move(pending.scope));
     return absl::OkStatus();
@@ -218,13 +217,13 @@ auto ProbeLocalScheduler::HandleFrame(const io::TlvFrame& frame, io::Connection&
   }
   default:
     return absl::NotFoundError("probe scheduler does not own TLV type_id " +
-                              std::to_string(frame.type_id));
+                               std::to_string(frame.type_id));
   }
 }
 
 auto ProbeLocalScheduler::HandledFrameTypes() const -> std::span<const uint8_t> {
-  static constexpr uint8_t kTypes[] = {io::TlvFrame::kTaskProbe, io::TlvFrame::kTaskProbeCancel,
-                                       io::TlvFrame::kTaskGrant};
+  static constexpr std::array<uint8_t, 3> kTypes = {
+      io::TlvFrame::kTaskProbe, io::TlvFrame::kTaskProbeCancel, io::TlvFrame::kTaskGrant};
   return kTypes;
 }
 
@@ -253,9 +252,8 @@ auto ProbeLocalSchedulerFactory::Create(const ::google::protobuf::Message& confi
     return nullptr;
   }
 
-  return std::make_unique<ProbeLocalScheduler>(context.RunTaskService(),
-                                               context.AdmissionController(), queue_capacity,
-                                               max_preallocations);
+  return std::make_unique<ProbeLocalScheduler>(
+      context.RunTaskService(), context.AdmissionController(), queue_capacity, max_preallocations);
 }
 
 } // namespace strij::nodeagent::schedulers::probe

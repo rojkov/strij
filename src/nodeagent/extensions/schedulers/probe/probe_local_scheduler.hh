@@ -39,14 +39,14 @@ namespace strij::nodeagent::schedulers::probe {
 //   - kTaskProbeCancel → release the held preallocation and/or drop the queued
 //     entry; idempotent for unknown ids.
 //
-// Registered as a capacity observer at construction (AdmissionController::RegisterCapacityObserver),
-// so every release — completion, decline, cancel — re-triggers the queue walk.
-class ProbeLocalScheduler final : public extensions::Scheduler,
-                                  public event::CommandHandler {
+// Registered as a capacity observer at construction
+// (AdmissionController::RegisterCapacityObserver), so every release — completion, decline, cancel —
+// re-triggers the queue walk.
+class ProbeLocalScheduler final : public extensions::Scheduler, public event::CommandHandler {
 public:
   ProbeLocalScheduler(nodeagent::RunTaskService& run_task_service,
-                      nodeagent::AdmissionControllerSharedPtr admission,
-                      size_t queue_capacity, size_t max_concurrent_preallocations);
+                      nodeagent::AdmissionControllerSharedPtr admission, size_t queue_capacity,
+                      size_t max_concurrent_preallocations);
   ~ProbeLocalScheduler() override = default;
 
   ProbeLocalScheduler(const ProbeLocalScheduler&) = delete;
@@ -85,11 +85,11 @@ private:
   void walk();
   // Admit-or-enqueue the arriving probe per the decision tree.
   void handleProbe(const task::TaskProbe& probe,
-                   std::shared_ptr<io::OutboundMailbox> pull_mailbox);
+                   const std::shared_ptr<io::OutboundMailbox>& pull_mailbox);
   // Removes the queued probe for `id` (if any), preserving FIFO order.
-  auto removeQueued(const std::string& id) -> bool;
+  auto removeQueued(const std::string& task_id) -> bool;
   // Serializes and writes a kTaskDecline on `mailbox`.
-  static void sendDecline(io::OutboundMailbox& mailbox, const std::string& id,
+  static void sendDecline(io::OutboundMailbox& mailbox, const std::string& task_id,
                           std::string_view reason);
 
   nodeagent::RunTaskService& run_task_service_;
