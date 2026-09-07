@@ -81,6 +81,9 @@ private:
   static void sendCancel(gateway::Node& node, const std::string& task_id);
   static void sendCancelOnConnection(io::Connection& conn, const std::string& task_id);
 
+  auto handleTaskPullFrame(const io::TlvFrame& frame, io::Connection& conn) -> absl::Status;
+  auto handleTaskDeclineFrame(const io::TlvFrame& frame, io::Connection& conn) -> absl::Status;
+
   gateway::NodeDirectory& directory_;
   gateway::ResultReceiverStorage& storage_;
   event::DispatcherSharedPtr dispatcher_;

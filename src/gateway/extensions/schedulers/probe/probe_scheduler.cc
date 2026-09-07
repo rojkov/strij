@@ -11,6 +11,8 @@
 #include <utility>
 #include <vector>
 
+#include "src/gateway/extensions/schedulers/probe/probe_scheduler.hh"
+
 #include "absl/status/status.h"
 #include "absl/time/time.h"
 #include "common/core/io/connection.hh"
@@ -143,77 +145,10 @@ void ProbeScheduler::Schedule(const task::Task& task, gateway::ResultReceiverPtr
 
 auto ProbeScheduler::HandleFrame(const io::TlvFrame& frame, io::Connection& conn) -> absl::Status {
   switch (frame.type_id) {
-  case io::TlvFrame::kTaskPull: {
-    task::TaskPull pull;
-
-    if (!parseMessage(frame, pull)) {
-      LOG_WARNING("Malformed TaskPull frame dropped");
-      return absl::InvalidArgumentError("malformed TaskPull frame dropped");
-    }
-
-    auto iter = pending_.find(pull.id());
-    if (iter == pending_.end()) {
-      // Late or duplicate pull after the round resolved: revoke, never grant.
-      sendCancelOnConnection(conn, pull.id());
-      return absl::OkStatus();
-    }
-
-    gateway::Node* winner = owningNode(conn);
-    if (winner == nullptr) {
-      return absl::InternalError("pull on a connection without an owning Node");
-    }
-
-    auto& probed = iter->second.probed_node_ids;
-    if (std::ranges::find(probed, winner->GetNodeId()) == probed.end()) {
-      // The pulling node was not one of our candidates (e.g. it already
-      // declined): revoke its hold.
-      sendCancelOnConnection(conn, pull.id());
-      return absl::OkStatus();
-    }
-
-    // First pull wins. Grant the winner, cancel every other outstanding node.
-    sendGrant(conn, iter->second.task);
-    for (const auto& node_id : probed) {
-      if (node_id != winner->GetNodeId()) {
-        if (gateway::Node* loser = directory_.GetNode(node_id); loser != nullptr) {
-          sendCancel(*loser, pull.id());
-        }
-      }
-    }
-
-    // The winner's future kResult/kTaskRejected frames route via storage.
-    storage_.Put(pull.id(), std::move(iter->second.receiver), winner->GetNodeId());
-    pending_.erase(iter);
-
-    return absl::OkStatus();
-  }
-  case io::TlvFrame::kTaskDecline: {
-    task::TaskDecline decline;
-    if (!parseMessage(frame, decline)) {
-      LOG_WARNING("Malformed TaskDecline frame dropped");
-      return absl::InvalidArgumentError("malformed TaskDecline frame dropped");
-    }
-
-    auto iter = pending_.find(decline.id());
-    if (iter == pending_.end()) {
-      // Round already resolved (grant, timeout, or all-declined): ignore.
-      return absl::OkStatus();
-    }
-
-    gateway::Node* decliner = owningNode(conn);
-    if (decliner != nullptr) {
-      auto& probed = iter->second.probed_node_ids;
-      probed.erase(std::remove(probed.begin(), probed.end(), decliner->GetNodeId()), probed.end());
-    }
-
-    if (iter->second.probed_node_ids.empty()) {
-      LOG_WARNING("All probed nodes declined task {}: {}", decline.id(), decline.reason());
-      iter->second.receiver->DeliverError(decline.reason());
-      pending_.erase(iter);
-    }
-
-    return absl::OkStatus();
-  }
+  case io::TlvFrame::kTaskPull:
+    return handleTaskPullFrame(frame, conn);
+  case io::TlvFrame::kTaskDecline:
+    return handleTaskDeclineFrame(frame, conn);
   default:
     return absl::NotFoundError("probe scheduler does not own TLV type_id " +
                                std::to_string(frame.type_id));
@@ -243,6 +178,83 @@ auto ProbeScheduler::HandledFrameTypes() const -> std::span<const uint8_t> {
   static constexpr std::array<uint8_t, 2> kTypes = {io::TlvFrame::kTaskPull,
                                                     io::TlvFrame::kTaskDecline};
   return kTypes;
+}
+
+auto ProbeScheduler::handleTaskPullFrame(const io::TlvFrame& frame, io::Connection& conn)
+    -> absl::Status {
+
+  task::TaskPull pull;
+
+  if (!parseMessage(frame, pull)) {
+    LOG_WARNING("Malformed TaskPull frame dropped");
+    return absl::InvalidArgumentError("malformed TaskPull frame dropped");
+  }
+
+  auto iter = pending_.find(pull.id());
+  if (iter == pending_.end()) {
+    // Late or duplicate pull after the round resolved: revoke, never grant.
+    sendCancelOnConnection(conn, pull.id());
+    return absl::OkStatus();
+  }
+
+  gateway::Node* winner = owningNode(conn);
+  if (winner == nullptr) {
+    return absl::InternalError("pull on a connection without an owning Node");
+  }
+
+  auto& probed = iter->second.probed_node_ids;
+  if (std::ranges::find(probed, winner->GetNodeId()) == probed.end()) {
+    // The pulling node was not one of our candidates (e.g. it already
+    // declined): revoke its hold.
+    sendCancelOnConnection(conn, pull.id());
+    return absl::OkStatus();
+  }
+
+  // First pull wins. Grant the winner, cancel every other outstanding node.
+  sendGrant(conn, iter->second.task);
+  for (const auto& node_id : probed) {
+    if (node_id != winner->GetNodeId()) {
+      if (gateway::Node* loser = directory_.GetNode(node_id); loser != nullptr) {
+        sendCancel(*loser, pull.id());
+      }
+    }
+  }
+
+  // The winner's future kResult/kTaskRejected frames route via storage.
+  storage_.Put(pull.id(), std::move(iter->second.receiver), winner->GetNodeId());
+  pending_.erase(iter);
+
+  return absl::OkStatus();
+}
+
+auto ProbeScheduler::handleTaskDeclineFrame(const io::TlvFrame& frame, io::Connection& conn)
+    -> absl::Status {
+  task::TaskDecline decline;
+
+  if (!parseMessage(frame, decline)) {
+    LOG_WARNING("Malformed TaskDecline frame dropped");
+    return absl::InvalidArgumentError("malformed TaskDecline frame dropped");
+  }
+
+  auto iter = pending_.find(decline.id());
+  if (iter == pending_.end()) {
+    // Round already resolved (grant, timeout, or all-declined): ignore.
+    return absl::OkStatus();
+  }
+
+  gateway::Node* decliner = owningNode(conn);
+  if (decliner != nullptr) {
+    auto& probed = iter->second.probed_node_ids;
+    probed.erase(std::remove(probed.begin(), probed.end(), decliner->GetNodeId()), probed.end());
+  }
+
+  if (iter->second.probed_node_ids.empty()) {
+    LOG_WARNING("All probed nodes declined task {}: {}", decline.id(), decline.reason());
+    iter->second.receiver->DeliverError(decline.reason());
+    pending_.erase(iter);
+  }
+
+  return absl::OkStatus();
 }
 
 auto ProbeSchedulerFactory::Name() const -> std::string { return "probe"; }
