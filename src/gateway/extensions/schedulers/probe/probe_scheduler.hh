@@ -4,7 +4,6 @@
 #include <cstddef>
 #include <cstdint>
 #include <functional>
-#include <memory>
 #include <span>
 #include <string>
 #include <string_view>
@@ -42,10 +41,11 @@ public:
   // steady_clock::now.
   using Clock = std::function<std::chrono::steady_clock::time_point()>;
 
-  ProbeScheduler(gateway::NodeDirectory& directory, gateway::ResultReceiverStorage& storage,
-                 event::DispatcherSharedPtr dispatcher, size_t candidate_count,
-                 std::chrono::milliseconds probe_deadline,
-                 Clock clock = [] { return std::chrono::steady_clock::now(); });
+  ProbeScheduler(
+      gateway::NodeDirectory& directory, gateway::ResultReceiverStorage& storage,
+      event::DispatcherSharedPtr dispatcher, size_t candidate_count,
+      std::chrono::milliseconds probe_deadline,
+      Clock clock = [] { return std::chrono::steady_clock::now(); });
   ~ProbeScheduler() override = default;
 
   ProbeScheduler(const ProbeScheduler&) = delete;
@@ -76,10 +76,10 @@ private:
     return dynamic_cast<gateway::Node*>(conn.GetOwner());
   }
 
-  void sendProbe(gateway::Node& node, const task::Task& task);
-  void sendGrant(io::Connection& conn, const task::Task& task);
-  void sendCancel(gateway::Node& node, const std::string& id);
-  void sendCancelOnConnection(io::Connection& conn, const std::string& id);
+  static void sendProbe(gateway::Node& node, const task::Task& task);
+  static void sendGrant(io::Connection& conn, const task::Task& task);
+  static void sendCancel(gateway::Node& node, const std::string& task_id);
+  static void sendCancelOnConnection(io::Connection& conn, const std::string& task_id);
 
   gateway::NodeDirectory& directory_;
   gateway::ResultReceiverStorage& storage_;

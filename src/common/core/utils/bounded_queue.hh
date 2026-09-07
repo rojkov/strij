@@ -11,8 +11,7 @@ namespace strij::utils {
 // used by one event-loop context (a local scheduler); it does not synchronize
 // internally. A full queue rejects Push(), which is the "reject the incoming
 // probe immediately" semantics deferred admission needs.
-template <typename T>
-class BoundedQueue {
+template <typename T> class BoundedQueue {
 public:
   explicit BoundedQueue(size_t max_size) : max_size_{max_size} {}
 
@@ -22,6 +21,7 @@ public:
     if (Full()) {
       return false;
     }
+
     queue_.push_back(std::move(item));
     return true;
   }
@@ -31,6 +31,7 @@ public:
     if (queue_.empty()) {
       return std::nullopt;
     }
+
     T item = std::move(queue_.front());
     queue_.pop_front();
     return item;
@@ -42,6 +43,7 @@ public:
     if (queue_.empty()) {
       return nullptr;
     }
+
     return &queue_.front();
   }
 

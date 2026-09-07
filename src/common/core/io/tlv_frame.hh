@@ -11,6 +11,7 @@ struct TlvFrame {
   uint8_t type_id;
   std::span<const std::byte> value;
 
+  // TODO: turn these type ids to enum or enum class for type safety.
   static constexpr uint8_t kTaskSubmission = 0;
   static constexpr uint8_t kResult = 1;
   static constexpr uint8_t kHeartbeat = 2;
@@ -20,8 +21,7 @@ struct TlvFrame {
   // Probe scheduling protocol (node self-selection against live capacity).
   // Direction is relative to the node: kTaskProbe, kTaskProbeCancel, and
   // kTaskGrant travel gateway → node; kTaskPull and kTaskDecline travel
-  // node → gateway. Additive: ids 0–5 are untouched and unknown ids are
-  // dropped by endpoints that don't implement the protocol.
+  // node → gateway.
   static constexpr uint8_t kTaskProbe = 6;
   static constexpr uint8_t kTaskProbeCancel = 7;
   static constexpr uint8_t kTaskPull = 8;
@@ -29,7 +29,6 @@ struct TlvFrame {
   static constexpr uint8_t kTaskDecline = 10;
 };
 
-auto SerializeTlvFrame(uint8_t type_id, std::span<const std::byte> value)
-    -> std::vector<std::byte>;
+auto SerializeTlvFrame(uint8_t type_id, std::span<const std::byte> value) -> std::vector<std::byte>;
 
 } // namespace strij::io
