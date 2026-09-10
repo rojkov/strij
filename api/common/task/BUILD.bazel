@@ -20,7 +20,7 @@ proto_library(
     srcs = ["probe.proto"],
     strip_import_prefix = "/api",
     visibility = ["//visibility:public"],
-    deps = ["//api/common/node:node_proto"],
+    deps = ["//api/common/node:node_proto", ":task_proto"],
 )
 
 cc_proto_library(

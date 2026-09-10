@@ -37,10 +37,12 @@ auto parseMessage(const io::TlvFrame& frame, google::protobuf::Message& message)
 
 ProbeLocalScheduler::ProbeLocalScheduler(nodeagent::RunTaskService& run_task_service,
                                          nodeagent::AdmissionControllerSharedPtr admission,
-                                         size_t queue_capacity,
+                                         nodeagent::DataDependencyFetcherRouter& router,
+                                         event::Dispatcher& dispatcher, size_t queue_capacity,
                                          size_t max_concurrent_preallocations)
-    : run_task_service_{run_task_service}, admission_{std::move(admission)},
-      max_concurrent_preallocations_{max_concurrent_preallocations}, queue_{queue_capacity} {
+    : run_task_service_{run_task_service}, admission_{std::move(admission)}, router_{router},
+      dispatcher_{dispatcher}, max_concurrent_preallocations_{max_concurrent_preallocations},
+      queue_{queue_capacity} {
   admission_->RegisterCapacityObserver(this);
 }
 
@@ -82,6 +84,17 @@ void ProbeLocalScheduler::walk() {
       break;
     }
 
+    // Readiness gate: only pull a queued probe once its deps are all cached.
+    // Deps are prefetched on enqueue; a probe sitting in the queue for a
+    // later release must not burn freed capacity before its data arrives.
+    // Empty deps are "all cached" by definition (Phase-2 behavior). Refs whose
+    // scheme has no registered fetcher never gate readiness (AllCached), so a
+    // node with a partial fetcher set still runs the task.
+    if (!router_.AllCached(item->probe.deps())) {
+      deferred.push_back(std::move(*item));
+      continue;
+    }
+
     const absl::Status status = admission_->Admit(item->probe.type(), item->probe.requirements());
     if (status.ok()) {
       auto scope = std::make_unique<AdmissionScope>(admission_, item->probe.type(),
@@ -112,6 +125,18 @@ void ProbeLocalScheduler::walk() {
   }
 }
 
+void ProbeLocalScheduler::startPrefetch(const task::TaskProbe& probe) {
+  // Empty deps = no prefetch (Phase-2 behavior). Fully-cached deps are skipped
+  // too: the byte store is node-global, so an already-present ref needs neither
+  // a fetch nor the DEP_COMPLETED traffic it would generate. Use the router's
+  // readiness predicate so refs for schemes with no registered fetcher are
+  // treated the same here as in walk() (they never gate readiness).
+  if (probe.deps().empty() || router_.AllCached(probe.deps())) {
+    return;
+  }
+  router_.FetchAll(probe.deps(), probe.id(), dispatcher_, this);
+}
+
 void ProbeLocalScheduler::handleProbe(const task::TaskProbe& probe,
                                       const std::shared_ptr<io::OutboundMailbox>& pull_mailbox) {
   const absl::Status status = admission_->Admit(probe.type(), probe.requirements());
@@ -127,6 +152,8 @@ void ProbeLocalScheduler::handleProbe(const task::TaskProbe& probe,
     pull.SerializeToString(&serialized);
     const auto data = std::as_bytes(std::span(serialized.data(), serialized.size()));
     pull_mailbox->Enqueue(io::SerializeTlvFrame(io::TlvFrame::kTaskPull, data));
+
+    startPrefetch(probe);
     return;
   }
 
@@ -140,7 +167,10 @@ void ProbeLocalScheduler::handleProbe(const task::TaskProbe& probe,
     // Pull_mailbox is still valid (shared_ptr was copied, not moved): the
     // decline can still go out on the connection that sent the probe.
     sendDecline(*pull_mailbox, probe.id(), "queue full");
+    return;
   }
+
+  startPrefetch(probe);
 }
 
 auto ProbeLocalScheduler::removeQueued(const std::string& task_id) -> bool {
@@ -164,6 +194,21 @@ void ProbeLocalScheduler::ProcessCommand(event::Command cmd) {
   // AdmissionController and drain what now fits.
   if (cmd.type_ == event::Command::CAPACITY_RELEASED) {
     walk();
+    return;
+  }
+
+  if (cmd.type_ == event::Command::DEP_COMPLETED) {
+    // A data dependency finished fetching. args_ points to a stable task id the
+    // router keeps alive past command delivery. The id is advisory: walk()
+    // re-evaluates every queued probe, so a task whose deps are now cached gets
+    // pulled. A task that already resolved or was cancelled is simply absent from
+    // the queue/pending maps — walk() finds nothing for it, i.e. a no-op.
+    const auto* task_id = static_cast<const std::string*>(cmd.args_);
+    if (task_id != nullptr) {
+      LOG_DEBUG("DEP_COMPLETED for task {}; re-evaluating readiness", *task_id);
+    }
+    walk();
+    return;
   }
 }
 
@@ -253,7 +298,9 @@ auto ProbeLocalSchedulerFactory::Create(const ::google::protobuf::Message& confi
   }
 
   return std::make_unique<ProbeLocalScheduler>(
-      context.RunTaskService(), context.AdmissionController(), queue_capacity, max_preallocations);
+      context.RunTaskService(), context.AdmissionController(),
+      context.DataDependencyFetcherRouter(), context.Dispatcher(), queue_capacity,
+      max_preallocations);
 }
 
 } // namespace strij::nodeagent::schedulers::probe

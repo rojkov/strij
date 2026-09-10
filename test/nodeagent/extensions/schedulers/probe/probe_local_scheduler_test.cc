@@ -23,6 +23,8 @@
 #include "common/task/probe.pb.h"
 #include "common/task/task.pb.h"
 #include "nodeagent/core/admission_controller.hh"
+#include "nodeagent/core/data_dependency_fetcher_router.hh"
+#include "nodeagent/core/object_cache.hh"
 #include "nodeagent/core/run_task_service.hh"
 #include "nodeagent/core/task_handler_manager.hh"
 #include "nodeagent/extensions/schedulers/probe/probe.pb.h"
@@ -37,6 +39,34 @@ namespace {
 struct WireFrame {
   uint8_t type{0};
   std::vector<std::byte> payload;
+};
+
+// Records (ref, task_id) pairs instead of fetching; never submits
+// DEP_COMPLETED on its own so tests control completion timing explicitly.
+class RecordingFetcher final : public extensions::DataDependencyFetcher {
+public:
+  explicit RecordingFetcher(std::string source) : source_value_(std::move(source)), source_(source_value_) {}
+
+  void Fetch(const task::DataRef& ref, const std::string& task_id,
+             event::Dispatcher& /*dispatcher*/, event::CommandHandler* /*destination*/) override {
+    fetched_.push_back({.source = ref.source(), .key = ref.key(), .task_id = task_id});
+  }
+
+  [[nodiscard]] auto HandledSourceTypes() const -> std::span<const std::string_view> override {
+    return std::span<const std::string_view>(&source_, 1);
+  }
+
+  struct FetchCall {
+    std::string source;
+    std::string key;
+    std::string task_id;
+  };
+
+  std::vector<FetchCall> fetched_;
+
+private:
+  std::string source_value_;
+  std::string_view source_;
 };
 
 class ProbeLocalSchedulerTest : public ::testing::Test {
@@ -100,11 +130,49 @@ protected:
         .Times(0);
   }
 
+  static auto MakeDepRef(const std::string& source, const std::string& key) -> task::DataRef {
+    task::DataRef ref;
+    ref.set_source(source);
+    ref.set_key(key);
+    return ref;
+  }
+
+  // Builds a real router over the fixture's object cache; fetchers may be
+  // empty (no-ops: AllCached trivially true, FetchAll a no-op).
+  void MakeRouter(std::vector<extensions::DataDependencyFetcherPtr> fetchers = {}) {
+    auto result = DataDependencyFetcherRouter::Build(object_cache_, std::move(fetchers));
+    ASSERT_TRUE(result.ok());
+    router_ = std::move(result).value();
+  }
+
+  auto MakeScheduler(nodeagent::RunTaskService& run_task_service, size_t queue_capacity,
+                     size_t max_concurrent_preallocations,
+                     std::vector<extensions::DataDependencyFetcherPtr> fetchers = {})
+      -> std::unique_ptr<ProbeLocalScheduler> {
+    MakeRouter(std::move(fetchers));
+    return std::make_unique<ProbeLocalScheduler>(run_task_service, admission_, *router_,
+                                                 *dispatcher_, queue_capacity,
+                                                 max_concurrent_preallocations);
+  }
+
   static auto MakeProbeBytes(const std::string& id, int cpu) -> std::string {
     task::TaskProbe probe;
     probe.set_id(id);
     probe.set_type("echo");
     (*probe.mutable_requirements()->mutable_resources())["cpu"] = cpu;
+    std::string serialized;
+    probe.SerializeToString(&serialized);
+    return serialized;
+  }
+
+  static auto MakeProbeBytes(const std::string& id, int cpu,
+                             const google::protobuf::RepeatedPtrField<task::DataRef>& deps)
+      -> std::string {
+    task::TaskProbe probe;
+    probe.set_id(id);
+    probe.set_type("echo");
+    (*probe.mutable_requirements()->mutable_resources())["cpu"] = cpu;
+    probe.mutable_deps()->CopyFrom(deps);
     std::string serialized;
     probe.SerializeToString(&serialized);
     return serialized;
@@ -123,6 +191,22 @@ protected:
         {.type_id = io::TlvFrame::kTaskProbe,
          .value = std::as_bytes(std::span(serialized.data(), serialized.size()))},
         *conn_);
+  }
+
+  auto SendProbeWithDeps(const std::string& id, int cpu,
+                         const google::protobuf::RepeatedPtrField<task::DataRef>& deps)
+      -> absl::Status {
+    return SendProbeRaw(MakeProbeBytes(id, cpu, deps));
+  }
+
+  // Synthesizes the dispatcher-side delivery of a finished dependency: walk()
+  // runs synchronously through the MockDispatcher's SubmitCommand fallback in
+  // SetUp. `task_id` must be process-stable (an lvalue kept alive by the test).
+  void DeliverDepCompleted(const std::string& task_id) {
+    event::Command cmd;
+    cmd.type_ = event::Command::DEP_COMPLETED;
+    cmd.args_ = const_cast<std::string*>(&task_id);
+    scheduler_->ProcessCommand(std::move(cmd));
   }
 
   auto SendCancel(const std::string& id) -> absl::Status {
@@ -186,6 +270,8 @@ protected:
   event::DummyOwner owner_;
   io::ConnectionPtr conn_;
   std::shared_ptr<AdmissionController> admission_;
+  InMemoryObjectCache object_cache_;
+  std::shared_ptr<DataDependencyFetcherRouter> router_;
   std::unique_ptr<ProbeLocalScheduler> scheduler_;
 };
 
@@ -194,9 +280,7 @@ protected:
 TEST_F(ProbeLocalSchedulerTest, FreeCapacityPullsImmediately) {
   admission_ = std::make_shared<AdmissionControllerImpl>(*MakePubCaps(), *dispatcher_);
   RunTaskServiceImpl run_task_service(MakeEchoManager(), admission_);
-  scheduler_ = std::make_unique<ProbeLocalScheduler>(run_task_service, admission_,
-                                                     /*queue_capacity=*/4,
-                                                     /*max_concurrent_preallocations=*/4);
+  scheduler_ = MakeScheduler(run_task_service, 4, 4);
   ExpectWrites();
 
   ASSERT_TRUE(SendProbe("1", 10).ok());
@@ -212,9 +296,7 @@ TEST_F(ProbeLocalSchedulerTest, FreeCapacityPullsImmediately) {
 TEST_F(ProbeLocalSchedulerTest, ExhaustedCapacityEnqueuesProbeWithoutPulling) {
   admission_ = std::make_shared<AdmissionControllerImpl>(*MakePubCaps(), *dispatcher_);
   RunTaskServiceImpl run_task_service(MakeEchoManager(), admission_);
-  scheduler_ = std::make_unique<ProbeLocalScheduler>(run_task_service, admission_,
-                                                     /*queue_capacity=*/4,
-                                                     /*max_concurrent_preallocations=*/4);
+  scheduler_ = MakeScheduler(run_task_service, 4, 4);
   ExpectWrites();
 
   ASSERT_TRUE(SendProbe("1", 10).ok());
@@ -233,9 +315,7 @@ TEST_F(ProbeLocalSchedulerTest, ExhaustedCapacityEnqueuesProbeWithoutPulling) {
 TEST_F(ProbeLocalSchedulerTest, FullQueueDeclinesProbe) {
   admission_ = std::make_shared<AdmissionControllerImpl>(*MakePubCaps(), *dispatcher_);
   RunTaskServiceImpl run_task_service(MakeEchoManager(), admission_);
-  scheduler_ = std::make_unique<ProbeLocalScheduler>(run_task_service, admission_,
-                                                     /*queue_capacity=*/2,
-                                                     /*max_concurrent_preallocations=*/4);
+  scheduler_ = MakeScheduler(run_task_service, 2, 4);
   ExpectWrites();
 
   ASSERT_TRUE(SendProbe("1", 10).ok()); // admitted, pulled
@@ -257,9 +337,7 @@ TEST_F(ProbeLocalSchedulerTest, FullQueueDeclinesProbe) {
 TEST_F(ProbeLocalSchedulerTest, UnsatisfiableRequirementsDeclineImmediately) {
   admission_ = std::make_shared<AdmissionControllerImpl>(*MakePubCaps(), *dispatcher_);
   RunTaskServiceImpl run_task_service(MakeEchoManager(), admission_);
-  scheduler_ = std::make_unique<ProbeLocalScheduler>(run_task_service, admission_,
-                                                     /*queue_capacity=*/4,
-                                                     /*max_concurrent_preallocations=*/4);
+  scheduler_ = MakeScheduler(run_task_service, 4, 4);
   ExpectWrites();
 
   // "gpu.h100" is undeclared: never satisfiable, so it must not be enqueued.
@@ -289,9 +367,7 @@ TEST_F(ProbeLocalSchedulerTest, CapacityReleaseWalksQueueFifo) {
   // max_preallocations 2: the walk must not drain past the overbooking dial.
   admission_ = std::make_shared<AdmissionControllerImpl>(*MakePubCaps(), *dispatcher_);
   RunTaskServiceImpl run_task_service(MakeEchoManager(), admission_);
-  scheduler_ = std::make_unique<ProbeLocalScheduler>(run_task_service, admission_,
-                                                     /*queue_capacity=*/4,
-                                                     /*max_concurrent_preallocations=*/2);
+  scheduler_ = MakeScheduler(run_task_service, 4, 2);
   ExpectWrites();
 
   ASSERT_TRUE(SendProbe("a", 10).ok()); // admitted, pulled
@@ -323,9 +399,7 @@ TEST_F(ProbeLocalSchedulerTest, CapacityReleaseWalksQueueFifo) {
 TEST_F(ProbeLocalSchedulerTest, GrantsPreallocatedTaskWithoutDoubleAdmit) {
   admission_ = std::make_shared<AdmissionControllerImpl>(*MakePubCaps(), *dispatcher_);
   RunTaskServiceImpl run_task_service(MakeEchoManager(), admission_);
-  scheduler_ = std::make_unique<ProbeLocalScheduler>(run_task_service, admission_,
-                                                     /*queue_capacity=*/4,
-                                                     /*max_concurrent_preallocations=*/4);
+  scheduler_ = MakeScheduler(run_task_service, 4, 4);
   ExpectWrites();
 
   ASSERT_TRUE(SendProbe("g1", 2).ok());
@@ -362,9 +436,7 @@ TEST_F(ProbeLocalSchedulerTest, GrantsPreallocatedTaskWithoutDoubleAdmit) {
 TEST_F(ProbeLocalSchedulerTest, StrayGrantIsDropped) {
   admission_ = std::make_shared<AdmissionControllerImpl>(*MakePubCaps(), *dispatcher_);
   RunTaskServiceImpl run_task_service(MakeEchoManager(), admission_);
-  scheduler_ = std::make_unique<ProbeLocalScheduler>(run_task_service, admission_,
-                                                     /*queue_capacity=*/4,
-                                                     /*max_concurrent_preallocations=*/4);
+  scheduler_ = MakeScheduler(run_task_service, 4, 4);
   ExpectNoWrites();
 
   task::Task task;
@@ -386,9 +458,7 @@ TEST_F(ProbeLocalSchedulerTest, StrayGrantIsDropped) {
 TEST_F(ProbeLocalSchedulerTest, CancelReleasesPreallocation) {
   admission_ = std::make_shared<AdmissionControllerImpl>(*MakePubCaps(), *dispatcher_);
   RunTaskServiceImpl run_task_service(MakeEchoManager(), admission_);
-  scheduler_ = std::make_unique<ProbeLocalScheduler>(run_task_service, admission_,
-                                                     /*queue_capacity=*/4,
-                                                     /*max_concurrent_preallocations=*/4);
+  scheduler_ = MakeScheduler(run_task_service, 4, 4);
   ExpectWrites();
 
   ASSERT_TRUE(SendProbe("1", 10).ok());
@@ -405,9 +475,7 @@ TEST_F(ProbeLocalSchedulerTest, CancelReleasesPreallocation) {
 TEST_F(ProbeLocalSchedulerTest, CancelStopsQueuedProbeFromEverPulling) {
   admission_ = std::make_shared<AdmissionControllerImpl>(*MakePubCaps(), *dispatcher_);
   RunTaskServiceImpl run_task_service(MakeEchoManager(), admission_);
-  scheduler_ = std::make_unique<ProbeLocalScheduler>(run_task_service, admission_,
-                                                     /*queue_capacity=*/4,
-                                                     /*max_concurrent_preallocations=*/4);
+  scheduler_ = MakeScheduler(run_task_service, 4, 4);
   ExpectWrites();
 
   ASSERT_TRUE(SendProbe("a", 10).ok());
@@ -427,9 +495,7 @@ TEST_F(ProbeLocalSchedulerTest, CancelStopsQueuedProbeFromEverPulling) {
 TEST_F(ProbeLocalSchedulerTest, SpuriousCapacityReleaseIsNoop) {
   admission_ = std::make_shared<AdmissionControllerImpl>(*MakePubCaps(), *dispatcher_);
   RunTaskServiceImpl run_task_service(MakeEchoManager(), admission_);
-  scheduler_ = std::make_unique<ProbeLocalScheduler>(run_task_service, admission_,
-                                                     /*queue_capacity=*/4,
-                                                     /*max_concurrent_preallocations=*/4);
+  scheduler_ = MakeScheduler(run_task_service, 4, 4);
   ExpectNoWrites();
 
   scheduler_->ProcessCommand({.type_ = event::Command::CAPACITY_RELEASED});
@@ -441,9 +507,7 @@ TEST_F(ProbeLocalSchedulerTest, SpuriousCapacityReleaseIsNoop) {
 TEST_F(ProbeLocalSchedulerTest, MalformedProbeFrameIsRejected) {
   admission_ = std::make_shared<AdmissionControllerImpl>(*MakePubCaps(), *dispatcher_);
   RunTaskServiceImpl run_task_service(MakeEchoManager(), admission_);
-  scheduler_ = std::make_unique<ProbeLocalScheduler>(run_task_service, admission_,
-                                                     /*queue_capacity=*/4,
-                                                     /*max_concurrent_preallocations=*/4);
+  scheduler_ = MakeScheduler(run_task_service, 4, 4);
   ExpectNoWrites();
 
   auto garbage =
@@ -457,14 +521,190 @@ TEST_F(ProbeLocalSchedulerTest, MalformedProbeFrameIsRejected) {
 TEST_F(ProbeLocalSchedulerTest, UnknownFrameTypeIsNotFound) {
   admission_ = std::make_shared<AdmissionControllerImpl>(*MakePubCaps(), *dispatcher_);
   RunTaskServiceImpl run_task_service(MakeEchoManager(), admission_);
-  scheduler_ = std::make_unique<ProbeLocalScheduler>(run_task_service, admission_,
-                                                     /*queue_capacity=*/4,
-                                                     /*max_concurrent_preallocations=*/4);
+  scheduler_ = MakeScheduler(run_task_service, 4, 4);
   ExpectNoWrites();
 
   const absl::Status status =
       scheduler_->HandleFrame({.type_id = io::TlvFrame::kHeartbeat, .value = {}}, *conn_);
   EXPECT_EQ(status.code(), absl::StatusCode::kNotFound);
+}
+
+TEST_F(ProbeLocalSchedulerTest, ProbeWithDepsEnqueuedPullsAfterDepCompletes) {
+  auto ray = std::make_unique<RecordingFetcher>("ray");
+  RecordingFetcher* fetcher = ray.get();
+  admission_ = std::make_shared<AdmissionControllerImpl>(*MakePubCaps(), *dispatcher_);
+  RunTaskServiceImpl run_task_service(MakeEchoManager(), admission_);
+  std::vector<extensions::DataDependencyFetcherPtr> fetchers;
+  fetchers.push_back(std::move(ray));
+  scheduler_ = MakeScheduler(run_task_service, 4, 4, std::move(fetchers));
+  ExpectWrites();
+
+  ASSERT_TRUE(SendProbe("1", 10).ok()); // admitted + pulled
+  auto deps = google::protobuf::RepeatedPtrField<task::DataRef>{};
+  *deps.Add() = MakeDepRef("ray", "objB");
+  ASSERT_TRUE(SendProbeWithDeps("2", 10, deps).ok()); // enqueued (8 free < 10)
+
+  // Deps prefetch started on enqueue, but no pull yet (capacity exhausted).
+  ASSERT_EQ(fetcher->fetched_.size(), 1U);
+  EXPECT_EQ(fetcher->fetched_[0].source, "ray");
+  EXPECT_EQ(fetcher->fetched_[0].key, "objB");
+  EXPECT_EQ(fetcher->fetched_[0].task_id, "2");
+
+  auto frames = ReadFrames();
+  ASSERT_EQ(frames.size(), 1U);
+  EXPECT_EQ(frames[0].type, io::TlvFrame::kTaskPull);
+  EXPECT_EQ(ParsePull(frames[0]).id(), "1");
+
+  // Freed capacity still cannot serve "2": the dep prefetch has not landed yet,
+  // so the walk leaves it queued (capacity is not burned for a task that cannot
+  // run). No CAPACITY_RELEASED frame exists — only commands travel in-band.
+  std::string task_two = "2";
+  ASSERT_TRUE(SendCancel("1").ok());
+  EXPECT_TRUE(ReadFrames().empty());
+
+  // Now the data arrives: DEP_COMPLETED triggers a walk that pulls "2".
+  object_cache_.Populate(MakeDepRef("ray", "objB"), "payload-B");
+  DeliverDepCompleted(task_two);
+
+  frames = ReadFrames();
+  ASSERT_EQ(frames.size(), 1U);
+  EXPECT_EQ(frames[0].type, io::TlvFrame::kTaskPull);
+  EXPECT_EQ(ParsePull(frames[0]).id(), "2");
+  EXPECT_EQ(admission_->InFlight("echo"), 1U);
+}
+
+TEST_F(ProbeLocalSchedulerTest, DepsMissingKeepsProbeQueuedOnCapacityRelease) {
+  // "ray" is a registered but slow fetcher: the scheme gates readiness, and the
+  // fetch is still in flight when capacity frees.
+  auto ray = std::make_unique<RecordingFetcher>("ray");
+  admission_ = std::make_shared<AdmissionControllerImpl>(*MakePubCaps(), *dispatcher_);
+  RunTaskServiceImpl run_task_service(MakeEchoManager(), admission_);
+  std::vector<extensions::DataDependencyFetcherPtr> fetchers;
+  fetchers.push_back(std::move(ray));
+  scheduler_ = MakeScheduler(run_task_service, 4, 4, std::move(fetchers));
+  ExpectWrites();
+
+  ASSERT_TRUE(SendProbe("1", 10).ok()); // admitted + pulled
+  auto deps = google::protobuf::RepeatedPtrField<task::DataRef>{};
+  *deps.Add() = MakeDepRef("ray", "objB");
+  ASSERT_TRUE(SendProbeWithDeps("2", 10, deps).ok()); // enqueued
+  ASSERT_TRUE(SendCancel("1").ok());                  // CAPACITY_RELEASED
+
+  // "2" fits the freed capacity but its dep is not cached: it must stay queued
+  // (burning capacity would strand a task that cannot run).
+  auto frames = ReadFrames();
+  ASSERT_EQ(frames.size(), 1U);
+  EXPECT_EQ(frames[0].type, io::TlvFrame::kTaskPull);
+  EXPECT_EQ(ParsePull(frames[0]).id(), "1");
+  EXPECT_EQ(admission_->InFlight("echo"), 0U);
+}
+
+TEST_F(ProbeLocalSchedulerTest, EmptyDepsWalkImmediatelyOnCapacityRelease) {
+  admission_ = std::make_shared<AdmissionControllerImpl>(*MakePubCaps(), *dispatcher_);
+  RunTaskServiceImpl run_task_service(MakeEchoManager(), admission_);
+  scheduler_ = MakeScheduler(run_task_service, 4, 4);
+  ExpectWrites();
+
+  ASSERT_TRUE(SendProbe("1", 10).ok()); // admitted + pulled
+  ASSERT_TRUE(SendProbe("2", 10).ok()); // enqueued (empty deps)
+  ASSERT_TRUE(SendCancel("1").ok());    // CAPACITY_RELEASED
+
+  auto frames = ReadFrames();
+  ASSERT_EQ(frames.size(), 2U);
+  EXPECT_EQ(frames[0].type, io::TlvFrame::kTaskPull);
+  EXPECT_EQ(ParsePull(frames[0]).id(), "1");
+  EXPECT_EQ(frames[1].type, io::TlvFrame::kTaskPull);
+  EXPECT_EQ(ParsePull(frames[1]).id(), "2");
+}
+
+TEST_F(ProbeLocalSchedulerTest, CachedDepsSkipFetchAndPullImmediately) {
+  auto ray = std::make_unique<RecordingFetcher>("ray");
+  RecordingFetcher* fetcher = ray.get();
+  admission_ = std::make_shared<AdmissionControllerImpl>(*MakePubCaps(), *dispatcher_);
+  RunTaskServiceImpl run_task_service(MakeEchoManager(), admission_);
+  std::vector<extensions::DataDependencyFetcherPtr> fetchers;
+  fetchers.push_back(std::move(ray));
+  object_cache_.Populate(MakeDepRef("ray", "objA"), "payload-A");
+  scheduler_ = MakeScheduler(run_task_service, 4, 4, std::move(fetchers));
+  ExpectWrites();
+
+  // The byte store is shared: an already-cached dep needs neither a fetch nor
+  // DEP_COMPLETED — the direct-admit probe pulls immediately.
+  auto deps = google::protobuf::RepeatedPtrField<task::DataRef>{};
+  *deps.Add() = MakeDepRef("ray", "objA");
+  ASSERT_TRUE(SendProbeWithDeps("1", 2, deps).ok());
+
+  auto frames = ReadFrames();
+  ASSERT_EQ(frames.size(), 1U);
+  EXPECT_EQ(frames[0].type, io::TlvFrame::kTaskPull);
+  EXPECT_EQ(ParsePull(frames[0]).id(), "1");
+  EXPECT_TRUE(fetcher->fetched_.empty());
+}
+
+TEST_F(ProbeLocalSchedulerTest, CachedDepsPullFromQueueWithoutDepCompleted) {
+  admission_ = std::make_shared<AdmissionControllerImpl>(*MakePubCaps(), *dispatcher_);
+  RunTaskServiceImpl run_task_service(MakeEchoManager(), admission_);
+  object_cache_.Populate(MakeDepRef("ray", "objB"), "payload-B");
+  scheduler_ = MakeScheduler(run_task_service, 4, 4);
+  ExpectWrites();
+
+  ASSERT_TRUE(SendProbe("1", 10).ok()); // admitted + pulled
+  auto deps = google::protobuf::RepeatedPtrField<task::DataRef>{};
+  *deps.Add() = MakeDepRef("ray", "objB");
+  ASSERT_TRUE(SendProbeWithDeps("2", 10, deps).ok()); // enqueued
+  ASSERT_TRUE(SendCancel("1").ok());                  // capacity released
+
+  // Deps were already cached on arrival: "2" is ready the moment capacity
+  // frees, with no DEP_COMPLETED traffic in between.
+  auto frames = ReadFrames();
+  ASSERT_EQ(frames.size(), 2U);
+  EXPECT_EQ(frames[0].type, io::TlvFrame::kTaskPull);
+  EXPECT_EQ(ParsePull(frames[0]).id(), "1");
+  EXPECT_EQ(frames[1].type, io::TlvFrame::kTaskPull);
+  EXPECT_EQ(ParsePull(frames[1]).id(), "2");
+}
+
+TEST_F(ProbeLocalSchedulerTest, UnknownSourceDepNeverGatesReadiness) {
+  // A node without a fetcher for a scheme still runs the task: the ref is
+  // fetched on demand by the task handler instead of gating admission.
+  admission_ = std::make_shared<AdmissionControllerImpl>(*MakePubCaps(), *dispatcher_);
+  RunTaskServiceImpl run_task_service(MakeEchoManager(), admission_);
+  scheduler_ = MakeScheduler(run_task_service, 4, 4);
+  ExpectWrites();
+
+  ASSERT_TRUE(SendProbe("1", 10).ok()); // admitted + pulled
+  auto deps = google::protobuf::RepeatedPtrField<task::DataRef>{};
+  *deps.Add() = MakeDepRef("no-such-scheme", "objX");
+  ASSERT_TRUE(SendProbeWithDeps("2", 10, deps).ok()); // enqueued
+  ASSERT_TRUE(SendCancel("1").ok());                  // capacity released
+
+  auto frames = ReadFrames();
+  ASSERT_EQ(frames.size(), 2U);
+  EXPECT_EQ(frames[0].type, io::TlvFrame::kTaskPull);
+  EXPECT_EQ(ParsePull(frames[0]).id(), "1");
+  EXPECT_EQ(frames[1].type, io::TlvFrame::kTaskPull);
+  EXPECT_EQ(ParsePull(frames[1]).id(), "2");
+}
+
+TEST_F(ProbeLocalSchedulerTest, DepCompletedUnknownTaskIsNoop) {
+  admission_ = std::make_shared<AdmissionControllerImpl>(*MakePubCaps(), *dispatcher_);
+  RunTaskServiceImpl run_task_service(MakeEchoManager(), admission_);
+  scheduler_ = MakeScheduler(run_task_service, 4, 4);
+  ExpectWrites();
+
+  ASSERT_TRUE(SendProbe("1", 10).ok()); // admitted + pulled
+
+  // Drain the initial pull, then confirm DEP_COMPLETED for an unknown task does
+  // not manufacture a pull: walk() has nothing to serve and must not write.
+  auto frames = ReadFrames();
+  ASSERT_EQ(frames.size(), 1U);
+  EXPECT_EQ(frames[0].type, io::TlvFrame::kTaskPull);
+
+  std::string ghost = "ghost";
+  DeliverDepCompleted(ghost);
+  EXPECT_TRUE(ReadFrames().empty());
+  EXPECT_EQ(admission_->SharedFree("cpu"), 8U);
+  EXPECT_EQ(admission_->InFlight("echo"), 1U);
 }
 
 class StubRunTaskService final : public nodeagent::RunTaskService {
@@ -488,10 +728,14 @@ TEST_F(ProbeLocalSchedulerTest, FactoryCreateValidatesConfig) {
       .Times(0);
   auto admission = std::make_shared<AdmissionControllerImpl>(*caps, *dispatcher);
   StubRunTaskService run_task_service;
+  InMemoryObjectCache cache;
+  auto router = DataDependencyFetcherRouter::Build(cache, {}).value();
 
   extensions::MockNodeagentFactoryContext context;
   EXPECT_CALL(context, AdmissionController()).WillRepeatedly(::testing::Return(admission));
   EXPECT_CALL(context, RunTaskService()).WillRepeatedly(::testing::ReturnRef(run_task_service));
+  EXPECT_CALL(context, Dispatcher()).WillRepeatedly(::testing::ReturnRef(*dispatcher));
+  EXPECT_CALL(context, DataDependencyFetcherRouter()).WillRepeatedly(::testing::ReturnRef(*router));
 
   ProbeLocalSchedulerFactory factory;
   {
@@ -528,10 +772,14 @@ TEST_F(ProbeLocalSchedulerTest, FactoryRejectsWrongConfigType) {
   auto dispatcher = std::make_shared<event::MockDispatcher>();
   auto admission = std::make_shared<AdmissionControllerImpl>(*caps, *dispatcher);
   StubRunTaskService run_task_service;
+  InMemoryObjectCache cache;
+  auto router = DataDependencyFetcherRouter::Build(cache, {}).value();
 
   extensions::MockNodeagentFactoryContext context;
   EXPECT_CALL(context, AdmissionController()).WillRepeatedly(::testing::Return(admission));
   EXPECT_CALL(context, RunTaskService()).WillRepeatedly(::testing::ReturnRef(run_task_service));
+  EXPECT_CALL(context, Dispatcher()).WillRepeatedly(::testing::ReturnRef(*dispatcher));
+  EXPECT_CALL(context, DataDependencyFetcherRouter()).WillRepeatedly(::testing::ReturnRef(*router));
 
   task::Task unrelated;
   ProbeLocalSchedulerFactory factory;

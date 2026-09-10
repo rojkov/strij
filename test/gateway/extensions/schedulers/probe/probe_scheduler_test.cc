@@ -164,6 +164,38 @@ protected:
 
 // NOLINTBEGIN(modernize-use-trailing-return-type)
 
+TEST_F(ProbeSchedulerTest, ProbeCarriesTaskDeps) {
+  auto directory = MakeConnectedDirectory({"A"});
+  FakeClock clock;
+  ProbeScheduler scheduler(*directory, storage_, dispatcher_, /*candidate_count=*/1,
+                           std::chrono::milliseconds(1000), clock.AsClock());
+
+  std::vector<Written> writes;
+  RecordWrites(&writes);
+
+  task::Task task;
+  task.set_id("1");
+  task.set_type("echo");
+  auto* dep = task.mutable_deps()->Add();
+  dep->set_source("ray");
+  dep->set_key("obj_abc");
+  dep->set_sha("deadbeef");
+
+  auto receiver = MakeReceiver();
+  scheduler.Schedule(task, std::move(receiver.first));
+
+  ASSERT_EQ(writes.size(), 1U);
+  const io::TlvFrame frame = SingleFrame(writes[0].bytes);
+  EXPECT_EQ(frame.type_id, io::TlvFrame::kTaskProbe);
+
+  task::TaskProbe probe;
+  ASSERT_TRUE(probe.ParseFromArray(std::bit_cast<const char*>(frame.value.data()),
+                                   static_cast<int>(frame.value.size())));
+  ASSERT_EQ(probe.deps_size(), 1);
+  EXPECT_EQ(probe.deps(0).source(), "ray");
+  EXPECT_EQ(probe.deps(0).key(), "obj_abc");
+}
+
 TEST_F(ProbeSchedulerTest, ClampsCandidatesToAvailableNodes) {
   auto directory = MakeConnectedDirectory({"A"});
   FakeClock clock;

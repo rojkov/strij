@@ -3,6 +3,7 @@ syntax = "proto3";
 package strij.task;
 
 import "common/node/capabilities.proto";
+import "common/task/task.proto";
 
 // Probe scheduling protocol messages (Sparrow-style). The gateway probes a
 // small candidate set with TaskProbe (id, type, requirements — never the full
@@ -16,6 +17,9 @@ message TaskProbe {
   string type = 2;
   // Authoritative admission requirements; absent means empty requirements.
   strij.node.ResourceRequirements requirements = 3;
+  // Data objects the client expects the task to reference (copied from
+  // Task.deps by the gateway).
+  repeated DataRef deps = 4;
 }
 
 message TaskPull {
