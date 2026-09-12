@@ -126,7 +126,7 @@ The `2026-08-19-node-capabilities-and-scheduling` change landed runtime node dis
 
 - [ ] **Scope `DEP_COMPLETED` re-evaluation to the named task**
   - The probe local scheduler's `ProcessCommand(DEP_COMPLETED)` currently logs the task id and walks the entire queued-probe set (the pure-wakeup shape the data-dependencies design rejected). Scope the walk, or maintain an event-indexed readiness map, so a dep completion re-evaluates only the task named in `args_`. v1's bounded queue (default 64) makes the full walk acceptable for now.
-  - Source: `openspec/changes/data-dependencies/design.md` (D5 implementation note); `src/nodeagent/extensions/schedulers/probe/probe_local_scheduler.cc`.
+  - Source: `openspec/changes/archive/2026-09-12-data-dependencies/design.md` (D5 implementation note); `src/nodeagent/extensions/schedulers/probe/probe_local_scheduler.cc`.
 
 ## Phase 4 — Protocol & observability
 
@@ -148,7 +148,7 @@ The `2026-08-19-node-capabilities-and-scheduling` change landed runtime node dis
 
 - [ ] **Parse submission-header deps into `Task.deps` (`X-Strij-Deps`)**
   - `Task.deps` is populated only by whatever the submitter sets; the gateway HTTP handler does not yet parse a submission header into it. The data-dependencies change only propagates an already-populated `Task.deps` into the probe. Add header parsing (JSON array of `{source, key, sha}`) so clients can declare prefetch hints at HTTP submission.
-  - Source: `openspec/changes/data-dependencies/design.md` (Open Question 3); `openspec/changes/data-dependencies/specs/data-dependency-fetcher/spec.md` (deferred scenario).
+  - Source: `openspec/changes/archive/2026-09-12-data-dependencies/design.md` (Open Question 3); `openspec/changes/archive/2026-09-12-data-dependencies/specs/data-dependency-fetcher/spec.md` (deferred scenario).
 
 ## Phase 5 — Config & platform features
 
