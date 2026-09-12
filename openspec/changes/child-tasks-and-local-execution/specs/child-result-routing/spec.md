@@ -1,0 +1,76 @@
+# child-result-routing
+
+## ADDED Requirements
+
+### Requirement: Node-local receiver registry
+
+The nodeagent SHALL provide a `LocalReceiverRegistry` mapping `task_id → ResultReceiver`, the nodeagent mirror of the gateway's `ResultReceiverStorage`. It SHALL expose `Put(task_id, ReceiverPtr)`, `Get(task_id)`, `Erase(task_id)`, and `Empty()`/`Size()`. The registry is node-global and shared by every task handler that submits children; a parent handler SHALL register a receiver keyed by the child's id before submitting the child.
+
+#### Scenario: Parent registers a child receiver
+
+- **WHEN** a workflow handler prepares to submit a child with id `C`
+- **THEN** the handler SHALL `Put("C", receiver)` before `Submit`
+- **AND** `Get("C")` SHALL return that receiver until it is delivered or erased
+
+#### Scenario: Erase removes the entry
+
+- **WHEN** the final result for `C` has been delivered
+- **THEN** `Get("C")` SHALL return null and `Size()` SHALL decrease
+
+### Requirement: Inbound child-outcome frames route to the registry
+
+`NodeagentTlvHandler` SHALL recognize inbound `kResult` and `kTaskRejected` frames on a node connection as child outcomes and SHALL deliver them to the `LocalReceiverRegistry`: `kResult` resolves the receiver by `result.id()`, delivers the body with finality, and erases the entry on the final result; `kTaskRejected` resolves by id and delivers the error. Frames whose id has no registered receiver SHALL be dropped with a warning. These frame types SHALL be core-owned by the nodeagent (like `kNodeAdvertisement`), not owned by any local scheduler, and SHALL therefore not appear in any scheduler's `HandledFrameTypes()`.
+
+#### Scenario: Child result frame delivered to the parent
+
+- **WHEN** an inbound `kResult` frame whose id matches a registered child receiver arrives on any node connection
+- **THEN** the receiver SHALL be invoked with the result body and finality
+- **AND** a final result SHALL erase the registry entry
+
+#### Scenario: Child rejection frame delivered to the parent
+
+- **WHEN** an inbound `kTaskRejected` frame whose id matches a registered child receiver arrives
+- **THEN** the receiver SHALL be invoked with the rejection reason
+- **AND** the registry entry SHALL be erased
+
+#### Scenario: Unknown child id is dropped
+
+- **WHEN** an inbound `kResult` or `kTaskRejected` frame carries an id with no registered receiver
+- **THEN** the frame SHALL be dropped with a warning and no crash
+
+### Requirement: Receiver-backed child result sender
+
+The nodeagent SHALL provide a `ResultSender` implementation (`RegistryResultSender`) bound to the `LocalReceiverRegistry` and a fixed `task_id`. `Send(TaskResult)` SHALL resolve the receiver by id and deliver the body with finality; a final result SHALL erase the entry. `RegisterOnClose`/`UnregisterOnClose` SHALL be supported (the registry is connection-independent; the hooks may be no-ops or mirror the parent's close contract). This sender is what `ChildSubmissionService` passes to the sender-backed `RunTask` overload for locally-admitted children.
+
+#### Scenario: Local child result resolves through the registry
+
+- **WHEN** a locally-run child's handler calls `Send(TaskResult{id, body, is_final})` on a `RegistryResultSender`
+- **THEN** the parent's receiver SHALL be delivered `body` with `is_final`
+- **AND** on a final result the registry entry SHALL be erased
+
+### Requirement: Gateway node-connection result receiver
+
+The gateway SHALL provide a `ResultReceiver` implementation bound to an `io::Connection`'s outbound mailbox (`NodeConnectionResultReceiver`) — the TLV sibling of `HttpResultReceiver`. `Deliver(body, is_final)` SHALL write a `kResult` frame serialized from a `TaskResult` (`id` → `task_id`, `body`, `is_final`); `DeliverError(reason)` SHALL write a `kTaskRejected` frame. The gateway SHALL store it in `ResultReceiverStorage` keyed by the child's `task_id` and the submitting node's `node_id`, so existing disconnect cleanup applies.
+
+#### Scenario: Result delivered back over the submitting node's connection
+
+- **WHEN** a forwarded child's worker emits a final `kResult` to the gateway and the gateway looks up the child's receiver
+- **THEN** the `NodeConnectionResultReceiver` SHALL write a `kResult` frame on the submitting node's connection
+- **AND** the gateway SHALL erase the storage entry
+
+#### Scenario: Child error writes a rejection frame
+
+- **WHEN** the gateway decides a forwarded child cannot be scheduled (no matching gateway scheduler, no default)
+- **THEN** `DeliverError(reason)` SHALL write a `kTaskRejected` frame on the submitting node's connection
+- **AND** the storage entry SHALL be erased
+
+### Requirement: Two-hop child result delivery
+
+The full path for a forwarded child SHALL deliver the child's result to the parent in two hops without new wire types: worker → gateway (`kResult`, node connection), gateway → submitting node (`kResult`, via `NodeConnectionResultReceiver`), submitting node → parent (via `LocalReceiverRegistry`). Delivery SHALL be correct regardless of which gateway connection carried the original upstream submission.
+
+#### Scenario: Forwarded child completes end to end
+
+- **WHEN** a parent on node A submits a child that runs on node B via gateway G
+- **THEN** the child's final result SHALL be delivered to A's parent receiver
+- **AND** the registry entry SHALL be erased
+- **AND** node B's admission capacity SHALL be released on the final result
