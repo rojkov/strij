@@ -116,7 +116,8 @@ tlv_listener:
   address: "0.0.0.0"
   port: 9090
 schedulers:
-  - name: "push"
+  - extension:
+      name: "push"
 logging:
   level: "debug"
   format: "json"
@@ -131,7 +132,9 @@ logging:
   EXPECT_EQ(config.tlv_listener().address(), "0.0.0.0");
   EXPECT_EQ(config.tlv_listener().port(), 9090U);
   ASSERT_EQ(config.schedulers_size(), 1);
-  EXPECT_EQ(config.schedulers(0).name(), "push");
+  EXPECT_EQ(config.schedulers(0).extension().name(), "push");
+  EXPECT_TRUE(config.schedulers(0).task_type().empty());
+  EXPECT_FALSE(config.schedulers(0).local_default());
   EXPECT_EQ(config.logging().level(), "debug");
   EXPECT_EQ(config.logging().format(), "json");
   EXPECT_EQ(config.logging().output(), "stderr");
@@ -162,7 +165,8 @@ task_handlers:
 heartbeat_interval:
   seconds: 5
 schedulers:
-  - name: "push"
+  - extension:
+      name: "push"
 )";
   std::string path = createTempFile(yaml);
   ASSERT_FALSE(path.empty());
@@ -185,7 +189,47 @@ schedulers:
   EXPECT_EQ(handler_config.capacity().concurrency(), 1024U);
   EXPECT_EQ(config.heartbeat_interval().seconds(), 5);
   ASSERT_EQ(config.schedulers_size(), 1);
-  EXPECT_EQ(config.schedulers(0).name(), "push");
+  EXPECT_EQ(config.schedulers(0).extension().name(), "push");
+
+  std::filesystem::remove(path);
+}
+
+TEST(ConfigLoaderTest, NodeAgentSchedulerRolesYaml) {
+  std::string yaml = R"(
+tlv_listener:
+  address: "0.0.0.0"
+  port: 9090
+schedulers:
+  - extension:
+      name: "push"
+    task_type: "workflow"
+  - extension:
+      name: "push"
+    local_default: true
+  - extension:
+      name: "probe"
+gateway_client:
+  addresses:
+    - "10.0.0.1:9090"
+    - "10.0.0.2:9090"
+)";
+  std::string path = createTempFile(yaml);
+  ASSERT_FALSE(path.empty());
+
+  auto result = LoadConfig<NodeAgentConfig>(path);
+  ASSERT_TRUE(result.ok()) << result.status().message();
+  const auto& config = result.value();
+  ASSERT_EQ(config.schedulers_size(), 3);
+  EXPECT_EQ(config.schedulers(0).extension().name(), "push");
+  EXPECT_EQ(config.schedulers(0).task_type(), "workflow");
+  EXPECT_FALSE(config.schedulers(0).local_default());
+  EXPECT_EQ(config.schedulers(1).extension().name(), "push");
+  EXPECT_TRUE(config.schedulers(1).task_type().empty());
+  EXPECT_TRUE(config.schedulers(1).local_default());
+  EXPECT_EQ(config.schedulers(2).extension().name(), "probe");
+  ASSERT_EQ(config.gateway_client().addresses_size(), 2);
+  EXPECT_EQ(config.gateway_client().addresses(0), "10.0.0.1:9090");
+  EXPECT_EQ(config.gateway_client().addresses(1), "10.0.0.2:9090");
 
   std::filesystem::remove(path);
 }
@@ -309,7 +353,8 @@ tlv_listener:
   address: "127.0.0.1"
   port: 9090
 schedulers:
-  - name: "push"
+  - extension:
+      name: "push"
 )";
   std::string path = createTempFile(yaml);
   ASSERT_FALSE(path.empty());
@@ -441,7 +486,8 @@ tlv_listener:
   address: "127.0.0.1"
   port: 9090
 schedulers:
-  - name: "push"
+  - extension:
+      name: "push"
 )";
   std::string path = createTempFile(yaml);
   ASSERT_FALSE(path.empty());

@@ -20,10 +20,14 @@ namespace strij::nodeagent::schedulers {
 // capability_aware gateway-side schedulers, which share the same
 // RequiredProtocol() ("push").
 //
-// The scheduler owns the kTaskSubmission frame type in the NodeagentTlvHandler
-// dispatch table, parses the task, and delegates execution to the shared
-// nodeagent::RunTaskService. It also plays the event::CommandHandler role
-// required by Connection's destination contract; ProcessCommand is a no-op.
+// The scheduler owns the kTaskSubmission frame type in the node frame
+// dispatcher, parses the task, and delegates execution to the shared
+// nodeagent::RunTaskService. It is a pure wire-protocol counterpart: its node-
+// local Schedule facet is unimplemented (it logs and delivers an error through
+// the receiver, honoring the resolve contract). Locally-originated children
+// run under the bundled "default" scheduler, the single local authority.
+// It also plays the event::CommandHandler role required by Connection's
+// destination contract; ProcessCommand is a no-op.
 class PushLocalScheduler final : public extensions::Scheduler, public event::CommandHandler {
 public:
   explicit PushLocalScheduler(nodeagent::RunTaskService& run_task_service)

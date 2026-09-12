@@ -590,6 +590,22 @@ auto validateMessage(const google::protobuf::Message& message, const std::string
       continue;
     }
 
+    // Validate every element of a repeated string field (the generic
+    // extractFieldValue helper validates only index 0 of repeated fields).
+    if (field->is_repeated() &&
+        field->cpp_type() == google::protobuf::FieldDescriptor::CPPTYPE_STRING) {
+      const int size = reflection->FieldSize(message, field);
+      for (int j = 0; j < size; ++j) {
+        const FieldValueInfo info = {.str_val_ = reflection->GetRepeatedString(message, field, j)};
+        auto status = validateFieldValue(info, field_path, ext_opts);
+        if (!status.ok()) {
+          return status;
+        }
+      }
+
+      continue;
+    }
+
     const FieldValueInfo info = extractFieldValue(message, field, reflection);
 
     auto status = validateFieldValue(info, field_path, ext_opts);

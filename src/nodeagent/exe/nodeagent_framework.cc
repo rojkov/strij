@@ -14,11 +14,12 @@
 #include "common/core/io/tlv_frame.hh"
 #include "common/core/io/tlv_parser.hh"
 #include "common/core/logging/log.hh"
-#include "common/extensions/scheduler_loader.hh"
 #include "nodeagent/core/admission_controller.hh"
 #include "nodeagent/core/capabilities.hh"
 #include "nodeagent/core/data_dependency_fetcher_router.hh"
 #include "nodeagent/core/function_resolver.hh"
+#include "nodeagent/core/gateway_client.hh"
+#include "nodeagent/core/nodeagent_scheduler_router.hh"
 #include "nodeagent/core/nodeagent_tlv_handler.hh"
 #include "nodeagent/core/object_cache.hh"
 #include "nodeagent/core/run_task_service.hh"
@@ -83,8 +84,16 @@ auto RunNodeagent(int argc, char** argv) -> int {
 
   auto function_resolver = std::make_unique<LocalFunctionResolver>();
   const auto object_cache = std::make_shared<InMemoryObjectCache>();
+
+  // The GatewayClient is the node's only outbound capability: every accepted
+  // gateway connection is registered with it (below), and it forwards children
+  // upstream over live connections (no dial fallback). It is dependency-free,
+  // so it is handed to the factory context directly at construction — the
+  // bundled "default" scheduler's forward path exists from the context's first
+  // moment rather than from a later install step.
+  auto gateway_client = std::make_unique<GatewayClient>();
   NodeagentFactoryContextImpl factory_context(dispatcher, std::move(function_resolver), admission,
-                                              object_cache);
+                                              object_cache, *gateway_client);
 
   // Build the task handler manager from config. This must run before the
   // --validate_only short-circuit so that unknown handler names fail validation.
@@ -116,11 +125,6 @@ auto RunNodeagent(int argc, char** argv) -> int {
   }
   const DataDependencyFetcherRouterPtr& fetch_router = fetcher_router_result.value();
 
-  if (absl::GetFlag(FLAGS_validate_only)) {
-    LOG_INFO("Config validation passed");
-    return 0;
-  }
-
   const std::shared_ptr<TaskHandlerManager>& task_handler_manager = manager_result.value();
 
   // The RunTask service is the schedulers' only route to task execution; it is
@@ -130,26 +134,25 @@ auto RunNodeagent(int argc, char** argv) -> int {
   factory_context.SetRunTaskService(*run_task_service);
   factory_context.SetDataDependencyFetcherRouter(*fetch_router);
 
-  // One local scheduler instance per configured scheduler entry, shared by
-  // every accepted connection's frame dispatcher. Failing to start when the
-  // list is empty or any name is unknown is intentional: a misconfigured node
-  // must not silently advertise a scheduling protocol.
-  std::vector<extensions::SchedulerPtr> local_schedulers;
-  std::vector<extensions::Scheduler*> scheduler_pointers;
-  scheduler_pointers.reserve(static_cast<size_t>(config.schedulers().size()));
-  local_schedulers.reserve(static_cast<size_t>(config.schedulers().size()));
-  for (const auto& ext : config.schedulers()) {
-    auto scheduler_result = CreateNodeScheduler(ext, factory_context);
-    if (!scheduler_result.ok()) {
-      LOG_ERROR("Scheduler config error: {}", scheduler_result.status().message());
-      return 1;
-    }
-    scheduler_pointers.push_back(scheduler_result.value().get());
-    local_schedulers.push_back(std::move(scheduler_result).value());
-  }
-  if (local_schedulers.empty()) {
-    LOG_ERROR("No schedulers configured for this node");
+  // One local scheduler instance per configured scheduler entry, composed into
+  // the node-side child router (the submission composite that routes
+  // locally-originated children by declared authority). The router also owns
+  // the node's frame demux: every accepted connection's handler is a thin seam
+  // into it. Failing to start when the list is empty, any name is unknown,
+  // or the authority declarations are ambiguous (duplicate non-empty
+  // task_type, more than one local_default) is intentional: a misconfigured
+  // node must not silently advertise a scheduling protocol.
+  auto child_router_result = BuildNodeagentSchedulerRouter(config, factory_context);
+  if (!child_router_result.ok()) {
+    LOG_ERROR("Scheduler config error: {}", child_router_result.status().message());
     return 1;
+  }
+  const std::unique_ptr<NodeagentSchedulerRouter>& child_router = child_router_result.value();
+  factory_context.SetChildTaskSubmitter(*child_router);
+
+  if (absl::GetFlag(FLAGS_validate_only)) {
+    LOG_INFO("Config validation passed");
+    return 0;
   }
 
   // Apply CLI overrides
@@ -180,18 +183,20 @@ auto RunNodeagent(int argc, char** argv) -> int {
   io::PeriodicTimer state_timer(dispatcher, [state_reporter]() { state_reporter->Broadcast(); });
   state_timer.Start(absl::Seconds(config.heartbeat_interval().seconds()));
 
-  io::TcpListener listener{dispatcher, config.tlv_listener().port(),
-                           [capabilities, &scheduler_pointers,
-                            state_reporter](io::Connection& conn) -> io::ProtocolParserPtr {
-                             auto handler = std::make_unique<NodeagentTlvHandler>(
-                                 scheduler_pointers, capabilities);
-                             handler->SendAdvertisement(conn);
-                             state_reporter->AddConnection(conn.Mailbox());
-                             return std::make_unique<io::TlvParser>(
-                                 [hdl = std::move(handler), &conn](io::TlvFrame frame) -> void {
-                                   hdl->HandleFrame(frame, conn);
-                                 });
-                           }};
+  io::TcpListener listener{
+      dispatcher, config.tlv_listener().port(),
+      [capabilities, router = child_router.get(), state_reporter,
+       gateway_client = gateway_client.get()](io::Connection& conn) -> io::ProtocolParserPtr {
+        // The gateway dialed us; this outbound link is the node's forward path.
+        gateway_client->RegisterConnection(conn.Mailbox());
+        auto handler = std::make_unique<NodeagentTlvHandler>(router, capabilities);
+        handler->SendAdvertisement(conn);
+        state_reporter->AddConnection(conn.Mailbox());
+        return std::make_unique<io::TlvParser>(
+            [hdl = std::move(handler), &conn](io::TlvFrame frame) -> void {
+              hdl->HandleFrame(frame, conn);
+            });
+      }};
 
   dispatcher->Run();
   logger.Stop();

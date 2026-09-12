@@ -41,3 +41,14 @@ strij_cc_library(
         "//include/strij/common:pure_lib",
     ],
 )
+
+strij_cc_library(
+    name = "child_task_submitter",
+    hdrs = ["child_task_submitter.hh"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//api/common/task:task_cc_proto",
+        "//include/strij/common:pure_lib",
+        "//include/strij/gateway:result_receiver_storage_interface",
+    ],
+)

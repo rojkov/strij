@@ -8,14 +8,14 @@
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
-#include "nodeagent/config/nodeagent.pb.h"
-#include "strij/extensions/extension_registry.hh"
-#include "common/node/capabilities.pb.h"
 #include "common/core/utils/task_id.hh"
-#include "strij/extensions/scheduler.hh"
-#include "nodeagent/extensions/task_handlers/task_handlers.hh"
+#include "common/node/capabilities.pb.h"
 #include "google/protobuf/any.pb.h"
 #include "google/protobuf/message.h"
+#include "nodeagent/config/nodeagent.pb.h"
+#include "nodeagent/extensions/task_handlers/task_handlers.hh"
+#include "strij/extensions/extension_registry.hh"
+#include "strij/extensions/scheduler.hh"
 
 namespace strij::nodeagent {
 
@@ -103,7 +103,8 @@ auto BuildNodeCapabilities(const config::NodeAgentConfig& config, const std::str
   // deduplicated protocol union is what gateway-side schedulers match nodes on.
   std::set<std::string> protocols;
   auto& scheduler_registry = extensions::Registry<nodeagent::NodeSchedulerFactory>::instance();
-  for (const auto& ext : config.schedulers()) {
+  for (const auto& scheduler_config : config.schedulers()) {
+    const auto& ext = scheduler_config.extension();
     auto* factory = scheduler_registry.GetFactory(ext.name());
     if (factory == nullptr) {
       return absl::InvalidArgumentError(absl::StrCat(
@@ -123,7 +124,12 @@ auto BuildNodeCapabilities(const config::NodeAgentConfig& config, const std::str
       }
     }
 
-    protocols.emplace(factory->RequiredProtocol());
+    const std::string_view protocol = factory->RequiredProtocol();
+    // The bundled "default" scheduler is a local authority, not a wire
+    // protocol: it advertises nothing, so skip empty protocol names.
+    if (!protocol.empty()) {
+      protocols.emplace(protocol);
+    }
   }
 
   for (const auto& protocol : protocols) {

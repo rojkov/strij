@@ -12,14 +12,21 @@
 #include "nodeagent/extensions/schedulers/push/push.pb.h"
 #include "strij/extensions/extension_registry.hh"
 #include "strij/extensions/scheduler.hh"
+#include "strij/gateway/result_receiver_storage.hh"
+#include "strij/nodeagent/run_task_service.hh"
 
 namespace strij::nodeagent::schedulers {
 
-void PushLocalScheduler::Schedule(const task::Task& /*task*/, gateway::ResultReceiverPtr receiver) {
-  // The push protocol never schedules outbound: gateways pick nodes, a node
-  // cannot push tasks elsewhere. Resolve the receiver (which could otherwise
-  // hang) so a hypothetical caller can never leak it.
-  receiver->DeliverError("push is a local-only scheduler; it never schedules outbound tasks");
+void PushLocalScheduler::Schedule(const task::Task& task, gateway::ResultReceiverPtr receiver) {
+  // The push entry is a pure wire-protocol counterpart: it never runs
+  // locally-originated children (that is the bundled "default" scheduler's
+  // job). Honor the resolve contract so a misrouted child can never hang its
+  // parent.
+  LOG_WARNING("Unimplemented: push local scheduler cannot run child task '{}' of type '{}' "
+              "(configure the \"default\" scheduler as the local authority)",
+              task.id(), task.type());
+  receiver->DeliverError(
+      "unimplemented: configure the \"default\" scheduler as the local authority for child tasks");
 }
 
 auto PushLocalScheduler::RequiredProtocol() const -> std::string_view { return "push"; }

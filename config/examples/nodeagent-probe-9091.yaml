@@ -6,11 +6,15 @@ tlv_listener:
   port: 9091
 
 schedulers:
-  - name: "probe"
-    typed_config:
-      "@type": "type.googleapis.com/strij.extensions.schedulers.probe.ProbeSchedulerConfig"
-      queue_capacity: 64
-      max_concurrent_preallocations: 4
+  - extension:
+      name: "probe"
+      typed_config:
+        "@type": "type.googleapis.com/strij.extensions.schedulers.probe.ProbeSchedulerConfig"
+        queue_capacity: 64
+        max_concurrent_preallocations: 4
+  - extension:
+      name: "default"
+    local_default: true
 
 pools:
   - name: "cpu"

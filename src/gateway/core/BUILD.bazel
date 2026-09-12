@@ -13,6 +13,19 @@ strij_cc_library(
 )
 
 strij_cc_library(
+    name = "node_connection_result_receiver_lib",
+    srcs = ["node_connection_result_receiver.cc"],
+    hdrs = ["node_connection_result_receiver.hh"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//api/common/task:task_cc_proto",
+        "//include/strij/gateway:result_receiver_storage_interface",
+        "//src/common/core/io:outbound_mailbox_lib",
+        "//src/common/core/io:tlv_frame",
+    ],
+)
+
+strij_cc_library(
     name = "http_result_receiver_lib",
     srcs = ["http_result_receiver.cc"],
     hdrs = ["http_result_receiver.hh"],

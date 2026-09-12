@@ -159,6 +159,21 @@ strij_cc_library(
 )
 
 strij_cc_library(
+    name = "gateway_client_lib",
+    srcs = ["gateway_client.cc"],
+    hdrs = ["gateway_client.hh"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":child_task_forwarder_lib",
+        "//api/common/task:task_cc_proto",
+        "//include/strij/nodeagent:child_task_submitter",
+        "//src/common/core/io:connection_lib",
+        "//src/common/core/io:tlv_frame",
+        "//src/common/core/logging:log_lib",
+    ],
+)
+
+strij_cc_library(
     name = "function_resolver_lib",
     srcs = ["function_resolver.cc"],
     hdrs = ["function_resolver.hh"],
@@ -168,5 +183,60 @@ strij_cc_library(
         "//include/strij/nodeagent:function_resolver_interface",
         "@abseil-cpp//absl/status",
         "@abseil-cpp//absl/status:statusor",
+    ],
+)
+
+strij_cc_library(
+    name = "local_result_receiver_storage_lib",
+    srcs = ["local_result_receiver_storage.cc"],
+    hdrs = ["local_result_receiver_storage.hh"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//include/strij/gateway:result_receiver_storage_interface",
+    ],
+)
+
+strij_cc_library(
+    name = "storage_result_sender_lib",
+    srcs = ["storage_result_sender.cc"],
+    hdrs = ["storage_result_sender.hh"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":local_result_receiver_storage_lib",
+        "//include/strij/gateway:result_receiver_storage_interface",
+        "//src/common/core/logging:log_lib",
+        "//src/nodeagent/extensions/task_handlers:task_handlers_interface",
+    ],
+)
+
+strij_cc_library(
+    name = "child_task_forwarder_lib",
+    hdrs = ["child_task_forwarder.hh"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//api/common/task:task_cc_proto",
+        "//include/strij/common:pure_lib",
+        "@abseil-cpp//absl/status",
+    ],
+)
+
+strij_cc_library(
+    name = "nodeagent_scheduler_router_lib",
+    srcs = ["nodeagent_scheduler_router.cc"],
+    hdrs = ["nodeagent_scheduler_router.hh"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//api/common/config:config_cc_proto",
+        "//api/common/task:task_cc_proto",
+        "//api/nodeagent/config:nodeagent_config_cc_proto",
+        "//include/strij/extensions:factory_context_lib",
+        "//include/strij/extensions:scheduler_interface",
+        "//include/strij/nodeagent:child_task_submitter",
+        "//src/common/core/io:connection_lib",
+        "//src/common/core/io:tlv_frame",
+        "//src/common/extensions:scheduler_loader_lib",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
     ],
 )

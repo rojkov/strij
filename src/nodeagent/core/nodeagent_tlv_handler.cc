@@ -1,8 +1,6 @@
 #include "nodeagent/core/nodeagent_tlv_handler.hh"
 
-#include <cstdint>
 #include <span>
-#include <string>
 #include <utility>
 
 #include "absl/status/status.h"
@@ -14,22 +12,9 @@
 
 namespace strij::nodeagent {
 
-NodeagentTlvHandler::NodeagentTlvHandler(std::span<extensions::Scheduler*> schedulers,
+NodeagentTlvHandler::NodeagentTlvHandler(extensions::Scheduler* router,
                                          std::shared_ptr<const node::NodeCapabilities> capabilities)
-    : capabilities_{std::move(capabilities)} {
-  for (extensions::Scheduler* scheduler : schedulers) {
-    for (const uint8_t type_id : scheduler->HandledFrameTypes()) {
-      if (dispatcher_table_.contains(type_id)) {
-        // Frame-type ownership is exclusive per scheduling protocol; the first
-        // scheduler in config order wins, later claims are logged and skipped.
-        LOG_WARNING("Duplicate frame type {} claim ignored", static_cast<int>(type_id));
-        continue;
-      }
-
-      dispatcher_table_.emplace(type_id, scheduler);
-    }
-  }
-}
+    : scheduler_{router}, capabilities_{std::move(capabilities)} {}
 
 void NodeagentTlvHandler::SendAdvertisement(io::Connection& conn) {
   std::string serialized;
@@ -41,13 +26,17 @@ void NodeagentTlvHandler::SendAdvertisement(io::Connection& conn) {
 }
 
 void NodeagentTlvHandler::HandleFrame(io::TlvFrame frame, io::Connection& conn) {
-  auto iter = dispatcher_table_.find(frame.type_id);
-  if (iter == dispatcher_table_.end()) {
-    LOG_WARNING("No scheduler owns frame type {}", static_cast<int>(frame.type_id));
+  // Frame-routing seam: a frame type the built-in cases (advertisement, sent
+  // outbound only) don't own is the router's to handle — the router reports
+  // NotFound when no constituent claims the type. This mirrors the gateway
+  // GatewayTlvHandler's default seam (child-outcome frames are claimed by the
+  // bundled "default" scheduler through the same route).
+  if (scheduler_ == nullptr) {
+    LOG_WARNING("No scheduler installed to handle frame type {}", static_cast<int>(frame.type_id));
     return;
   }
 
-  const absl::Status status = iter->second->HandleFrame(frame, conn);
+  const absl::Status status = scheduler_->HandleFrame(frame, conn);
   if (!status.ok()) {
     LOG_WARNING("Scheduler dropped frame type {}: {}", static_cast<int>(frame.type_id),
                 status.message());

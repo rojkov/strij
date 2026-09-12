@@ -46,7 +46,11 @@ data:
       port: 9090
 
     schedulers:
-      - name: "push"
+      - extension:
+          name: "push"
+      - extension:
+          name: "default"
+        local_default: true
 
     pools:
       - name: "cpu"

@@ -35,6 +35,12 @@ void RunTaskServiceImpl::sendTaskRejected(io::Connection& conn, const task::Task
   LOG_WARNING("Task {} rejected: {}", task.id(), reason);
 }
 
+void RunTaskServiceImpl::runWithHandler(const task::Task& task, nodeagent::TaskHandler* handler,
+                                        ResultSenderPtr sender, AdmissionScopePtr scope) {
+  auto tracking = std::make_unique<AdmissionTrackingSender>(std::move(sender), std::move(scope));
+  handler->HandleTask(task, std::move(tracking));
+}
+
 void RunTaskServiceImpl::RunTask(const task::Task& task, io::Connection& conn) {
   nodeagent::TaskHandler* handler = manager_->GetHandler(task.type());
   if (handler == nullptr) {
@@ -50,9 +56,8 @@ void RunTaskServiceImpl::RunTask(const task::Task& task, io::Connection& conn) {
   }
 
   auto scope = std::make_unique<AdmissionScope>(admission_, task.type(), requirements);
-  auto sender = std::make_unique<AdmissionTrackingSender>(
-      std::make_unique<ConnectionResultSender>(conn.Mailbox()), std::move(scope));
-  handler->HandleTask(task, std::move(sender));
+  runWithHandler(task, handler, std::make_unique<ConnectionResultSender>(conn.Mailbox()),
+                 std::move(scope));
 }
 
 void RunTaskServiceImpl::RunTask(const task::Task& task, io::Connection& conn,
@@ -67,9 +72,26 @@ void RunTaskServiceImpl::RunTask(const task::Task& task, io::Connection& conn,
 
   // The caller preallocated capacity (e.g. a probe scheduler's held scope).
   // No Admit runs here — the reservation is already recorded.
-  auto sender = std::make_unique<AdmissionTrackingSender>(
-      std::make_unique<ConnectionResultSender>(conn.Mailbox()), std::move(reserved));
-  handler->HandleTask(task, std::move(sender));
+  runWithHandler(task, handler, std::make_unique<ConnectionResultSender>(conn.Mailbox()),
+                 std::move(reserved));
+}
+
+void RunTaskServiceImpl::RunTask(const task::Task& task, ResultSenderPtr sender,
+                                 AdmissionScopePtr reserved) {
+  nodeagent::TaskHandler* handler = manager_->GetHandler(task.type());
+  if (handler == nullptr) {
+    LOG_WARNING("No task handler for type '{}'; dropping task '{}'", task.type(), task.id());
+    // The caller-held reservation releases in the scope's destructor.
+    return;
+  }
+
+  // The caller preallocated capacity; no Admit runs here. `sender` and
+  // `reserved` transfer to the tracking sender.
+  runWithHandler(task, handler, std::move(sender), std::move(reserved));
+}
+
+auto RunTaskServiceImpl::HasHandler(std::string_view type) const -> bool {
+  return manager_->GetHandler(std::string(type)) != nullptr;
 }
 
 } // namespace strij::nodeagent

@@ -41,8 +41,28 @@ struct WireFrame {
   std::vector<std::byte> payload;
 };
 
+// Collects a child task's outcome resolved through the shared child-policy
+// step: a delivered result or a delivered error. Storage erasure destroys the
+// receiver, so assertions read the test-owned log.
+struct ReceiverLog {
+  bool delivered{false};
+  std::string body;
+  std::string error;
+};
+
+class RecordingReceiver final : public gateway::ResultReceiver {
+public:
+  std::shared_ptr<ReceiverLog> log = std::make_shared<ReceiverLog>();
+
+  void Deliver(std::span<const std::byte> value, bool /*is_final*/) override {
+    log->delivered = true;
+    log->body.assign(reinterpret_cast<const char*>(value.data()), value.size());
+  }
+
+  void DeliverError(std::string_view reason) override { log->error = std::string(reason); }
+};
+
 // Records (ref, task_id) pairs instead of fetching; never submits
-// DEP_COMPLETED on its own so tests control completion timing explicitly.
 class RecordingFetcher final : public extensions::DataDependencyFetcher {
 public:
   explicit RecordingFetcher(std::string source) : source_value_(std::move(source)), source_(source_value_) {}
@@ -707,11 +727,42 @@ TEST_F(ProbeLocalSchedulerTest, DepCompletedUnknownTaskIsNoop) {
   EXPECT_EQ(admission_->InFlight("echo"), 1U);
 }
 
+TEST_F(ProbeLocalSchedulerTest, ScheduleIsUnimplemented) {
+  admission_ = std::make_shared<AdmissionControllerImpl>(*MakePubCaps(), *dispatcher_);
+  RunTaskServiceImpl run_task_service(MakeEchoManager(), admission_);
+  scheduler_ = MakeScheduler(run_task_service, 1, 1);
+  ExpectWrites();
+
+  // The probe entry is a pure wire-protocol counterpart: its node-local
+  // Schedule facet is unimplemented (the bundled "default" scheduler is the
+  // single local authority). The receiver still resolves — with an error — so
+  // a misrouted child can never hang its parent.
+  task::Task child;
+  child.set_id("child-1");
+  child.set_type("echo");
+  (*child.mutable_requirements()->mutable_resources())["cpu"] = 16;
+  auto receiver = std::make_unique<RecordingReceiver>();
+  auto log = receiver->log;
+  scheduler_->Schedule(child, std::move(receiver));
+
+  ASSERT_FALSE(log->delivered);
+  EXPECT_NE(log->error.find("unimplemented"), std::string::npos) << "error='" << log->error
+                                                                 << "'";
+
+  // Nothing was reserved, queued, or pulled: the probe queue machinery is
+  // untouched by a misrouted child submission.
+  EXPECT_EQ(admission_->SharedFree("cpu"), 18U);
+  EXPECT_EQ(admission_->InFlight("echo"), 0U);
+}
+
 class StubRunTaskService final : public nodeagent::RunTaskService {
 public:
   void RunTask(const task::Task& /*task*/, io::Connection& /*conn*/) override {}
   void RunTask(const task::Task& /*task*/, io::Connection& /*conn*/,
                AdmissionScopePtr /*reserved*/) override {}
+  void RunTask(const task::Task& /*task*/, std::unique_ptr<nodeagent::ResultSender> /*sender*/,
+               AdmissionScopePtr /*reserved*/) override {}
+  [[nodiscard]] auto HasHandler(std::string_view /*type*/) const -> bool override { return false; }
 };
 
 TEST_F(ProbeLocalSchedulerTest, FactoryCreateValidatesConfig) {

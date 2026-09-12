@@ -13,6 +13,8 @@ strij_cc_library(
         "//src/common/core/io:connection_lib",
         "//src/common/core/io:tlv_frame",
         "//src/common/extensions:scheduler_loader_lib",
+        "//src/gateway/core:node_connection_result_receiver_lib",
+        "//src/gateway/core:node_lib",
         "//src/gateway/core:result_receiver_storage",
         "@abseil-cpp//absl/status",
         "@abseil-cpp//absl/status:statusor",

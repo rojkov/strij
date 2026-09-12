@@ -17,6 +17,8 @@
 #include "nodeagent/extensions/schedulers/probe/probe.pb.h"
 #include "strij/extensions/extension_registry.hh"
 #include "strij/extensions/scheduler.hh"
+#include "strij/gateway/result_receiver_storage.hh"
+#include "strij/nodeagent/run_task_service.hh"
 
 namespace strij::nodeagent::schedulers::probe {
 
@@ -46,12 +48,16 @@ ProbeLocalScheduler::ProbeLocalScheduler(nodeagent::RunTaskService& run_task_ser
   admission_->RegisterCapacityObserver(this);
 }
 
-void ProbeLocalScheduler::Schedule(const task::Task& /*task*/,
-                                   gateway::ResultReceiverPtr receiver) {
-  // The probe protocol schedules only via incoming probes; a node never pushes
-  // tasks elsewhere. Resolve the receiver so a hypothetical caller can't leak
-  // it.
-  receiver->DeliverError("probe is a node-local scheduler; it never schedules outbound tasks");
+void ProbeLocalScheduler::Schedule(const task::Task& task, gateway::ResultReceiverPtr receiver) {
+  // The probe entry is a pure wire-protocol counterpart: it never runs
+  // locally-originated children (that is the bundled "default" scheduler's
+  // job). Honor the resolve contract so a misrouted child can never hang its
+  // parent.
+  LOG_WARNING("Unimplemented: probe local scheduler cannot run child task '{}' of type '{}' "
+              "(configure the \"default\" scheduler as the local authority)",
+              task.id(), task.type());
+  receiver->DeliverError(
+      "unimplemented: configure the \"default\" scheduler as the local authority for child tasks");
 }
 
 auto ProbeLocalScheduler::RequiredProtocol() const -> std::string_view { return "probe"; }
