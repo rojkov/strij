@@ -4,6 +4,18 @@ package strij.task;
 
 import "common/node/capabilities.proto";
 
+// A reference to an external data object the task depends on. `source`
+// selects the fetching scheme (e.g. "http", "s3"), `key` is the scheme-specific
+// locator, and `sha` is an optional content hash for integrity or short-circuit
+// checks. `deps` are an optimistic prefetch hint, not a hard contract: the node
+// prefetches them when a fetcher for the scheme is configured, but the task may
+// still run if the data is unavailable.
+message DataRef {
+  string source = 1;
+  string key = 2;
+  string sha = 3;
+}
+
 message Task {
   string id = 1;
   string type = 2;
@@ -13,6 +25,9 @@ message Task {
   // (e.g. from `resources.*` parameters) and carried to the nodeagent. The
   // nodeagent admits against these; absence means empty requirements.
   strij.node.ResourceRequirements requirements = 5;
+  // Data objects the client expects the task to reference. Optimistic hints for
+  // node-local prefetching.
+  repeated DataRef deps = 6;
 }
 
 message TaskResult {

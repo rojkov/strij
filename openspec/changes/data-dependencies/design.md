@@ -222,8 +222,10 @@ dispatcher_.SubmitCommand(DEP_COMPLETED, destination_, &stable_task_id)
 message NodeAgentConfig {
   // ... existing fields ...
   repeated ExtensionConfig schedulers = 9 [(strij.config.required) = true];
-  repeated ExtensionConfig data_dependency_fetchers = 10;  // optional; empty = no prefetch
-  ObjectCacheConfig object_cache = 11;
+  // Field 10 is heartbeat_interval; 11 is reserved (see nodeagent.proto), so the
+  // new fields take the next free numbers.
+  repeated ExtensionConfig data_dependency_fetchers = 12;  // optional; empty = no prefetch
+  ObjectCacheConfig object_cache = 13;
 }
 
 message ObjectCacheConfig {

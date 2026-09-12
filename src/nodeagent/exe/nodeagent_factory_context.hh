@@ -4,6 +4,7 @@
 #include "strij/extensions/factory_context.hh"
 #include "strij/nodeagent/admission_controller.hh"
 #include "strij/nodeagent/function_resolver.hh"
+#include "strij/nodeagent/object_cache.hh"
 #include "strij/nodeagent/run_task_service.hh"
 
 namespace strij::nodeagent {
@@ -16,7 +17,7 @@ class NodeagentFactoryContextImpl final : public extensions::NodeagentFactoryCon
 public:
   NodeagentFactoryContextImpl(event::DispatcherSharedPtr dispatcher,
                               nodeagent::FunctionResolverPtr function_resolver,
-                              AdmissionControllerSharedPtr admission);
+                              AdmissionControllerSharedPtr admission, ObjectCacheSharedPtr object_cache);
 
   auto Dispatcher() -> event::Dispatcher& override;
   auto SharedDispatcher() -> event::DispatcherSharedPtr override;
@@ -24,14 +25,20 @@ public:
   auto FunctionResolver() -> nodeagent::FunctionResolver& override;
   auto AdmissionController() -> AdmissionControllerSharedPtr override;
   auto RunTaskService() -> nodeagent::RunTaskService& override;
+  auto ObjectCache() -> nodeagent::ObjectCache& override;
+  auto DataDependencyFetcherRouter() -> nodeagent::DataDependencyFetcherRouter& override;
 
   void SetRunTaskService(nodeagent::RunTaskService& run_task_service);
+  void SetDataDependencyFetcherRouter(
+      nodeagent::DataDependencyFetcherRouter& data_dependency_fetcher_router);
 
 private:
   event::DispatcherSharedPtr dispatcher_;
   nodeagent::FunctionResolverPtr function_resolver_;
   AdmissionControllerSharedPtr admission_;
+  ObjectCacheSharedPtr object_cache_;
   nodeagent::RunTaskService* run_task_service_{nullptr};
+  nodeagent::DataDependencyFetcherRouter* data_dependency_fetcher_router_{nullptr};
 };
 
 } // namespace strij::nodeagent

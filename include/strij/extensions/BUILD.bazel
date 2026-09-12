@@ -32,3 +32,17 @@ strij_cc_library(
         "@protobuf//:protobuf",
     ],
 )
+
+strij_cc_library(
+    name = "data_dependency_fetcher_interface",
+    hdrs = ["data_dependency_fetcher.hh"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//api/common/task:task_cc_proto",
+        "//include/strij/common:pure_lib",
+        "//include/strij/event:command_handler_interface",
+        "//include/strij/event:dispatcher_interface",
+        "//include/strij/extensions:factory_context_lib",
+        "@protobuf//:protobuf",
+    ],
+)

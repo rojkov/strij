@@ -15,10 +15,26 @@ message NodeAgentConfig {
   google.protobuf.Duration heartbeat_interval = 10;
   repeated ExtensionConfig task_handlers = 6;
   repeated ExtensionConfig schedulers = 9 [(strij.config.required) = true];
+  // Opt-in data dependency prefetching. Each entry is a standard
+  // ExtensionConfig naming a DataDependencyFetcherFactory (e.g. "ray",
+  // "http"); the union of their HandledSourceTypes() must be disjoint.
+  // Empty = no prefetching: Task.deps / TaskProbe.deps are silently ignored.
+  repeated ExtensionConfig data_dependency_fetchers = 12;
+  ObjectCacheConfig object_cache = 13;
   // RESERVED for future (v2+)
   // google.protobuf.Duration connection_timeout = 3;
   // google.protobuf.Duration heartbeat_interval = 4; // active in v2, see above
   // TlsConfig tls = 5;
+}
+
+// Node-global object cache knobs. Eviction is a fetcher concern; validation of
+// these knobs and the concrete cache implementation remain future work.
+message ObjectCacheConfig {
+  // LRU eviction when the entry count exceeds this; 0 = unlimited.
+  uint64 max_entries = 1;
+  // Per-ref TTL; 0 = no expiry. Not yet enforced (interface does not expose
+  // timestamps); reserved for a future eviction-aware implementation.
+  google.protobuf.Duration default_ttl = 2;
 }
 
 message TlvListener {

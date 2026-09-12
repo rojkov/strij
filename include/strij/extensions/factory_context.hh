@@ -17,6 +17,8 @@ namespace strij::nodeagent {
 class FunctionResolver;
 class AdmissionController;
 class RunTaskService;
+class ObjectCache;
+class DataDependencyFetcherRouter;
 using AdmissionControllerSharedPtr = std::shared_ptr<AdmissionController>;
 
 } // namespace strij::nodeagent
@@ -59,6 +61,11 @@ public:
   virtual auto FunctionResolver() -> nodeagent::FunctionResolver& PURE;
   virtual auto AdmissionController() -> nodeagent::AdmissionControllerSharedPtr PURE;
   virtual auto RunTaskService() -> nodeagent::RunTaskService& PURE;
+  virtual auto ObjectCache() -> nodeagent::ObjectCache& PURE;
+  // The process-global data dependency fetch router, built at startup from
+  // NodeAgentConfig.data_dependency_fetchers. Schedulers use it to prefetch
+  // Task.deps and to gate task readiness on dep availability.
+  virtual auto DataDependencyFetcherRouter() -> nodeagent::DataDependencyFetcherRouter& PURE;
 };
 
 } // namespace strij::extensions

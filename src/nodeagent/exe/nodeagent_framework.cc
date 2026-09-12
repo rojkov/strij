@@ -17,12 +17,15 @@
 #include "common/extensions/scheduler_loader.hh"
 #include "nodeagent/core/admission_controller.hh"
 #include "nodeagent/core/capabilities.hh"
+#include "nodeagent/core/data_dependency_fetcher_router.hh"
 #include "nodeagent/core/function_resolver.hh"
 #include "nodeagent/core/nodeagent_tlv_handler.hh"
+#include "nodeagent/core/object_cache.hh"
 #include "nodeagent/core/run_task_service.hh"
 #include "nodeagent/core/state_reporter.hh"
 #include "nodeagent/core/task_handler_manager.hh"
 #include "nodeagent_factory_context.hh"
+#include "strij/extensions/data_dependency_fetcher.hh"
 #include "strij/extensions/scheduler.hh"
 
 // Generated protobuf headers
@@ -81,8 +84,10 @@ auto RunNodeagent(int argc, char** argv) -> int {
       std::make_shared<strij::nodeagent::AdmissionControllerImpl>(*capabilities, *dispatcher);
 
   auto function_resolver = std::make_unique<strij::nodeagent::LocalFunctionResolver>();
+  const auto object_cache =
+      std::make_shared<strij::nodeagent::InMemoryObjectCache>();
   strij::nodeagent::NodeagentFactoryContextImpl factory_context(
-      dispatcher, std::move(function_resolver), admission);
+      dispatcher, std::move(function_resolver), admission, object_cache);
 
   // Build the task handler manager from config. This must run before the
   // --validate_only short-circuit so that unknown handler names fail validation.
@@ -92,6 +97,31 @@ auto RunNodeagent(int argc, char** argv) -> int {
     LOG_ERROR("Task handler config error: {}", manager_result.status().message());
     return 1;
   }
+
+  // Build the data dependency fetchers and the scheme router. Runs before the
+  // --validate_only short-circuit so that unknown fetcher names and duplicate
+  // source schemes fail validation too. An empty list is valid: probes still
+  // declare deps, but no prefetching occurs and deps never gate readiness.
+  auto data_dependency_fetchers_result =
+      strij::nodeagent::BuildDataDependencyFetchers(config.data_dependency_fetchers(),
+                                                    factory_context);
+  if (!data_dependency_fetchers_result.ok()) {
+    LOG_ERROR("Data dependency fetcher config error: {}",
+              data_dependency_fetchers_result.status().message());
+    return 1;
+  }
+  std::vector<strij::extensions::DataDependencyFetcherPtr> data_dependency_fetchers =
+      std::move(data_dependency_fetchers_result).value();
+
+  auto fetcher_router_result = strij::nodeagent::DataDependencyFetcherRouter::Build(
+      *object_cache, std::move(data_dependency_fetchers));
+  if (!fetcher_router_result.ok()) {
+    LOG_ERROR("Data dependency fetcher config error: {}",
+              fetcher_router_result.status().message());
+    return 1;
+  }
+  const strij::nodeagent::DataDependencyFetcherRouterPtr& fetch_router =
+      fetcher_router_result.value();
 
   if (absl::GetFlag(FLAGS_validate_only)) {
     LOG_INFO("Config validation passed");
@@ -107,6 +137,7 @@ auto RunNodeagent(int argc, char** argv) -> int {
   auto run_task_service =
       std::make_unique<strij::nodeagent::RunTaskServiceImpl>(task_handler_manager, admission);
   factory_context.SetRunTaskService(*run_task_service);
+  factory_context.SetDataDependencyFetcherRouter(*fetch_router);
 
   // One local scheduler instance per configured scheduler entry, shared by
   // every accepted connection's frame dispatcher. Failing to start when the

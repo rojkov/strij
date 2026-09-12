@@ -42,6 +42,9 @@ auto serializeTaskProbe(const task::Task& task) -> std::vector<std::byte> {
   probe.set_id(task.id());
   probe.set_type(task.type());
   probe.mutable_requirements()->CopyFrom(task.requirements());
+  // Propagate the task's data dependencies into the probe so a candidate node
+  // can prefetch them while the round is in flight.
+  probe.mutable_deps()->CopyFrom(task.deps());
   std::string serialized;
   probe.SerializeToString(&serialized);
   return io::SerializeTlvFrame(io::TlvFrame::kTaskProbe,
