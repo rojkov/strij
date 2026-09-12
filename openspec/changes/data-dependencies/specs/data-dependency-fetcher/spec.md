@@ -18,10 +18,15 @@ A `DataRef` message SHALL be defined in `api/common/task/` with three string fie
 
 `Task` SHALL carry a `repeated DataRef deps` field. This field is an **optimistic prefetch hint** — the scheduler prefetches based on these refs on a best-effort basis. The field is not a contract: a handler may discover additional refs inside `Task.body` at run time; those are not pre-fetched. An empty `deps` field means no prefetchable dependencies are declared.
 
-#### Scenario: Client declares deps at HTTP submission
+#### Scenario: Task deps are propagated into the probe
 
-- **WHEN** an HTTP client submits a task with a header containing two `DataRef`s
-- **THEN** the gateway SHALL populate `Task.deps` with those two refs and copy them into the `TaskProbe` when constructing a probe
+- **WHEN** a `Task` whose `deps` already carries two `DataRef`s reaches the gateway probe scheduler
+- **THEN** the gateway SHALL copy those two refs into the `TaskProbe` when constructing a probe
+
+#### Scenario: HTTP-header deps population is deferred
+
+- **WHEN** an HTTP client submits a task with a header declaring `DataRef`s
+- **THEN** the gateway MAY leave `Task.deps` empty; parsing submission headers into `deps` is deferred to a later phase (tracked in the ROADMAP)
 
 #### Scenario: Empty deps means no prefetch
 
@@ -63,17 +68,17 @@ A `DataDependencyFetcher` SHALL be defined with: `Fetch(ref, task_id, dispatcher
 
 ### Requirement: DataDependencyFetcher scheme router
 
-A `DataDependencyFetcherRouter` SHALL dispatch each `DataRef` to the fetcher owning its `source` scheme. The router SHALL be constructed at startup from the union of all configured fetchers' `HandledSourceTypes()`. Scheme ownership SHALL be disjoint (no two fetchers may handle the same scheme); startup SHALL fail if a duplicate scheme is detected.
+A `DataDependencyFetcherRouter` SHALL dispatch each `DataRef` to the fetcher owning its `source` scheme. The router SHALL be constructed at startup from the union of all configured fetchers' `HandledSourceTypes()`. Scheme ownership SHALL be disjoint (no two fetchers may handle the same scheme); startup SHALL fail if a duplicate scheme is detected. A `DataRef` whose `source` has no configured fetcher SHALL be skipped with a logged warning and SHALL NOT gate task readiness (the task handler fetches such data on demand).
 
 #### Scenario: Each ref routes to the correct fetcher
 
 - **WHEN** two fetchers are configured: `"ray"` and `"http"`
 - **THEN** a ref with `source: "ray"` SHALL be dispatched to the `"ray"` fetcher and a ref with `source: "http"` SHALL be dispatched to the `"http"` fetcher
 
-#### Scenario: Unknown source fails startup
+#### Scenario: Unknown source is skipped, not fatal
 
-- **WHEN** a `DataRef` has `source: "nfs"` but no fetcher handles `"nfs"`
-- **THEN** the router SHALL fail at startup with an error naming the unhandled scheme
+- **WHEN** a `DataRef` has `source: "nfs"` but no configured fetcher handles `"nfs"`
+- **THEN** the router SHALL log a warning and skip the ref in `FetchAll`, and `AllCached` SHALL treat the ref as ready so it never gates task readiness
 
 ### Requirement: Node-global ObjectCache
 

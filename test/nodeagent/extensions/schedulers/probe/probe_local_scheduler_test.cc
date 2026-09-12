@@ -151,7 +151,7 @@ protected:
       -> std::unique_ptr<ProbeLocalScheduler> {
     MakeRouter(std::move(fetchers));
     return std::make_unique<ProbeLocalScheduler>(run_task_service, admission_, *router_,
-                                                 object_cache_, *dispatcher_, queue_capacity,
+                                                 *dispatcher_, queue_capacity,
                                                  max_concurrent_preallocations);
   }
 
@@ -735,7 +735,6 @@ TEST_F(ProbeLocalSchedulerTest, FactoryCreateValidatesConfig) {
   EXPECT_CALL(context, AdmissionController()).WillRepeatedly(::testing::Return(admission));
   EXPECT_CALL(context, RunTaskService()).WillRepeatedly(::testing::ReturnRef(run_task_service));
   EXPECT_CALL(context, Dispatcher()).WillRepeatedly(::testing::ReturnRef(*dispatcher));
-  EXPECT_CALL(context, ObjectCache()).WillRepeatedly(::testing::ReturnRef(cache));
   EXPECT_CALL(context, DataDependencyFetcherRouter()).WillRepeatedly(::testing::ReturnRef(*router));
 
   ProbeLocalSchedulerFactory factory;
@@ -780,7 +779,6 @@ TEST_F(ProbeLocalSchedulerTest, FactoryRejectsWrongConfigType) {
   EXPECT_CALL(context, AdmissionController()).WillRepeatedly(::testing::Return(admission));
   EXPECT_CALL(context, RunTaskService()).WillRepeatedly(::testing::ReturnRef(run_task_service));
   EXPECT_CALL(context, Dispatcher()).WillRepeatedly(::testing::ReturnRef(*dispatcher));
-  EXPECT_CALL(context, ObjectCache()).WillRepeatedly(::testing::ReturnRef(cache));
   EXPECT_CALL(context, DataDependencyFetcherRouter()).WillRepeatedly(::testing::ReturnRef(*router));
 
   task::Task unrelated;

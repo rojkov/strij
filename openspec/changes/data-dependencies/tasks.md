@@ -41,7 +41,7 @@
 
 ## 7. Probe Local Scheduler Integration
 
-- [x] 7.1 Extend `ProbeLocalScheduler` constructor to accept `DataDependencyFetcherRouter&` and `ObjectCache&` (in addition to existing `RunTaskService&` and `AdmissionControllerSharedPtr`) plus `event::Dispatcher&` (needed to drive `FetchAll`)
+- [x] 7.1 Extend `ProbeLocalScheduler` constructor to accept `DataDependencyFetcherRouter&` (in addition to existing `RunTaskService&` and `AdmissionControllerSharedPtr`) plus `event::Dispatcher&` (needed to drive `FetchAll`); the router owns the readiness/cache query, so no separate `ObjectCache&` is injected
 - [x] 7.2 In `handleProbe()`: call `router.FetchAll(probe.deps(), probe.id(), dispatcher, this)` to initiate prefetch after admit-or-enqueue
 - [x] 7.3 In `walk()`: before pulling a queued probe, check `router_.AllCached(probe.deps())` — only pull if deps are cached (empty deps = always cached; unknown-source refs never gate)
 - [x] 7.4 In `ProcessCommand()`: handle `DEP_COMPLETED` — extract task id from `args_`, call `walk()` to re-evaluate readiness for the relevant task

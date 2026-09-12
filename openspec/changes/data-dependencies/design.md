@@ -139,6 +139,8 @@ When a fetch completes:
 - *Alternative considered*: `args_ == nullptr` (pure wakeup, like `CAPACITY_RELEASED`), scheduler re-checks all queued probes. Rejected — wasteful when many tasks are queued; the scheduler should only re-evaluate the specific task whose dep completed.
 - *Alternative considered*: per-ref callback (`std::function`). Rejected — needs lifetime tracking (scheduler destroyed mid-fetch); `Command` already solves this via destination pointer and command queue drain.
 
+**Implementation note (Phase 3 landed).** The shipped `ProbeLocalScheduler::ProcessCommand(DEP_COMPLETED)` reads `args_` only to log the task id and then calls `walk()` over the entire queue — i.e. it uses the pure-wakeup shape rejected above rather than scoping re-evaluation to the named task. This is an accepted v1 simplification: the probe queue is bounded (default 64), so a full walk per completion is cheap. Scoping the walk to the named task (and/or an event-indexed readiness map) is tracked in the ROADMAP and should be revisited once queue depths or dep-completion rates grow.
+
 ### D6: DataDependencyFetcher extension category
 
 ```cpp
@@ -272,4 +274,4 @@ data_dependency_fetchers:
 
 1. **Fetcher I/O model for concrete backends.** `HttpDataFetcher` and `RayDataFetcher` need async I/O. The exact mechanism (io_uring send/recv, libcurl multi, etc.) is deferred to the backend implementation changes.
 2. **Cache eviction policy.** The `ObjectCacheConfig` knobs are defined; the actual eviction logic is a fetcher/cache implementation detail.
-3. **HTTP header format for `deps` at submission time.** The proposal specifies `X-Strij-Deps` with JSON; the exact schema (JSON array of `{source, key, sha}` objects) is a gateway HTTP handler concern.
+3. **HTTP header format for `deps` at submission time.** The proposal specifies `X-Strij-Deps` with JSON; the exact schema (JSON array of `{source, key, sha}` objects) is a gateway HTTP handler concern. **Deferred to a later phase** (tracked in the ROADMAP): this change only propagates an already-populated `Task.deps` into the probe, so clients cannot yet declare deps at HTTP submission.

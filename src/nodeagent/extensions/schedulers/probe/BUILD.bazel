@@ -17,7 +17,6 @@ strij_cc_library(
         "//include/strij/extensions:extension_registry_lib",
         "//include/strij/extensions:scheduler_interface",
         "//include/strij/nodeagent:admission_controller_interface",
-        "//include/strij/nodeagent:object_cache_interface",
         "//src/common/core/io:connection_lib",
         "//src/common/core/io:tlv_frame",
         "//src/common/core/logging:log_lib",

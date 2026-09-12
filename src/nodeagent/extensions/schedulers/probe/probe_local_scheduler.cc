@@ -37,11 +37,11 @@ auto parseMessage(const io::TlvFrame& frame, google::protobuf::Message& message)
 
 ProbeLocalScheduler::ProbeLocalScheduler(
     nodeagent::RunTaskService& run_task_service, nodeagent::AdmissionControllerSharedPtr admission,
-    nodeagent::DataDependencyFetcherRouter& router, nodeagent::ObjectCache& object_cache,
-    event::Dispatcher& dispatcher, size_t queue_capacity, size_t max_concurrent_preallocations)
+    nodeagent::DataDependencyFetcherRouter& router, event::Dispatcher& dispatcher,
+    size_t queue_capacity, size_t max_concurrent_preallocations)
     : run_task_service_{run_task_service}, admission_{std::move(admission)}, router_{router},
-      object_cache_{object_cache}, dispatcher_{dispatcher},
-      max_concurrent_preallocations_{max_concurrent_preallocations}, queue_{queue_capacity} {
+      dispatcher_{dispatcher}, max_concurrent_preallocations_{max_concurrent_preallocations},
+      queue_{queue_capacity} {
   admission_->RegisterCapacityObserver(this);
 }
 
@@ -124,21 +124,13 @@ void ProbeLocalScheduler::walk() {
   }
 }
 
-auto ProbeLocalScheduler::allDepsCached(
-    const google::protobuf::RepeatedPtrField<task::DataRef>& deps) const -> bool {
-  for (const auto& ref : deps) {
-    if (!object_cache_.IsCached(ref)) {
-      return false;
-    }
-  }
-  return true;
-}
-
 void ProbeLocalScheduler::startPrefetch(const task::TaskProbe& probe) {
   // Empty deps = no prefetch (Phase-2 behavior). Fully-cached deps are skipped
   // too: the byte store is node-global, so an already-present ref needs neither
-  // a fetch nor the DEP_COMPLETED traffic it would generate.
-  if (probe.deps().empty() || allDepsCached(probe.deps())) {
+  // a fetch nor the DEP_COMPLETED traffic it would generate. Use the router's
+  // readiness predicate so refs for schemes with no registered fetcher are
+  // treated the same here as in walk() (they never gate readiness).
+  if (probe.deps().empty() || router_.AllCached(probe.deps())) {
     return;
   }
   router_.FetchAll(probe.deps(), probe.id(), dispatcher_, this);
@@ -306,8 +298,8 @@ auto ProbeLocalSchedulerFactory::Create(const ::google::protobuf::Message& confi
 
   return std::make_unique<ProbeLocalScheduler>(
       context.RunTaskService(), context.AdmissionController(),
-      context.DataDependencyFetcherRouter(), context.ObjectCache(), context.Dispatcher(),
-      queue_capacity, max_preallocations);
+      context.DataDependencyFetcherRouter(), context.Dispatcher(), queue_capacity,
+      max_preallocations);
 }
 
 } // namespace strij::nodeagent::schedulers::probe

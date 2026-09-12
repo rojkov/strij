@@ -20,7 +20,6 @@
 #include "strij/event/dispatcher.hh"
 #include "strij/extensions/scheduler.hh"
 #include "strij/nodeagent/admission_controller.hh"
-#include "strij/nodeagent/object_cache.hh"
 #include "strij/nodeagent/run_task_service.hh"
 
 namespace strij::nodeagent::schedulers::probe {
@@ -59,8 +58,7 @@ class ProbeLocalScheduler final : public extensions::Scheduler, public event::Co
 public:
   ProbeLocalScheduler(nodeagent::RunTaskService& run_task_service,
                       nodeagent::AdmissionControllerSharedPtr admission,
-                      nodeagent::DataDependencyFetcherRouter& router,
-                      nodeagent::ObjectCache& object_cache, event::Dispatcher& dispatcher,
+                      nodeagent::DataDependencyFetcherRouter& router, event::Dispatcher& dispatcher,
                       size_t queue_capacity, size_t max_concurrent_preallocations);
   ~ProbeLocalScheduler() override = default;
 
@@ -99,9 +97,6 @@ private:
   // are not yet cached, stay queued in FIFO order; probes that now fail a
   // precondition are declined and dropped.
   void walk();
-  // True iff every declared dep is present in the node-global object cache
-  // (empty deps -> true).
-  auto allDepsCached(const google::protobuf::RepeatedPtrField<task::DataRef>& deps) const -> bool;
   // Starts prefetching the probe's deps via the router (best-effort; empty or
   // fully-cached deps are skipped). Called for admitted and enqueued probes
   // only — declined probes never run, so their deps are not prefetched.
@@ -118,7 +113,6 @@ private:
   nodeagent::RunTaskService& run_task_service_;
   nodeagent::AdmissionControllerSharedPtr admission_;
   nodeagent::DataDependencyFetcherRouter& router_;
-  nodeagent::ObjectCache& object_cache_;
   event::Dispatcher& dispatcher_;
   size_t max_concurrent_preallocations_;
   utils::BoundedQueue<QueuedProbe> queue_;
