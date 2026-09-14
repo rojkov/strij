@@ -12,7 +12,7 @@
 
 ### Requirement: Child-task Schedule routes children locally or forwards them
 
-A nodeagent local scheduler's `Schedule(const task::Task&, gateway::ResultReceiverPtr)` SHALL implement the child-task policy *run locally if capacity allows, else forward*: it SHALL attempt admission through the shared `AdmissionController` and on success SHALL run the child via the sender-backed `RunTask` overload with a `RegistryResultSender`; on admission failure it SHALL forward the child through the `GatewayClient`. This applies to every configured local scheduler (`push` and `probe`); `probe`'s child path SHALL NOT queue or emit probe frames. A child whose type matches no scheduler and no default (per `nodeagent-config`) SHALL be delivered an error through its receiver.
+A nodeagent local scheduler's `Schedule(const task::Task&, gateway::ResultReceiverPtr)` SHALL implement the child-task policy *run locally if capacity allows, else forward*: it SHALL attempt admission through the shared `AdmissionController` and on success SHALL run the child via the sender-backed `RunTask` overload with a `RegistryResultSender`; on admission failure it SHALL forward the child through the `GatewayClient`. This applies to every local scheduler declared with a local scheduling role (`task_type` or `local_default`); schedulers with no local role do not receive submissions. `probe`'s child path SHALL NOT queue or emit probe frames. A child whose type no entry claims and for which no `local_default` is declared (`nodeagent-config`) SHALL be delivered an error through its receiver.
 
 #### Scenario: Push scheduler runs an admissible child locally
 

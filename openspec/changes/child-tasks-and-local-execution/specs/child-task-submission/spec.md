@@ -30,23 +30,29 @@ The nodeagent SHALL provide a `ChildTaskSubmitter` service exposed through `Node
 - **WHEN** `RunTask` runs any task
 - **THEN** it SHALL NOT reference or construct the submitter
 
-### Requirement: Node-side per-type child scheduler router
+### Requirement: Node-side per-type child scheduler router with explicit local default
 
-The nodeagent SHALL route child-task submissions by `task.type()` through a child scheduler router mirroring the gateway's `SchedulerRouter`: a `task_type`-matched local scheduler wins; an entry with an empty `task_type` serves as the default; a child whose type matches neither SHALL be delivered an error through its receiver. The router SHALL be the single submission entry point: `ChildTaskSubmitter::Submit` routes to the router, which delegates `Schedule(child, receiver)` to the owning local scheduler.
+The nodeagent SHALL route child-task submissions by `task.type()` through a child scheduler router. Node-side scheduler entries SHALL be able to declare local scheduling authority explicitly and independently: a `task_type` declaration makes the entry authoritative over locally-originated tasks of that type; a `local_default` declaration (at most one entry) makes the entry the node's fallback authority for locally-originated tasks no other entry claims. An entry with neither declaration SHALL schedule no locally-originated tasks. An empty `task_type` SHALL NOT make an entry the default (diverging from the gateway `SchedulerConfig` semantics). The router SHALL be the single submission entry point: `ChildTaskSubmitter::Submit` routes to the router, which delegates `Schedule(child, receiver)` to the entry declaring the child's type, falls back to the `local_default` entry, and delivers an error through the receiver when no entry claims the type and no local default is declared.
 
-#### Scenario: Type-matched child routes to the owning scheduler
+#### Scenario: Type-claimed child routes to the declaring scheduler
 
-- **WHEN** two local schedulers are configured (one matched to `"workflow"`, one default) and a child of type `"workflow"` is submitted
-- **THEN** the `Schedule` call SHALL reach the `"workflow"`-matched scheduler
+- **WHEN** a scheduler entry declares `task_type = "workflow"` and a child of type `"workflow"` is submitted
+- **THEN** the `Schedule` call SHALL reach that scheduler
 
-#### Scenario: Unmatched child falls back to the default scheduler
+#### Scenario: Unclaimed child routes to the explicit local default
 
-- **WHEN** a child of type `"render"` is submitted and only a `"workflow"`-matched scheduler plus a default are configured
-- **THEN** the `Schedule` call SHALL reach the default scheduler
+- **WHEN** a child of type `"render"` is submitted, no entry claims `"render"`, and exactly one entry declares `local_default = true`
+- **THEN** the `Schedule` call SHALL reach the local-default scheduler
 
-#### Scenario: Unmatched child without a default is rejected
+#### Scenario: Scheduler without a local role schedules nothing
 
-- **WHEN** a child type matches no scheduler and no default is configured
+- **WHEN** a scheduler entry declares neither `task_type` nor `local_default`
+- **THEN** it SHALL NOT receive any locally-originated task submission
+- **AND** it SHALL continue to handle its wire-protocol frames exactly as before
+
+#### Scenario: Unclaimed child without a local default is rejected
+
+- **WHEN** a child type matches no entry and no entry declares `local_default`
 - **THEN** the router SHALL deliver an error to the child's receiver
 
 ### Requirement: Local-first child execution policy

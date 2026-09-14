@@ -18,7 +18,7 @@ Existing infrastructure this change leans on:
 - A local child runs on the node when capacity allows, delivering results to a node-local receiver registry; otherwise it is forwarded to a gateway and its results return via the two-hop path.
 - The parent cannot distinguish local from remote execution ("local vs remote is indistinguishable to the parent").
 - No wire-protocol change: upstream children reuse `kTaskSubmission`; outcomes reuse `kResult` / `kTaskRejected`.
-- Node-side config mirrors the gateway's per-type scheduler shape; a `gateway_client` section configures egress.
+- Node-side config declares local scheduling authority explicitly (`task_type` claims + a single `local_default`), deliberately diverging from the gateway's empty-means-default shape; a `gateway_client` section configures egress.
 
 **Non-Goals:**
 - Probe-based child scheduling (children are deliberately *not* probed; the policy is run-immediately-if-capacity-else-forward).
@@ -38,11 +38,17 @@ This also removes a dependency knot the ctx-struct alternative would have create
 - *Alternative considered*: optional second virtual (`HandleTaskCtx`) implemented only by workflow handlers. Rejected: `RunTaskService` would need a dynamic capability probe per task; two parallel invocation paths.
 - *Note*: future per-submission hints (e.g. locality) are arguments on the submitter, not a different handle.
 
-### D2: One node-side child router; per-type with default fallback
+### D2: One node-side child router; per-type authority with an explicit local default
 
-The node's `Schedule` routing mirrors the gateway: `NodeAgentConfig.schedulers` entries gain `task_type` (the gateway `SchedulerConfig` shape; empty = default), and a node-side `ChildSchedulerRouter` implementing `extensions::Scheduler` dispatches `Schedule(child, receiver)` by `child.type()` to the owning local scheduler, falling back to the default, and delivers an error when nothing matches. This reconciles the archived plan's two statements ("a single submission scheduler — the node's capacity authority" vs "child tasks route to the scheduler owning that type"): **the router is the single submission handle a handler holds; the router delegates to the per-type local scheduler, which decides local-vs-forward.**
+Node-side local schedulers are primarily wire-protocol counterparts to the gateway schedulers (their frame handling — `kTaskSubmission`, probe frames). Their node-local `Schedule` facet is a separate, opt-in concern, so the node's entry shape deliberately **diverges from the gateway's**: a `task_type` and a "local default" are explicit and independent declarations, not an empty-`task_type`-means-default encoding.
 
-The local scheduler's role in a child submission is thin and identical across `push` and `probe`: *try to admit locally; if admitted, run locally; else forward*. The shared part is a core `ChildSubmissionService` (enters the context) that performs the admit-or-forward step; each constituent `Schedule` delegates to it. `probe`'s child path specifically does **not** queue: a child is local, so the probe dance is pointless.
+- `task_type` (optional) — the entry is authoritative over locally-originated tasks of that type.
+- `local_default` (optional bool, at most one entry) — the entry is the node's fallback authority for locally-originated tasks no other entry claims.
+- neither — the entry schedules **no** locally-originated tasks at all (pure wire-protocol counterpart). An empty `task_type` on the node does NOT select a default.
+
+A node-side `ChildSchedulerRouter` (implementing `extensions::Scheduler`, and the single submission handle a workflow handler holds) dispatches `Schedule(child, receiver)` by `child.type()` to the declaring entry, falls back to the single `local_default` entry, and delivers an error when no entry claims the type and no local default is declared. This reconciles the archived plan's two statements ("a single submission scheduler — the node's capacity authority" vs "child tasks route to the scheduler owning that type"): **the router is the single submission handle; routing is by declared authority; the explicitly-marked local default owns the fallback.**
+
+The local scheduler's role in a child submission is thin and identical across `push` and `probe`: *try to admit locally; if admitted, run locally; else forward*. The shared part is a core `ChildSubmissionService` (enters the context) that performs the admit-or-forward step; each authority-holding constituent's `Schedule` delegates to it. `probe`'s child path specifically does **not** queue: a child is local, so the probe dance is pointless.
 
 ### D3: Local child run — sender-backed `RunTask` overloads
 
@@ -99,12 +105,17 @@ No new gateway wiring path is needed: `GatewayTlvHandler`'s default seam already
 ### D7: Config shape
 
 ```
-NodeAgentConfig.schedulers    → repeated SchedulerConfig { ExtensionConfig extension; String task_type; }
-                                // empty task_type = default; at most one default; unique types; ≥1 entry
+NodeAgentConfig.schedulers    → repeated NodeSchedulerConfig {
+                                  ExtensionConfig extension;
+                                  String task_type;    // optional local authority
+                                  bool local_default;  // optional; at most one entry
+                                }
+                                // ≥1 entry; empty task_type ≠ default;
+                                // at most one local_default; unique non-empty task_type
 NodeAgentConfig.gateway_client → { repeated String addresses; }
 ```
 
-The scheduler entry shape change is a **breaking** nodeagent config change, mirroring the gateway's Phase-0B change (no legacy `ExtensionConfig`-shaped loading). `gateway_client` is additive. With no `gateway_client.addresses` configured, forwarding still works over live connections but silent-dials nothing when none are live.
+The scheduler entry shape change is a **breaking** nodeagent config change (no legacy `ExtensionConfig`-shaped loading). It is a distinct `NodeSchedulerConfig` message, NOT a reuse of the gateway `SchedulerConfig`, because `task_type` means "local authority" here (empty ≠ default) and the explicit `local_default` marker has no gateway analogue. `gateway_client` is additive. With no `gateway_client.addresses` configured, forwarding still works over live connections but silent-dials nothing when none are live. A node whose entries declare no local roles cannot originate tasks (its `Schedule`/submit path always errors).
 
 ## Sequence diagrams
 
@@ -156,4 +167,11 @@ nodeA (parent)          gateway G                    nodeB (worker)
 
 - **Connection selection policy** in `GatewayClient` beyond round-robin (e.g. least-recently-used, per-pool affinity). Default: FIFO round-robin.
 - **`parent_id` on `Task`** for observability/workflow tooling — deferred; not required for correct two-hop delivery.
+
+## Deferred Decisions
+
+- **Repeated `task_type` claims**: this change keeps a single optional `task_type` per scheduler config entry on **both** sides. The shapes are designed so `task_type` can become `repeated string task_types` in a later change:
+  - node-side `NodeSchedulerConfig` — a single protocol then owns several locally-originated types without duplicate frame-dispatch-colliding entries;
+  - gateway-side `SchedulerConfig` — a single scheduling policy (e.g. `round_robin`) then serves several task types without duplicate binder entries.
+  Both extensions must validate claim uniqueness across entries when they land.
 - **Registry eviction** beyond final-result/erasure — TTLs deferred to Phase 5 hardening.

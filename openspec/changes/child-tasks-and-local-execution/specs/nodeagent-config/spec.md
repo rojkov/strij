@@ -4,7 +4,7 @@
 
 ### Requirement: NodeAgentConfig protobuf schema
 
-The system SHALL define a `NodeAgentConfig` protobuf message in `api/nodeagent/config/nodeagent.proto` (package `strij.config`) with `TlvListener tlv_listener`, `Logging logging`, `repeated ExtensionConfig task_handlers`, `repeated SchedulerConfig schedulers`, an optional `gateway_client` section declaring outbound gateway addresses, `repeated ResourcePool pools`, `repeated PoolReservation reservations`, an active `heartbeat_interval` field (state-snapshot cadence), and reserved-for-future fields `connection_timeout` and `TlsConfig tls`. Operator-declared handler capacity (concurrency limit only) SHALL be carried inside each task handler extension's `typed_config` as a shared `HandlerCapacity` message (defined in `node/capabilities.proto`), not as a separate top-level `handlers` section. `HandlerCapacity` SHALL NOT carry resource requirements: hardware requirements are resolved at the gateway and carried on the submitted `Task`. `schedulers` entries SHALL be `SchedulerConfig { ExtensionConfig extension; string task_type; }` (empty `task_type` = default), matching the gateway's shape.
+The system SHALL define a `NodeAgentConfig` protobuf message in `api/nodeagent/config/nodeagent.proto` (package `strij.config`) with `TlvListener tlv_listener`, `Logging logging`, `repeated ExtensionConfig task_handlers`, `repeated NodeSchedulerConfig schedulers`, an optional `gateway_client` section declaring outbound gateway addresses, `repeated ResourcePool pools`, `repeated PoolReservation reservations`, an active `heartbeat_interval` field (state-snapshot cadence), and reserved-for-future fields `connection_timeout` and `TlsConfig tls`. Operator-declared handler capacity (concurrency limit only) SHALL be carried inside each task handler extension's `typed_config` as a shared `HandlerCapacity` message (defined in `node/capabilities.proto`), not as a separate top-level `handlers` section. `HandlerCapacity` SHALL NOT carry resource requirements: hardware requirements are resolved at the gateway and carried on the submitted `Task`. `schedulers` entries SHALL be a node-side `NodeSchedulerConfig { ExtensionConfig extension; string task_type; bool local_default; }`, distinct from the gateway `SchedulerConfig`: `task_type` is an optional local-authority declaration, `local_default` is an explicit fallback marker (at most one entry), and an empty `task_type` SHALL NOT select a default.
 
 #### Scenario: Listener and logging sections load into the message
 
@@ -13,8 +13,8 @@ The system SHALL define a `NodeAgentConfig` protobuf message in `api/nodeagent/c
 
 #### Scenario: Scheduler sections load into the message
 
-- **WHEN** a `NodeAgentConfig` is loaded from YAML with a `schedulers` list containing entries with `extension.name`, `extension.typed_config`, and `task_type`
-- **THEN** the resulting message SHALL contain each `SchedulerConfig` entry with its nested `ExtensionConfig` and `task_type`
+- **WHEN** a `NodeAgentConfig` is loaded from YAML with a `schedulers` list containing entries with `extension.name`, `extension.typed_config`, `task_type`, and `local_default`
+- **THEN** the resulting message SHALL contain each `NodeSchedulerConfig` entry with its nested `ExtensionConfig`, `task_type`, and `local_default`
 
 #### Scenario: Task handler sections load into the message
 
@@ -38,7 +38,7 @@ The system SHALL define a `NodeAgentConfig` protobuf message in `api/nodeagent/c
 
 ### Requirement: Local scheduler configuration
 
-The nodeagent SHALL load one local scheduler instance per `NodeAgentConfig.schedulers` entry. The `schedulers` list SHALL be required and non-empty: when unset or empty, the nodeagent SHALL fail to start with an error indicating a scheduler must be configured. The nodeagent SHALL fail to start when any configured scheduler name is not registered in `Registry<NodeSchedulerFactory>`. Each `SchedulerConfig` entry SHALL bind its scheduler to a task type via `task_type`; an empty `task_type` SHALL mark the default scheduler; the nodeagent SHALL fail to start on a duplicate non-empty task type, on more than one default, or when child submission would route to an unmatched type with no default. The task-type bindings SHALL drive the child scheduler router (`child-task-submission`), mirroring the gateway's per-type routing.
+The nodeagent SHALL load one local scheduler instance per `NodeAgentConfig.schedulers` entry. The `schedulers` list SHALL be required and non-empty: when unset or empty, the nodeagent SHALL fail to start with an error indicating a scheduler must be configured. The nodeagent SHALL fail to start when any configured scheduler name is not registered in `Registry<NodeSchedulerFactory>`. Local scheduling authority SHALL be declared explicitly: a non-empty `task_type` makes the entry authoritative over locally-originated tasks of that type; `local_default = true` makes the entry the node's fallback authority for locally-originated tasks no other entry claims; entries with neither SHALL not schedule locally-originated tasks (pure wire-protocol counterparts). An empty `task_type` SHALL NOT act as a default. The nodeagent SHALL fail to start on a duplicate non-empty `task_type`, on more than one `local_default`, or when child submission would route to an unmatched type with no local default declared.
 
 #### Scenario: Missing schedulers fails startup
 
@@ -56,15 +56,21 @@ The nodeagent SHALL load one local scheduler instance per `NodeAgentConfig.sched
 - **WHEN** a `NodeAgentConfig` sets `schedulers[0].extension.name = "nonexistent"` and no such factory is registered in `Registry<NodeSchedulerFactory>`
 - **THEN** the nodeagent SHALL log an error and exit with status 1
 
-#### Scenario: Type-matched child scheduling routes by task type
+#### Scenario: Type-claimed child scheduling routes by task type
 
-- **WHEN** a `SchedulerConfig` entry declares `task_type = "workflow"` and an entry declares the default
-- **THEN** child submissions of type `"workflow"` SHALL route to the matched scheduler
-- **AND** other child types SHALL route to the default scheduler
+- **WHEN** a `NodeSchedulerConfig` entry declares `task_type = "workflow"` and another entry declares `local_default = true`
+- **THEN** child submissions of type `"workflow"` SHALL route to the claiming entry
+- **AND** child submissions of other types SHALL route to the `local_default` entry
 
-#### Scenario: Ambiguous task-type bindings fail startup
+#### Scenario: Entry without a local role schedules nothing locally
 
-- **WHEN** two `schedulers` entries declare the same non-empty `task_type` or more than one entry declares the default
+- **WHEN** a `NodeSchedulerConfig` entry declares neither `task_type` nor `local_default`
+- **THEN** it SHALL be constructed as a wire-protocol counterpart
+- **AND** it SHALL NOT receive any locally-originated task submission
+
+#### Scenario: Ambiguous local-authority declarations fail startup
+
+- **WHEN** two `schedulers` entries declare the same non-empty `task_type` or more than one entry declares `local_default = true`
 - **THEN** the nodeagent SHALL fail to start with an error describing the ambiguity
 
 ## ADDED Requirements
