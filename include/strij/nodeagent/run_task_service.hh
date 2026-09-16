@@ -1,5 +1,8 @@
 #pragma once
 
+#include <memory>
+#include <string_view>
+
 #include "common/task/task.pb.h"
 #include "strij/common/pure.hh"
 #include "strij/nodeagent/admission_controller.hh"
@@ -14,6 +17,11 @@ class Connection;
 } // namespace io
 
 namespace nodeagent {
+
+// ResultSender lives in the task-handler extension contract (src/), but is
+// named here on the sender-backed overloads. The impl includes the full type;
+// extension authors already depend on task_handlers.hh.
+class ResultSender;
 
 // Pure-abstract contract for running admitted tasks to completion on the
 // nodeagent event-loop thread. NodeagentFactoryContext exposes this service so
@@ -42,6 +50,28 @@ public:
   // destruction). Runs synchronously on the caller's (event-loop) thread.
   virtual void RunTask(const task::Task& task, io::Connection& conn,
                        AdmissionScopePtr reserved) PURE;
+
+  // Sender-backed variants of the above: results are delivered through the
+  // caller's ResultSender instead of a connection-bound sender. Used by the
+  // local child policy step with a RegistryResultSender.
+  //
+  // Admitting overload: on admission failure or an unknown handler type the
+  // task is dropped with a warning (there is no connection to send kTaskRejected
+  // over; the caller drives fallback behavior from its own Admit/HasHandler
+  // checks before calling this).
+  virtual void RunTask(const task::Task& task, std::unique_ptr<ResultSender> sender) PURE;
+
+  // Preallocated overload: runs the task with an already-held reservation; the
+  // caller's successful Admit must have produced `reserved`. An unknown handler
+  // type drops the task; the scope releases in its destructor.
+  virtual void RunTask(const task::Task& task, std::unique_ptr<ResultSender> sender,
+                       AdmissionScopePtr reserved) PURE;
+
+  // Whether a task handler is registered for `type`. Local schedulers check
+  // this before attempting admission so an unhandled child can be forwarded
+  // rather than run (a successful Admit for an unknown type is capacity-only,
+  // and RunTask would then drop it).
+  [[nodiscard]] virtual auto HasHandler(std::string_view type) const -> bool PURE;
 };
 
 } // namespace strij::nodeagent

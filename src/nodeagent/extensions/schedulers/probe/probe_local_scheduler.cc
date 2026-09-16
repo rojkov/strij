@@ -14,6 +14,7 @@
 #include "common/core/logging/log.hh"
 #include "common/task/probe.pb.h"
 #include "common/task/task.pb.h"
+#include "nodeagent/core/child_submission_service.hh"
 #include "nodeagent/extensions/schedulers/probe/probe.pb.h"
 #include "strij/extensions/extension_registry.hh"
 #include "strij/extensions/scheduler.hh"
@@ -35,23 +36,25 @@ auto parseMessage(const io::TlvFrame& frame, google::protobuf::Message& message)
 
 } // namespace
 
-ProbeLocalScheduler::ProbeLocalScheduler(nodeagent::RunTaskService& run_task_service,
-                                         nodeagent::AdmissionControllerSharedPtr admission,
-                                         nodeagent::DataDependencyFetcherRouter& router,
-                                         event::Dispatcher& dispatcher, size_t queue_capacity,
-                                         size_t max_concurrent_preallocations)
-    : run_task_service_{run_task_service}, admission_{std::move(admission)}, router_{router},
-      dispatcher_{dispatcher}, max_concurrent_preallocations_{max_concurrent_preallocations},
-      queue_{queue_capacity} {
+ProbeLocalScheduler::ProbeLocalScheduler(
+    nodeagent::RunTaskService& run_task_service,
+    nodeagent::ChildSubmissionService& child_submission_service,
+    nodeagent::AdmissionControllerSharedPtr admission, nodeagent::DataDependencyFetcherRouter& router,
+    event::Dispatcher& dispatcher, size_t queue_capacity, size_t max_concurrent_preallocations)
+    : run_task_service_{run_task_service},
+      child_submission_service_{child_submission_service}, admission_{std::move(admission)},
+      router_{router}, dispatcher_{dispatcher},
+      max_concurrent_preallocations_{max_concurrent_preallocations}, queue_{queue_capacity} {
   admission_->RegisterCapacityObserver(this);
 }
 
-void ProbeLocalScheduler::Schedule(const task::Task& /*task*/,
-                                   gateway::ResultReceiverPtr receiver) {
-  // The probe protocol schedules only via incoming probes; a node never pushes
-  // tasks elsewhere. Resolve the receiver so a hypothetical caller can't leak
-  // it.
-  receiver->DeliverError("probe is a node-local scheduler; it never schedules outbound tasks");
+void ProbeLocalScheduler::Schedule(const task::Task& task, gateway::ResultReceiverPtr receiver) {
+  // The probe protocol's node-local Schedule facet (children whose type this
+  // entry is the authority for, or that hit the local default) runs the shared
+  // child-policy step directly: no probe dance, no queueing — a child is either
+  // admitted locally or forwarded/errors. Remote-child capacity discovery via
+  // probing is out of scope (design decisions).
+  child_submission_service_.Submit(task, std::move(receiver));
 }
 
 auto ProbeLocalScheduler::RequiredProtocol() const -> std::string_view { return "probe"; }
@@ -298,7 +301,7 @@ auto ProbeLocalSchedulerFactory::Create(const ::google::protobuf::Message& confi
   }
 
   return std::make_unique<ProbeLocalScheduler>(
-      context.RunTaskService(), context.AdmissionController(),
+      context.RunTaskService(), context.ChildSubmissionService(), context.AdmissionController(),
       context.DataDependencyFetcherRouter(), context.Dispatcher(), queue_capacity,
       max_preallocations);
 }

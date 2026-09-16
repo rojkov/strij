@@ -65,7 +65,9 @@ strij_cc_library(
     hdrs = ["nodeagent_tlv_handler.hh"],
     visibility = ["//visibility:public"],
     deps = [
+        ":local_receiver_registry_lib",
         "//api/common/node:node_cc_proto",
+        "//api/common/task:task_cc_proto",
         "//include/strij/extensions:scheduler_interface",
         "//src/common/core/io:connection_lib",
         "//src/common/core/io:tlv_frame",
@@ -159,6 +161,21 @@ strij_cc_library(
 )
 
 strij_cc_library(
+    name = "gateway_client_lib",
+    srcs = ["gateway_client.cc"],
+    hdrs = ["gateway_client.hh"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":child_submission_service_lib",
+        "//api/common/task:task_cc_proto",
+        "//include/strij/nodeagent:child_task_submitter",
+        "//src/common/core/io:connection_lib",
+        "//src/common/core/io:tlv_frame",
+        "//src/common/core/logging:log_lib",
+    ],
+)
+
+strij_cc_library(
     name = "function_resolver_lib",
     srcs = ["function_resolver.cc"],
     hdrs = ["function_resolver.hh"],
@@ -168,5 +185,69 @@ strij_cc_library(
         "//include/strij/nodeagent:function_resolver_interface",
         "@abseil-cpp//absl/status",
         "@abseil-cpp//absl/status:statusor",
+    ],
+)
+
+strij_cc_library(
+    name = "local_receiver_registry_lib",
+    srcs = ["local_receiver_registry.cc"],
+    hdrs = ["local_receiver_registry.hh"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//include/strij/gateway:result_receiver_storage_interface",
+    ],
+)
+
+strij_cc_library(
+    name = "registry_result_sender_lib",
+    srcs = ["registry_result_sender.cc"],
+    hdrs = ["registry_result_sender.hh"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":local_receiver_registry_lib",
+        "//include/strij/gateway:result_receiver_storage_interface",
+        "//src/common/core/logging:log_lib",
+        "//src/nodeagent/extensions/task_handlers:task_handlers_interface",
+    ],
+)
+
+strij_cc_library(
+    name = "child_submission_service_lib",
+    srcs = ["child_submission_service.cc"],
+    hdrs = ["child_submission_service.hh"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":admission_controller_lib",
+        ":local_receiver_registry_lib",
+        ":registry_result_sender_lib",
+        ":run_task_service_lib",
+        "//api/common/task:task_cc_proto",
+        "//include/strij/common:pure_lib",
+        "//include/strij/gateway:result_receiver_storage_interface",
+        "//include/strij/nodeagent:admission_controller_interface",
+        "//include/strij/nodeagent:child_task_submitter",
+        "//include/strij/nodeagent:run_task_service_interface",
+        "//src/common/core/logging:log_lib",
+    ],
+)
+
+strij_cc_library(
+    name = "child_scheduler_router_lib",
+    srcs = ["child_scheduler_router.cc"],
+    hdrs = ["child_scheduler_router.hh"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//api/common/config:config_cc_proto",
+        "//api/common/task:task_cc_proto",
+        "//api/nodeagent/config:nodeagent_config_cc_proto",
+        "//include/strij/extensions:factory_context_lib",
+        "//include/strij/extensions:scheduler_interface",
+        "//include/strij/nodeagent:child_task_submitter",
+        "//src/common/core/io:connection_lib",
+        "//src/common/core/io:tlv_frame",
+        "//src/common/extensions:scheduler_loader_lib",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
     ],
 )

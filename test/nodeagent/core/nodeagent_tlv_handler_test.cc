@@ -19,17 +19,42 @@
 #include "common/core/io/tlv_frame.hh"
 #include "common/node/capabilities.pb.h"
 #include "nodeagent/core/admission_controller.hh"
+#include "nodeagent/core/child_submission_service.hh"
+#include "nodeagent/core/local_receiver_registry.hh"
 #include "nodeagent/core/nodeagent_tlv_handler.hh"
 #include "nodeagent/core/run_task_service.hh"
 #include "nodeagent/core/task_handler_manager.hh"
 #include "common/task/task.pb.h"
 #include "nodeagent/extensions/schedulers/push/push_local_scheduler.hh"
 #include "strij/extensions/scheduler.hh"
+#include "strij/gateway/result_receiver_storage.hh"
 #include "nodeagent/extensions/task_handlers/echo/echo_task_handler.hh"
 #include "gtest/gtest.h"
 
 namespace strij::nodeagent {
 namespace {
+
+// Shared, test-owned outcome log: resolving a registry entry (final result or
+// rejection) erases and destroys the receiver, so assertions read the log.
+struct ReceiverLog {
+  bool delivered{false};
+  bool is_final{false};
+  std::string body;
+  std::string error;
+};
+
+class RecordingReceiver final : public gateway::ResultReceiver {
+public:
+  std::shared_ptr<ReceiverLog> log = std::make_shared<ReceiverLog>();
+
+  void Deliver(std::span<const std::byte> value, bool is_final) override {
+    log->delivered = true;
+    log->is_final = is_final;
+    log->body.assign(reinterpret_cast<const char*>(value.data()), value.size());
+  }
+
+  void DeliverError(std::string_view reason) override { log->error = std::string(reason); }
+};
 
 class RetainingSenderHandler final : public nodeagent::TaskHandler {
 public:
@@ -124,7 +149,9 @@ TEST_F(NodeagentTlvHandlerTest, EchoesTaskAsTaskResult) {
   auto admission = MakeAdmission();
   auto caps = MakeCapabilities();
   RunTaskServiceImpl run_task_service(manager, admission);
-  nodeagent::schedulers::PushLocalScheduler scheduler(run_task_service);
+  LocalReceiverRegistry local_registry;
+  nodeagent::ChildSubmissionService submission(local_registry, run_task_service, admission);
+  nodeagent::schedulers::PushLocalScheduler scheduler(run_task_service, submission);
 
   // When Connection::Write submits, perform the actual write to the socket.
   EXPECT_CALL(*dispatcher_, PrepareWrite(::testing::_, ::testing::_, ::testing::_, ::testing::_, 0))
@@ -166,7 +193,9 @@ TEST_F(NodeagentTlvHandlerTest, DropsMalformedTask) {
   auto admission = MakeAdmission();
   auto caps = MakeCapabilities();
   RunTaskServiceImpl run_task_service(manager, admission);
-  nodeagent::schedulers::PushLocalScheduler scheduler(run_task_service);
+  LocalReceiverRegistry local_registry;
+  nodeagent::ChildSubmissionService submission(local_registry, run_task_service, admission);
+  nodeagent::schedulers::PushLocalScheduler scheduler(run_task_service, submission);
   std::vector<extensions::Scheduler*> schedulers{&scheduler};
   NodeagentTlvHandler handler(schedulers, caps);
   handler.HandleFrame({.type_id = io::TlvFrame::kTaskSubmission, .value = garbage}, *conn_);
@@ -194,7 +223,9 @@ TEST_F(NodeagentTlvHandlerTest, DropsTaskWithNoRegisteredHandler) {
   auto admission = MakeAdmission();
   auto caps = MakeCapabilities();
   RunTaskServiceImpl run_task_service(manager, admission);
-  nodeagent::schedulers::PushLocalScheduler scheduler(run_task_service);
+  LocalReceiverRegistry local_registry;
+  nodeagent::ChildSubmissionService submission(local_registry, run_task_service, admission);
+  nodeagent::schedulers::PushLocalScheduler scheduler(run_task_service, submission);
   std::vector<extensions::Scheduler*> schedulers{&scheduler};
   NodeagentTlvHandler handler(schedulers, caps);
   handler.HandleFrame(
@@ -223,7 +254,9 @@ TEST_F(NodeagentTlvHandlerTest, AsyncHandlerRetainsSenderAndSendsTwice) {
   auto admission = MakeAdmission();
   auto caps = MakeCapabilities();
   RunTaskServiceImpl run_task_service(manager, admission);
-  nodeagent::schedulers::PushLocalScheduler scheduler(run_task_service);
+  LocalReceiverRegistry local_registry;
+  nodeagent::ChildSubmissionService submission(local_registry, run_task_service, admission);
+  nodeagent::schedulers::PushLocalScheduler scheduler(run_task_service, submission);
 
   // When Connection::Write submits, perform the write to the socket and
   // complete it immediately so the next queued buffer drains.
@@ -286,7 +319,9 @@ TEST_F(NodeagentTlvHandlerTest, SendAdvertisementWritesCapabilitiesAsFirstFrame)
   auto manager = MakeEchoManager();
   auto admission = MakeAdmission();
   RunTaskServiceImpl run_task_service(manager, admission);
-  nodeagent::schedulers::PushLocalScheduler scheduler(run_task_service);
+  LocalReceiverRegistry local_registry;
+  nodeagent::ChildSubmissionService submission(local_registry, run_task_service, admission);
+  nodeagent::schedulers::PushLocalScheduler scheduler(run_task_service, submission);
   std::vector<extensions::Scheduler*> schedulers{&scheduler};
   NodeagentTlvHandler handler(schedulers, caps);
   handler.SendAdvertisement(*conn_);
@@ -328,7 +363,9 @@ TEST_F(NodeagentTlvHandlerTest, RejectsTaskWhenPoolExhausted) {
                                          off_t) { ::write(fds_[0], buf.data(), buf.size()); }));
 
   RunTaskServiceImpl run_task_service(manager, admission);
-  nodeagent::schedulers::PushLocalScheduler scheduler(run_task_service);
+  LocalReceiverRegistry local_registry;
+  nodeagent::ChildSubmissionService submission(local_registry, run_task_service, admission);
+  nodeagent::schedulers::PushLocalScheduler scheduler(run_task_service, submission);
   std::vector<extensions::Scheduler*> schedulers{&scheduler};
   NodeagentTlvHandler handler(schedulers, caps);
 
@@ -388,7 +425,9 @@ TEST_F(NodeagentTlvHandlerTest, RejectsTaskAtConcurrencyLimit) {
                                          off_t) { ::write(fds_[0], buf.data(), buf.size()); }));
 
   RunTaskServiceImpl run_task_service(manager, admission);
-  nodeagent::schedulers::PushLocalScheduler scheduler(run_task_service);
+  LocalReceiverRegistry local_registry;
+  nodeagent::ChildSubmissionService submission(local_registry, run_task_service, admission);
+  nodeagent::schedulers::PushLocalScheduler scheduler(run_task_service, submission);
   std::vector<extensions::Scheduler*> schedulers{&scheduler};
   NodeagentTlvHandler handler(schedulers, caps);
 
@@ -449,7 +488,9 @@ TEST_F(NodeagentTlvHandlerTest, CompletionReleasesReservedCapacity) {
                                          off_t) { ::write(fds_[0], buf.data(), buf.size()); }));
 
   RunTaskServiceImpl run_task_service(manager, admission);
-  nodeagent::schedulers::PushLocalScheduler scheduler(run_task_service);
+  LocalReceiverRegistry local_registry;
+  nodeagent::ChildSubmissionService submission(local_registry, run_task_service, admission);
+  nodeagent::schedulers::PushLocalScheduler scheduler(run_task_service, submission);
   std::vector<extensions::Scheduler*> schedulers{&scheduler};
   NodeagentTlvHandler handler(schedulers, caps);
 
@@ -511,6 +552,151 @@ TEST_F(NodeagentTlvHandlerTest, RunsPreallocatedTaskWithoutDoubleAdmit) {
   // final result: a double admit would leave 14 shared-free.
   EXPECT_EQ(admission->SharedFree("cpu"), 16U);
   EXPECT_EQ(admission->InFlight("echo"), 0U);
+}
+
+TEST_F(NodeagentTlvHandlerTest, RoutesChildResultFrameToRegistryReceiver) {
+  LocalReceiverRegistry registry;
+  auto receiver = std::make_unique<RecordingReceiver>();
+  auto log = receiver->log;
+  registry.Put("child-1", std::move(receiver));
+
+  auto caps = MakeCapabilities();
+  std::vector<extensions::Scheduler*> schedulers{};
+  NodeagentTlvHandler handler(schedulers, caps, &registry);
+
+  task::TaskResult result;
+  result.set_id("child-1");
+  result.set_body("hello");
+  result.set_is_final(true);
+  std::string serialized;
+  result.SerializeToString(&serialized);
+  io::TlvFrame frame{io::TlvFrame::kResult,
+                     std::as_bytes(std::span(serialized.data(), serialized.size()))};
+
+  handler.HandleFrame(frame, *conn_);
+
+  ASSERT_TRUE(log->delivered);
+  EXPECT_TRUE(log->is_final);
+  EXPECT_EQ(log->body, "hello");
+  EXPECT_TRUE(log->error.empty());
+  EXPECT_TRUE(registry.Empty());
+}
+
+TEST_F(NodeagentTlvHandlerTest, NonFinalChildResultKeepsRegistryEntry) {
+  LocalReceiverRegistry registry;
+  auto receiver = std::make_unique<RecordingReceiver>();
+  auto log = receiver->log;
+  registry.Put("child-1", std::move(receiver));
+
+  auto caps = MakeCapabilities();
+  std::vector<extensions::Scheduler*> schedulers{};
+  NodeagentTlvHandler handler(schedulers, caps, &registry);
+
+  task::TaskResult result;
+  result.set_id("child-1");
+  result.set_body("chunk");
+  // Explicit false → non-final: the registry entry survives for later frames.
+  result.set_is_final(false);
+  std::string serialized;
+  result.SerializeToString(&serialized);
+  io::TlvFrame frame{io::TlvFrame::kResult,
+                     std::as_bytes(std::span(serialized.data(), serialized.size()))};
+
+  handler.HandleFrame(frame, *conn_);
+
+  ASSERT_TRUE(log->delivered);
+  EXPECT_FALSE(log->is_final);
+  EXPECT_EQ(log->body, "chunk");
+  EXPECT_EQ(registry.Size(), 1U);
+}
+
+TEST_F(NodeagentTlvHandlerTest, ChildResultForUnknownIdIsDropped) {
+  LocalReceiverRegistry registry;
+  auto caps = MakeCapabilities();
+  std::vector<extensions::Scheduler*> schedulers{};
+  NodeagentTlvHandler handler(schedulers, caps, &registry);
+
+  task::TaskResult result;
+  result.set_id("ghost");
+  result.set_body("x");
+  result.set_is_final(true);
+  std::string serialized;
+  result.SerializeToString(&serialized);
+  io::TlvFrame frame{io::TlvFrame::kResult,
+                     std::as_bytes(std::span(serialized.data(), serialized.size()))};
+
+  handler.HandleFrame(frame, *conn_);
+  EXPECT_TRUE(registry.Empty());
+}
+
+TEST_F(NodeagentTlvHandlerTest, RoutesChildRejectionFrameToRegistryReceiver) {
+  LocalReceiverRegistry registry;
+  auto receiver = std::make_unique<RecordingReceiver>();
+  auto log = receiver->log;
+  registry.Put("child-1", std::move(receiver));
+
+  auto caps = MakeCapabilities();
+  std::vector<extensions::Scheduler*> schedulers{};
+  NodeagentTlvHandler handler(schedulers, caps, &registry);
+
+  task::TaskRejected rejected;
+  rejected.set_id("child-1");
+  rejected.set_reason("pool exhausted");
+  std::string serialized;
+  rejected.SerializeToString(&serialized);
+  io::TlvFrame frame{io::TlvFrame::kTaskRejected,
+                     std::as_bytes(std::span(serialized.data(), serialized.size()))};
+
+  handler.HandleFrame(frame, *conn_);
+
+  ASSERT_FALSE(log->delivered);
+  EXPECT_EQ(log->error, "pool exhausted");
+  EXPECT_TRUE(registry.Empty());
+}
+
+TEST_F(NodeagentTlvHandlerTest, ChildRejectionForUnknownIdIsDropped) {
+  LocalReceiverRegistry registry;
+  auto caps = MakeCapabilities();
+  std::vector<extensions::Scheduler*> schedulers{};
+  NodeagentTlvHandler handler(schedulers, caps, &registry);
+
+  task::TaskRejected rejected;
+  rejected.set_id("ghost");
+  rejected.set_reason("pool exhausted");
+  std::string serialized;
+  rejected.SerializeToString(&serialized);
+  io::TlvFrame frame{io::TlvFrame::kTaskRejected,
+                     std::as_bytes(std::span(serialized.data(), serialized.size()))};
+
+  handler.HandleFrame(frame, *conn_);
+  EXPECT_TRUE(registry.Empty());
+}
+
+TEST_F(NodeagentTlvHandlerTest, SchedulerNeverClaimsChildOutcomeFrameType) {
+  // Core-owned frame types are handled before the dispatcher-table lookup; a
+  // scheduler must never claim them. Feeding a kResult frame to a handler that
+  // DOESN'T know the id drops it even when a scheduler claims kTaskSubmission.
+  auto manager = MakeEchoManager();
+  auto admission = MakeAdmission();
+  auto caps = MakeCapabilities();
+  RunTaskServiceImpl run_task_service(manager, admission);
+  LocalReceiverRegistry local_registry;
+  nodeagent::ChildSubmissionService submission(local_registry, run_task_service, admission);
+  nodeagent::schedulers::PushLocalScheduler scheduler(run_task_service, submission);
+  std::vector<extensions::Scheduler*> schedulers{&scheduler};
+  NodeagentTlvHandler handler(schedulers, caps, &local_registry);
+
+  task::TaskResult result;
+  result.set_id("child-1");
+  result.set_body("hello");
+  std::string serialized;
+  result.SerializeToString(&serialized);
+  io::TlvFrame frame{io::TlvFrame::kResult,
+                     std::as_bytes(std::span(serialized.data(), serialized.size()))};
+
+  // No push frame path, no registry hit: nothing written, nothing crashing.
+  handler.HandleFrame(frame, *conn_);
+  EXPECT_TRUE(local_registry.Empty());
 }
 
 // NOLINTEND(modernize-use-trailing-return-type)

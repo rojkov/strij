@@ -25,22 +25,6 @@ Every accepted gateway connection on the node's `TcpListener` SHALL be registere
 - **WHEN** `Submit` is called repeatedly with `N` live connections
 - **THEN** consecutive submissions SHALL cycle through all `N` connections before repeating one
 
-### Requirement: Outbound dial fallback
-
-When no live connection exists, the `GatewayClient` SHALL dial a configured gateway address from `NodeAgentConfig.gateway_client.addresses` using the event dispatcher's `PrepareConnect`. The submission SHALL be queued until the connection completes and written then; a failed or refused dial SHALL fall back to the next configured address. When every address is exhausted or connecting fails, the child's receiver SHALL be delivered an error.
-
-#### Scenario: Dial fallback when no live connection exists
-
-- **WHEN** the node has no live gateway connection and `gateway_client.addresses` is configured
-- **THEN** `Submit` SHALL initiate an outbound connect to the first address
-- **AND** write the upstream frame once the connection is established
-
-#### Scenario: Unreachable gateways deliver an error
-
-- **WHEN** no live connection exists and every configured address refuses or fails to connect
-- **THEN** the child's receiver SHALL be delivered an error naming the failure
-- **AND** the receiver SHALL be released (never left hanging)
-
 ### Requirement: GatewayClient configuration
 
 `NodeAgentConfig.gateway_client` SHALL be a dedicated config section declaring the outbound gateway addresses for the forward path. With the section absent or empty, forwarding SHALL still operate over live connections; when additionally no live connection exists, `Submit` SHALL deliver an error to the child's receiver. The section SHALL be additive (existing nodeagent configs remain valid except for the `schedulers` shape change in `nodeagent-config`).

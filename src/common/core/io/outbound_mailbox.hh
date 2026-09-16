@@ -14,8 +14,9 @@ class Connection;
  *
  * Handlers may retain a shared handle to the mailbox past the call that handed
  * it out (e.g. an async TaskHandler retaining its ResultSender). Enqueue()
- * forwards bytes to the connection's write queue and is a no-op once Close()
- * has been called, so a stale handle can never touch a destroyed Connection.
+ * forwards bytes through the write function the Connection configured and is
+ * a no-op once Close() has been called, so a stale handle can never touch a
+ * destroyed Connection.
  *
  * Close() is invoked by the owning Connection during teardown; it drops the
  * queue implicitly (the write queue lives in Connection) and fires registered
@@ -25,8 +26,9 @@ class Connection;
 class OutboundMailbox {
 public:
   using CloseCallback = std::move_only_function<void()>;
+  using WriteFn = std::move_only_function<void(std::vector<std::byte>)>;
 
-  explicit OutboundMailbox(Connection& conn);
+  explicit OutboundMailbox(WriteFn write_fn);
   ~OutboundMailbox() = default;
 
   OutboundMailbox(const OutboundMailbox&) = delete;
@@ -42,7 +44,7 @@ private:
   friend class Connection;
   void Close();
 
-  Connection& conn_;
+  WriteFn write_fn_;
   bool active_{true};
   std::vector<std::pair<std::size_t, CloseCallback>> close_callbacks_;
   std::size_t next_token_{0};

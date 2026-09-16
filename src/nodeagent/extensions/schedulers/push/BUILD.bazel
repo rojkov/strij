@@ -17,6 +17,7 @@ strij_cc_library(
         "//src/common/core/io:connection_lib",
         "//src/common/core/io:tlv_frame",
         "//src/common/core/logging:log_lib",
+        "//src/nodeagent/core:child_submission_service_lib",
         "//src/nodeagent/core:run_task_service_lib",
     ],
     alwayslink = True,

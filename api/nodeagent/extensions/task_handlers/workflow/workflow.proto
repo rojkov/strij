@@ -1,0 +1,30 @@
+syntax = "proto3";
+
+package strij.extensions.task_handlers.workflow;
+
+import "common/node/capabilities.proto";
+
+// One child step of an example workflow.
+message ChildSpec {
+  // The child's task type; routed through the node's scheduler authority
+  // declarations (a claiming task_type entry, or the local_default fallback).
+  string type = 1;
+  // Opaque body forwarded verbatim to the child.
+  bytes body = 2;
+  // Optional requirements carried to the child (e.g. a GPU pool). Absent =
+  // empty requirements.
+  strij.node.ResourceRequirements requirements = 3;
+}
+
+// The payload of a workflow task: the ordered child steps to fan out. The
+// example handler runs them one at a time (each child completes before the
+// next is submitted on the single event-loop thread) and concatenates the
+// final bodies into the parent's result.
+message WorkflowPlan {
+  repeated ChildSpec children = 1;
+}
+
+message WorkflowTaskHandlerConfig {
+  // Operator-declared capacity (concurrency limit + default resources).
+  strij.node.HandlerCapacity capacity = 1;
+}

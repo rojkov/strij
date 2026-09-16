@@ -1,5 +1,7 @@
 #include <array>
+#include <bit>
 #include <cstdint>
+#include <cstring>
 #include <memory>
 #include <span>
 #include <string>
@@ -17,6 +19,7 @@
 #include "common/core/io/connection.hh"
 #include "common/core/io/protocol_parser.hh"
 #include "common/core/io/tlv_frame.hh"
+#include "common/core/io/tlv_parser.hh"
 #include "absl/status/status.h"
 #include "common/task/task.pb.h"
 #include "gateway/extensions/schedulers/round_robin/round_robin_scheduler.hh"
@@ -89,10 +92,11 @@ auto Routed(std::string task_type, extensions::SchedulerPtr scheduler) -> Schedu
 }
 
 template <typename... Entries>
-auto MakeRouter(Entries... entries) -> std::unique_ptr<SchedulerRouter> {
+auto MakeRouter(ResultReceiverStorage& storage, Entries&&... entries)
+    -> std::unique_ptr<SchedulerRouter> {
   std::vector<SchedulerRouter::RoutedScheduler> routed;
   (routed.push_back(std::move(entries)), ...);
-  return std::make_unique<SchedulerRouter>(std::move(routed));
+  return std::make_unique<SchedulerRouter>(std::move(routed), storage);
 }
 
 class SchedulerRouterTest : public ::testing::Test {
@@ -133,7 +137,8 @@ TEST_F(SchedulerRouterTest, RoutesByExactTaskTypeAndFallsBackToDefault) {
   auto* cv = new StubScheduler("push");
   auto* fallback = new StubScheduler("push");
   auto router =
-      MakeRouter(Routed("echo", extensions::SchedulerPtr(echo)), Routed("cv", extensions::SchedulerPtr(cv)),
+      MakeRouter(storage_, Routed("echo", extensions::SchedulerPtr(echo)),
+                 Routed("cv", extensions::SchedulerPtr(cv)),
                  Routed("", extensions::SchedulerPtr(fallback)));
 
   router->Schedule(MakeTask("1", "echo"), MakeReceiver().first);
@@ -151,7 +156,7 @@ TEST_F(SchedulerRouterTest, RoutesByExactTaskTypeAndFallsBackToDefault) {
 
 TEST_F(SchedulerRouterTest, DeliversErrorWhenNoMatchAndNoDefault) {
   auto* echo = new StubScheduler("push");
-  auto router = MakeRouter(Routed("echo", extensions::SchedulerPtr(echo)));
+  auto router = MakeRouter(storage_, Routed("echo", extensions::SchedulerPtr(echo)));
 
   auto receiver = MakeReceiver();
   router->Schedule(MakeTask("1", "unknown"), std::move(receiver.first));
@@ -161,13 +166,17 @@ TEST_F(SchedulerRouterTest, DeliversErrorWhenNoMatchAndNoDefault) {
 }
 
 TEST_F(SchedulerRouterTest, RoutesFramesToOwningScheduler) {
-  auto* a = new StubScheduler("push", {0});
-  auto* b = new StubScheduler("push", {2});
-  auto router = MakeRouter(Routed("echo", extensions::SchedulerPtr(a)), Routed("", extensions::SchedulerPtr(b)));
+  auto* a = new StubScheduler("push", {6});
+  auto* b = new StubScheduler("push", {4});
+  auto router =
+      MakeRouter(storage_, Routed("echo", extensions::SchedulerPtr(a)),
+                 Routed("", extensions::SchedulerPtr(b)));
 
-  EXPECT_EQ(router->HandledFrameTypes().size(), 2U);
+  // The router itself claims kTaskSubmission (type 0) alongside the constituents'.
+  ASSERT_EQ(router->HandledFrameTypes().size(), 3U);
   EXPECT_EQ(router->HandledFrameTypes()[0], 0U);
-  EXPECT_EQ(router->HandledFrameTypes()[1], 2U);
+  EXPECT_EQ(router->HandledFrameTypes()[1], 6U);
+  EXPECT_EQ(router->HandledFrameTypes()[2], 4U);
 
   std::array<int, 2> fds{};
   ASSERT_EQ(0, socketpair(AF_UNIX, SOCK_STREAM, 0, fds.data()));
@@ -180,23 +189,23 @@ TEST_F(SchedulerRouterTest, RoutesFramesToOwningScheduler) {
                         return std::make_unique<io::TrivialParser>();
                       });
 
-  EXPECT_TRUE(router->HandleFrame(io::TlvFrame{0, {}}, conn).ok());
-  EXPECT_TRUE(router->HandleFrame(io::TlvFrame{2, {}}, conn).ok());
+  EXPECT_TRUE(router->HandleFrame(io::TlvFrame{6, {}}, conn).ok());
+  EXPECT_TRUE(router->HandleFrame(io::TlvFrame{4, {}}, conn).ok());
 
   EXPECT_FALSE(router->HandleFrame(io::TlvFrame{5, {}}, conn).ok());
 
   ASSERT_EQ(a->handled_frames_.size(), 1U);
-  EXPECT_EQ(a->handled_frames_[0], 0U);
+  EXPECT_EQ(a->handled_frames_[0], 6U);
   ASSERT_EQ(b->handled_frames_.size(), 1U);
-  EXPECT_EQ(b->handled_frames_[0], 2U);
+  EXPECT_EQ(b->handled_frames_[0], 4U);
 
   close(fds[0]);
   close(fds[1]);
 }
 
 TEST_F(SchedulerRouterTest, RequiredProtocolComesFromConstituents) {
-  auto router = MakeRouter(Routed("echo", extensions::SchedulerPtr(new StubScheduler("push"))),
-                           Routed("", extensions::SchedulerPtr(new StubScheduler("probe"))));
+auto router = MakeRouter(storage_, Routed("echo", extensions::SchedulerPtr(new StubScheduler("push"))),
+                         Routed("", extensions::SchedulerPtr(new StubScheduler("probe"))));
   EXPECT_EQ(router->RequiredProtocol(), "push");
 }
 
@@ -254,6 +263,192 @@ TEST_F(SchedulerRouterTest, BuildSchedulerRouterRejectsMultipleDefaults) {
   auto router = BuildSchedulerRouter(config, context);
   EXPECT_FALSE(router.ok());
   EXPECT_NE(router.status().message().find("more than one default"), std::string::npos);
+}
+
+TEST_F(SchedulerRouterTest, InboundChildSubmissionRoutesByTypeAndStoresReceiver) {
+  auto directory = MakeConnectedDirectory({"A"});
+  auto* echo = new StubScheduler("push");
+  auto router = MakeRouter(storage_, Routed("echo", extensions::SchedulerPtr(echo)));
+
+  auto* node = directory->GetNode("A");
+  auto* conn = node->GetConnection();
+  ASSERT_NE(conn, nullptr);
+
+  task::Task task = MakeTask("child-1", "echo");
+  task.set_body("hello");
+  std::string serialized;
+  ASSERT_TRUE(task.SerializeToString(&serialized));
+  io::TlvFrame frame{
+      .type_id = io::TlvFrame::kTaskSubmission,
+      .value = std::as_bytes(std::span(serialized.data(), serialized.size()))};
+
+  auto status = router->HandleFrame(frame, *conn);
+  EXPECT_TRUE(status.ok());
+
+  // The child was routed to the type's scheduler.
+  ASSERT_EQ(echo->scheduled_types_.size(), 1U);
+  EXPECT_EQ(echo->scheduled_types_.front(), "echo");
+
+  // A node-connection receiver is registered keyed by the SUBMITTING node id so
+  // NotifyNodeDisconnected("A") unwinds it.
+  auto* receiver = storage_.Get("child-1");
+  ASSERT_NE(receiver, nullptr);
+
+  // The receiver serializes a kResult frame over the submitting connection.
+  std::span<const std::byte> written;
+  EXPECT_CALL(*dispatcher_,
+              PrepareWrite(::testing::_, ::testing::_, ::testing::_, ::testing::_, ::testing::_))
+      .WillOnce(::testing::DoAll(::testing::SaveArg<3>(&written), ::testing::Return()));
+
+  const std::string result_body = "child result";
+  receiver->Deliver(std::as_bytes(std::span(result_body)), true);
+
+  std::vector<io::TlvFrame> frames;
+  io::TlvParser parser([&frames](io::TlvFrame f) { frames.push_back(f); });
+  auto read_buf = parser.GetReadBuffer();
+  std::memcpy(read_buf.data(), written.data(), written.size());
+  parser.OnData(written.size());
+  ASSERT_EQ(frames.size(), 1U);
+  EXPECT_EQ(frames[0].type_id, io::TlvFrame::kResult);
+  task::TaskResult result_out;
+  ASSERT_TRUE(result_out.ParseFromArray(std::bit_cast<const char*>(frames[0].value.data()),
+                                        static_cast<int>(frames[0].value.size())));
+  EXPECT_EQ(result_out.id(), "child-1");
+  EXPECT_EQ(result_out.body(), "child result");
+  EXPECT_TRUE(result_out.is_final());
+}
+
+TEST_F(SchedulerRouterTest, InboundChildSubmissionWritesRejectedBackWhenNoMatch) {
+  auto directory = MakeConnectedDirectory({"A"});
+  auto* echo = new StubScheduler("push");
+  auto router = MakeRouter(storage_, Routed("echo", extensions::SchedulerPtr(echo)));
+
+  auto* conn = directory->GetNode("A")->GetConnection();
+  ASSERT_NE(conn, nullptr);
+
+  task::Task task = MakeTask("child-1", "no_such_type");
+  std::string serialized;
+  ASSERT_TRUE(task.SerializeToString(&serialized));
+  io::TlvFrame frame{
+      .type_id = io::TlvFrame::kTaskSubmission,
+      .value = std::as_bytes(std::span(serialized.data(), serialized.size()))};
+
+  // The router's Schedule path unregisters the node-connection receiver — a
+  // kTaskRejected frame is written back over the submitting connection.
+  std::span<const std::byte> written;
+  EXPECT_CALL(*dispatcher_,
+              PrepareWrite(::testing::_, ::testing::_, ::testing::_, ::testing::_, ::testing::_))
+      .WillOnce(::testing::DoAll(::testing::SaveArg<3>(&written), ::testing::Return()));
+
+  auto status = router->HandleFrame(frame, *conn);
+  EXPECT_TRUE(status.ok());
+
+  // The receiver entry was erased once the error went out.
+  EXPECT_EQ(storage_.Get("child-1"), nullptr);
+  EXPECT_TRUE(echo->scheduled_types_.empty());
+
+  std::vector<io::TlvFrame> frames;
+  io::TlvParser parser([&frames](io::TlvFrame f) { frames.push_back(f); });
+  auto read_buf = parser.GetReadBuffer();
+  std::memcpy(read_buf.data(), written.data(), written.size());
+  parser.OnData(written.size());
+  ASSERT_EQ(frames.size(), 1U);
+  EXPECT_EQ(frames[0].type_id, io::TlvFrame::kTaskRejected);
+  task::TaskRejected rejected;
+  ASSERT_TRUE(rejected.ParseFromArray(std::bit_cast<const char*>(frames[0].value.data()),
+                                      static_cast<int>(frames[0].value.size())));
+  EXPECT_EQ(rejected.id(), "child-1");
+  EXPECT_NE(rejected.reason().find("no scheduler configured"), std::string::npos);
+}
+
+TEST_F(SchedulerRouterTest, InboundChildSubmissionErrorOnConstituentReject) {
+  auto directory = MakeConnectedDirectory({"A"});
+  auto* echo = new StubScheduler("push");
+  auto router = MakeRouter(storage_, Routed("echo", extensions::SchedulerPtr(echo)));
+
+  auto* conn = directory->GetNode("A")->GetConnection();
+  ASSERT_NE(conn, nullptr);
+
+  task::Task task = MakeTask("child-1", "echo");
+  std::string serialized;
+  ASSERT_TRUE(task.SerializeToString(&serialized));
+  io::TlvFrame frame{
+      .type_id = io::TlvFrame::kTaskSubmission,
+      .value = std::as_bytes(std::span(serialized.data(), serialized.size()))};
+
+  std::span<const std::byte> written;
+  EXPECT_CALL(*dispatcher_,
+              PrepareWrite(::testing::_, ::testing::_, ::testing::_, ::testing::_, ::testing::_))
+      .WillOnce(::testing::DoAll(::testing::SaveArg<3>(&written), ::testing::Return()));
+
+  // The StubScheduler holds the forwarding receiver; deliver an error on it to
+  // prove the node-connection receiver gets the rejection and is erased.
+  auto status = router->HandleFrame(frame, *conn);
+  EXPECT_TRUE(status.ok());
+  ASSERT_EQ(echo->held_receivers_.size(), 1U);
+  echo->held_receivers_[0]->DeliverError("capacity exhausted");
+
+  EXPECT_EQ(storage_.Get("child-1"), nullptr);
+
+  std::vector<io::TlvFrame> frames;
+  io::TlvParser parser([&frames](io::TlvFrame f) { frames.push_back(f); });
+  auto read_buf = parser.GetReadBuffer();
+  std::memcpy(read_buf.data(), written.data(), written.size());
+  parser.OnData(written.size());
+  ASSERT_EQ(frames.size(), 1U);
+  EXPECT_EQ(frames[0].type_id, io::TlvFrame::kTaskRejected);
+  task::TaskRejected rejected;
+  ASSERT_TRUE(rejected.ParseFromArray(std::bit_cast<const char*>(frames[0].value.data()),
+                                      static_cast<int>(frames[0].value.size())));
+  EXPECT_EQ(rejected.id(), "child-1");
+  EXPECT_EQ(rejected.reason(), "capacity exhausted");
+}
+
+TEST_F(SchedulerRouterTest, InboundChildSubmissionRejectsNonNodeConnection) {
+  auto* echo = new StubScheduler("push");
+  auto router = MakeRouter(storage_, Routed("echo", extensions::SchedulerPtr(echo)));
+
+  std::array<int, 2> fds{};
+  ASSERT_EQ(0, socketpair(AF_UNIX, SOCK_STREAM, 0, fds.data()));
+  event::DummyOwner owner;
+  EXPECT_CALL(*dispatcher_,
+              PrepareRead(::testing::_, ::testing::_, ::testing::_, ::testing::_, ::testing::_))
+      .WillOnce(::testing::Return());
+  io::Connection conn(fds[0], dispatcher_, &owner,
+                      [](io::Connection&) -> io::ProtocolParserPtr {
+                        return std::make_unique<io::TrivialParser>();
+                      });
+
+  task::Task task = MakeTask("child-1", "echo");
+  std::string serialized;
+  ASSERT_TRUE(task.SerializeToString(&serialized));
+  io::TlvFrame frame{
+      .type_id = io::TlvFrame::kTaskSubmission,
+      .value = std::as_bytes(std::span(serialized.data(), serialized.size()))};
+
+  auto status = router->HandleFrame(frame, conn);
+  EXPECT_FALSE(status.ok());
+  EXPECT_TRUE(storage_.Empty());
+
+  close(fds[0]);
+  close(fds[1]);
+}
+
+TEST_F(SchedulerRouterTest, InboundChildSubmissionRejectsMalformedTask) {
+  auto directory = MakeConnectedDirectory({"A"});
+  auto* echo = new StubScheduler("push");
+  auto router = MakeRouter(storage_, Routed("echo", extensions::SchedulerPtr(echo)));
+
+  auto* conn = directory->GetNode("A")->GetConnection();
+  ASSERT_NE(conn, nullptr);
+
+  std::array<std::byte, 4> garbage{std::byte{0xDE}, std::byte{0xAD}, std::byte{0xBE}, std::byte{0xEF}};
+  io::TlvFrame frame{.type_id = io::TlvFrame::kTaskSubmission, .value = garbage};
+
+  auto status = router->HandleFrame(frame, *conn);
+  EXPECT_FALSE(status.ok());
+  EXPECT_TRUE(storage_.Empty());
+  EXPECT_TRUE(echo->scheduled_types_.empty());
 }
 
 // NOLINTEND(modernize-use-trailing-return-type)

@@ -3,23 +3,24 @@
 #include <memory>
 #include <span>
 #include <string_view>
+#include <utility>
 
 #include "absl/status/status.h"
 #include "common/core/io/connection.hh"
 #include "common/core/io/tlv_frame.hh"
 #include "common/core/logging/log.hh"
 #include "common/task/task.pb.h"
+#include "nodeagent/core/child_submission_service.hh"
 #include "nodeagent/extensions/schedulers/push/push.pb.h"
 #include "strij/extensions/extension_registry.hh"
 #include "strij/extensions/scheduler.hh"
 
 namespace strij::nodeagent::schedulers {
 
-void PushLocalScheduler::Schedule(const task::Task& /*task*/, gateway::ResultReceiverPtr receiver) {
-  // The push protocol never schedules outbound: gateways pick nodes, a node
-  // cannot push tasks elsewhere. Resolve the receiver (which could otherwise
-  // hang) so a hypothetical caller can never leak it.
-  receiver->DeliverError("push is a local-only scheduler; it never schedules outbound tasks");
+void PushLocalScheduler::Schedule(const task::Task& task, gateway::ResultReceiverPtr receiver) {
+  // The push protocol's node-local Schedule facet delegates to the shared
+  // child-policy step: register, admit-or-forward, run locally when admitted.
+  child_submission_service_.Submit(task, std::move(receiver));
 }
 
 auto PushLocalScheduler::RequiredProtocol() const -> std::string_view { return "push"; }
@@ -48,7 +49,8 @@ auto PushLocalSchedulerFactory::CreateEmptyConfigProto() -> MessagePtr {
 auto PushLocalSchedulerFactory::Create(const ::google::protobuf::Message& /*config*/,
                                        extensions::NodeagentFactoryContext& context)
     -> extensions::SchedulerPtr {
-  return std::make_unique<PushLocalScheduler>(context.RunTaskService());
+  return std::make_unique<PushLocalScheduler>(context.RunTaskService(),
+                                              context.ChildSubmissionService());
 }
 
 } // namespace strij::nodeagent::schedulers

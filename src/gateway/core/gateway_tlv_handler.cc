@@ -32,9 +32,10 @@ auto GatewayTlvHandler::HandleFrame(const io::TlvFrame& frame, io::Connection& c
     return absl::OkStatus();
   default:
     // Frame-routing seam: a frame type the built-in cases don't own is the
-    // configured scheduler's to handle. The scheduler returns the Status — the
-    // router reports NotFound when no constituent claims the type. In v1 the
-    // router claims no types, so every frame reaching here is dropped.
+    // scheduler's to handle. The scheduler returns the Status — the router
+    // reports NotFound when no constituent claims the type. The router owns
+    // the kTaskSubmission claim (upstream child routing), so a nodeagent
+    // child submission reaching here is routed by the router.
     if (scheduler_ == nullptr) {
       return absl::InvalidArgumentError(std::format("Unknown TLV type_id: {}", frame.type_id));
     }

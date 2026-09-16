@@ -103,7 +103,8 @@ auto BuildNodeCapabilities(const config::NodeAgentConfig& config, const std::str
   // deduplicated protocol union is what gateway-side schedulers match nodes on.
   std::set<std::string> protocols;
   auto& scheduler_registry = extensions::Registry<nodeagent::NodeSchedulerFactory>::instance();
-  for (const auto& ext : config.schedulers()) {
+  for (const auto& scheduler_config : config.schedulers()) {
+    const auto& ext = scheduler_config.extension();
     auto* factory = scheduler_registry.GetFactory(ext.name());
     if (factory == nullptr) {
       return absl::InvalidArgumentError(absl::StrCat(

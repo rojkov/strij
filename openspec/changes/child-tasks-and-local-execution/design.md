@@ -80,8 +80,8 @@ Receiver lifetime: the registry entry died with the parent (handler-erased on it
 
 A node `GatewayClient` (enters `NodeagentFactoryContext`) is the node's only outbound capability and supports the *forward* half of the child policy:
 
-- The node's `TcpListener` registers every accepted connection with the `GatewayClient` (currently all inbound peers are gateways by construction). `Submit(task, receiver)` round-robins over the live registered connections and writes an upstream `kTaskSubmission` frame on one of them.
-- When no live connection exists, it dials a configured address from `NodeAgentConfig.gateway_client.addresses` (async `PrepareConnect`; the submission is queued until the connection completes), falling back across addresses and finally delivering an error to the parent receiver when none is reachable.
+- The node's `TcpListener` registers every accepted connection with the `GatewayClient` (currently all inbound peers are gateways by construction). `Forward(task)` round-robins over the live registered connections and writes an upstream `kTaskSubmission` frame on one of them.
+- When no live connection exists, `Forward` returns a non-Ok status; the child-policy step turns that into a `DeliverError` to the parent receiver so the parent never hangs. (Outbound dial fallback across `gateway_client.addresses` is deferred: the section is additive config only for now.)
 - The child's result arrives back on the same connection (gateway → node `kResult`), regardless of which connection carried the upstream submission.
 
 ```
@@ -115,7 +115,7 @@ NodeAgentConfig.schedulers    → repeated NodeSchedulerConfig {
 NodeAgentConfig.gateway_client → { repeated String addresses; }
 ```
 
-The scheduler entry shape change is a **breaking** nodeagent config change (no legacy `ExtensionConfig`-shaped loading). It is a distinct `NodeSchedulerConfig` message, NOT a reuse of the gateway `SchedulerConfig`, because `task_type` means "local authority" here (empty ≠ default) and the explicit `local_default` marker has no gateway analogue. `gateway_client` is additive. With no `gateway_client.addresses` configured, forwarding still works over live connections but silent-dials nothing when none are live. A node whose entries declare no local roles cannot originate tasks (its `Schedule`/submit path always errors).
+The scheduler entry shape change is a **breaking** nodeagent config change (no legacy `ExtensionConfig`-shaped loading). It is a distinct `NodeSchedulerConfig` message, NOT a reuse of the gateway `SchedulerConfig`, because `task_type` means "local authority" here (empty ≠ default) and the explicit `local_default` marker has no gateway analogue. `gateway_client` is additive; with no `gateway_client.addresses` configured (or none configured at all), forwarding still works over live connections and errors when none are live. A node whose entries declare no local roles cannot originate tasks (its `Schedule`/submit path always errors).
 
 ## Sequence diagrams
 

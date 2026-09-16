@@ -14,7 +14,17 @@ message NodeAgentConfig {
   repeated strij.node.PoolReservation reservations = 8;
   google.protobuf.Duration heartbeat_interval = 10;
   repeated ExtensionConfig task_handlers = 6;
-  repeated ExtensionConfig schedulers = 9 [(strij.config.required) = true];
+  // Required (at least one): the local scheduling protocols this node
+  // implements. Each entry is a NodeSchedulerConfig naming a registered
+  // NodeSchedulerFactory and declaring its local scheduling authority (see
+  // NodeSchedulerConfig). The node fails to start when unset, when a name is
+  // not registered, on duplicate non-empty task_type claims, or with more than
+  // one local_default.
+  repeated NodeSchedulerConfig schedulers = 9 [(strij.config.required) = true];
+  // Opt-in outbound gateway endpoints for the child-forward path. Absent or
+  // empty = forwarding operates over live gateway connections only; without a
+  // live connection an unadmitted child is delivered an error. Additive.
+  GatewayClientConfig gateway_client = 14;
   // Opt-in data dependency prefetching. Each entry is a standard
   // ExtensionConfig naming a DataDependencyFetcherFactory (e.g. "ray",
   // "http"); the union of their HandledSourceTypes() must be disjoint.
@@ -46,4 +56,22 @@ message TlvListener {
   // uint32 max_connections = 3;
   // bool reuse_port = 4;
   // uint32 read_buffer_size = 5;
+}
+
+// One local scheduler instance. Unlike the gateway SchedulerConfig, an empty
+// task_type is NOT a default — only an explicit local_default=true marks the
+// fallback authority for locally-originated tasks. An entry with neither
+// declaration schedules no locally-originated tasks (pure wire-protocol
+// counterpart).
+message NodeSchedulerConfig {
+  ExtensionConfig extension = 1;
+  string task_type = 2;     // optional local authority over this type
+  bool local_default = 3;   // at most one entry; fallback for locally-originated tasks
+}
+
+// Outbound gateway endpoints for the child-forward path.
+message GatewayClientConfig {
+  // Each entry must be a non-empty endpoint (host:port). Never dialed in this
+  // phase; kept additive for the forward path.
+  repeated string addresses = 1 [(strij.config.pattern) = ".+"];
 }

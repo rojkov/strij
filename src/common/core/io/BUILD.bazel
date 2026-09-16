@@ -45,17 +45,19 @@ strij_cc_library(
 )
 
 strij_cc_library(
+    name = "outbound_mailbox_lib",
+    srcs = ["outbound_mailbox.cc"],
+    hdrs = ["outbound_mailbox.hh"],
+    visibility = ["//visibility:public"],
+)
+
+strij_cc_library(
     name = "connection_lib",
-    srcs = [
-        "connection.cc",
-        "outbound_mailbox.cc",
-    ],
-    hdrs = [
-        "connection.hh",
-        "outbound_mailbox.hh",
-    ],
+    srcs = ["connection.cc"],
+    hdrs = ["connection.hh"],
     visibility = ["//visibility:public"],
     deps = [
+        ":outbound_mailbox_lib",
         ":protocol_parser",
         "//include/strij/event:command_handler_interface",
         "//include/strij/event:completable_interface",

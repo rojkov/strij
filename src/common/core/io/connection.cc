@@ -3,6 +3,7 @@
 #include <unistd.h>
 
 #include <cassert>
+#include <utility>
 
 #include "common/core/logging/log.hh"
 
@@ -11,7 +12,8 @@ namespace strij::io {
 Connection::Connection(int connection_fd, event::DispatcherSharedPtr dispatcher,
                        event::CommandHandler* owner, const ConnectionFactory& factory)
     : fd_{connection_fd}, dispatcher_{std::move(dispatcher)}, owner_{owner},
-      mailbox_{std::make_shared<OutboundMailbox>(*this)} {
+      mailbox_{std::make_shared<OutboundMailbox>(
+          [this](std::vector<std::byte> frame) { Write(std::move(frame)); })} {
   parser_ = factory(*this);
   dispatcher_->PrepareRead(this, kRead, fd_, parser_->GetReadBuffer(), 0);
 }

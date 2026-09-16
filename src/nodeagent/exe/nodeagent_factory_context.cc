@@ -40,6 +40,15 @@ auto NodeagentFactoryContextImpl::DataDependencyFetcherRouter()
   return *data_dependency_fetcher_router_;
 }
 
+auto NodeagentFactoryContextImpl::ChildSubmissionService()
+    -> nodeagent::ChildSubmissionService& {
+  return *child_submission_service_;
+}
+
+auto NodeagentFactoryContextImpl::ChildTaskSubmitter() -> nodeagent::ChildTaskSubmitter& {
+  return *child_task_submitter_;
+}
+
 void NodeagentFactoryContextImpl::SetRunTaskService(nodeagent::RunTaskService& run_task_service) {
   run_task_service_ = &run_task_service;
 }
@@ -47,6 +56,16 @@ void NodeagentFactoryContextImpl::SetRunTaskService(nodeagent::RunTaskService& r
 void NodeagentFactoryContextImpl::SetDataDependencyFetcherRouter(
     nodeagent::DataDependencyFetcherRouter& data_dependency_fetcher_router) {
   data_dependency_fetcher_router_ = &data_dependency_fetcher_router;
+}
+
+void NodeagentFactoryContextImpl::SetChildSubmissionService(
+    nodeagent::ChildSubmissionService& child_submission_service) {
+  child_submission_service_ = &child_submission_service;
+}
+
+void NodeagentFactoryContextImpl::SetChildTaskSubmitter(
+    nodeagent::ChildTaskSubmitter& child_task_submitter) {
+  child_task_submitter_ = &child_task_submitter;
 }
 
 } // namespace strij::nodeagent

@@ -7,6 +7,8 @@ strij_cc_test_library(
         "//api/common/task:task_cc_proto",
         "//include/strij/extensions:data_dependency_fetcher_interface",
         "//include/strij/extensions:factory_context_lib",
+        "//include/strij/nodeagent:child_task_submitter",
+        "//src/nodeagent/core:child_submission_service_lib",
         "//src/nodeagent/extensions/task_handlers:task_handlers_interface",
     ],
 )

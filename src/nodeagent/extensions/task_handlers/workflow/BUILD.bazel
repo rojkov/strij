@@ -1,0 +1,19 @@
+load("//bazel:build_system.bzl", "strij_cc_library")
+
+strij_cc_library(
+    name = "workflow_task_handler_lib",
+    srcs = ["workflow_task_handler.cc"],
+    hdrs = ["workflow_task_handler.hh"],
+    visibility = [
+        "//src/nodeagent/exe:__pkg__",
+        "//test:__subpackages__",
+    ],
+    deps = [
+        "//api/nodeagent/extensions/task_handlers/workflow:workflow_cc_proto",
+        "//include/strij/gateway:result_receiver_storage_interface",
+        "//include/strij/nodeagent:child_task_submitter",
+        "//src/common/core/utils:task_id_lib",
+        "//src/nodeagent/extensions/task_handlers:task_handlers_interface",
+    ],
+    alwayslink = True,
+)
