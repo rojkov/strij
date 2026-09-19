@@ -8,7 +8,7 @@ strij_cc_test_library(
         "//include/strij/extensions:data_dependency_fetcher_interface",
         "//include/strij/extensions:factory_context_lib",
         "//include/strij/nodeagent:child_task_submitter",
-        "//src/nodeagent/core:child_forwarder_lib",
+        "//src/nodeagent/core:child_task_forwarder_lib",
         "//src/nodeagent/extensions/task_handlers:task_handlers_interface",
     ],
 )

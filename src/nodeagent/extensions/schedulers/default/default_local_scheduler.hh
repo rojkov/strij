@@ -10,7 +10,7 @@
 #include "common/core/io/connection.hh"
 #include "common/core/io/tlv_frame.hh"
 #include "common/task/task.pb.h"
-#include "nodeagent/core/child_forwarder.hh"
+#include "nodeagent/core/child_task_forwarder.hh"
 #include "nodeagent/core/local_result_receiver_storage.hh"
 #include "strij/extensions/scheduler.hh"
 #include "strij/gateway/result_receiver_storage.hh"
@@ -50,7 +50,7 @@ public:
   // without one, delivered-deficient children error locally.
   DefaultLocalScheduler(nodeagent::RunTaskService& run_task_service,
                         nodeagent::AdmissionControllerSharedPtr admission,
-                        nodeagent::ChildForwarder* forward);
+                        nodeagent::ChildTaskForwarder* forward);
   ~DefaultLocalScheduler() override = default;
 
   DefaultLocalScheduler(const DefaultLocalScheduler&) = delete;
@@ -77,14 +77,14 @@ public:
 private:
   auto handleResultFrame(const io::TlvFrame& frame) -> absl::Status;
   auto handleRejectedFrame(const io::TlvFrame& frame) -> absl::Status;
-  // Forwards via the configured ChildForwarder; with none (or a failed
+  // Forwards via the configured ChildTaskForwarder; with none (or a failed
   // forward), delivers an error to the registered receiver and erases the
   // entry so the parent never hangs.
   void forwardOrError(const task::Task& task, const std::string& child_id);
 
   nodeagent::RunTaskService& run_task_service_;
   nodeagent::AdmissionControllerSharedPtr admission_;
-  nodeagent::ChildForwarder* forward_;
+  nodeagent::ChildTaskForwarder* forward_;
 
   LocalResultReceiverStorage storage_;
 };

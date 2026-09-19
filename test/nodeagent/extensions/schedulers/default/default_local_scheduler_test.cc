@@ -17,7 +17,7 @@
 #include "common/node/capabilities.pb.h"
 #include "common/task/task.pb.h"
 #include "nodeagent/core/admission_controller.hh"
-#include "nodeagent/core/child_forwarder.hh"
+#include "nodeagent/core/child_task_forwarder.hh"
 #include "nodeagent/core/run_task_service.hh"
 #include "nodeagent/core/task_handler_manager.hh"
 #include "nodeagent/extensions/schedulers/default/default_local_scheduler.hh"
@@ -52,9 +52,9 @@ public:
   void DeliverError(std::string_view reason) override { log->error = std::string(reason); }
 };
 
-// Recording ChildForwarder stub: records each Forward and returns a
+// Recording ChildTaskForwarder stub: records each Forward and returns a
 // configurable status.
-class StubForwarder final : public ChildForwarder {
+class StubForwarder final : public ChildTaskForwarder {
 public:
   absl::Status status = absl::OkStatus();
   int calls{0};
@@ -342,7 +342,7 @@ TEST_F(DefaultLocalSchedulerTest, FactoryCreateBuildsSchedulerFromContextService
   extensions::MockNodeagentFactoryContext context;
   EXPECT_CALL(context, RunTaskService()).WillRepeatedly(::testing::ReturnRef(run_task_service));
   EXPECT_CALL(context, AdmissionController()).WillRepeatedly(::testing::Return(admission));
-  EXPECT_CALL(context, ChildForwarder()).WillRepeatedly(::testing::ReturnRef(forwarder));
+  EXPECT_CALL(context, ChildTaskForwarder()).WillRepeatedly(::testing::ReturnRef(forwarder));
 
   nodeagent::schedulers::DefaultLocalSchedulerFactory factory;
   EXPECT_EQ(factory.Name(), "default");

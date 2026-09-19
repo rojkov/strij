@@ -21,7 +21,7 @@ public:
                               nodeagent::FunctionResolverPtr function_resolver,
                               AdmissionControllerSharedPtr admission,
                               ObjectCacheSharedPtr object_cache,
-                              nodeagent::ChildForwarder& child_forwarder);
+                              nodeagent::ChildTaskForwarder& child_task_forwarder);
 
   auto Dispatcher() -> event::Dispatcher& override;
   auto SharedDispatcher() -> event::DispatcherSharedPtr override;
@@ -31,7 +31,7 @@ public:
   auto RunTaskService() -> nodeagent::RunTaskService& override;
   auto ObjectCache() -> nodeagent::ObjectCache& override;
   auto DataDependencyFetcherRouter() -> nodeagent::DataDependencyFetcherRouter& override;
-  auto ChildForwarder() -> nodeagent::ChildForwarder& override;
+  auto ChildTaskForwarder() -> nodeagent::ChildTaskForwarder& override;
   auto ChildTaskSubmitter() -> nodeagent::ChildTaskSubmitter& override;
 
   void SetRunTaskService(nodeagent::RunTaskService& run_task_service);
@@ -46,7 +46,7 @@ private:
   ObjectCacheSharedPtr object_cache_;
   nodeagent::RunTaskService* run_task_service_{nullptr};
   nodeagent::DataDependencyFetcherRouter* data_dependency_fetcher_router_{nullptr};
-  nodeagent::ChildForwarder* child_forwarder_;
+  nodeagent::ChildTaskForwarder* child_task_forwarder_;
   nodeagent::ChildTaskSubmitter* child_task_submitter_{nullptr};
 };
 

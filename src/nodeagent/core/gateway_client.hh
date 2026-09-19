@@ -7,7 +7,7 @@
 
 #include "absl/status/status.h"
 #include "common/task/task.pb.h"
-#include "nodeagent/core/child_forwarder.hh"
+#include "nodeagent/core/child_task_forwarder.hh"
 
 namespace strij::io {
 class OutboundMailbox;
@@ -18,7 +18,7 @@ namespace strij::nodeagent {
 // Node-global forwarder for child tasks that cannot be satisfied locally.
 // Manages a pool of outbound gateway connections (registered via
 // RegisterConnection) and round-robins kTaskSubmission frames across them.
-class GatewayClient final : public ChildForwarder {
+class GatewayClient final : public ChildTaskForwarder {
 public:
   GatewayClient() = default;
   ~GatewayClient() override = default;
@@ -27,7 +27,7 @@ public:
   GatewayClient(GatewayClient&&) noexcept = delete;
   auto operator=(GatewayClient&&) noexcept -> GatewayClient& = delete;
 
-  // ChildForwarder interface: forwards the task to a live gateway connection.
+  // ChildTaskForwarder interface: forwards the task to a live gateway connection.
   // Returns a non-Ok status when no live connection is available.
   auto Forward(const task::Task& task) -> absl::Status override;
 

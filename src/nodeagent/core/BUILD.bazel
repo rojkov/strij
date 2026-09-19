@@ -164,7 +164,7 @@ strij_cc_library(
     hdrs = ["gateway_client.hh"],
     visibility = ["//visibility:public"],
     deps = [
-        ":child_forwarder_lib",
+        ":child_task_forwarder_lib",
         "//api/common/task:task_cc_proto",
         "//include/strij/nodeagent:child_task_submitter",
         "//src/common/core/io:connection_lib",
@@ -210,8 +210,8 @@ strij_cc_library(
 )
 
 strij_cc_library(
-    name = "child_forwarder_lib",
-    hdrs = ["child_forwarder.hh"],
+    name = "child_task_forwarder_lib",
+    hdrs = ["child_task_forwarder.hh"],
     visibility = ["//visibility:public"],
     deps = [
         "//api/common/task:task_cc_proto",

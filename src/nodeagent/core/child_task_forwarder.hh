@@ -10,15 +10,15 @@ namespace strij::nodeagent {
 // (the bundled "default" scheduler's child-policy step). Implemented by the
 // node's GatewayClient: forwards a child that cannot be satisfied locally to a
 // gateway over a live connection.
-class ChildForwarder {
+class ChildTaskForwarder {
 public:
-  ChildForwarder() = default;
-  virtual ~ChildForwarder() = default;
+  ChildTaskForwarder() = default;
+  virtual ~ChildTaskForwarder() = default;
 
-  ChildForwarder(const ChildForwarder&) = delete;
-  auto operator=(const ChildForwarder&) -> ChildForwarder& = delete;
-  ChildForwarder(ChildForwarder&&) noexcept = delete;
-  auto operator=(ChildForwarder&&) noexcept -> ChildForwarder& = delete;
+  ChildTaskForwarder(const ChildTaskForwarder&) = delete;
+  auto operator=(const ChildTaskForwarder&) -> ChildTaskForwarder& = delete;
+  ChildTaskForwarder(ChildTaskForwarder&&) noexcept = delete;
+  auto operator=(ChildTaskForwarder&&) noexcept -> ChildTaskForwarder& = delete;
 
   // Forwards `task` to a gateway by writing an upstream kTaskSubmission frame.
   // Ownership of the receiver is NOT taken here — it stays registered in the

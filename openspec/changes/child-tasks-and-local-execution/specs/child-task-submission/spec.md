@@ -57,7 +57,7 @@ The nodeagent SHALL route child-task submissions by `task.type()` through a chil
 
 ### Requirement: Single local authority implements child execution policy
 
-The node's child-task policy *run locally if capacity allows, else forward* SHALL be implemented by exactly one scheduler: the bundled `default` scheduler (`node-local-scheduler`). Its `Schedule` SHALL register the child's receiver in its own `LocalResultReceiverStorage`, then attempt admission via the shared `AdmissionController`; on success it SHALL run the child locally with a receiver-backed result sender; on admission failure (or an unhandled child type) it SHALL forward the child through the node's `ChildForwarder` (`gateway-client`), or deliver an error when no forward path is available. The child path SHALL NOT use probe scheduling: children are local by construction and never enter a probe queue. The `push` and `probe` schedulers' `Schedule` facets SHALL be Unimplemented (log + `DeliverError`).
+The node's child-task policy *run locally if capacity allows, else forward* SHALL be implemented by exactly one scheduler: the bundled `default` scheduler (`node-local-scheduler`). Its `Schedule` SHALL register the child's receiver in its own `LocalResultReceiverStorage`, then attempt admission via the shared `AdmissionController`; on success it SHALL run the child locally with a receiver-backed result sender; on admission failure (or an unhandled child type) it SHALL forward the child through the node's `ChildTaskForwarder` (`gateway-client`), or deliver an error when no forward path is available. The child path SHALL NOT use probe scheduling: children are local by construction and never enter a probe queue. The `push` and `probe` schedulers' `Schedule` facets SHALL be Unimplemented (log + `DeliverError`).
 
 #### Scenario: Admitted child runs locally
 
@@ -68,7 +68,7 @@ The node's child-task policy *run locally if capacity allows, else forward* SHAL
 #### Scenario: Unadmitted child is forwarded
 
 - **WHEN** a child is submitted and admission fails (e.g. node capacity exhausted)
-- **THEN** the child SHALL be submitted upstream through the `ChildForwarder`
+- **THEN** the child SHALL be submitted upstream through the `ChildTaskForwarder`
 - **AND** the parent's receiver SHALL be kept until the remote outcome arrives
 
 #### Scenario: Children never enter the probe queue
