@@ -31,7 +31,7 @@ strij_cc_library(
         "//src/common/extensions:scheduler_loader_lib",
         "//src/nodeagent/core:admission_controller_lib",
         "//src/nodeagent/core:capabilities_lib",
-        "//src/nodeagent/core:child_scheduler_router_lib",
+        "//src/nodeagent/core:nodeagent_scheduler_router_lib",
         "//src/nodeagent/core:data_dependency_fetcher_router_lib",
         "//src/nodeagent/core:function_resolver_lib",
         "//src/nodeagent/core:gateway_client_lib",

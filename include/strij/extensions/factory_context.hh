@@ -74,7 +74,7 @@ public:
   // schedulers are created.
   virtual auto ChildForwarder() -> nodeagent::ChildForwarder& PURE;
   // The node-global child submission handle wrapping the composite
-  // ChildSchedulerRouter. Installed after the local schedulers are built.
+  // NodeagentSchedulerRouter. Installed after the local schedulers are built.
   virtual auto ChildTaskSubmitter() -> nodeagent::ChildTaskSubmitter& PURE;
 };
 

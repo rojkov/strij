@@ -15,8 +15,8 @@ Existing infrastructure this change leans on:
 
 **Goals:**
 - Activate the node's `Schedule` facet for child tasks with one shared submission handle; keep `HandleTask` and `RunTask` free of the submitter (the locked interface decision).
-- A local child runs on the node when capacity allows, delivering results to a node-local receiver registry; otherwise it is forwarded to a gateway and its results return via the two-hop path.
-- The parent cannot distinguish local from remote execution ("local vs remote is indistinguishable to the parent").
+- A locally originated child task runs on the node when capacity allows, delivering results to a node-local receiver registry; otherwise it is forwarded to a gateway and its results return via the two-hop path.
+- The parent task cannot distinguish local from remote execution ("local vs remote is indistinguishable to the parent").
 - No wire-protocol change: upstream children reuse `kTaskSubmission`; outcomes reuse `kResult` / `kTaskRejected`.
 - Node-side config declares local scheduling authority explicitly (`task_type` claims + a single `local_default`), deliberately diverging from the gateway's empty-means-default shape; a `gateway_client` section configures egress.
 
@@ -38,17 +38,17 @@ This also removes a dependency knot the ctx-struct alternative would have create
 - *Alternative considered*: optional second virtual (`HandleTaskCtx`) implemented only by workflow handlers. Rejected: `RunTaskService` would need a dynamic capability probe per task; two parallel invocation paths.
 - *Note*: future per-submission hints (e.g. locality) are arguments on the submitter, not a different handle.
 
-### D2: One node-side child router; per-type authority with the bundled `default` local authority
+### D2: One node-side child task router; per-type authority with the bundled `default` local authority
 
-Node-side local schedulers are primarily wire-protocol counterparts to the gateway schedulers (their frame handling — `kTaskSubmission`, probe frames). Their node-local `Schedule` facet is a separate concern, so the node's entry shape deliberately **diverges from the gateway's**: a `task_type` and a "local default" are explicit and independent declarations, not an empty-`task_type`-means-default encoding.
+Node-side local schedulers are primarily wire-protocol counterparts to the gateway schedulers (their frame handling — `kTaskSubmission`, probe frames). Their node-local `Schedule` facet is a separate concern, so the shape of a `schedulers` config entry deliberately **diverges from the gateway's**: a `task_type` and a "local default" are explicit and independent declarations, not an empty-`task_type`-means-default encoding.
 
-- `task_type` (optional) — the entry is authoritative over locally-originated tasks of that type.
-- `local_default` (optional bool, at most one entry) — the entry is the node's fallback authority for locally-originated tasks no other entry claims.
-- neither — the entry schedules **no** locally-originated tasks at all (pure wire-protocol counterpart). An empty `task_type` on the node does NOT select a default.
+- `task_type` (optional) — the local scheduler is authoritative over locally-originated tasks of that type.
+- `local_default` (optional bool, at most one local scheduler) — the local scheduler is the node's fallback authority for locally-originated tasks no other local scheduler claims.
+- neither — the local scheduler schedules **no** locally-originated tasks at all (pure wire-protocol counterpart). An empty `task_type` on the node does NOT select a default.
 
-A node-side `ChildSchedulerRouter` (implementing `extensions::Scheduler`, and the single submission handle a workflow handler holds) dispatches `Schedule(child, receiver)` by `child.type()` to the declaring entry, falls back to the single `local_default` entry, and delivers an error when no entry claims the type and no local default is declared. This reconciles the archived plan's two statements ("a single submission scheduler — the node's capacity authority" vs "child tasks route to the scheduler owning that type"): **the router is the single submission handle; routing is by declared authority; the explicitly-marked local default owns the fallback.**
+A node-side `NodeagentSchedulerRouter` (implementing `extensions::Scheduler`, and the single submission handle a workflow handler holds) dispatches `Schedule(child, receiver)` by `child.type()` to the declaring local scheduler, falls back to the single local scheduler marked `local_default`, and delivers an error when no local scheduler claims the type and no local default is declared. This reconciles the archived plan's two statements ("a single submission scheduler — the node's capacity authority" vs "child tasks route to the scheduler owning that type"): **the router is the single submission handle; routing is by declared authority; the explicitly-marked local default owns the fallback.**
 
-The child policy lives in **one place**: the bundled `default` scheduler (`DefaultLocalScheduler`, factory name `"default"`), whose entry is configured with `local_default: true`. Its `Schedule` is the admit-or-forward step: register the receiver in its own `LocalReceiverRegistry` first, then *try to admit locally; if admitted, run locally; else forward*. The push/probe schedulers' `Schedule` facets are **Unimplemented** — they log a warning and deliver an error through the receiver (never hang), because a node must not carry two competing local authorities. `probe`'s child path specifically does **not** queue: a child is local, so the probe dance is pointless; `probe` remains a pure wire-protocol counterpart.
+The child policy lives in **one place**: the bundled `default` scheduler (`DefaultLocalScheduler`, factory name `"default"`), whose config entry is configured with `local_default: true`. Its `Schedule` is the admit-or-forward step: register the receiver in its own `LocalReceiverRegistry` first, then *try to admit locally; if admitted, run locally; else forward*. The push/probe schedulers' `Schedule` facets are **Unimplemented** — they log a warning and deliver an error through the receiver (never hang), because a node must not carry two competing local authorities. `probe`'s child path specifically does **not** queue: a child is local, so the probe dance is pointless; `probe` remains a pure wire-protocol counterpart.
 
 ### D3: Local child run — sender-backed `RunTask` overloads
 
@@ -73,7 +73,7 @@ parent handler          child router            default scheduler
 
 ### D4: Local receiver registry + child-outcome frames owned by the default scheduler
 
-A node-side `LocalReceiverRegistry` mirrors `gateway::ResultReceiverStorage`: `Put(task_id, ReceiverPtr)`, `Get(task_id)`, `Erase(task_id)`, `Size/Empty`. Unlike the gateway — where the `SchedulerRouter` owns `kTaskSubmission` and `ResultReceiverStorage` lives in the core — the node's child-outcome routing is a *scheduling* concern owned by the bundled `default` scheduler: it holds the registry privately and claims **both** `kResult` and `kTaskRejected` in its `HandledFrameTypes()`. The `ChildSchedulerRouter` is the frame demux (mirroring the gateway `SchedulerRouter`): `NodeagentTlvHandler` keeps only the core `kNodeAdvertisement` write and a default seam that routes every other frame into `router.HandleFrame(frame, conn)`; the router's `findFrameOwner` dispatches by `type_id` to the claiming scheduler (`default` for the child-outcome frames, `push`/`probe` for their submission/grant frames). Unclaimed types are dropped with a warning on both seams.
+A node-side `LocalReceiverRegistry` mirrors `gateway::ResultReceiverStorage`: `Put(task_id, ReceiverPtr)`, `Get(task_id)`, `Erase(task_id)`, `Size/Empty`. Unlike the gateway — where the `SchedulerRouter` owns `kTaskSubmission` and `ResultReceiverStorage` lives in the core — the node's child-outcome routing is a *scheduling* concern owned by the bundled `default` scheduler: it holds the registry privately and claims **both** `kResult` and `kTaskRejected` in its `HandledFrameTypes()`. The `NodeagentSchedulerRouter` is the frame demux (mirroring the gateway `SchedulerRouter`): `NodeagentTlvHandler` keeps only the core `kNodeAdvertisement` write and a default seam that routes every other frame into `router.HandleFrame(frame, conn)`; the router's `findFrameOwner` dispatches by `type_id` to the claiming scheduler (`default` for the child-outcome frames, `push`/`probe` for their submission/grant frames). Unclaimed types are dropped with a warning on both seams.
 
 `DefaultLocalScheduler::HandleFrame(kResult | kTaskRejected)` looks the id up in its own registry and delivers (`Deliver`/`DeliverError`) — resolving the exact entry `Schedule` created for a forwarded child — erasing on final. Unknown ids are dropped with a warning. The frame-ownership doctrine still holds: a `type_id` has exactly one owner; ownership is resolved at router level, exactly as on the gateway.
 
@@ -125,7 +125,7 @@ The scheduler entry shape change is a **breaking** nodeagent config change (no l
 Local child run:
 
 ```
-parent handler        ChildSchedulerRouter        default scheduler
+parent handler        NodeagentSchedulerRouter     default scheduler
    │  Submit(child, recv)                          │
    │───────────────────────►  type → owning sched  │
    │                        │  Schedule(child,recv)│
@@ -163,7 +163,7 @@ nodeA (parent)          gateway G                    nodeB (worker)
 
 ## Migration Plan
 
-1. **Phase 4A (node, land first)** — `NodeagentFactoryContext.ChildTaskSubmitter` + `ChildSchedulerRouter` (now also the frame demux) + bundled `default` scheduler owning `LocalReceiverRegistry` + router-owned child-outcome cases + `RegistryResultSender` + sender-backed `RunTask` overloads + example workflow handler + `schedulers` config shape change (`default` with `local_default: true`). Self-contained; egress absent (forwarding is disabled, so capacity-deficient children error — preserving the Phase-0 behavior of a node that cannot enlist remote capacity). **BREAKING config**: `schedulers` entry shape.
+1. **Phase 4A (node, land first)** — `NodeagentFactoryContext.ChildTaskSubmitter` + `NodeagentSchedulerRouter` (now also the frame demux) + bundled `default` scheduler owning `LocalReceiverRegistry` + router-owned child-outcome cases + `RegistryResultSender` + sender-backed `RunTask` overloads + example workflow handler + `schedulers` config shape change (`default` with `local_default: true`). Self-contained; egress absent (forwarding is disabled, so capacity-deficient children error — preserving the Phase-0 behavior of a node that cannot enlist remote capacity). **BREAKING config**: `schedulers` entry shape.
 2. **Phase 4B (forward)** — `GatewayClient` + `gateway_client` config + gateway inbound child routing (`NodeConnectionResultReceiver`, router claims `kTaskSubmission`). Wire-unchanged; node and gateway can roll independently (a gateway rejecting `kTaskSubmission` before upgrade drops them, so the node sees a dropped forward → parent error; upgrade order: gateway first).
 3. **Rollback** — revert the affected binary; both halves stay interoperable on the unchanged wire.
 

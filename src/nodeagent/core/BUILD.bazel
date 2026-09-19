@@ -221,9 +221,9 @@ strij_cc_library(
 )
 
 strij_cc_library(
-    name = "child_scheduler_router_lib",
-    srcs = ["child_scheduler_router.cc"],
-    hdrs = ["child_scheduler_router.hh"],
+    name = "nodeagent_scheduler_router_lib",
+    srcs = ["nodeagent_scheduler_router.cc"],
+    hdrs = ["nodeagent_scheduler_router.hh"],
     visibility = ["//visibility:public"],
     deps = [
         "//api/common/config:config_cc_proto",

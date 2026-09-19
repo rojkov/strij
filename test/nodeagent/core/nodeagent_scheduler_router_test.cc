@@ -24,7 +24,7 @@
 #include "common/task/task.pb.h"
 #include "nodeagent/config/nodeagent.pb.h"
 #include "nodeagent/core/admission_controller.hh"
-#include "nodeagent/core/child_scheduler_router.hh"
+#include "nodeagent/core/nodeagent_scheduler_router.hh"
 #include "nodeagent/core/run_task_service.hh"
 #include "nodeagent/core/task_handler_manager.hh"
 #include "nodeagent/extensions/task_handlers/echo/echo_task_handler.hh"
@@ -99,7 +99,7 @@ public:
 
 // A real Connection over a socketpair so HandleFrame seams have a connection to
 // pass (the stubs ignore it).
-class ChildSchedulerRouterFrameTest : public ::testing::Test {
+class NodeagentSchedulerRouterFrameTest : public ::testing::Test {
 protected:
   void SetUp() override {
     ASSERT_EQ(0, socketpair(AF_UNIX, SOCK_STREAM, 0, fds_.data()));
@@ -126,16 +126,16 @@ protected:
   io::ConnectionPtr conn_;
 };
 
-TEST(ChildSchedulerRouterTest, RoutesByClaimedTaskType) {
+TEST(NodeagentSchedulerRouterTest, RoutesByClaimedTaskType) {
   auto claiming = std::make_unique<RecordingScheduler>();
   auto fallback = std::make_unique<RecordingScheduler>();
   RecordingScheduler* claiming_raw = claiming.get();
   RecordingScheduler* fallback_raw = fallback.get();
 
-  std::vector<ChildSchedulerRouter::ChildRoutedScheduler> routed;
+  std::vector<NodeagentSchedulerRouter::ChildRoutedScheduler> routed;
   routed.push_back({.scheduler = std::move(claiming), .task_type = "echo", .local_default = true});
   routed.push_back({.scheduler = std::move(fallback), .task_type = "other", .local_default = false});
-  ChildSchedulerRouter router(std::move(routed));
+  NodeagentSchedulerRouter router(std::move(routed));
 
   task::Task child;
   child.set_id("child-1");
@@ -146,16 +146,16 @@ TEST(ChildSchedulerRouterTest, RoutesByClaimedTaskType) {
   EXPECT_TRUE(fallback_raw->scheduled_types_.empty());
 }
 
-TEST(ChildSchedulerRouterTest, FallsBackToLocalDefault) {
+TEST(NodeagentSchedulerRouterTest, FallsBackToLocalDefault) {
   auto typed = std::make_unique<RecordingScheduler>();
   auto fallback = std::make_unique<RecordingScheduler>();
   RecordingScheduler* typed_raw = typed.get();
   RecordingScheduler* fallback_raw = fallback.get();
 
-  std::vector<ChildSchedulerRouter::ChildRoutedScheduler> routed;
+  std::vector<NodeagentSchedulerRouter::ChildRoutedScheduler> routed;
   routed.push_back({.scheduler = std::move(typed), .task_type = "typed-only", .local_default = false});
   routed.push_back({.scheduler = std::move(fallback), .task_type = "", .local_default = true});
-  ChildSchedulerRouter router(std::move(routed));
+  NodeagentSchedulerRouter router(std::move(routed));
 
   task::Task child;
   child.set_id("child-1");
@@ -170,13 +170,13 @@ TEST(ChildSchedulerRouterTest, FallsBackToLocalDefault) {
   EXPECT_TRUE(log->delivered);
 }
 
-TEST(ChildSchedulerRouterTest, NoClaimWithoutDefaultDeliversError) {
+TEST(NodeagentSchedulerRouterTest, NoClaimWithoutDefaultDeliversError) {
   auto typed = std::make_unique<RecordingScheduler>();
   RecordingScheduler* typed_raw = typed.get();
 
-  std::vector<ChildSchedulerRouter::ChildRoutedScheduler> routed;
+  std::vector<NodeagentSchedulerRouter::ChildRoutedScheduler> routed;
   routed.push_back({.scheduler = std::move(typed), .task_type = "typed-only", .local_default = false});
-  ChildSchedulerRouter router(std::move(routed));
+  NodeagentSchedulerRouter router(std::move(routed));
 
   task::Task child;
   child.set_id("child-1");
@@ -191,7 +191,7 @@ TEST(ChildSchedulerRouterTest, NoClaimWithoutDefaultDeliversError) {
       << "error='" << log->error << "'";
 }
 
-TEST(ChildSchedulerRouterTest, NoRoleEntryNeverReceivesSubmissions) {
+TEST(NodeagentSchedulerRouterTest, NoRoleEntryNeverReceivesSubmissions) {
   auto no_role = std::make_unique<RecordingScheduler>();
   auto fallback = std::make_unique<RecordingScheduler>();
   RecordingScheduler* no_role_raw = no_role.get();
@@ -200,10 +200,10 @@ TEST(ChildSchedulerRouterTest, NoRoleEntryNeverReceivesSubmissions) {
   // First entry declares neither a task_type nor local_default: it is a pure
   // wire-protocol counterpart and must never receive child submissions. The
   // default authority handles them instead.
-  std::vector<ChildSchedulerRouter::ChildRoutedScheduler> routed;
+  std::vector<NodeagentSchedulerRouter::ChildRoutedScheduler> routed;
   routed.push_back({.scheduler = std::move(no_role), .task_type = "", .local_default = false});
   routed.push_back({.scheduler = std::move(fallback), .task_type = "", .local_default = true});
-  ChildSchedulerRouter router(std::move(routed));
+  NodeagentSchedulerRouter router(std::move(routed));
 
   task::Task child;
   child.set_id("child-1");
@@ -217,16 +217,16 @@ TEST(ChildSchedulerRouterTest, NoRoleEntryNeverReceivesSubmissions) {
   EXPECT_TRUE(log->delivered);
 }
 
-TEST_F(ChildSchedulerRouterFrameTest, HandledFrameTypesIsDeduplicatedUnion) {
+TEST_F(NodeagentSchedulerRouterFrameTest, HandledFrameTypesIsDeduplicatedUnion) {
   auto a = std::make_unique<FrameClaimingScheduler>(
       std::vector<uint8_t>({io::TlvFrame::kTaskSubmission}));
   auto b = std::make_unique<FrameClaimingScheduler>(
       std::vector<uint8_t>({io::TlvFrame::kTaskSubmission, io::TlvFrame::kTaskProbe}));
 
-  std::vector<ChildSchedulerRouter::ChildRoutedScheduler> routed;
+  std::vector<NodeagentSchedulerRouter::ChildRoutedScheduler> routed;
   routed.push_back({.scheduler = std::move(a), .task_type = "", .local_default = false});
   routed.push_back({.scheduler = std::move(b), .task_type = "", .local_default = false});
-  ChildSchedulerRouter router(std::move(routed));
+  NodeagentSchedulerRouter router(std::move(routed));
 
   // Overlapping claims are deduplicated in the router's owned union.
   EXPECT_EQ(router.HandledFrameTypes().size(), 2U);
@@ -236,7 +236,7 @@ TEST_F(ChildSchedulerRouterFrameTest, HandledFrameTypesIsDeduplicatedUnion) {
               router.HandledFrameTypes().end());
 }
 
-TEST_F(ChildSchedulerRouterFrameTest, RoutesFrameToOwningConstituent) {
+TEST_F(NodeagentSchedulerRouterFrameTest, RoutesFrameToOwningConstituent) {
   auto result_owner =
       std::make_unique<FrameClaimingScheduler>(std::vector<uint8_t>({io::TlvFrame::kResult}));
   auto submission_owner = std::make_unique<FrameClaimingScheduler>(
@@ -244,11 +244,11 @@ TEST_F(ChildSchedulerRouterFrameTest, RoutesFrameToOwningConstituent) {
   FrameClaimingScheduler* result_raw = result_owner.get();
   FrameClaimingScheduler* submission_raw = submission_owner.get();
 
-  std::vector<ChildSchedulerRouter::ChildRoutedScheduler> routed;
+  std::vector<NodeagentSchedulerRouter::ChildRoutedScheduler> routed;
   routed.push_back({.scheduler = std::move(result_owner), .task_type = "", .local_default = false});
   routed.push_back(
       {.scheduler = std::move(submission_owner), .task_type = "", .local_default = false});
-  ChildSchedulerRouter router(std::move(routed));
+  NodeagentSchedulerRouter router(std::move(routed));
 
   io::TlvFrame result_frame{io::TlvFrame::kResult, {}};
   io::TlvFrame submission_frame{io::TlvFrame::kTaskSubmission, {}};
@@ -260,40 +260,40 @@ TEST_F(ChildSchedulerRouterFrameTest, RoutesFrameToOwningConstituent) {
   EXPECT_EQ(submission_raw->handled_, std::vector<uint8_t>({io::TlvFrame::kTaskSubmission}));
 }
 
-TEST_F(ChildSchedulerRouterFrameTest, UnclaimedFrameTypeReturnsNotFound) {
+TEST_F(NodeagentSchedulerRouterFrameTest, UnclaimedFrameTypeReturnsNotFound) {
   auto probe_owner = std::make_unique<FrameClaimingScheduler>(
       std::vector<uint8_t>({io::TlvFrame::kTaskProbe}));
 
-  std::vector<ChildSchedulerRouter::ChildRoutedScheduler> routed;
+  std::vector<NodeagentSchedulerRouter::ChildRoutedScheduler> routed;
   routed.push_back({.scheduler = std::move(probe_owner), .task_type = "", .local_default = false});
-  ChildSchedulerRouter router(std::move(routed));
+  NodeagentSchedulerRouter router(std::move(routed));
 
   io::TlvFrame unowned_frame{io::TlvFrame::kResult, {}};
   const absl::Status status = router.HandleFrame(unowned_frame, *conn_);
   EXPECT_EQ(status.code(), absl::StatusCode::kNotFound);
 }
 
-TEST(BuildChildSchedulerRouterTest, EmptySchedulerListFails) {
+TEST(BuildNodeagentSchedulerRouterTest, EmptySchedulerListFails) {
   config::NodeAgentConfig config;
   extensions::MockNodeagentFactoryContext context;
-  auto result = BuildChildSchedulerRouter(config, context);
+  auto result = BuildNodeagentSchedulerRouter(config, context);
   ASSERT_FALSE(result.ok());
   EXPECT_NE(result.status().message().find("empty"), std::string::npos);
 }
 
-TEST(BuildChildSchedulerRouterTest, DuplicateTaskTypeFails) {
+TEST(BuildNodeagentSchedulerRouterTest, DuplicateTaskTypeFails) {
   config::NodeAgentConfig config;
   config.add_schedulers()->mutable_extension()->set_name("push");
   config.mutable_schedulers(0)->set_task_type("echo");
   config.add_schedulers()->mutable_extension()->set_name("push");
   config.mutable_schedulers(1)->set_task_type("echo");
   extensions::MockNodeagentFactoryContext context;
-  auto result = BuildChildSchedulerRouter(config, context);
+  auto result = BuildNodeagentSchedulerRouter(config, context);
   ASSERT_FALSE(result.ok());
   EXPECT_NE(result.status().message().find("more than once"), std::string::npos);
 }
 
-TEST(BuildChildSchedulerRouterTest, MultipleLocalDefaultsFail) {
+TEST(BuildNodeagentSchedulerRouterTest, MultipleLocalDefaultsFail) {
   config::NodeAgentConfig config;
   config.add_schedulers()->mutable_extension()->set_name("push");
   config.mutable_schedulers(0)->set_task_type("a");
@@ -302,22 +302,22 @@ TEST(BuildChildSchedulerRouterTest, MultipleLocalDefaultsFail) {
   config.mutable_schedulers(1)->set_task_type("b");
   config.mutable_schedulers(1)->set_local_default(true);
   extensions::MockNodeagentFactoryContext context;
-  auto result = BuildChildSchedulerRouter(config, context);
+  auto result = BuildNodeagentSchedulerRouter(config, context);
   ASSERT_FALSE(result.ok());
   EXPECT_NE(result.status().message().find("more than one local_default"), std::string::npos);
 }
 
-TEST(BuildChildSchedulerRouterTest, UnknownSchedulerNameFails) {
+TEST(BuildNodeagentSchedulerRouterTest, UnknownSchedulerNameFails) {
   config::NodeAgentConfig config;
   config.add_schedulers()->mutable_extension()->set_name("ghost");
   extensions::MockNodeagentFactoryContext context;
-  auto result = BuildChildSchedulerRouter(config, context);
+  auto result = BuildNodeagentSchedulerRouter(config, context);
   ASSERT_FALSE(result.ok());
   EXPECT_EQ(result.status().code(), absl::StatusCode::kNotFound);
   EXPECT_NE(result.status().message().find("ghost"), std::string::npos);
 }
 
-TEST(BuildChildSchedulerRouterTest, EmptyTaskTypeIsNotADefault) {
+TEST(BuildNodeagentSchedulerRouterTest, EmptyTaskTypeIsNotADefault) {
   // Two no-role entries (empty task_type, no local_default) are valid: the
   // config declares no fallback authority, an accepted shape for wire-only
   // counterpart schedulers.
@@ -341,14 +341,14 @@ TEST(BuildChildSchedulerRouterTest, EmptyTaskTypeIsNotADefault) {
   extensions::MockNodeagentFactoryContext context;
   EXPECT_CALL(context, RunTaskService()).WillRepeatedly(::testing::ReturnRef(run_task_service));
 
-  auto result = BuildChildSchedulerRouter(config, context);
+  auto result = BuildNodeagentSchedulerRouter(config, context);
   ASSERT_TRUE(result.ok());
   EXPECT_EQ(result.value()->RoutedSchedulerCount(), 2U);
   // Both push entries claim the same frame type; the router deduplicates.
   EXPECT_EQ(result.value()->HandledFrameTypes().size(), 1U);
 }
 
-TEST(BuildChildSchedulerRouterTest, ValidConfigBuildsRouterWithOwnedFrameUnion) {
+TEST(BuildNodeagentSchedulerRouterTest, ValidConfigBuildsRouterWithOwnedFrameUnion) {
   config::NodeAgentConfig config;
   config.add_schedulers()->mutable_extension()->set_name("push");
   config.mutable_schedulers(0)->set_task_type("echo");
@@ -371,7 +371,7 @@ TEST(BuildChildSchedulerRouterTest, ValidConfigBuildsRouterWithOwnedFrameUnion) 
   extensions::MockNodeagentFactoryContext context;
   EXPECT_CALL(context, RunTaskService()).WillRepeatedly(::testing::ReturnRef(run_task_service));
 
-  auto result = BuildChildSchedulerRouter(config, context);
+  auto result = BuildNodeagentSchedulerRouter(config, context);
   ASSERT_TRUE(result.ok());
   EXPECT_EQ(result.value()->RoutedSchedulerCount(), 2U);
 

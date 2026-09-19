@@ -17,7 +17,7 @@
 #include "common/extensions/scheduler_loader.hh"
 #include "nodeagent/core/admission_controller.hh"
 #include "nodeagent/core/capabilities.hh"
-#include "nodeagent/core/child_scheduler_router.hh"
+#include "nodeagent/core/nodeagent_scheduler_router.hh"
 #include "nodeagent/core/data_dependency_fetcher_router.hh"
 #include "nodeagent/core/function_resolver.hh"
 #include "nodeagent/core/gateway_client.hh"
@@ -143,12 +143,12 @@ auto RunNodeagent(int argc, char** argv) -> int {
   // or the authority declarations are ambiguous (duplicate non-empty
   // task_type, more than one local_default) is intentional: a misconfigured
   // node must not silently advertise a scheduling protocol.
-  auto child_router_result = BuildChildSchedulerRouter(config, factory_context);
+  auto child_router_result = BuildNodeagentSchedulerRouter(config, factory_context);
   if (!child_router_result.ok()) {
     LOG_ERROR("Scheduler config error: {}", child_router_result.status().message());
     return 1;
   }
-  const std::unique_ptr<ChildSchedulerRouter>& child_router = child_router_result.value();
+  const std::unique_ptr<NodeagentSchedulerRouter>& child_router = child_router_result.value();
   factory_context.SetChildTaskSubmitter(*child_router);
 
   if (absl::GetFlag(FLAGS_validate_only)) {

@@ -10,7 +10,7 @@ strij_cc_test(
         "//src/common/core/io:tlv_frame",
         "//src/common/core/io:tlv_parser_lib",
         "//src/nodeagent/core:admission_controller_lib",
-        "//src/nodeagent/core:child_scheduler_router_lib",
+        "//src/nodeagent/core:nodeagent_scheduler_router_lib",
         "//src/nodeagent/core:nodeagent_tlv_handler_lib",
         "//src/nodeagent/core:run_task_service_lib",
         "//src/nodeagent/core:task_handler_manager_lib",
@@ -151,8 +151,8 @@ strij_cc_test(
 )
 
 strij_cc_test(
-    name = "child_scheduler_router_test",
-    srcs = ["child_scheduler_router_test.cc"],
+    name = "nodeagent_scheduler_router_test",
+    srcs = ["nodeagent_scheduler_router_test.cc"],
     deps = [
         "//api/common/node:node_cc_proto",
         "//api/common/task:task_cc_proto",
@@ -162,7 +162,7 @@ strij_cc_test(
         "//src/common/core/io:protocol_parser",
         "//src/common/core/io:tlv_frame",
         "//src/nodeagent/core:admission_controller_lib",
-        "//src/nodeagent/core:child_scheduler_router_lib",
+        "//src/nodeagent/core:nodeagent_scheduler_router_lib",
         "//src/nodeagent/core:run_task_service_lib",
         "//src/nodeagent/core:task_handler_manager_lib",
         "//src/nodeagent/extensions/schedulers/push:push_local_scheduler_lib",

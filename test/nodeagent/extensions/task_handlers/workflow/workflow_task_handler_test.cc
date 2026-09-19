@@ -9,7 +9,7 @@
 #include "common/node/capabilities.pb.h"
 #include "common/task/task.pb.h"
 #include "nodeagent/core/admission_controller.hh"
-#include "nodeagent/core/child_scheduler_router.hh"
+#include "nodeagent/core/nodeagent_scheduler_router.hh"
 #include "nodeagent/core/run_task_service.hh"
 #include "nodeagent/core/task_handler_manager.hh"
 #include "nodeagent/extensions/schedulers/default/default_local_scheduler.hh"
@@ -48,10 +48,10 @@ protected:
         std::make_unique<nodeagent::schedulers::DefaultLocalScheduler>(*run_task_service_,
                                                                        admission_, nullptr);
     default_scheduler_raw_ = default_scheduler.get();
-    std::vector<ChildSchedulerRouter::ChildRoutedScheduler> routed;
+    std::vector<NodeagentSchedulerRouter::ChildRoutedScheduler> routed;
     routed.push_back(
         {.scheduler = std::move(default_scheduler), .task_type = "echo", .local_default = true});
-    router_ = std::make_unique<ChildSchedulerRouter>(std::move(routed));
+    router_ = std::make_unique<NodeagentSchedulerRouter>(std::move(routed));
     handler_ = std::make_unique<WorkflowTaskHandler>(*router_);
   }
 
@@ -80,7 +80,7 @@ protected:
   std::shared_ptr<AdmissionController> admission_;
   std::unique_ptr<RunTaskServiceImpl> run_task_service_;
   nodeagent::schedulers::DefaultLocalScheduler* default_scheduler_raw_{nullptr};
-  std::unique_ptr<ChildSchedulerRouter> router_;
+  std::unique_ptr<NodeagentSchedulerRouter> router_;
   std::unique_ptr<WorkflowTaskHandler> handler_;
 };
 

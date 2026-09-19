@@ -41,7 +41,7 @@ namespace strij::nodeagent {
 // the local-authority scheduler's child-policy step (the bundled "default"
 // scheduler's Schedule) and its owned registry resolves the child-outcome
 // frames.
-class ChildSchedulerRouter final : public extensions::Scheduler, public ChildTaskSubmitter {
+class NodeagentSchedulerRouter final : public extensions::Scheduler, public ChildTaskSubmitter {
 public:
   struct ChildRoutedScheduler {
     extensions::SchedulerPtr scheduler;
@@ -50,14 +50,14 @@ public:
   };
 
   // `schedulers` must be non-empty, with at most one local_default entry and
-  // unique non-empty task_type bindings (validated by BuildChildSchedulerRouter).
-  explicit ChildSchedulerRouter(std::vector<ChildRoutedScheduler> schedulers);
-  ~ChildSchedulerRouter() override = default;
+  // unique non-empty task_type bindings (validated by BuildNodeagentSchedulerRouter).
+  explicit NodeagentSchedulerRouter(std::vector<ChildRoutedScheduler> schedulers);
+  ~NodeagentSchedulerRouter() override = default;
 
-  ChildSchedulerRouter(const ChildSchedulerRouter&) = delete;
-  auto operator=(const ChildSchedulerRouter&) -> ChildSchedulerRouter& = delete;
-  ChildSchedulerRouter(ChildSchedulerRouter&&) noexcept = delete;
-  auto operator=(ChildSchedulerRouter&&) noexcept -> ChildSchedulerRouter& = delete;
+  NodeagentSchedulerRouter(const NodeagentSchedulerRouter&) = delete;
+  auto operator=(const NodeagentSchedulerRouter&) -> NodeagentSchedulerRouter& = delete;
+  NodeagentSchedulerRouter(NodeagentSchedulerRouter&&) noexcept = delete;
+  auto operator=(NodeagentSchedulerRouter&&) noexcept -> NodeagentSchedulerRouter& = delete;
 
   // ChildTaskSubmitter
   void Submit(task::Task task, gateway::ResultReceiverPtr receiver) override;
@@ -93,8 +93,8 @@ private:
 // local_default entry, unique non-empty task_type claims, and no-role entries
 // never receive child submissions. Fails on an empty list, an unknown
 // scheduler name, or ambiguous authority declarations.
-auto BuildChildSchedulerRouter(const config::NodeAgentConfig& config,
+auto BuildNodeagentSchedulerRouter(const config::NodeAgentConfig& config,
                                extensions::NodeagentFactoryContext& context)
-    -> absl::StatusOr<std::unique_ptr<ChildSchedulerRouter>>;
+    -> absl::StatusOr<std::unique_ptr<NodeagentSchedulerRouter>>;
 
 } // namespace strij::nodeagent

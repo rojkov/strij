@@ -19,7 +19,7 @@
 #include "common/core/io/tlv_frame.hh"
 #include "common/node/capabilities.pb.h"
 #include "nodeagent/core/admission_controller.hh"
-#include "nodeagent/core/child_scheduler_router.hh"
+#include "nodeagent/core/nodeagent_scheduler_router.hh"
 #include "nodeagent/core/nodeagent_tlv_handler.hh"
 #include "nodeagent/core/run_task_service.hh"
 #include "nodeagent/core/task_handler_manager.hh"
@@ -125,12 +125,12 @@ protected:
   // every handler used in these tests feeds frames through (the handler is a
   // thin seam into the router).
   static auto MakePushRouter(RunTaskService& run_task_service)
-      -> std::unique_ptr<ChildSchedulerRouter> {
-    std::vector<ChildSchedulerRouter::ChildRoutedScheduler> routed;
+      -> std::unique_ptr<NodeagentSchedulerRouter> {
+    std::vector<NodeagentSchedulerRouter::ChildRoutedScheduler> routed;
     routed.push_back(
         {.scheduler = std::make_unique<nodeagent::schedulers::PushLocalScheduler>(run_task_service),
          .task_type = "", .local_default = false});
-    return std::make_unique<ChildSchedulerRouter>(std::move(routed));
+    return std::make_unique<NodeagentSchedulerRouter>(std::move(routed));
   }
 
   // The local-authority shape: a router whose single constituent is the bundled
@@ -138,15 +138,15 @@ protected:
   static auto MakeDefaultRouter(RunTaskService& run_task_service,
                                 AdmissionControllerSharedPtr admission,
                                 nodeagent::schedulers::DefaultLocalScheduler** out = nullptr)
-      -> std::unique_ptr<ChildSchedulerRouter> {
+      -> std::unique_ptr<NodeagentSchedulerRouter> {
     auto scheduler = std::make_unique<nodeagent::schedulers::DefaultLocalScheduler>(
         run_task_service, admission, /*forward=*/nullptr);
     if (out != nullptr) {
       *out = scheduler.get();
     }
-    std::vector<ChildSchedulerRouter::ChildRoutedScheduler> routed;
+    std::vector<NodeagentSchedulerRouter::ChildRoutedScheduler> routed;
     routed.push_back({.scheduler = std::move(scheduler), .task_type = "", .local_default = true});
-    return std::make_unique<ChildSchedulerRouter>(std::move(routed));
+    return std::make_unique<NodeagentSchedulerRouter>(std::move(routed));
   }
 
   // Reads up to `size` bytes written by the handler into `buf`.

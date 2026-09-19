@@ -12,14 +12,14 @@ namespace strij::nodeagent {
 // Dispatches inbound TLV frames received from a single gateway connection.
 // This is the node side's frame-routing seam (the mirror of the gateway
 // GatewayTlvHandler): every frame is handed to the composite
-// ChildSchedulerRouter, which routes it to the constituent that declared the
+// NodeagentSchedulerRouter, which routes it to the constituent that declared the
 // type in its HandledFrameTypes(). A frame with no owning scheduler surfaces
 // as NotFound from the router and is dropped with a warning. The handler never
 // parses a frame itself — child-outcome frames (kResult / kTaskRejected) are
 // claimed by the bundled "default" scheduler, not by core.
 class NodeagentTlvHandler {
 public:
-  // `router` (the ChildSchedulerRouter) must outlive this handler; ownership
+  // `router` (the NodeagentSchedulerRouter) must outlive this handler; ownership
   // stays with the caller. A null router (setups without schedulers) turns
   // every frame into an error-drop.
   NodeagentTlvHandler(extensions::Scheduler* router,

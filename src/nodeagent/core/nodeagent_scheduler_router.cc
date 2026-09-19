@@ -1,4 +1,4 @@
-#include "nodeagent/core/child_scheduler_router.hh"
+#include "nodeagent/core/nodeagent_scheduler_router.hh"
 
 #include <algorithm>
 #include <cstdint>
@@ -29,7 +29,7 @@ auto in_types(std::span<const uint8_t> types, uint8_t type_id) -> bool {
 
 } // namespace
 
-ChildSchedulerRouter::ChildSchedulerRouter(std::vector<ChildRoutedScheduler> schedulers)
+NodeagentSchedulerRouter::NodeagentSchedulerRouter(std::vector<ChildRoutedScheduler> schedulers)
     : schedulers_{std::move(schedulers)} {
   std::set<uint8_t> seen_types;
   for (const auto& routed : schedulers_) {
@@ -45,11 +45,11 @@ ChildSchedulerRouter::ChildSchedulerRouter(std::vector<ChildRoutedScheduler> sch
   }
 }
 
-void ChildSchedulerRouter::Submit(task::Task task, gateway::ResultReceiverPtr receiver) {
+void NodeagentSchedulerRouter::Submit(task::Task task, gateway::ResultReceiverPtr receiver) {
   Schedule(task, std::move(receiver));
 }
 
-void ChildSchedulerRouter::Schedule(const task::Task& task, gateway::ResultReceiverPtr receiver) {
+void NodeagentSchedulerRouter::Schedule(const task::Task& task, gateway::ResultReceiverPtr receiver) {
   extensions::Scheduler* scheduler = findChildScheduler(task);
   if (scheduler == nullptr) {
     receiver->DeliverError(absl::StrCat("no local scheduler claims task type '", task.type(),
@@ -60,7 +60,7 @@ void ChildSchedulerRouter::Schedule(const task::Task& task, gateway::ResultRecei
   scheduler->Schedule(task, std::move(receiver));
 }
 
-auto ChildSchedulerRouter::findChildScheduler(const task::Task& task) -> extensions::Scheduler* {
+auto NodeagentSchedulerRouter::findChildScheduler(const task::Task& task) -> extensions::Scheduler* {
   extensions::Scheduler* fallback = nullptr;
   for (auto& routed : schedulers_) {
     if (routed.local_default) {
@@ -73,7 +73,7 @@ auto ChildSchedulerRouter::findChildScheduler(const task::Task& task) -> extensi
   return fallback;
 }
 
-auto ChildSchedulerRouter::findFrameOwner(uint8_t type_id) -> extensions::Scheduler* {
+auto NodeagentSchedulerRouter::findFrameOwner(uint8_t type_id) -> extensions::Scheduler* {
   for (auto& routed : schedulers_) {
     if (in_types(routed.scheduler->HandledFrameTypes(), type_id)) {
       return routed.scheduler.get();
@@ -83,13 +83,13 @@ auto ChildSchedulerRouter::findFrameOwner(uint8_t type_id) -> extensions::Schedu
   return nullptr;
 }
 
-auto ChildSchedulerRouter::RequiredProtocol() const -> std::string_view { return required_protocol_; }
+auto NodeagentSchedulerRouter::RequiredProtocol() const -> std::string_view { return required_protocol_; }
 
-auto ChildSchedulerRouter::HandledFrameTypes() const -> std::span<const uint8_t> {
+auto NodeagentSchedulerRouter::HandledFrameTypes() const -> std::span<const uint8_t> {
   return handled_types_;
 }
 
-auto ChildSchedulerRouter::HandleFrame(const io::TlvFrame& frame, io::Connection& conn)
+auto NodeagentSchedulerRouter::HandleFrame(const io::TlvFrame& frame, io::Connection& conn)
     -> absl::Status {
   extensions::Scheduler* owner = findFrameOwner(frame.type_id);
   if (owner == nullptr) {
@@ -100,15 +100,15 @@ auto ChildSchedulerRouter::HandleFrame(const io::TlvFrame& frame, io::Connection
   return owner->HandleFrame(frame, conn);
 }
 
-auto BuildChildSchedulerRouter(const config::NodeAgentConfig& config,
+auto BuildNodeagentSchedulerRouter(const config::NodeAgentConfig& config,
                                extensions::NodeagentFactoryContext& context)
-    -> absl::StatusOr<std::unique_ptr<ChildSchedulerRouter>> {
+    -> absl::StatusOr<std::unique_ptr<NodeagentSchedulerRouter>> {
   if (config.schedulers().empty()) {
     return absl::InvalidArgumentError(
         "NodeAgentConfig.schedulers is empty: at least one scheduler must be configured");
   }
 
-  std::vector<ChildSchedulerRouter::ChildRoutedScheduler> routed;
+  std::vector<NodeagentSchedulerRouter::ChildRoutedScheduler> routed;
   routed.reserve(static_cast<size_t>(config.schedulers().size()));
   // Validate the whole role table before touching the factory context: an
   // invalid config must fail without creating any scheduler (fail fast, no
@@ -137,13 +137,13 @@ auto BuildChildSchedulerRouter(const config::NodeAgentConfig& config,
       return scheduler_result.status();
     }
 
-    routed.push_back(ChildSchedulerRouter::ChildRoutedScheduler{
+    routed.push_back(NodeagentSchedulerRouter::ChildRoutedScheduler{
         .scheduler = std::move(scheduler_result).value(),
         .task_type = scheduler_config.task_type(),
         .local_default = scheduler_config.local_default()});
   }
 
-  return std::make_unique<ChildSchedulerRouter>(std::move(routed));
+  return std::make_unique<NodeagentSchedulerRouter>(std::move(routed));
 }
 
 } // namespace strij::nodeagent
