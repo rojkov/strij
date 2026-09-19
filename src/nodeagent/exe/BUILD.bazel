@@ -32,11 +32,9 @@ strij_cc_library(
         "//src/nodeagent/core:admission_controller_lib",
         "//src/nodeagent/core:capabilities_lib",
         "//src/nodeagent/core:child_scheduler_router_lib",
-        "//src/nodeagent/core:child_submission_service_lib",
         "//src/nodeagent/core:data_dependency_fetcher_router_lib",
         "//src/nodeagent/core:function_resolver_lib",
         "//src/nodeagent/core:gateway_client_lib",
-        "//src/nodeagent/core:local_receiver_registry_lib",
         "//src/nodeagent/core:nodeagent_tlv_handler_lib",
         "//src/nodeagent/core:object_cache_lib",
         "//src/nodeagent/core:run_task_service_lib",
@@ -50,6 +48,7 @@ strij_cc_library(
 strij_nodeagent_binary(
     name = "nodeagent",
     extensions = [
+        "//src/nodeagent/extensions/schedulers/default:default_local_scheduler_lib",
         "//src/nodeagent/extensions/schedulers/probe:probe_local_scheduler_lib",
         "//src/nodeagent/extensions/schedulers/push:push_local_scheduler_lib",
         "//src/nodeagent/extensions/task_handlers/echo:echo_task_handler_lib",

@@ -9,14 +9,14 @@
 namespace strij::nodeagent {
 
 // Node-side per-task result receiver registry (a node-local mirror of
-// gateway::ResultReceiverStorage, keyed by task_id alone). Core-owned;
-// extensions reach it through ChildSubmissionService (which holds a
-// non-owning reference) and NodeagentTlvHandler (which holds a raw pointer
-// valid for the process lifetime).
+// gateway::ResultReceiverStorage, keyed by task_id alone). Owned privately by
+// the bundled "default" scheduler, which both registers (child-policy step in
+// its Schedule) and resolves (its kResult/kTaskRejected frame handling)
+// entries.
 //
 // The registry stores gateway::ResultReceiver instances delivered to it by
-// the submission path (policy step in ChildSubmissionService) and resolved
-// by the NodeagentTlvHandler kResult/kTaskRejected core cases. Entries are
+// the submission path (policy step in DefaultLocalScheduler::Schedule) and
+// resolved by DefaultLocalScheduler's kResult/kTaskRejected cases. Entries are
 // erased on final result, on rejection, or when a receiver is resolved
 // directly via Get + Deliver.
 class LocalReceiverRegistry {

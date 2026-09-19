@@ -18,11 +18,9 @@
 #include "nodeagent/core/admission_controller.hh"
 #include "nodeagent/core/capabilities.hh"
 #include "nodeagent/core/child_scheduler_router.hh"
-#include "nodeagent/core/child_submission_service.hh"
 #include "nodeagent/core/data_dependency_fetcher_router.hh"
 #include "nodeagent/core/function_resolver.hh"
 #include "nodeagent/core/gateway_client.hh"
-#include "nodeagent/core/local_receiver_registry.hh"
 #include "nodeagent/core/nodeagent_tlv_handler.hh"
 #include "nodeagent/core/object_cache.hh"
 #include "nodeagent/core/run_task_service.hh"
@@ -129,25 +127,19 @@ auto RunNodeagent(int argc, char** argv) -> int {
   factory_context.SetRunTaskService(*run_task_service);
   factory_context.SetDataDependencyFetcherRouter(*fetch_router);
 
-  // The node-global local receiver registry stores parent receivers for
-  // locally-originated children. The shared child-policy step (entered into
-  // the context before the schedulers are built) registers each child there
-  // and runs-or-forwards it. The GatewayClient is the node's only outbound
-  // capability: every accepted connection is registered with it, and it
-  // forwards children upstream over live connections (no dial fallback). It is
-  // created and installed BEFORE the schedulers so a forward path exists from
-  // the start.
-  auto local_registry = std::make_unique<LocalReceiverRegistry>();
+  // The GatewayClient is the node's only outbound capability: every accepted
+  // gateway connection is registered with it, and it forwards children
+  // upstream over live connections (no dial fallback). It is created and
+  // installed into the context BEFORE the schedulers so the bundled "default"
+  // scheduler's forward path exists from the start.
   auto gateway_client = std::make_unique<GatewayClient>();
-  auto child_submission_service = std::make_unique<ChildSubmissionService>(
-      *local_registry, *run_task_service, admission, gateway_client.get());
-  factory_context.SetChildSubmissionService(*child_submission_service);
+  factory_context.SetChildForwarder(*gateway_client);
 
   // One local scheduler instance per configured scheduler entry, composed into
   // the node-side child router (the submission composite that routes
-  // locally-originated children by declared authority). The router owns the
-  // schedulers; their raw pointers feed every accepted connection's frame
-  // dispatcher. Failing to start when the list is empty, any name is unknown,
+  // locally-originated children by declared authority). The router also owns
+  // the node's frame demux: every accepted connection's handler is a thin seam
+  // into it. Failing to start when the list is empty, any name is unknown,
   // or the authority declarations are ambiguous (duplicate non-empty
   // task_type, more than one local_default) is intentional: a misconfigured
   // node must not silently advertise a scheduling protocol.
@@ -194,13 +186,11 @@ auto RunNodeagent(int argc, char** argv) -> int {
 
   io::TcpListener listener{
       dispatcher, config.tlv_listener().port(),
-      [capabilities, scheduler_pointers = child_router->LocalSchedulerPointers(),
-       registry = local_registry.get(), state_reporter,
+      [capabilities, router = child_router.get(), state_reporter,
        gateway_client = gateway_client.get()](io::Connection& conn) -> io::ProtocolParserPtr {
         // The gateway dialed us; this outbound link is the node's forward path.
         gateway_client->RegisterConnection(conn.Mailbox());
-        auto handler = std::make_unique<NodeagentTlvHandler>(scheduler_pointers, capabilities,
-                                                             registry);
+        auto handler = std::make_unique<NodeagentTlvHandler>(router, capabilities);
         handler->SendAdvertisement(conn);
         state_reporter->AddConnection(conn.Mailbox());
         return std::make_unique<io::TlvParser>(

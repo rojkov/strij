@@ -68,6 +68,13 @@ The nodeagent SHALL load one local scheduler instance per `NodeAgentConfig.sched
 - **THEN** it SHALL be constructed as a wire-protocol counterpart
 - **AND** it SHALL NOT receive any locally-originated task submission
 
+#### Scenario: Bundled default scheduler is the local authority
+
+- **WHEN** a `schedulers` entry declares extension name `"default"` with `local_default = true` and no `typed_config` (its `DefaultSchedulerConfig` is empty)
+- **THEN** the nodeagent SHALL construct the bundled `default` local scheduler
+- **AND** its `Schedule` SHALL implement the child-task policy (run locally, else forward)
+- **AND** its `RequiredProtocol()` SHALL be empty (it is declared by the node's wire-protocol entries)
+
 #### Scenario: Ambiguous local-authority declarations fail startup
 
 - **WHEN** two `schedulers` entries declare the same non-empty `task_type` or more than one entry declares `local_default = true`

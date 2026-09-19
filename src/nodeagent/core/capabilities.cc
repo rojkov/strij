@@ -124,7 +124,12 @@ auto BuildNodeCapabilities(const config::NodeAgentConfig& config, const std::str
       }
     }
 
-    protocols.emplace(factory->RequiredProtocol());
+    const std::string_view protocol = factory->RequiredProtocol();
+    // The bundled "default" scheduler is a local authority, not a wire
+    // protocol: it advertises nothing, so skip empty protocol names.
+    if (!protocol.empty()) {
+      protocols.emplace(protocol);
+    }
   }
 
   for (const auto& protocol : protocols) {

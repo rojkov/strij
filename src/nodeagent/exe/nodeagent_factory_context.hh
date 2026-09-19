@@ -28,13 +28,13 @@ public:
   auto RunTaskService() -> nodeagent::RunTaskService& override;
   auto ObjectCache() -> nodeagent::ObjectCache& override;
   auto DataDependencyFetcherRouter() -> nodeagent::DataDependencyFetcherRouter& override;
-  auto ChildSubmissionService() -> nodeagent::ChildSubmissionService& override;
+  auto ChildForwarder() -> nodeagent::ChildForwarder& override;
   auto ChildTaskSubmitter() -> nodeagent::ChildTaskSubmitter& override;
 
   void SetRunTaskService(nodeagent::RunTaskService& run_task_service);
   void SetDataDependencyFetcherRouter(
       nodeagent::DataDependencyFetcherRouter& data_dependency_fetcher_router);
-  void SetChildSubmissionService(nodeagent::ChildSubmissionService& child_submission_service);
+  void SetChildForwarder(nodeagent::ChildForwarder& child_forwarder);
   void SetChildTaskSubmitter(nodeagent::ChildTaskSubmitter& child_task_submitter);
 
 private:
@@ -44,7 +44,7 @@ private:
   ObjectCacheSharedPtr object_cache_;
   nodeagent::RunTaskService* run_task_service_{nullptr};
   nodeagent::DataDependencyFetcherRouter* data_dependency_fetcher_router_{nullptr};
-  nodeagent::ChildSubmissionService* child_submission_service_{nullptr};
+  nodeagent::ChildForwarder* child_forwarder_{nullptr};
   nodeagent::ChildTaskSubmitter* child_task_submitter_{nullptr};
 };
 

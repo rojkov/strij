@@ -10,11 +10,9 @@
 #include "common/task/task.pb.h"
 #include "nodeagent/core/admission_controller.hh"
 #include "nodeagent/core/child_scheduler_router.hh"
-#include "nodeagent/core/child_submission_service.hh"
-#include "nodeagent/core/local_receiver_registry.hh"
 #include "nodeagent/core/run_task_service.hh"
 #include "nodeagent/core/task_handler_manager.hh"
-#include "nodeagent/extensions/schedulers/push/push_local_scheduler.hh"
+#include "nodeagent/extensions/schedulers/default/default_local_scheduler.hh"
 #include "nodeagent/extensions/task_handlers/echo/echo_task_handler.hh"
 #include "nodeagent/extensions/task_handlers/workflow/workflow.pb.h"
 #include "nodeagent/extensions/task_handlers/workflow/workflow_task_handler.hh"
@@ -41,15 +39,18 @@ protected:
     auto manager = std::make_shared<TaskHandlerManager>();
     manager->AddHandler("echo", std::make_unique<EchoTaskHandler>());
     run_task_service_ = std::make_unique<RunTaskServiceImpl>(manager, admission_);
-    registry_ = std::make_unique<LocalReceiverRegistry>();
-    submission_ =
-        std::make_unique<ChildSubmissionService>(*registry_, *run_task_service_, admission_);
 
-    auto push = std::make_unique<nodeagent::schedulers::PushLocalScheduler>(*run_task_service_,
-                                                                            *submission_);
+    // The bundled "default" scheduler is the local authority: it registers each
+    // child's receiver in its own registry, runs it locally when admitted, or
+    // errors it. No forward path is installed here (mirroring a node without
+    // gateway connections), so delivered-deficient children error locally.
+    auto default_scheduler =
+        std::make_unique<nodeagent::schedulers::DefaultLocalScheduler>(*run_task_service_,
+                                                                       admission_, nullptr);
+    default_scheduler_raw_ = default_scheduler.get();
     std::vector<ChildSchedulerRouter::ChildRoutedScheduler> routed;
     routed.push_back(
-        {.scheduler = std::move(push), .task_type = "echo", .local_default = true});
+        {.scheduler = std::move(default_scheduler), .task_type = "echo", .local_default = true});
     router_ = std::make_unique<ChildSchedulerRouter>(std::move(routed));
     handler_ = std::make_unique<WorkflowTaskHandler>(*router_);
   }
@@ -78,8 +79,7 @@ protected:
   std::shared_ptr<event::MockDispatcher> dispatcher_;
   std::shared_ptr<AdmissionController> admission_;
   std::unique_ptr<RunTaskServiceImpl> run_task_service_;
-  std::unique_ptr<LocalReceiverRegistry> registry_;
-  std::unique_ptr<ChildSubmissionService> submission_;
+  nodeagent::schedulers::DefaultLocalScheduler* default_scheduler_raw_{nullptr};
   std::unique_ptr<ChildSchedulerRouter> router_;
   std::unique_ptr<WorkflowTaskHandler> handler_;
 };
@@ -95,7 +95,7 @@ TEST_F(WorkflowTaskHandlerTest, FansOutAndAggregatesChildBodies) {
   EXPECT_EQ(sent.id(), "parent-1");
   EXPECT_EQ(sent.body(), "ab");
   EXPECT_TRUE(sent.is_final());
-  EXPECT_TRUE(registry_->Empty());
+  EXPECT_TRUE(default_scheduler_raw_->Registry().Empty());
   EXPECT_EQ(admission_->InFlight("echo"), 0U);
 }
 
@@ -115,7 +115,7 @@ TEST_F(WorkflowTaskHandlerTest, AbortsOnChildError) {
   EXPECT_NE(sent.body().find("failed"), std::string::npos);
   EXPECT_NE(sent.body().find("no local capacity"), std::string::npos);
   EXPECT_TRUE(sent.is_final());
-  EXPECT_TRUE(registry_->Empty());
+  EXPECT_TRUE(default_scheduler_raw_->Registry().Empty());
 }
 
 TEST_F(WorkflowTaskHandlerTest, MalformedPlanDeliversErrorText) {

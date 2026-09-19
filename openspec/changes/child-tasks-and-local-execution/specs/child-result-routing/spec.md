@@ -4,7 +4,7 @@
 
 ### Requirement: Node-local receiver registry
 
-The nodeagent SHALL provide a `LocalReceiverRegistry` mapping `task_id → ResultReceiver`, the nodeagent mirror of the gateway's `ResultReceiverStorage`. It SHALL expose `Put(task_id, ReceiverPtr)`, `Get(task_id)`, `Erase(task_id)`, and `Empty()`/`Size()`. The registry is node-global and shared by every task handler that submits children; a parent handler SHALL register a receiver keyed by the child's id before submitting the child.
+The nodeagent SHALL provide a `LocalReceiverRegistry` mapping `task_id → ResultReceiver`, the nodeagent mirror of the gateway's `ResultReceiverStorage`. It SHALL expose `Put(task_id, ReceiverPtr)`, `Get(task_id)`, `Erase(task_id)`, and `Empty()`/`Size()`. The registry is owned and maintained by the bundled `default` local scheduler (`node-local-scheduler`): its `Schedule` SHALL register the child's receiver before submitting the child, and its `HandleFrame` resolves it on inbound outcome frames.
 
 #### Scenario: Parent registers a child receiver
 
@@ -17,9 +17,9 @@ The nodeagent SHALL provide a `LocalReceiverRegistry` mapping `task_id → Resul
 - **WHEN** the final result for `C` has been delivered
 - **THEN** `Get("C")` SHALL return null and `Size()` SHALL decrease
 
-### Requirement: Inbound child-outcome frames route to the registry
+### Requirement: Inbound child-outcome frames resolve through the router
 
-`NodeagentTlvHandler` SHALL recognize inbound `kResult` and `kTaskRejected` frames on a node connection as child outcomes and SHALL deliver them to the `LocalReceiverRegistry`: `kResult` resolves the receiver by `result.id()`, delivers the body with finality, and erases the entry on the final result; `kTaskRejected` resolves by id and delivers the error. Frames whose id has no registered receiver SHALL be dropped with a warning. These frame types SHALL be core-owned by the nodeagent (like `kNodeAdvertisement`), not owned by any local scheduler, and SHALL therefore not appear in any scheduler's `HandledFrameTypes()`.
+`NodeagentTlvHandler` SHALL be a thin seam: it owns core `kNodeAdvertisement` writes and SHALL route every other inbound frame on a node connection to the node-side `ChildSchedulerRouter` (the node's frame demux, mirroring the gateway `SchedulerRouter`). The router SHALL dispatch by `type_id` to the scheduler claiming the type in its `HandledFrameTypes()`; the bundled `default` scheduler SHALL be the sole claimant of the child-outcome types `kResult` and `kTaskRejected`, and SHALL deliver them to its `LocalReceiverRegistry`: `kResult` resolves the receiver by `result.id()`, delivers the body with finality, and erases the entry on the final result; `kTaskRejected` resolves by id and delivers the error. Frames whose id has no registered receiver SHALL be dropped with a warning. Frames with no claiming scheduler SHALL be dropped with a warning by the handler.
 
 #### Scenario: Child result frame delivered to the parent
 
@@ -40,7 +40,7 @@ The nodeagent SHALL provide a `LocalReceiverRegistry` mapping `task_id → Resul
 
 ### Requirement: Receiver-backed child result sender
 
-The nodeagent SHALL provide a `ResultSender` implementation (`RegistryResultSender`) bound to the `LocalReceiverRegistry` and a fixed `task_id`. `Send(TaskResult)` SHALL resolve the receiver by id and deliver the body with finality; a final result SHALL erase the entry. `RegisterOnClose`/`UnregisterOnClose` SHALL be supported (the registry is connection-independent; the hooks may be no-ops or mirror the parent's close contract). This sender is what `ChildSubmissionService` passes to the sender-backed `RunTask` overload for locally-admitted children.
+The nodeagent SHALL provide a `ResultSender` implementation (`RegistryResultSender`) bound to the `LocalReceiverRegistry` and a fixed `task_id`. `Send(TaskResult)` SHALL resolve the receiver by id and deliver the body with finality; a final result SHALL erase the entry. `RegisterOnClose`/`UnregisterOnClose` SHALL be supported (the registry is connection-independent; the hooks may be no-ops or mirror the parent's close contract). This sender is what the bundled `default` scheduler passes to the sender-backed `RunTask` overload for locally-admitted children.
 
 #### Scenario: Local child result resolves through the registry
 

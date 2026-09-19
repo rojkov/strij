@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <memory>
 #include <span>
 #include <string>
@@ -29,14 +30,22 @@ namespace strij::nodeagent {
 // submissions here — they are pure wire-protocol counterparts and appear only
 // in the frame dispatcher.
 //
-// The router itself never registers receivers; per-task registration happens
-// in the owning local scheduler's child-policy step
-// (ChildSubmissionService::Submit).
+// The router is also the node's frame-demux authority (mirroring the gateway
+// SchedulerRouter): HandledFrameTypes() is the deduplicated union of its
+// constituents' claims, and HandleFrame routes an inbound frame to the single
+// constituent that declared its type_id (NotFound when none did). The
+// NodeagentTlvHandler is thereby reduced to an advertisement sender plus a
+// router seam, exactly like the gateway half.
+//
+// The router itself never registers receivers; per-task registration happens in
+// the local-authority scheduler's child-policy step (the bundled "default"
+// scheduler's Schedule) and its owned registry resolves the child-outcome
+// frames.
 class ChildSchedulerRouter final : public extensions::Scheduler, public ChildTaskSubmitter {
 public:
   struct ChildRoutedScheduler {
     extensions::SchedulerPtr scheduler;
-    std::string task_type;  // optional local authority; empty = not a local role
+    std::string task_type; // optional local authority; empty = not a local role
     bool local_default{false};
   };
 
@@ -53,27 +62,26 @@ public:
   // ChildTaskSubmitter
   void Submit(task::Task task, gateway::ResultReceiverPtr receiver) override;
 
-  // extensions::Scheduler (the submission facet; the router owns no frames)
+  // extensions::Scheduler (the submission facet plus the frame demux facet)
   void Schedule(const task::Task& task, gateway::ResultReceiverPtr receiver) override;
   [[nodiscard]] auto RequiredProtocol() const -> std::string_view override;
-  auto HandleFrame(const io::TlvFrame& /*frame*/, io::Connection& /*conn*/) -> absl::Status override {
-    return absl::NotFoundError("child router owns no frame types");
-  }
+  // Routes an inbound frame to the constituent that declared its type_id in
+  // HandledFrameTypes(). NotFoundError when no constituent owns the type.
+  auto HandleFrame(const io::TlvFrame& frame, io::Connection& conn) -> absl::Status override;
+  // Deduplicated union of the constituents' HandledFrameTypes() claims, owned
+  // so the span stays stable for the dispatcher's lifetime.
   [[nodiscard]] auto HandledFrameTypes() const -> std::span<const uint8_t> override;
 
   [[nodiscard]] auto RoutedSchedulerCount() const -> size_t { return schedulers_.size(); }
 
-  // Raw pointers to the owned constituent schedulers, for the inbound frame
-  // dispatcher (NodeagentTlvHandler): each constituent's HandledFrameTypes()
-  // claims the node's scheduling frame types. The pointers stay valid for the
-  // router's lifetime. Not const: the span exposes mutable element pointers.
-  [[nodiscard]] auto LocalSchedulerPointers() -> std::span<extensions::Scheduler*>;
-
 private:
   auto findChildScheduler(const task::Task& task) -> extensions::Scheduler*;
+  auto findFrameOwner(uint8_t type_id) -> extensions::Scheduler*;
 
   std::vector<ChildRoutedScheduler> schedulers_;
-  std::vector<extensions::Scheduler*> scheduler_pointers_;
+  // Union of the constituents' HandledFrameTypes() (deduplicated), owned so
+  // HandledFrameTypes() has a stable span.
+  std::vector<uint8_t> handled_types_;
   // Determined from the first constituent with a non-empty RequiredProtocol();
   // informational only (the router never advertises a protocol itself).
   std::string_view required_protocol_;

@@ -40,9 +40,8 @@ auto NodeagentFactoryContextImpl::DataDependencyFetcherRouter()
   return *data_dependency_fetcher_router_;
 }
 
-auto NodeagentFactoryContextImpl::ChildSubmissionService()
-    -> nodeagent::ChildSubmissionService& {
-  return *child_submission_service_;
+auto NodeagentFactoryContextImpl::ChildForwarder() -> nodeagent::ChildForwarder& {
+  return *child_forwarder_;
 }
 
 auto NodeagentFactoryContextImpl::ChildTaskSubmitter() -> nodeagent::ChildTaskSubmitter& {
@@ -58,9 +57,8 @@ void NodeagentFactoryContextImpl::SetDataDependencyFetcherRouter(
   data_dependency_fetcher_router_ = &data_dependency_fetcher_router;
 }
 
-void NodeagentFactoryContextImpl::SetChildSubmissionService(
-    nodeagent::ChildSubmissionService& child_submission_service) {
-  child_submission_service_ = &child_submission_service;
+void NodeagentFactoryContextImpl::SetChildForwarder(nodeagent::ChildForwarder& child_forwarder) {
+  child_forwarder_ = &child_forwarder;
 }
 
 void NodeagentFactoryContextImpl::SetChildTaskSubmitter(

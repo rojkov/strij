@@ -12,10 +12,10 @@ namespace strij::nodeagent {
 // the node-global ChildSchedulerRouter (a composite extensions::Scheduler).
 //
 // Submit() takes ownership of `receiver`; the child's result eventually
-// resolves through it (either locally via LocalReceiverRegistry, or via the
-// two-hop gateway path). The implementation dispatches by task_type to the
-// appropriate local scheduler, which delegates to the shared child-policy
-// step (ChildSubmissionService).
+// resolves through it (either locally via the default scheduler's
+// LocalReceiverRegistry, or via the two-hop gateway path). The implementation
+// dispatches by task_type to the appropriate local scheduler, which runs the
+// child-policy step (DefaultLocalScheduler::Schedule).
 class ChildTaskSubmitter {
 public:
   ChildTaskSubmitter() = default;

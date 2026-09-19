@@ -7,16 +7,18 @@ schedulers:
   # NodeSchedulerFactory. task_type = sole authority over locally-originated
   # tasks of that type; local_default (at most one) = fallback authority;
   # neither = pure wire-protocol counterpart (no local submission authority).
+  # The bundled "default" scheduler is the recommended local authority: it owns
+  # the child receiver registry and the kResult/kTaskRejected frame handling.
   - extension:
       name: "push"
     task_type: "echo"
   - extension:
-      name: "push"
-    local_default: true
-  - extension:
       name: "probe"
       typed_config:
         "@type": "type.googleapis.com/strij.extensions.schedulers.probe.ProbeSchedulerConfig"
+  - extension:
+      name: "default"
+    local_default: true
 
 pools:
   - name: "cpu"

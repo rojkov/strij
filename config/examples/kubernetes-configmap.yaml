@@ -48,6 +48,8 @@ data:
     schedulers:
       - extension:
           name: "push"
+      - extension:
+          name: "default"
         local_default: true
 
     pools:

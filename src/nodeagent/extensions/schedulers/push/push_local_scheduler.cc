@@ -10,17 +10,24 @@
 #include "common/core/io/tlv_frame.hh"
 #include "common/core/logging/log.hh"
 #include "common/task/task.pb.h"
-#include "nodeagent/core/child_submission_service.hh"
 #include "nodeagent/extensions/schedulers/push/push.pb.h"
 #include "strij/extensions/extension_registry.hh"
 #include "strij/extensions/scheduler.hh"
+#include "strij/gateway/result_receiver_storage.hh"
+#include "strij/nodeagent/run_task_service.hh"
 
 namespace strij::nodeagent::schedulers {
 
 void PushLocalScheduler::Schedule(const task::Task& task, gateway::ResultReceiverPtr receiver) {
-  // The push protocol's node-local Schedule facet delegates to the shared
-  // child-policy step: register, admit-or-forward, run locally when admitted.
-  child_submission_service_.Submit(task, std::move(receiver));
+  // The push entry is a pure wire-protocol counterpart: it never runs
+  // locally-originated children (that is the bundled "default" scheduler's
+  // job). Honor the resolve contract so a misrouted child can never hang its
+  // parent.
+  LOG_WARNING("Unimplemented: push local scheduler cannot run child task '{}' of type '{}' "
+              "(configure the \"default\" scheduler as the local authority)",
+              task.id(), task.type());
+  receiver->DeliverError(
+      "unimplemented: configure the \"default\" scheduler as the local authority for child tasks");
 }
 
 auto PushLocalScheduler::RequiredProtocol() const -> std::string_view { return "push"; }
@@ -49,8 +56,7 @@ auto PushLocalSchedulerFactory::CreateEmptyConfigProto() -> MessagePtr {
 auto PushLocalSchedulerFactory::Create(const ::google::protobuf::Message& /*config*/,
                                        extensions::NodeagentFactoryContext& context)
     -> extensions::SchedulerPtr {
-  return std::make_unique<PushLocalScheduler>(context.RunTaskService(),
-                                              context.ChildSubmissionService());
+  return std::make_unique<PushLocalScheduler>(context.RunTaskService());
 }
 
 } // namespace strij::nodeagent::schedulers

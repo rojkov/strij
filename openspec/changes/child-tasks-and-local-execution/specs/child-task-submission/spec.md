@@ -32,7 +32,7 @@ The nodeagent SHALL provide a `ChildTaskSubmitter` service exposed through `Node
 
 ### Requirement: Node-side per-type child scheduler router with explicit local default
 
-The nodeagent SHALL route child-task submissions by `task.type()` through a child scheduler router. Node-side scheduler entries SHALL be able to declare local scheduling authority explicitly and independently: a `task_type` declaration makes the entry authoritative over locally-originated tasks of that type; a `local_default` declaration (at most one entry) makes the entry the node's fallback authority for locally-originated tasks no other entry claims. An entry with neither declaration SHALL schedule no locally-originated tasks. An empty `task_type` SHALL NOT make an entry the default (diverging from the gateway `SchedulerConfig` semantics). The router SHALL be the single submission entry point: `ChildTaskSubmitter::Submit` routes to the router, which delegates `Schedule(child, receiver)` to the entry declaring the child's type, falls back to the `local_default` entry, and delivers an error through the receiver when no entry claims the type and no local default is declared.
+The nodeagent SHALL route child-task submissions by `task.type()` through a child scheduler router. Node-side scheduler entries SHALL be able to declare local scheduling authority explicitly and independently: a `task_type` declaration makes the entry authoritative over locally-originated tasks of that type; a `local_default` declaration (at most one entry) makes the entry the node's fallback authority for locally-originated tasks no other entry claims. An entry with neither declaration SHALL schedule no locally-originated tasks. An empty `task_type` SHALL NOT make an entry the default (diverging from the gateway `SchedulerConfig` semantics). The router SHALL be the single submission entry point: `ChildTaskSubmitter::Submit` routes to the router, which delegates `Schedule(child, receiver)` to the entry declaring the child's type, falls back to the `local_default` entry, and delivers an error through the receiver when no entry claims the type and no local default is declared. The router SHALL also be the node's frame demux (`child-result-routing`): its `HandledFrameTypes()` is the union of its constituents' handled types and its `HandleFrame` dispatches by `type_id` to the claiming scheduler.
 
 #### Scenario: Type-claimed child routes to the declaring scheduler
 
@@ -55,9 +55,9 @@ The nodeagent SHALL route child-task submissions by `task.type()` through a chil
 - **WHEN** a child type matches no entry and no entry declares `local_default`
 - **THEN** the router SHALL deliver an error to the child's receiver
 
-### Requirement: Local-first child execution policy
+### Requirement: Single local authority implements child execution policy
 
-A local scheduler's child `Schedule` SHALL follow the policy *run locally if capacity allows, else forward*. On receipt of a child submission the scheduler SHALL attempt admission via the shared `AdmissionController`; on success it SHALL run the child locally with a receiver-backed result sender; on admission failure it SHALL forward the child through the node's `GatewayClient` (see `gateway-client`). The child path SHALL NOT use probe scheduling: children are local by construction and never enter a probe queue.
+The node's child-task policy *run locally if capacity allows, else forward* SHALL be implemented by exactly one scheduler: the bundled `default` scheduler (`node-local-scheduler`). Its `Schedule` SHALL register the child's receiver in its own `LocalReceiverRegistry`, then attempt admission via the shared `AdmissionController`; on success it SHALL run the child locally with a receiver-backed result sender; on admission failure (or an unhandled child type) it SHALL forward the child through the node's `ChildForwarder` (`gateway-client`), or deliver an error when no forward path is available. The child path SHALL NOT use probe scheduling: children are local by construction and never enter a probe queue. The `push` and `probe` schedulers' `Schedule` facets SHALL be Unimplemented (log + `DeliverError`).
 
 #### Scenario: Admitted child runs locally
 
@@ -68,13 +68,13 @@ A local scheduler's child `Schedule` SHALL follow the policy *run locally if cap
 #### Scenario: Unadmitted child is forwarded
 
 - **WHEN** a child is submitted and admission fails (e.g. node capacity exhausted)
-- **THEN** the child SHALL be submitted upstream through the `GatewayClient`
+- **THEN** the child SHALL be submitted upstream through the `ChildForwarder`
 - **AND** the parent's receiver SHALL be kept until the remote outcome arrives
 
 #### Scenario: Children never enter the probe queue
 
 - **WHEN** a child is submitted to a node running the `"probe"` local scheduler with a full probe queue
-- **THEN** the child SHALL be forwarded (not enqueued)
+- **THEN** the child SHALL NOT be enqueued, pulled, or probed
 - **AND** no `kTaskProbe`, `kTaskPull`, or `kTaskGrant` frame SHALL be emitted for it
 
 ### Requirement: Sender-backed RunTask overloads
@@ -83,7 +83,7 @@ A local scheduler's child `Schedule` SHALL follow the policy *run locally if cap
 
 #### Scenario: Local child runs with a receiver-backed sender
 
-- **WHEN** `ChildSubmissionService` admits a child and invokes `RunTask(child, RegistryResultSender)`
+- **WHEN** the bundled `default` scheduler admits a child and invokes `RunTask(child, RegistryResultSender)`
 - **THEN** the child's handler SHALL be invoked with that sender
 - **AND** results SHALL reach the parent's receiver, not a connection
 

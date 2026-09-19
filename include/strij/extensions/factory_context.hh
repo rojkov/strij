@@ -20,7 +20,7 @@ class RunTaskService;
 class ObjectCache;
 class DataDependencyFetcherRouter;
 class ChildTaskSubmitter;
-class ChildSubmissionService;
+class ChildForwarder;
 using AdmissionControllerSharedPtr = std::shared_ptr<AdmissionController>;
 
 } // namespace strij::nodeagent
@@ -68,9 +68,11 @@ public:
   // NodeAgentConfig.data_dependency_fetchers. Schedulers use it to prefetch
   // Task.deps and to gate task readiness on dep availability.
   virtual auto DataDependencyFetcherRouter() -> nodeagent::DataDependencyFetcherRouter& PURE;
-  // The shared child-policy step (admit-or-run-or-forward), used by the local
-  // schedulers' Schedule facet. Installed before schedulers are created.
-  virtual auto ChildSubmissionService() -> nodeagent::ChildSubmissionService& PURE;
+  // The node's outbound forward path for children that cannot be satisfied
+  // locally (implemented by the node-global GatewayClient). Consumed by the
+  // bundled "default" scheduler's child-policy step. Installed before
+  // schedulers are created.
+  virtual auto ChildForwarder() -> nodeagent::ChildForwarder& PURE;
   // The node-global child submission handle wrapping the composite
   // ChildSchedulerRouter. Installed after the local schedulers are built.
   virtual auto ChildTaskSubmitter() -> nodeagent::ChildTaskSubmitter& PURE;

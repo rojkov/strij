@@ -1,6 +1,7 @@
 #include "nodeagent/core/child_scheduler_router.hh"
 
 #include <algorithm>
+#include <cstdint>
 #include <memory>
 #include <set>
 #include <string>
@@ -20,13 +21,26 @@
 
 namespace strij::nodeagent {
 
+namespace {
+
+auto in_types(std::span<const uint8_t> types, uint8_t type_id) -> bool {
+  return std::ranges::find(types, type_id) != types.end();
+}
+
+} // namespace
+
 ChildSchedulerRouter::ChildSchedulerRouter(std::vector<ChildRoutedScheduler> schedulers)
     : schedulers_{std::move(schedulers)} {
-  scheduler_pointers_.reserve(schedulers_.size());
+  std::set<uint8_t> seen_types;
   for (const auto& routed : schedulers_) {
-    scheduler_pointers_.push_back(routed.scheduler.get());
     if (required_protocol_.empty() && !routed.scheduler->RequiredProtocol().empty()) {
       required_protocol_ = routed.scheduler->RequiredProtocol();
+    }
+
+    for (const uint8_t type_id : routed.scheduler->HandledFrameTypes()) {
+      if (seen_types.insert(type_id).second) {
+        handled_types_.push_back(type_id);
+      }
     }
   }
 }
@@ -59,13 +73,32 @@ auto ChildSchedulerRouter::findChildScheduler(const task::Task& task) -> extensi
   return fallback;
 }
 
-auto ChildSchedulerRouter::RequiredProtocol() const -> std::string_view { return required_protocol_; }
+auto ChildSchedulerRouter::findFrameOwner(uint8_t type_id) -> extensions::Scheduler* {
+  for (auto& routed : schedulers_) {
+    if (in_types(routed.scheduler->HandledFrameTypes(), type_id)) {
+      return routed.scheduler.get();
+    }
+  }
 
-auto ChildSchedulerRouter::LocalSchedulerPointers() -> std::span<extensions::Scheduler*> {
-  return {scheduler_pointers_.data(), scheduler_pointers_.size()};
+  return nullptr;
 }
 
-auto ChildSchedulerRouter::HandledFrameTypes() const -> std::span<const uint8_t> { return {}; }
+auto ChildSchedulerRouter::RequiredProtocol() const -> std::string_view { return required_protocol_; }
+
+auto ChildSchedulerRouter::HandledFrameTypes() const -> std::span<const uint8_t> {
+  return handled_types_;
+}
+
+auto ChildSchedulerRouter::HandleFrame(const io::TlvFrame& frame, io::Connection& conn)
+    -> absl::Status {
+  extensions::Scheduler* owner = findFrameOwner(frame.type_id);
+  if (owner == nullptr) {
+    return absl::NotFoundError(
+        absl::StrCat("no constituent scheduler owns frame type ", static_cast<int>(frame.type_id)));
+  }
+
+  return owner->HandleFrame(frame, conn);
+}
 
 auto BuildChildSchedulerRouter(const config::NodeAgentConfig& config,
                                extensions::NodeagentFactoryContext& context)

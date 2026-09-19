@@ -7,7 +7,6 @@
 #include "common/core/io/connection.hh"
 #include "common/core/io/tlv_frame.hh"
 #include "common/task/task.pb.h"
-#include "nodeagent/core/child_submission_service.hh"
 #include "strij/event/command.hh"
 #include "strij/event/command_handler.hh"
 #include "strij/extensions/scheduler.hh"
@@ -21,19 +20,18 @@ namespace strij::nodeagent::schedulers {
 // capability_aware gateway-side schedulers, which share the same
 // RequiredProtocol() ("push").
 //
-// The scheduler owns the kTaskSubmission frame type in the NodeagentTlvHandler
-// dispatch table, parses the task, and delegates execution to the shared
-// nodeagent::RunTaskService. Its node-local Schedule facet (how locally
-//-originated children run when this entry is the type's authority or the local
-// default) delegates to the shared child-policy step (ChildSubmissionService).
+// The scheduler owns the kTaskSubmission frame type in the node frame
+// dispatcher, parses the task, and delegates execution to the shared
+// nodeagent::RunTaskService. It is a pure wire-protocol counterpart: its node-
+// local Schedule facet is unimplemented (it logs and delivers an error through
+// the receiver, honoring the resolve contract). Locally-originated children
+// run under the bundled "default" scheduler, the single local authority.
 // It also plays the event::CommandHandler role required by Connection's
 // destination contract; ProcessCommand is a no-op.
 class PushLocalScheduler final : public extensions::Scheduler, public event::CommandHandler {
 public:
-  PushLocalScheduler(nodeagent::RunTaskService& run_task_service,
-                     nodeagent::ChildSubmissionService& child_submission_service)
-      : run_task_service_{run_task_service},
-        child_submission_service_{child_submission_service} {}
+  explicit PushLocalScheduler(nodeagent::RunTaskService& run_task_service)
+      : run_task_service_{run_task_service} {}
   ~PushLocalScheduler() override = default;
 
   PushLocalScheduler(const PushLocalScheduler&) = delete;
@@ -50,7 +48,6 @@ public:
 
 private:
   nodeagent::RunTaskService& run_task_service_;
-  nodeagent::ChildSubmissionService& child_submission_service_;
 };
 
 class PushLocalSchedulerFactory final : public NodeSchedulerFactory {

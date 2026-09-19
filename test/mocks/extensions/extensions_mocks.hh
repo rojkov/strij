@@ -8,7 +8,7 @@
 #include "strij/extensions/data_dependency_fetcher.hh"
 #include "strij/extensions/factory_context.hh"
 #include "strij/nodeagent/child_task_submitter.hh"
-#include "nodeagent/core/child_submission_service.hh"
+#include "nodeagent/core/child_forwarder.hh"
 #include "nodeagent/extensions/task_handlers/task_handlers.hh"
 #include "gmock/gmock.h"
 
@@ -81,7 +81,7 @@ public:
 
   // The child-submission handles; only asserted by factories that build a
   // child-submitting handler or scheduler.
-  MOCK_METHOD(nodeagent::ChildSubmissionService&, ChildSubmissionService, (), (override));
+  MOCK_METHOD(nodeagent::ChildForwarder&, ChildForwarder, (), (override));
   MOCK_METHOD(nodeagent::ChildTaskSubmitter&, ChildTaskSubmitter, (), (override));
 };
 

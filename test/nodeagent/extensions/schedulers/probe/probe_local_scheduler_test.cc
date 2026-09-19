@@ -23,9 +23,7 @@
 #include "common/task/probe.pb.h"
 #include "common/task/task.pb.h"
 #include "nodeagent/core/admission_controller.hh"
-#include "nodeagent/core/child_submission_service.hh"
 #include "nodeagent/core/data_dependency_fetcher_router.hh"
-#include "nodeagent/core/local_receiver_registry.hh"
 #include "nodeagent/core/object_cache.hh"
 #include "nodeagent/core/run_task_service.hh"
 #include "nodeagent/core/task_handler_manager.hh"
@@ -172,10 +170,8 @@ protected:
                      std::vector<extensions::DataDependencyFetcherPtr> fetchers = {})
       -> std::unique_ptr<ProbeLocalScheduler> {
     MakeRouter(std::move(fetchers));
-    submission_ =
-        std::make_unique<ChildSubmissionService>(registry_, run_task_service, admission_);
-    return std::make_unique<ProbeLocalScheduler>(run_task_service, *submission_, admission_,
-                                                 *router_, *dispatcher_, queue_capacity,
+    return std::make_unique<ProbeLocalScheduler>(run_task_service, admission_, *router_,
+                                                 *dispatcher_, queue_capacity,
                                                  max_concurrent_preallocations);
   }
 
@@ -296,8 +292,6 @@ protected:
   std::shared_ptr<AdmissionController> admission_;
   InMemoryObjectCache object_cache_;
   std::shared_ptr<DataDependencyFetcherRouter> router_;
-  LocalReceiverRegistry registry_;
-  std::unique_ptr<ChildSubmissionService> submission_;
   std::unique_ptr<ProbeLocalScheduler> scheduler_;
 };
 
@@ -733,22 +727,16 @@ TEST_F(ProbeLocalSchedulerTest, DepCompletedUnknownTaskIsNoop) {
   EXPECT_EQ(admission_->InFlight("echo"), 1U);
 }
 
-TEST_F(ProbeLocalSchedulerTest, ChildSubmissionErrorsInsteadOfEnqueuing) {
+TEST_F(ProbeLocalSchedulerTest, ScheduleIsUnimplemented) {
   admission_ = std::make_shared<AdmissionControllerImpl>(*MakePubCaps(), *dispatcher_);
   RunTaskServiceImpl run_task_service(MakeEchoManager(), admission_);
   scheduler_ = MakeScheduler(run_task_service, 1, 1);
   ExpectWrites();
 
-  // Consume capacity with a pulled probe: the child below fails admission.
-  ASSERT_TRUE(SendProbe("1", 10).ok());
-  auto frames = ReadFrames();
-  ASSERT_EQ(frames.size(), 1U);
-  EXPECT_EQ(frames[0].type, io::TlvFrame::kTaskPull);
-  EXPECT_EQ(admission_->SharedFree("cpu"), 8U);
-
-  // A child submitted via Schedule must NOT enqueue into the probe queue: the
-  // child-policy step never queues — with no forward path it resolves the
-  // receiver with an error instead. The queue still holds no entry for it.
+  // The probe entry is a pure wire-protocol counterpart: its node-local
+  // Schedule facet is unimplemented (the bundled "default" scheduler is the
+  // single local authority). The receiver still resolves — with an error — so
+  // a misrouted child can never hang its parent.
   task::Task child;
   child.set_id("child-1");
   child.set_type("echo");
@@ -758,16 +746,13 @@ TEST_F(ProbeLocalSchedulerTest, ChildSubmissionErrorsInsteadOfEnqueuing) {
   scheduler_->Schedule(child, std::move(receiver));
 
   ASSERT_FALSE(log->delivered);
-  EXPECT_NE(log->error.find("no local capacity"), std::string::npos) << "error='" << log->error
-                                                                     << "'";
-  EXPECT_TRUE(registry_.Empty());
+  EXPECT_NE(log->error.find("unimplemented"), std::string::npos) << "error='" << log->error
+                                                                 << "'";
 
-  // Capacity is unchanged (nothing was reserved/queued) and the queue machinery
-  // was untouched: a second probe that now can't be admitted still enqueues
-  // normally rather than seeing child-1 in line.
-  ASSERT_TRUE(SendProbe("2", 10).ok());
-  EXPECT_TRUE(ReadFrames().empty());
-  EXPECT_EQ(registry_.Size(), 0U);
+  // Nothing was reserved, queued, or pulled: the probe queue machinery is
+  // untouched by a misrouted child submission.
+  EXPECT_EQ(admission_->SharedFree("cpu"), 18U);
+  EXPECT_EQ(admission_->InFlight("echo"), 0U);
 }
 
 class StubRunTaskService final : public nodeagent::RunTaskService {
@@ -798,16 +783,12 @@ TEST_F(ProbeLocalSchedulerTest, FactoryCreateValidatesConfig) {
   StubRunTaskService run_task_service;
   InMemoryObjectCache cache;
   auto router = DataDependencyFetcherRouter::Build(cache, {}).value();
-  LocalReceiverRegistry registry;
-  ChildSubmissionService submission(registry, run_task_service, admission);
 
   extensions::MockNodeagentFactoryContext context;
   EXPECT_CALL(context, AdmissionController()).WillRepeatedly(::testing::Return(admission));
   EXPECT_CALL(context, RunTaskService()).WillRepeatedly(::testing::ReturnRef(run_task_service));
   EXPECT_CALL(context, Dispatcher()).WillRepeatedly(::testing::ReturnRef(*dispatcher));
   EXPECT_CALL(context, DataDependencyFetcherRouter()).WillRepeatedly(::testing::ReturnRef(*router));
-  EXPECT_CALL(context, ChildSubmissionService())
-      .WillRepeatedly(::testing::ReturnRef(submission));
 
   ProbeLocalSchedulerFactory factory;
   {

@@ -14,7 +14,6 @@
 #include "common/task/probe.pb.h"
 #include "common/task/task.pb.h"
 #include "google/protobuf/repeated_ptr_field.h"
-#include "nodeagent/core/child_submission_service.hh"
 #include "nodeagent/core/data_dependency_fetcher_router.hh"
 #include "strij/event/command.hh"
 #include "strij/event/command_handler.hh"
@@ -58,7 +57,6 @@ namespace strij::nodeagent::schedulers::probe {
 class ProbeLocalScheduler final : public extensions::Scheduler, public event::CommandHandler {
 public:
   ProbeLocalScheduler(nodeagent::RunTaskService& run_task_service,
-                      nodeagent::ChildSubmissionService& child_submission_service,
                       nodeagent::AdmissionControllerSharedPtr admission,
                       nodeagent::DataDependencyFetcherRouter& router, event::Dispatcher& dispatcher,
                       size_t queue_capacity, size_t max_concurrent_preallocations);
@@ -113,7 +111,6 @@ private:
                           std::string_view reason);
 
   nodeagent::RunTaskService& run_task_service_;
-  nodeagent::ChildSubmissionService& child_submission_service_;
   nodeagent::AdmissionControllerSharedPtr admission_;
   nodeagent::DataDependencyFetcherRouter& router_;
   event::Dispatcher& dispatcher_;

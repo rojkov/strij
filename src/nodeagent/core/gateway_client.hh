@@ -7,7 +7,7 @@
 
 #include "absl/status/status.h"
 #include "common/task/task.pb.h"
-#include "nodeagent/core/child_submission_service.hh"
+#include "nodeagent/core/child_forwarder.hh"
 
 namespace strij::io {
 class OutboundMailbox;
