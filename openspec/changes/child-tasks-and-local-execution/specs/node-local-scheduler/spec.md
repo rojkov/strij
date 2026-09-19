@@ -12,14 +12,14 @@
 
 ### Requirement: The bundled default scheduler owns the child-task policy
 
-The nodeagent SHALL provide a bundled `default` local scheduler (factory name `"default"`) that owns the node's child-task policy. Its `Schedule(const task::Task&, gateway::ResultReceiverPtr)` SHALL implement *run locally if capacity allows, else forward*: it SHALL first register the child's receiver in its own `LocalReceiverRegistry` under the child's id, then attempt admission through the shared `AdmissionController`; on success it SHALL run the child via the sender-backed `RunTask` overload with a `RegistryResultSender` bound to that registry; on admission failure (or when no local handler claims the child's type) it SHALL forward the child through the node's `ChildForwarder` (`GatewayClient`). When forwarding is unavailable or fails, it SHALL deliver an error through the registered receiver and erase the entry — the parent never hangs. The `default` scheduler SHALL advertise no wire protocol (`RequiredProtocol()` empty) and SHALL own the node's child-outcome frame types (`kResult`, `kTaskRejected`; see `child-result-routing`). Its config message (`DefaultSchedulerConfig`) SHALL be empty.
+The nodeagent SHALL provide a bundled `default` local scheduler (factory name `"default"`) that owns the node's child-task policy. Its `Schedule(const task::Task&, gateway::ResultReceiverPtr)` SHALL implement *run locally if capacity allows, else forward*: it SHALL first register the child's receiver in its own `LocalResultReceiverStorage` under the child's id, then attempt admission through the shared `AdmissionController`; on success it SHALL run the child via the sender-backed `RunTask` overload with a `StorageResultSender` bound to that storage; on admission failure (or when no local handler claims the child's type) it SHALL forward the child through the node's `ChildForwarder` (`GatewayClient`). When forwarding is unavailable or fails, it SHALL deliver an error through the registered receiver and erase the entry — the parent never hangs. The `default` scheduler SHALL advertise no wire protocol (`RequiredProtocol()` empty) and SHALL own the node's child-outcome frame types (`kResult`, `kTaskRejected`; see `child-result-routing`). Its config message (`DefaultSchedulerConfig`) SHALL be empty.
 
 #### Scenario: Default scheduler runs an admissible child locally
 
 - **WHEN** `Schedule(child, receiver)` is invoked on the `default` scheduler, a local handler claims the type, and admission succeeds
-- **THEN** the child SHALL run via `RunTask` with a registry-backed sender
+- **THEN** the child SHALL run via `RunTask` with a storage-backed sender
 - **AND** the child's result SHALL reach the receiver
-- **AND** the registry entry SHALL be erased on the final result
+- **AND** the storage entry SHALL be erased on the final result
 
 #### Scenario: Default scheduler forwards an unadmissible child
 
@@ -31,7 +31,7 @@ The nodeagent SHALL provide a bundled `default` local scheduler (factory name `"
 
 - **WHEN** a child's type has no local handler, admission fails, and no live forward path exists (or `Forward` fails)
 - **THEN** the receiver SHALL be delivered an error
-- **AND** the registry entry SHALL be erased
+- **AND** the storage entry SHALL be erased
 
 ### Requirement: Push and probe Schedule facets are unimplemented
 

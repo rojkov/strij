@@ -42,7 +42,7 @@ struct WireFrame {
 };
 
 // Collects a child task's outcome resolved through the shared child-policy
-// step: a delivered result or a delivered error. Registry erasure destroys the
+// step: a delivered result or a delivered error. Storage erasure destroys the
 // receiver, so assertions read the test-owned log.
 struct ReceiverLog {
   bool delivered{false};

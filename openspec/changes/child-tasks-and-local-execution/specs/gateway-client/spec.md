@@ -4,7 +4,7 @@
 
 ### Requirement: GatewayClient egress facility
 
-The nodeagent SHALL provide a `GatewayClient` egress facility exposed through `NodeagentFactoryContext`. `GatewayClient::Submit(const task::Task& child, gateway::ResultReceiverPtr receiver)` SHALL forward a child task to a gateway by writing an upstream `kTaskSubmission` frame carrying the serialized `Task` (id, type, body, parameters, requirements, deps). The child's outcomes return through the node's `LocalReceiverRegistry` (`child-result-routing`); the `GatewayClient` itself SHALL NOT hold receivers beyond the write/connect lifecycle.
+The nodeagent SHALL provide a `GatewayClient` egress facility exposed through `NodeagentFactoryContext`. `GatewayClient::Submit(const task::Task& child, gateway::ResultReceiverPtr receiver)` SHALL forward a child task to a gateway by writing an upstream `kTaskSubmission` frame carrying the serialized `Task` (id, type, body, parameters, requirements, deps). The child's outcomes return through the node's `LocalResultReceiverStorage` (`child-result-routing`); the `GatewayClient` itself SHALL NOT hold receivers beyond the write/connect lifecycle.
 
 #### Scenario: Submit writes an upstream submission frame
 

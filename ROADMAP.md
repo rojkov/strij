@@ -30,6 +30,10 @@ The `2026-08-19-node-capabilities-and-scheduling` change has landed the node-man
   - Always pass a resolver (even a `LocalFunctionResolver`) to avoid potential null dereferences; may imply having different factory context implementations for gateway and nodeagent.
   - Source: TODO `src/common/extensions/factory_context.hh:34`.
 
+- [ ] **Unify gateway `ResultReceiverStorage` and node `LocalResultReceiverStorage` only if their lifecycles converge**
+  - The two stores are twins — both map `task_id → gateway::ResultReceiver` with `Put`/`Get`/`Erase`/`Empty`/`Size` — but today only the gateway side carries lifecycle behavior: a `node_of_task_` secondary index, `NotifyNodeDisconnected`/`NotifyClientDisconnected` teardown, `ExactStateTracker` accounting, and emplace first-wins `Put` semantics. The node store is a concrete, overwrite-semantics container owned privately by the bundled `default` scheduler (no extension surface). Do NOT merge now: one real consumer per side with divergent contracts would make a shared abstraction indirection, not dedup. Revisit when the node side grows entry-lifecycle semantics — node TTL/eviction hardening or a second local authority owning its own registry — and only if both sides adopt the same `Put` semantics.
+  - Source: `src/gateway/core/result_receiver_storage.{hh,cc}`, `src/nodeagent/core/local_result_receiver_storage.hh`; `openspec/changes/child-tasks-and-local-execution/design.md` (D4, Phase-5 hardening).
+
 ## Phase 2 — piped_executable maturity
 
 - [ ] **Surface errors/exit codes via a `TaskResult` error field**

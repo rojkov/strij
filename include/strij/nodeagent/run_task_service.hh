@@ -53,7 +53,7 @@ public:
 
   // Sender-backed variants of the above: results are delivered through the
   // caller's ResultSender instead of a connection-bound sender. Used by the
-  // local child policy step with a RegistryResultSender.
+  // local child policy step with a StorageResultSender.
   //
   // Admitting overload: on admission failure or an unknown handler type the
   // task is dropped with a warning (there is no connection to send kTaskRejected

@@ -15,7 +15,7 @@ namespace strij::gateway {
 // back to a node connection. `Deliver` writes a kResult frame (TaskResult keyed
 // by the fixed task id), `DeliverError` writes a kTaskRejected frame (keyed by
 // the same id) — the node resolves both back to the original parent receiver
-// via its LocalReceiverRegistry. Bound to the submitting connection's mailbox
+// via its LocalResultReceiverStorage. Bound to the submitting connection's mailbox
 // so results return over the connection regardless of which gateway connection
 // carried the original upstream submission.
 class NodeConnectionResultReceiver final : public ResultReceiver {

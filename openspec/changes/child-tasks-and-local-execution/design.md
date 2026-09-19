@@ -15,7 +15,7 @@ Existing infrastructure this change leans on:
 
 **Goals:**
 - Activate the node's `Schedule` facet for child tasks with one shared submission handle; keep `HandleTask` and `RunTask` free of the submitter (the locked interface decision).
-- A locally originated child task runs on the node when capacity allows, delivering results to a node-local receiver registry; otherwise it is forwarded to a gateway and its results return via the two-hop path.
+- A locally originated child task runs on the node when capacity allows, delivering results to a node-local result-receiver storage; otherwise it is forwarded to a gateway and its results return via the two-hop path.
 - The parent task cannot distinguish local from remote execution ("local vs remote is indistinguishable to the parent").
 - No wire-protocol change: upstream children reuse `kTaskSubmission`; outcomes reuse `kResult` / `kTaskRejected`.
 - Node-side config declares local scheduling authority explicitly (`task_type` claims + a single `local_default`), deliberately diverging from the gateway's empty-means-default shape; a `gateway_client` section configures egress.
@@ -24,7 +24,7 @@ Existing infrastructure this change leans on:
 - Probe-based child scheduling (children are deliberately *not* probed; the policy is run-immediately-if-capacity-else-forward).
 - Deadlines/TTLs and probe cancellation hardening (Phase 5 of the archived plan).
 - A production workflow handler — the change builds the mechanism and an example workflow handler for tests/validation.
-- Parent linkage in `Task` (`parent_id`) — deferred; the registry keys on the child id alone.
+- Parent linkage in `Task` (`parent_id`) — deferred; the storage keys on the child id alone.
 
 ## Decisions
 
@@ -48,7 +48,7 @@ Node-side local schedulers are primarily wire-protocol counterparts to the gatew
 
 A node-side `NodeagentSchedulerRouter` (implementing `extensions::Scheduler`, and the single submission handle a workflow handler holds) dispatches `Schedule(child, receiver)` by `child.type()` to the declaring local scheduler, falls back to the single local scheduler marked `local_default`, and delivers an error when no local scheduler claims the type and no local default is declared. This reconciles the archived plan's two statements ("a single submission scheduler — the node's capacity authority" vs "child tasks route to the scheduler owning that type"): **the router is the single submission handle; routing is by declared authority; the explicitly-marked local default owns the fallback.**
 
-The child policy lives in **one place**: the bundled `default` scheduler (`DefaultLocalScheduler`, factory name `"default"`), whose config entry is configured with `local_default: true`. Its `Schedule` is the admit-or-forward step: register the receiver in its own `LocalReceiverRegistry` first, then *try to admit locally; if admitted, run locally; else forward*. The push/probe schedulers' `Schedule` facets are **Unimplemented** — they log a warning and deliver an error through the receiver (never hang), because a node must not carry two competing local authorities. `probe`'s child path specifically does **not** queue: a child is local, so the probe dance is pointless; `probe` remains a pure wire-protocol counterpart.
+The child policy lives in **one place**: the bundled `default` scheduler (`DefaultLocalScheduler`, factory name `"default"`), whose config entry is configured with `local_default: true`. Its `Schedule` is the admit-or-forward step: register the receiver in its own `LocalResultReceiverStorage` first, then *try to admit locally; if admitted, run locally; else forward*. The push/probe schedulers' `Schedule` facets are **Unimplemented** — they log a warning and deliver an error through the receiver (never hang), because a node must not carry two competing local authorities. `probe`'s child path specifically does **not** queue: a child is local, so the probe dance is pointless; `probe` remains a pure wire-protocol counterpart.
 
 ### D3: Local child run — sender-backed `RunTask` overloads
 
@@ -56,28 +56,28 @@ The child policy lives in **one place**: the bundled `default` scheduler (`Defau
 - `RunTask(const task::Task&, ResultSenderPtr sender)` — admitting path, replaces the `ConnectionResultSender` with the caller's sender.
 - `RunTask(const task::Task&, ResultSenderPtr sender, AdmissionScopePtr reserved)` — preallocated path.
 
-The existing `io::Connection`-bound overloads remain as thin wrappers (building `ConnectionResultSender`), so the push path is byte-identical. The local child's sender is a `RegistryResultSender { LocalReceiverRegistry&, task_id }`: `Send(TaskResult)` looks up the parent's receiver by id, delivers `body`/`is_final`, and `Erase`s the registry entry on the final result.
+The existing `io::Connection`-bound overloads remain as thin wrappers (building `ConnectionResultSender`), so the push path is byte-identical. The local child's sender is a `StorageResultSender { LocalResultReceiverStorage&, task_id }`: `Send(TaskResult)` looks up the parent's receiver by id, delivers `body`/`is_final`, and `Erase`s the storage entry on the final result.
 
 ```
 parent handler          child router            default scheduler
    │ Submit(child, recv)│                       │
    │───────────────────►│ type → default        │
    │                    │  Schedule(child,recv) │
-   │                    │──────────────────────►│ registry.Put(child_id, recv)
+   │                    │──────────────────────►│ storage.Put(child_id, recv)
    │                    │                       │ Admit(child) ok?
-   │                    │                       │  yes → RunTask(child, RegistryResultSender(registry, child_id))
+   │                    │                       │  yes → RunTask(child, StorageResultSender(storage, child_id))
    │                    │                       │  no  → Forward → GatewayClient (D5), or DeliverError
    │                    │                       │
-   │  ◄── final result ─┼───────────────────────┼── registry.Get(child_id).Deliver → erases entry
+   │  ◄── final result ─┼───────────────────────┼── storage.Get(child_id).Deliver → erases entry
 ```
 
-### D4: Local receiver registry + child-outcome frames owned by the default scheduler
+### D4: Local result receiver storage + child-outcome frames owned by the default scheduler
 
-A node-side `LocalReceiverRegistry` mirrors `gateway::ResultReceiverStorage`: `Put(task_id, ReceiverPtr)`, `Get(task_id)`, `Erase(task_id)`, `Size/Empty`. Unlike the gateway — where the `SchedulerRouter` owns `kTaskSubmission` and `ResultReceiverStorage` lives in the core — the node's child-outcome routing is a *scheduling* concern owned by the bundled `default` scheduler: it holds the registry privately and claims **both** `kResult` and `kTaskRejected` in its `HandledFrameTypes()`. The `NodeagentSchedulerRouter` is the frame demux (mirroring the gateway `SchedulerRouter`): `NodeagentTlvHandler` keeps only the core `kNodeAdvertisement` write and a default seam that routes every other frame into `router.HandleFrame(frame, conn)`; the router's `findFrameOwner` dispatches by `type_id` to the claiming scheduler (`default` for the child-outcome frames, `push`/`probe` for their submission/grant frames). Unclaimed types are dropped with a warning on both seams.
+A node-side `LocalResultReceiverStorage` mirrors `gateway::ResultReceiverStorage`: `Put(task_id, ReceiverPtr)`, `Get(task_id)`, `Erase(task_id)`, `Size/Empty`. Unlike the gateway — where the `SchedulerRouter` owns `kTaskSubmission` and `ResultReceiverStorage` lives in the core — the node's child-outcome routing is a *scheduling* concern owned by the bundled `default` scheduler: it holds the storage privately and claims **both** `kResult` and `kTaskRejected` in its `HandledFrameTypes()`. The `NodeagentSchedulerRouter` is the frame demux (mirroring the gateway `SchedulerRouter`): `NodeagentTlvHandler` keeps only the core `kNodeAdvertisement` write and a default seam that routes every other frame into `router.HandleFrame(frame, conn)`; the router's `findFrameOwner` dispatches by `type_id` to the claiming scheduler (`default` for the child-outcome frames, `push`/`probe` for their submission/grant frames). Unclaimed types are dropped with a warning on both seams.
 
-`DefaultLocalScheduler::HandleFrame(kResult | kTaskRejected)` looks the id up in its own registry and delivers (`Deliver`/`DeliverError`) — resolving the exact entry `Schedule` created for a forwarded child — erasing on final. Unknown ids are dropped with a warning. The frame-ownership doctrine still holds: a `type_id` has exactly one owner; ownership is resolved at router level, exactly as on the gateway.
+`DefaultLocalScheduler::HandleFrame(kResult | kTaskRejected)` looks the id up in its own storage and delivers (`Deliver`/`DeliverError`) — resolving the exact entry `Schedule` created for a forwarded child — erasing on final. Unknown ids are dropped with a warning. The frame-ownership doctrine still holds: a `type_id` has exactly one owner; ownership is resolved at router level, exactly as on the gateway.
 
-Receiver lifetime: the registry entry died with the parent (handler-erased on its own connection close, via `ResultSender::RegisterOnClose`) or on the final result / rejection. A parent that dies without cleanup leaks an entry until TTL hardening (Phase 5); Phase 4 accepts a bounded, logged leak and documents the `RegisterOnClose` recipe for handlers.
+Receiver lifetime: the storage entry died with the parent (handler-erased on its own connection close, via `ResultSender::RegisterOnClose`) or on the final result / rejection. A parent that dies without cleanup leaks an entry until TTL hardening (Phase 5); Phase 4 accepts a bounded, logged leak and documents the `RegisterOnClose` recipe for handlers.
 
 ### D5: Forward path — `GatewayClient` egress
 
@@ -93,7 +93,7 @@ nodeA                                      gateway G
    │                                       │  default seam → router claims kTaskSubmission
    │                                       │  Schedule(child, NodeConnectionResultReceiver(conn))
    │                                       │  storage.Put(child_id, nodeA)
-   │   ◄── kResult on same connection ─────│  (two-hop: worker → gateway → nodeA → registry → parent)
+   │   ◄── kResult on same connection ─────│  (two-hop: worker → gateway → nodeA → storage → parent)
 ```
 
 ### D6: Gateway inbound child handling
@@ -129,9 +129,9 @@ parent handler        NodeagentSchedulerRouter     default scheduler
    │  Submit(child, recv)                          │
    │───────────────────────►  type → owning sched  │
    │                        │  Schedule(child,recv)│
-   │                        │─────────────────────►│  registry.Put(id) → Admit ok
-   │                        │                     │── RunTask(child, RegistryResultSender(registry, id))
-   │                        │                     │   handler.Send(final) → registry → parent → Erase
+   │                        │─────────────────────►│  storage.Put(id) → Admit ok
+   │                        │                     │── RunTask(child, StorageResultSender(storage, id))
+   │                        │                     │   handler.Send(final) → storage → parent → Erase
    │  ◄── result ───────────┼─────────────────────│
 ```
 
@@ -140,7 +140,7 @@ Forwarded child (two-hop):
 ```
 nodeA (parent)          gateway G                    nodeB (worker)
    │ Submit(child,recv) │                            │
-   │ default: registry.Put(id)                       │
+   │ default: storage.Put(id)                       │
    │ upstream kTaskSubmission ──► router.claim(kSub) │
    │                      Schedule(child, NodeRecv)  │
    │                      storage.Put(id, nodeA)     │
@@ -149,21 +149,21 @@ nodeA (parent)          gateway G                    nodeB (worker)
    │                      storage.Get → NodeRecv     │
    │  ◄── kResult on nodeA↔G conn ──────────────────│
    │  handler seam → router → default scheduler's   │
-   │  registry → parent                             │
+   │  storage → parent                             │
 ```
 
 ## Risks / Trade-offs
 
 - **Rebound loop** — a forwarded child can be scheduled by the gateway back to the saturated submitting node; push admission fails → `kTaskRejected` → parent error, i.e. the forward was wasted but terminates (push never retries). Mitigation: accepted in Phase 4; probe-based child scheduling is the later refinement.
 - **No live connection and unreachable configured gateways** → the parent receiver gets an error. Mitigation: address fallback + clear error text; documented behavior.
-- **Orphaned registry entries** — a parent handler that dies without erasing its children leaks registry entries until TTL hardening. Mitigation: Phase-4 handler recipe erases on its own `RegisterOnClose`; logged leak accepted.
+- **Orphaned storage entries** — a parent handler that dies without erasing its children leaks storage entries until TTL hardening. Mitigation: Phase-4 handler recipe erases on its own `RegisterOnClose`; logged leak accepted.
 - **`NodeagentTlvHandler` becomes a thin seam** — the child-outcome cases move out of the node core into the bundled `default` scheduler (mirroring the gateway, where the `SchedulerRouter` owns `kTaskSubmission`). The frame-ownership doctrine stays intact: a `type_id` has exactly one owner, and the router resolves ownership by `HandledFrameTypes()` at demux time. The handler keeps only advertisement + the router seam.
 - **Two-phase construction in the nodeagent binary** — the `default` scheduler needs `RunTaskService` + `AdmissionController` + the `GatewayClient` forwarder; `GatewayClient` needs the context's connections. Wiring order matters but is linear (no cycle) because of D1: `GatewayClient` is installed as the `ChildForwarder` **before** the schedulers are built.
 - **Multiple gateways** — upstream submission is round-robin over live connections; two-hop routing is connection-agnostic, so results return correctly even across different connections.
 
 ## Migration Plan
 
-1. **Phase 4A (node, land first)** — `NodeagentFactoryContext.ChildTaskSubmitter` + `NodeagentSchedulerRouter` (now also the frame demux) + bundled `default` scheduler owning `LocalReceiverRegistry` + router-owned child-outcome cases + `RegistryResultSender` + sender-backed `RunTask` overloads + example workflow handler + `schedulers` config shape change (`default` with `local_default: true`). Self-contained; egress absent (forwarding is disabled, so capacity-deficient children error — preserving the Phase-0 behavior of a node that cannot enlist remote capacity). **BREAKING config**: `schedulers` entry shape.
+1. **Phase 4A (node, land first)** — `NodeagentFactoryContext.ChildTaskSubmitter` + `NodeagentSchedulerRouter` (now also the frame demux) + bundled `default` scheduler owning `LocalResultReceiverStorage` + router-owned child-outcome cases + `StorageResultSender` + sender-backed `RunTask` overloads + example workflow handler + `schedulers` config shape change (`default` with `local_default: true`). Self-contained; egress absent (forwarding is disabled, so capacity-deficient children error — preserving the Phase-0 behavior of a node that cannot enlist remote capacity). **BREAKING config**: `schedulers` entry shape.
 2. **Phase 4B (forward)** — `GatewayClient` + `gateway_client` config + gateway inbound child routing (`NodeConnectionResultReceiver`, router claims `kTaskSubmission`). Wire-unchanged; node and gateway can roll independently (a gateway rejecting `kTaskSubmission` before upgrade drops them, so the node sees a dropped forward → parent error; upgrade order: gateway first).
 3. **Rollback** — revert the affected binary; both halves stay interoperable on the unchanged wire.
 
@@ -178,4 +178,4 @@ nodeA (parent)          gateway G                    nodeB (worker)
   - node-side `NodeSchedulerConfig` — a single protocol then owns several locally-originated types without duplicate frame-dispatch-colliding entries;
   - gateway-side `SchedulerConfig` — a single scheduling policy (e.g. `round_robin`) then serves several task types without duplicate binder entries.
   Both extensions must validate claim uniqueness across entries when they land.
-- **Registry eviction** beyond final-result/erasure — TTLs deferred to Phase 5 hardening.
+- **Storage eviction** beyond final-result/erasure — TTLs deferred to Phase 5 hardening.

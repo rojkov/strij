@@ -37,7 +37,7 @@ namespace strij::nodeagent {
 namespace {
 
 // Shared, test-owned outcome log: a receiver handed to Schedule may be resolved
-// synchronously (and erased from a registry, destroying the receiver object),
+// synchronously (and erased from a storage entry, destroying the receiver object),
 // so assertions read test-owned state.
 struct ReceiverLog {
   bool delivered{false};

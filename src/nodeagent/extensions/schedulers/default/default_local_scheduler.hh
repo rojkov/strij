@@ -11,7 +11,7 @@
 #include "common/core/io/tlv_frame.hh"
 #include "common/task/task.pb.h"
 #include "nodeagent/core/child_forwarder.hh"
-#include "nodeagent/core/local_receiver_registry.hh"
+#include "nodeagent/core/local_result_receiver_storage.hh"
 #include "strij/extensions/scheduler.hh"
 #include "strij/gateway/result_receiver_storage.hh"
 #include "strij/nodeagent/admission_controller.hh"
@@ -23,21 +23,21 @@ namespace strij::nodeagent::schedulers {
 // node's local_default authority: the ONLY local scheduler with a functional
 // Schedule facet. It owns the whole child-policy step:
 //
-//   1. Register the child's receiver in its own LocalReceiverRegistry, keyed by
+//   1. Register the child's receiver in its own LocalResultReceiverStorage, keyed by
 //      child id (the registration is observable from the moment Schedule
 //      returns).
 //   2. If no handler is registered for the child's type → forward (or error).
 //   3. Attempt AdmissionController::Admit; on success run the child locally via
-//      the sender-backed, preallocated RunTask with a RegistryResultSender (the
+//      the sender-backed, preallocated RunTask with a StorageResultSender (the
 //      held scope transfers to the tracking sender; no double-admit).
 //   4. On admission failure (capacity/requirements) → forward (or error).
 //
-// The registry entry created in (1) is erased on the child's final result or
-// rejection (RegistryResultSender), or directly after a locally-delivered
+// The storage entry created in (1) is erased on the child's final result or
+// rejection (StorageResultSender), or directly after a locally-delivered
 // forward error. A *forwarded* child's outcome returns via the kResult /
 // kTaskRejected frames this scheduler owns in the frame dispatcher, which
-// resolve the same registry entry — the parent cannot distinguish local from
-// remote execution. The child-receiver registry is fully private to this
+// resolve the same storage entry — the parent cannot distinguish local from
+// remote execution. The child result-receiver storage is fully private to this
 // scheduler; no other component (handler, router, dispatcher) holds a ref.
 //
 // The scheduler claims no wire protocol (RequiredProtocol() is empty): it
@@ -68,11 +68,11 @@ public:
   auto HandleFrame(const io::TlvFrame& frame, io::Connection& conn) -> absl::Status override;
   [[nodiscard]] auto HandledFrameTypes() const -> std::span<const uint8_t> override;
 
-  // The child receiver registry owned by this scheduler — the only component
-  // that registers or erases child receivers. Exposed for the framework's
-  // verification paths and tests; production frame resolution goes through
-  // HandleFrame, never through the registry directly.
-  [[nodiscard]] auto Registry() -> LocalReceiverRegistry& { return registry_; }
+  // The child result-receiver storage owned by this scheduler — the only
+  // component that registers or erases child receivers. Exposed for the
+  // framework's verification paths and tests; production frame resolution goes
+  // through HandleFrame, never through the storage directly.
+  [[nodiscard]] auto Storage() -> LocalResultReceiverStorage& { return storage_; }
 
 private:
   auto handleResultFrame(const io::TlvFrame& frame) -> absl::Status;
@@ -86,7 +86,7 @@ private:
   nodeagent::AdmissionControllerSharedPtr admission_;
   nodeagent::ChildForwarder* forward_;
 
-  LocalReceiverRegistry registry_;
+  LocalResultReceiverStorage storage_;
 };
 
 class DefaultLocalSchedulerFactory final : public NodeSchedulerFactory {

@@ -22,12 +22,12 @@ public:
 
   // Forwards `task` to a gateway by writing an upstream kTaskSubmission frame.
   // Ownership of the receiver is NOT taken here — it stays registered in the
-  // caller's LocalReceiverRegistry under task.id(), and the child's outcome
-  // returns through the registry (via the bundled "default" scheduler's owned
+  // caller's LocalResultReceiverStorage under task.id(), and the child's outcome
+  // returns through the storage (via the bundled "default" scheduler's owned
   // kResult/kTaskRejected frame handling).
-  // Returns OkStatus on success (receiver stays in registry for async
+  // Returns OkStatus on success (receiver stays in storage for async
   // resolution). Returns a non-Ok status when forwarding is impossible (no
-  // live connection); the caller delivers an error and erases the registry
+  // live connection); the caller delivers an error and erases the storage
   // entry so the parent never hangs.
   virtual auto Forward(const task::Task& task) -> absl::Status PURE;
 };

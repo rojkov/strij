@@ -8,25 +8,25 @@
 
 namespace strij::nodeagent {
 
-// Node-side per-task result receiver registry (a node-local mirror of
+// Node-side per-task result receiver storage (a node-local mirror of
 // gateway::ResultReceiverStorage, keyed by task_id alone). Owned privately by
 // the bundled "default" scheduler, which both registers (child-policy step in
 // its Schedule) and resolves (its kResult/kTaskRejected frame handling)
 // entries.
 //
-// The registry stores gateway::ResultReceiver instances delivered to it by
+// The storage holds gateway::ResultReceiver instances delivered to it by
 // the submission path (policy step in DefaultLocalScheduler::Schedule) and
 // resolved by DefaultLocalScheduler's kResult/kTaskRejected cases. Entries are
 // erased on final result, on rejection, or when a receiver is resolved
 // directly via Get + Deliver.
-class LocalReceiverRegistry {
+class LocalResultReceiverStorage {
 public:
-  LocalReceiverRegistry() = default;
+  LocalResultReceiverStorage() = default;
 
-  LocalReceiverRegistry(const LocalReceiverRegistry&) = delete;
-  auto operator=(const LocalReceiverRegistry&) -> LocalReceiverRegistry& = delete;
-  LocalReceiverRegistry(LocalReceiverRegistry&&) noexcept = delete;
-  auto operator=(LocalReceiverRegistry&&) noexcept -> LocalReceiverRegistry& = delete;
+  LocalResultReceiverStorage(const LocalResultReceiverStorage&) = delete;
+  auto operator=(const LocalResultReceiverStorage&) -> LocalResultReceiverStorage& = delete;
+  LocalResultReceiverStorage(LocalResultReceiverStorage&&) noexcept = delete;
+  auto operator=(LocalResultReceiverStorage&&) noexcept -> LocalResultReceiverStorage& = delete;
 
   // Stores `receiver` under `task_id`, overwriting any prior entry.
   void Put(std::string task_id, gateway::ResultReceiverPtr receiver);

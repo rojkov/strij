@@ -15,8 +15,8 @@
 #include "common/core/logging/log.hh"
 #include "common/task/task.pb.h"
 #include "nodeagent/core/child_forwarder.hh"
-#include "nodeagent/core/local_receiver_registry.hh"
-#include "nodeagent/core/registry_result_sender.hh"
+#include "nodeagent/core/local_result_receiver_storage.hh"
+#include "nodeagent/core/storage_result_sender.hh"
 #include "nodeagent/extensions/schedulers/default/default.pb.h"
 #include "strij/extensions/extension_registry.hh"
 #include "strij/extensions/scheduler.hh"
@@ -36,7 +36,7 @@ void DefaultLocalScheduler::Schedule(const task::Task& task, gateway::ResultRece
   // 1. Register home first so the receiver is observable (and resolvable) from
   //    the moment Schedule returns.
   const std::string child_id = task.id();
-  registry_.Put(child_id, std::move(receiver));
+  storage_.Put(child_id, std::move(receiver));
 
   // 2. No handler for the child's type: never admit — forward (or error).
   if (!run_task_service_.HasHandler(task.type())) {
@@ -56,7 +56,7 @@ void DefaultLocalScheduler::Schedule(const task::Task& task, gateway::ResultRece
   //    sender so a task that never reports a final result still releases
   //    capacity.
   auto scope = std::make_unique<AdmissionScope>(admission_, task.type(), task.requirements());
-  auto sender = std::make_unique<RegistryResultSender>(registry_, child_id);
+  auto sender = std::make_unique<StorageResultSender>(storage_, child_id);
   run_task_service_.RunTask(task, std::move(sender), std::move(scope));
 }
 
@@ -75,10 +75,10 @@ void DefaultLocalScheduler::forwardOrError(const task::Task& task, const std::st
 
   // No forward path (or unreachable gateway): the child cannot be satisfied
   // locally — resolve the receiver so the parent never hangs.
-  if (gateway::ResultReceiver* receiver = registry_.Get(child_id); receiver != nullptr) {
+  if (gateway::ResultReceiver* receiver = storage_.Get(child_id); receiver != nullptr) {
     receiver->DeliverError("no local capacity and no gateway forward path is configured");
   }
-  registry_.Erase(child_id);
+  storage_.Erase(child_id);
 }
 
 auto DefaultLocalScheduler::HandleFrame(const io::TlvFrame& frame, io::Connection& /*conn*/)
@@ -101,7 +101,7 @@ auto DefaultLocalScheduler::handleResultFrame(const io::TlvFrame& frame) -> absl
     return absl::InvalidArgumentError("malformed TaskResult frame dropped");
   }
 
-  gateway::ResultReceiver* receiver = registry_.Get(result.id());
+  gateway::ResultReceiver* receiver = storage_.Get(result.id());
   if (receiver == nullptr) {
     LOG_WARNING("Result for unknown child task '{}' dropped", result.id());
     return absl::OkStatus();
@@ -112,7 +112,7 @@ auto DefaultLocalScheduler::handleResultFrame(const io::TlvFrame& frame) -> absl
   const auto data = std::as_bytes(std::span(body.data(), body.size()));
   receiver->Deliver(data, is_final);
   if (is_final) {
-    registry_.Erase(result.id());
+    storage_.Erase(result.id());
   }
   return absl::OkStatus();
 }
@@ -125,14 +125,14 @@ auto DefaultLocalScheduler::handleRejectedFrame(const io::TlvFrame& frame) -> ab
     return absl::InvalidArgumentError("malformed TaskRejected frame dropped");
   }
 
-  gateway::ResultReceiver* receiver = registry_.Get(rejected.id());
+  gateway::ResultReceiver* receiver = storage_.Get(rejected.id());
   if (receiver == nullptr) {
     LOG_WARNING("Rejection for unknown child task '{}' dropped", rejected.id());
     return absl::OkStatus();
   }
 
   receiver->DeliverError(rejected.reason());
-  registry_.Erase(rejected.id());
+  storage_.Erase(rejected.id());
   return absl::OkStatus();
 }
 

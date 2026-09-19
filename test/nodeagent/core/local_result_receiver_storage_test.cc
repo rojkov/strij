@@ -6,8 +6,8 @@
 #include <utility>
 
 #include "common/task/task.pb.h"
-#include "nodeagent/core/local_receiver_registry.hh"
-#include "nodeagent/core/registry_result_sender.hh"
+#include "nodeagent/core/local_result_receiver_storage.hh"
+#include "nodeagent/core/storage_result_sender.hh"
 #include "strij/gateway/result_receiver_storage.hh"
 #include "gtest/gtest.h"
 
@@ -16,7 +16,7 @@ namespace {
 
 // Shared, test-owned outcome log. The receiver is stored by value of a
 // unique_ptr and may be destroyed while still registered (a final result or an
-// error erases the registry entry, destroying the receiver), so assertions read
+// error erases the storage entry, destroying the receiver), so assertions read
 // the log through a shared_ptr that outlives the receiver.
 struct ReceiverLog {
   bool delivered{false};
@@ -38,40 +38,40 @@ public:
   void DeliverError(std::string_view reason) override { log->error = std::string(reason); }
 };
 
-TEST(LocalReceiverRegistryTest, PutGetEraseRoundTrip) {
-  LocalReceiverRegistry registry;
-  EXPECT_TRUE(registry.Empty());
-  EXPECT_EQ(registry.Size(), 0U);
+TEST(LocalResultReceiverStorageTest, PutGetEraseRoundTrip) {
+  LocalResultReceiverStorage storage;
+  EXPECT_TRUE(storage.Empty());
+  EXPECT_EQ(storage.Size(), 0U);
 
   auto receiver = std::make_unique<RecordingReceiver>();
   RecordingReceiver* raw = receiver.get();
-  registry.Put("t1", std::move(receiver));
+  storage.Put("t1", std::move(receiver));
 
-  EXPECT_FALSE(registry.Empty());
-  EXPECT_EQ(registry.Size(), 1U);
-  EXPECT_EQ(registry.Get("t1"), raw);
-  EXPECT_EQ(registry.Get("missing"), nullptr);
+  EXPECT_FALSE(storage.Empty());
+  EXPECT_EQ(storage.Size(), 1U);
+  EXPECT_EQ(storage.Get("t1"), raw);
+  EXPECT_EQ(storage.Get("missing"), nullptr);
 
   // Put overwrites a prior entry for the same id.
   auto replacement = std::make_unique<RecordingReceiver>();
   RecordingReceiver* replacement_raw = replacement.get();
-  registry.Put("t1", std::move(replacement));
-  EXPECT_EQ(registry.Get("t1"), replacement_raw);
-  EXPECT_EQ(registry.Size(), 1U);
+  storage.Put("t1", std::move(replacement));
+  EXPECT_EQ(storage.Get("t1"), replacement_raw);
+  EXPECT_EQ(storage.Size(), 1U);
 
-  EXPECT_TRUE(registry.Erase("t1"));
-  EXPECT_FALSE(registry.Erase("t1"));
-  EXPECT_TRUE(registry.Empty());
-  EXPECT_EQ(registry.Size(), 0U);
+  EXPECT_TRUE(storage.Erase("t1"));
+  EXPECT_FALSE(storage.Erase("t1"));
+  EXPECT_TRUE(storage.Empty());
+  EXPECT_EQ(storage.Size(), 0U);
 }
 
-TEST(RegistryResultSenderTest, FinalResultDeliversAndErases) {
-  LocalReceiverRegistry registry;
+TEST(StorageResultSenderTest, FinalResultDeliversAndErases) {
+  LocalResultReceiverStorage storage;
   auto receiver = std::make_unique<RecordingReceiver>();
   auto log = receiver->log;
-  registry.Put("child-1", std::move(receiver));
+  storage.Put("child-1", std::move(receiver));
 
-  RegistryResultSender sender(registry, "child-1");
+  StorageResultSender sender(storage, "child-1");
   task::TaskResult result;
   result.set_id("child-1");
   result.set_body("hello");
@@ -82,16 +82,16 @@ TEST(RegistryResultSenderTest, FinalResultDeliversAndErases) {
   EXPECT_TRUE(log->is_final);
   EXPECT_EQ(log->body, "hello");
   EXPECT_TRUE(log->error.empty());
-  EXPECT_TRUE(registry.Empty());
+  EXPECT_TRUE(storage.Empty());
 }
 
-TEST(RegistryResultSenderTest, NonFinalResultKeepsEntry) {
-  LocalReceiverRegistry registry;
+TEST(StorageResultSenderTest, NonFinalResultKeepsEntry) {
+  LocalResultReceiverStorage storage;
   auto receiver = std::make_unique<RecordingReceiver>();
   auto log = receiver->log;
-  registry.Put("child-1", std::move(receiver));
+  storage.Put("child-1", std::move(receiver));
 
-  RegistryResultSender sender(registry, "child-1");
+  StorageResultSender sender(storage, "child-1");
   task::TaskResult result;
   result.set_id("child-1");
   result.set_body("chunk");
@@ -102,17 +102,17 @@ TEST(RegistryResultSenderTest, NonFinalResultKeepsEntry) {
   ASSERT_TRUE(log->delivered);
   EXPECT_FALSE(log->is_final);
   EXPECT_EQ(log->body, "chunk");
-  EXPECT_EQ(registry.Size(), 1U);
-  EXPECT_NE(registry.Get("child-1"), nullptr);
+  EXPECT_EQ(storage.Size(), 1U);
+  EXPECT_NE(storage.Get("child-1"), nullptr);
 }
 
-TEST(RegistryResultSenderTest, AbsentIsFinalFieldMeansFinal) {
-  LocalReceiverRegistry registry;
+TEST(StorageResultSenderTest, AbsentIsFinalFieldMeansFinal) {
+  LocalResultReceiverStorage storage;
   auto receiver = std::make_unique<RecordingReceiver>();
   auto log = receiver->log;
-  registry.Put("child-1", std::move(receiver));
+  storage.Put("child-1", std::move(receiver));
 
-  RegistryResultSender sender(registry, "child-1");
+  StorageResultSender sender(storage, "child-1");
   task::TaskResult result;
   result.set_id("child-1");
   result.set_body("done");
@@ -121,23 +121,23 @@ TEST(RegistryResultSenderTest, AbsentIsFinalFieldMeansFinal) {
 
   ASSERT_TRUE(log->delivered);
   EXPECT_TRUE(log->is_final);
-  EXPECT_TRUE(registry.Empty());
+  EXPECT_TRUE(storage.Empty());
 }
 
-TEST(RegistryResultSenderTest, UnknownTaskIsDropped) {
-  LocalReceiverRegistry registry;
-  RegistryResultSender sender(registry, "ghost");
+TEST(StorageResultSenderTest, UnknownTaskIsDropped) {
+  LocalResultReceiverStorage storage;
+  StorageResultSender sender(storage, "ghost");
   task::TaskResult result;
   result.set_id("ghost");
   result.set_body("x");
   result.set_is_final(true);
   sender.Send(std::move(result));
-  EXPECT_TRUE(registry.Empty());
+  EXPECT_TRUE(storage.Empty());
 }
 
-TEST(RegistryResultSenderTest, LifecycleHooksRoundTrip) {
-  LocalReceiverRegistry registry;
-  RegistryResultSender sender(registry, "child-1");
+TEST(StorageResultSenderTest, LifecycleHooksRoundTrip) {
+  LocalResultReceiverStorage storage;
+  StorageResultSender sender(storage, "child-1");
   bool closed = false;
   const std::size_t token =
       sender.RegisterOnClose([&closed]() { closed = true; });

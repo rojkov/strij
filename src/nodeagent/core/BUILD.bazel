@@ -187,9 +187,9 @@ strij_cc_library(
 )
 
 strij_cc_library(
-    name = "local_receiver_registry_lib",
-    srcs = ["local_receiver_registry.cc"],
-    hdrs = ["local_receiver_registry.hh"],
+    name = "local_result_receiver_storage_lib",
+    srcs = ["local_result_receiver_storage.cc"],
+    hdrs = ["local_result_receiver_storage.hh"],
     visibility = ["//visibility:public"],
     deps = [
         "//include/strij/gateway:result_receiver_storage_interface",
@@ -197,12 +197,12 @@ strij_cc_library(
 )
 
 strij_cc_library(
-    name = "registry_result_sender_lib",
-    srcs = ["registry_result_sender.cc"],
-    hdrs = ["registry_result_sender.hh"],
+    name = "storage_result_sender_lib",
+    srcs = ["storage_result_sender.cc"],
+    hdrs = ["storage_result_sender.hh"],
     visibility = ["//visibility:public"],
     deps = [
-        ":local_receiver_registry_lib",
+        ":local_result_receiver_storage_lib",
         "//include/strij/gateway:result_receiver_storage_interface",
         "//src/common/core/logging:log_lib",
         "//src/nodeagent/extensions/task_handlers:task_handlers_interface",

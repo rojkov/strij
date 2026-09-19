@@ -30,7 +30,7 @@
 namespace strij::nodeagent {
 namespace {
 
-// Shared, test-owned outcome log: registry erasure (final result or error
+// Shared, test-owned outcome log: storage erasure (final result or error
 // path) destroys the receiver object, so assertions read test-owned state.
 struct ReceiverLog {
   bool delivered{false};
@@ -158,12 +158,12 @@ TEST_F(DefaultLocalSchedulerTest, AdmittedChildRunsLocallyAndResolvesReceiver) {
   scheduler_->Schedule(MakeChild("child-1", "echo", 4), std::move(receiver));
 
   // The echo handler delivered the final result synchronously through the
-  // RegistryResultSender bound to this scheduler's registry entry.
+  // StorageResultSender bound to this scheduler's storage entry.
   ASSERT_TRUE(log->delivered);
   EXPECT_TRUE(log->is_final);
   EXPECT_EQ(log->body, "payload");
   EXPECT_TRUE(log->error.empty());
-  EXPECT_TRUE(scheduler_->Registry().Empty());
+  EXPECT_TRUE(scheduler_->Storage().Empty());
   EXPECT_EQ(admission_->InFlight("echo"), 0U);
   EXPECT_EQ(admission_->SharedFree("cpu"), 16U);
 }
@@ -176,13 +176,13 @@ TEST_F(DefaultLocalSchedulerTest, UnhandledChildDeliversErrorAndErasesEntry) {
   ASSERT_FALSE(log->delivered);
   EXPECT_NE(log->error.find("no local capacity"), std::string::npos) << "error='" << log->error
                                                                      << "'";
-  EXPECT_TRUE(scheduler_->Registry().Empty());
+  EXPECT_TRUE(scheduler_->Storage().Empty());
 }
 
 TEST_F(DefaultLocalSchedulerTest, UnadmittedChildDeliversErrorAndErasesEntry) {
   // Consume all 16 cpu with an in-flight task so the child's 4-cpu request
   // fails admission: without a forward path the receiver gets an error and the
-  // registry entry is erased (nothing hangs).
+  // storage entry is erased (nothing hangs).
   ASSERT_TRUE(admission_->Admit("echo", MakeChild("a", "echo", 16).requirements()).ok());
   auto receiver = std::make_unique<RecordingReceiver>();
   auto log = receiver->log;
@@ -191,7 +191,7 @@ TEST_F(DefaultLocalSchedulerTest, UnadmittedChildDeliversErrorAndErasesEntry) {
   ASSERT_FALSE(log->delivered);
   EXPECT_NE(log->error.find("no local capacity"), std::string::npos) << "error='" << log->error
                                                                      << "'";
-  EXPECT_TRUE(scheduler_->Registry().Empty());
+  EXPECT_TRUE(scheduler_->Storage().Empty());
 }
 
 TEST_F(DefaultLocalSchedulerTest, ForwardedChildKeepsEntryUntilResultFrame) {
@@ -208,7 +208,7 @@ TEST_F(DefaultLocalSchedulerTest, ForwardedChildKeepsEntryUntilResultFrame) {
   EXPECT_EQ(forwarder.last_task_id, "child-1");
   EXPECT_FALSE(log->delivered);
   EXPECT_TRUE(log->error.empty());
-  EXPECT_EQ(scheduler_->Registry().Size(), 1U);
+  EXPECT_EQ(scheduler_->Storage().Size(), 1U);
 
   // The child's outcome returns as a kResult frame: the scheduler resolves and
   // erases the very entry created above.
@@ -218,7 +218,7 @@ TEST_F(DefaultLocalSchedulerTest, ForwardedChildKeepsEntryUntilResultFrame) {
   ASSERT_TRUE(log->delivered);
   EXPECT_TRUE(log->is_final);
   EXPECT_EQ(log->body, "remote");
-  EXPECT_TRUE(scheduler_->Registry().Empty());
+  EXPECT_TRUE(scheduler_->Storage().Empty());
 }
 
 TEST_F(DefaultLocalSchedulerTest, FailedForwardDeliversErrorAndErasesEntry) {
@@ -234,7 +234,7 @@ TEST_F(DefaultLocalSchedulerTest, FailedForwardDeliversErrorAndErasesEntry) {
   ASSERT_FALSE(log->delivered);
   EXPECT_NE(log->error.find("no local capacity"), std::string::npos) << "error='" << log->error
                                                                      << "'";
-  EXPECT_TRUE(scheduler_->Registry().Empty());
+  EXPECT_TRUE(scheduler_->Storage().Empty());
 }
 
 TEST_F(DefaultLocalSchedulerTest, AdmittedChildRunsLocallyEvenWithForwardPath) {
@@ -251,7 +251,7 @@ TEST_F(DefaultLocalSchedulerTest, AdmittedChildRunsLocallyEvenWithForwardPath) {
   ASSERT_TRUE(log->delivered);
   EXPECT_TRUE(log->is_final);
   EXPECT_EQ(log->body, "payload");
-  EXPECT_TRUE(scheduler_->Registry().Empty());
+  EXPECT_TRUE(scheduler_->Storage().Empty());
 }
 
 TEST_F(DefaultLocalSchedulerTest, ResultFrameDeliversAndErasesOnFinal) {
@@ -259,7 +259,7 @@ TEST_F(DefaultLocalSchedulerTest, ResultFrameDeliversAndErasesOnFinal) {
   // resolved by the kResult frame path.
   auto receiver = std::make_unique<RecordingReceiver>();
   auto log = receiver->log;
-  scheduler_->Registry().Put("child-1", std::move(receiver));
+  scheduler_->Storage().Put("child-1", std::move(receiver));
 
   const absl::Status status =
       scheduler_->HandleFrame(MakeResultFrame("child-1", "hello", true), *conn_);
@@ -268,13 +268,13 @@ TEST_F(DefaultLocalSchedulerTest, ResultFrameDeliversAndErasesOnFinal) {
   EXPECT_TRUE(log->is_final);
   EXPECT_EQ(log->body, "hello");
   EXPECT_TRUE(log->error.empty());
-  EXPECT_TRUE(scheduler_->Registry().Empty());
+  EXPECT_TRUE(scheduler_->Storage().Empty());
 }
 
 TEST_F(DefaultLocalSchedulerTest, NonFinalResultFrameKeepsEntry) {
   auto receiver = std::make_unique<RecordingReceiver>();
   auto log = receiver->log;
-  scheduler_->Registry().Put("child-1", std::move(receiver));
+  scheduler_->Storage().Put("child-1", std::move(receiver));
 
   const absl::Status status =
       scheduler_->HandleFrame(MakeResultFrame("child-1", "chunk", false), *conn_);
@@ -282,34 +282,34 @@ TEST_F(DefaultLocalSchedulerTest, NonFinalResultFrameKeepsEntry) {
   ASSERT_TRUE(log->delivered);
   EXPECT_FALSE(log->is_final);
   EXPECT_EQ(log->body, "chunk");
-  EXPECT_EQ(scheduler_->Registry().Size(), 1U);
+  EXPECT_EQ(scheduler_->Storage().Size(), 1U);
 }
 
 TEST_F(DefaultLocalSchedulerTest, ResultFrameForUnknownChildDrops) {
   const absl::Status status =
       scheduler_->HandleFrame(MakeResultFrame("ghost", "x", true), *conn_);
   EXPECT_TRUE(status.ok());
-  EXPECT_TRUE(scheduler_->Registry().Empty());
+  EXPECT_TRUE(scheduler_->Storage().Empty());
 }
 
 TEST_F(DefaultLocalSchedulerTest, RejectedFrameDeliversErrorAndErases) {
   auto receiver = std::make_unique<RecordingReceiver>();
   auto log = receiver->log;
-  scheduler_->Registry().Put("child-1", std::move(receiver));
+  scheduler_->Storage().Put("child-1", std::move(receiver));
 
   const absl::Status status =
       scheduler_->HandleFrame(MakeRejectedFrame("child-1", "queue full"), *conn_);
   EXPECT_TRUE(status.ok());
   ASSERT_FALSE(log->delivered);
   EXPECT_EQ(log->error, "queue full");
-  EXPECT_TRUE(scheduler_->Registry().Empty());
+  EXPECT_TRUE(scheduler_->Storage().Empty());
 }
 
 TEST_F(DefaultLocalSchedulerTest, RejectedFrameForUnknownChildDrops) {
   const absl::Status status =
       scheduler_->HandleFrame(MakeRejectedFrame("ghost", "queue full"), *conn_);
   EXPECT_TRUE(status.ok());
-  EXPECT_TRUE(scheduler_->Registry().Empty());
+  EXPECT_TRUE(scheduler_->Storage().Empty());
 }
 
 TEST_F(DefaultLocalSchedulerTest, HandledFrameTypesAreOnlyChildOutcomeFrames) {

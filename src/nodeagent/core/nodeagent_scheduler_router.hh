@@ -39,7 +39,7 @@ namespace strij::nodeagent {
 //
 // The router itself never registers receivers; per-task registration happens in
 // the local-authority scheduler's child-policy step (the bundled "default"
-// scheduler's Schedule) and its owned registry resolves the child-outcome
+// scheduler's Schedule) and its owned storage resolves the child-outcome
 // frames.
 class NodeagentSchedulerRouter final : public extensions::Scheduler, public ChildTaskSubmitter {
 public:

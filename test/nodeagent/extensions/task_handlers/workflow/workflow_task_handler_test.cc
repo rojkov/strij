@@ -41,7 +41,7 @@ protected:
     run_task_service_ = std::make_unique<RunTaskServiceImpl>(manager, admission_);
 
     // The bundled "default" scheduler is the local authority: it registers each
-    // child's receiver in its own registry, runs it locally when admitted, or
+    // child's receiver in its own storage, runs it locally when admitted, or
     // errors it. No forward path is installed here (mirroring a node without
     // gateway connections), so delivered-deficient children error locally.
     auto default_scheduler =
@@ -95,7 +95,7 @@ TEST_F(WorkflowTaskHandlerTest, FansOutAndAggregatesChildBodies) {
   EXPECT_EQ(sent.id(), "parent-1");
   EXPECT_EQ(sent.body(), "ab");
   EXPECT_TRUE(sent.is_final());
-  EXPECT_TRUE(default_scheduler_raw_->Registry().Empty());
+  EXPECT_TRUE(default_scheduler_raw_->Storage().Empty());
   EXPECT_EQ(admission_->InFlight("echo"), 0U);
 }
 
@@ -115,7 +115,7 @@ TEST_F(WorkflowTaskHandlerTest, AbortsOnChildError) {
   EXPECT_NE(sent.body().find("failed"), std::string::npos);
   EXPECT_NE(sent.body().find("no local capacity"), std::string::npos);
   EXPECT_TRUE(sent.is_final());
-  EXPECT_TRUE(default_scheduler_raw_->Registry().Empty());
+  EXPECT_TRUE(default_scheduler_raw_->Storage().Empty());
 }
 
 TEST_F(WorkflowTaskHandlerTest, MalformedPlanDeliversErrorText) {

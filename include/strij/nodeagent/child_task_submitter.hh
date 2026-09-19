@@ -13,7 +13,7 @@ namespace strij::nodeagent {
 //
 // Submit() takes ownership of `receiver`; the child's result eventually
 // resolves through it (either locally via the default scheduler's
-// LocalReceiverRegistry, or via the two-hop gateway path). The implementation
+// LocalResultReceiverStorage, or via the two-hop gateway path). The implementation
 // dispatches by task_type to the appropriate local scheduler, which runs the
 // child-policy step (DefaultLocalScheduler::Schedule).
 class ChildTaskSubmitter {

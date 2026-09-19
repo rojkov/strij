@@ -139,13 +139,13 @@ strij_cc_test(
 )
 
 strij_cc_test(
-    name = "local_receiver_registry_test",
-    srcs = ["local_receiver_registry_test.cc"],
+    name = "local_result_receiver_storage_test",
+    srcs = ["local_result_receiver_storage_test.cc"],
     deps = [
         "//api/common/task:task_cc_proto",
         "//include/strij/gateway:result_receiver_storage_interface",
-        "//src/nodeagent/core:local_receiver_registry_lib",
-        "//src/nodeagent/core:registry_result_sender_lib",
+        "//src/nodeagent/core:local_result_receiver_storage_lib",
+        "//src/nodeagent/core:storage_result_sender_lib",
         "@googletest//:gtest_main",
     ],
 )

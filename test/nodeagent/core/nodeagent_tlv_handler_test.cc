@@ -34,7 +34,7 @@
 namespace strij::nodeagent {
 namespace {
 
-// Shared, test-owned outcome log: resolving a registry entry (final result or
+// Shared, test-owned outcome log: resolving a storage entry (final result or
 // rejection) erases and destroys the receiver, so assertions read the log.
 struct ReceiverLog {
   bool delivered{false};
@@ -530,7 +530,7 @@ TEST_F(NodeagentTlvHandlerTest, RoutesChildOutcomeFramesThroughDefaultScheduler)
 
   auto receiver = std::make_unique<RecordingReceiver>();
   auto log = receiver->log;
-  default_scheduler->Registry().Put("child-1", std::move(receiver));
+  default_scheduler->Storage().Put("child-1", std::move(receiver));
 
   NodeagentTlvHandler handler(router.get(), caps);
 
@@ -549,7 +549,7 @@ TEST_F(NodeagentTlvHandlerTest, RoutesChildOutcomeFramesThroughDefaultScheduler)
   EXPECT_TRUE(log->is_final);
   EXPECT_EQ(log->body, "hello");
   EXPECT_TRUE(log->error.empty());
-  EXPECT_TRUE(default_scheduler->Registry().Empty());
+  EXPECT_TRUE(default_scheduler->Storage().Empty());
 }
 
 TEST_F(NodeagentTlvHandlerTest, FrameWithNoOwningSchedulerIsDropped) {
