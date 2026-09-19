@@ -10,15 +10,18 @@
 namespace strij::nodeagent {
 
 // Concrete NodeagentFactoryContext used by the nodeagent binary. The RunTask
-// service is installed after construction (two-phase) because it depends on the
-// task handler manager and admission controller, which are built around this
-// context.
+// service, the data-dependency fetch router, and the child submitter are
+// installed after construction (two-phase) because they depend on objects
+// built around this context (the task handler manager, the fetchers, and the
+// scheduler router). The child forwarder (GatewayClient) is dependency-free
+// and is therefore provided directly at construction.
 class NodeagentFactoryContextImpl final : public extensions::NodeagentFactoryContext {
 public:
   NodeagentFactoryContextImpl(event::DispatcherSharedPtr dispatcher,
                               nodeagent::FunctionResolverPtr function_resolver,
                               AdmissionControllerSharedPtr admission,
-                              ObjectCacheSharedPtr object_cache);
+                              ObjectCacheSharedPtr object_cache,
+                              nodeagent::ChildForwarder& child_forwarder);
 
   auto Dispatcher() -> event::Dispatcher& override;
   auto SharedDispatcher() -> event::DispatcherSharedPtr override;
@@ -34,7 +37,6 @@ public:
   void SetRunTaskService(nodeagent::RunTaskService& run_task_service);
   void SetDataDependencyFetcherRouter(
       nodeagent::DataDependencyFetcherRouter& data_dependency_fetcher_router);
-  void SetChildForwarder(nodeagent::ChildForwarder& child_forwarder);
   void SetChildTaskSubmitter(nodeagent::ChildTaskSubmitter& child_task_submitter);
 
 private:
@@ -44,7 +46,7 @@ private:
   ObjectCacheSharedPtr object_cache_;
   nodeagent::RunTaskService* run_task_service_{nullptr};
   nodeagent::DataDependencyFetcherRouter* data_dependency_fetcher_router_{nullptr};
-  nodeagent::ChildForwarder* child_forwarder_{nullptr};
+  nodeagent::ChildForwarder* child_forwarder_;
   nodeagent::ChildTaskSubmitter* child_task_submitter_{nullptr};
 };
 

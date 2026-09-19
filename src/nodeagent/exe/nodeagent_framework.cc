@@ -85,8 +85,16 @@ auto RunNodeagent(int argc, char** argv) -> int {
 
   auto function_resolver = std::make_unique<LocalFunctionResolver>();
   const auto object_cache = std::make_shared<InMemoryObjectCache>();
+
+  // The GatewayClient is the node's only outbound capability: every accepted
+  // gateway connection is registered with it (below), and it forwards children
+  // upstream over live connections (no dial fallback). It is dependency-free,
+  // so it is handed to the factory context directly at construction — the
+  // bundled "default" scheduler's forward path exists from the context's first
+  // moment rather than from a later install step.
+  auto gateway_client = std::make_unique<GatewayClient>();
   NodeagentFactoryContextImpl factory_context(dispatcher, std::move(function_resolver), admission,
-                                              object_cache);
+                                              object_cache, *gateway_client);
 
   // Build the task handler manager from config. This must run before the
   // --validate_only short-circuit so that unknown handler names fail validation.
@@ -126,14 +134,6 @@ auto RunNodeagent(int argc, char** argv) -> int {
   auto run_task_service = std::make_unique<RunTaskServiceImpl>(task_handler_manager, admission);
   factory_context.SetRunTaskService(*run_task_service);
   factory_context.SetDataDependencyFetcherRouter(*fetch_router);
-
-  // The GatewayClient is the node's only outbound capability: every accepted
-  // gateway connection is registered with it, and it forwards children
-  // upstream over live connections (no dial fallback). It is created and
-  // installed into the context BEFORE the schedulers so the bundled "default"
-  // scheduler's forward path exists from the start.
-  auto gateway_client = std::make_unique<GatewayClient>();
-  factory_context.SetChildForwarder(*gateway_client);
 
   // One local scheduler instance per configured scheduler entry, composed into
   // the node-side child router (the submission composite that routes

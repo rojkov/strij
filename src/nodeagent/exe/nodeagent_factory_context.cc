@@ -9,9 +9,11 @@ namespace strij::nodeagent {
 
 NodeagentFactoryContextImpl::NodeagentFactoryContextImpl(
     event::DispatcherSharedPtr dispatcher, nodeagent::FunctionResolverPtr function_resolver,
-    AdmissionControllerSharedPtr admission, ObjectCacheSharedPtr object_cache)
+    AdmissionControllerSharedPtr admission, ObjectCacheSharedPtr object_cache,
+    nodeagent::ChildForwarder& child_forwarder)
     : dispatcher_{std::move(dispatcher)}, function_resolver_{std::move(function_resolver)},
-      admission_{std::move(admission)}, object_cache_{std::move(object_cache)} {}
+      admission_{std::move(admission)}, object_cache_{std::move(object_cache)},
+      child_forwarder_{&child_forwarder} {}
 
 auto NodeagentFactoryContextImpl::Dispatcher() -> event::Dispatcher& { return *dispatcher_; }
 
@@ -55,10 +57,6 @@ void NodeagentFactoryContextImpl::SetRunTaskService(nodeagent::RunTaskService& r
 void NodeagentFactoryContextImpl::SetDataDependencyFetcherRouter(
     nodeagent::DataDependencyFetcherRouter& data_dependency_fetcher_router) {
   data_dependency_fetcher_router_ = &data_dependency_fetcher_router;
-}
-
-void NodeagentFactoryContextImpl::SetChildForwarder(nodeagent::ChildForwarder& child_forwarder) {
-  child_forwarder_ = &child_forwarder;
 }
 
 void NodeagentFactoryContextImpl::SetChildTaskSubmitter(
