@@ -1,0 +1,30 @@
+load("//bazel:build_system.bzl", "strij_cc_library")
+
+strij_cc_library(
+    name = "default_local_scheduler_lib",
+    srcs = ["default_local_scheduler.cc"],
+    hdrs = ["default_local_scheduler.hh"],
+    visibility = [
+        "//src/nodeagent/exe:__pkg__",
+        "//test:__subpackages__",
+    ],
+    deps = [
+        "//api/common/task:task_cc_proto",
+        "//api/nodeagent/extensions/schedulers/default:default_scheduler_cc_proto",
+        "//include/strij/extensions:extension_registry_lib",
+        "//include/strij/extensions:scheduler_interface",
+        "//include/strij/gateway:result_receiver_storage_interface",
+        "//include/strij/nodeagent:admission_controller_interface",
+        "//include/strij/nodeagent:run_task_service_interface",
+        "//src/common/core/io:connection_lib",
+        "//src/common/core/io:tlv_frame",
+        "//src/common/core/logging:log_lib",
+        "//src/nodeagent/core:child_forwarder_lib",
+        "//src/nodeagent/core:local_receiver_registry_lib",
+        "//src/nodeagent/core:registry_result_sender_lib",
+        "//src/nodeagent/core:run_task_service_lib",
+        "@abseil-cpp//absl/status",
+        "@protobuf",
+    ],
+    alwayslink = True,
+)

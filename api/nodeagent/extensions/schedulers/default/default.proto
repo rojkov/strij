@@ -1,0 +1,10 @@
+syntax = "proto3";
+
+package strij.extensions.schedulers.default_scheduler;
+
+// The bundled "default" node-local scheduler config. This scheduler is the
+// node's local_default authority: it owns the child-policy step (register
+// parent receiver -> admit-on-capacity -> run locally, else forward upstream)
+// and the kResult / kTaskRejected child-outcome frames routed back to the node.
+// Carries no tunables today.
+message DefaultSchedulerConfig {}
