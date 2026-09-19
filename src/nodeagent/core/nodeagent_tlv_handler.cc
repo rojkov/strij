@@ -1,7 +1,5 @@
 #include "nodeagent/core/nodeagent_tlv_handler.hh"
 
-#include <bit>
-#include <cstdint>
 #include <span>
 #include <utility>
 
@@ -14,8 +12,8 @@
 
 namespace strij::nodeagent {
 
-NodeagentTlvHandler::NodeagentTlvHandler(
-    extensions::Scheduler* router, std::shared_ptr<const node::NodeCapabilities> capabilities)
+NodeagentTlvHandler::NodeagentTlvHandler(extensions::Scheduler* router,
+                                         std::shared_ptr<const node::NodeCapabilities> capabilities)
     : scheduler_{router}, capabilities_{std::move(capabilities)} {}
 
 void NodeagentTlvHandler::SendAdvertisement(io::Connection& conn) {
@@ -34,8 +32,7 @@ void NodeagentTlvHandler::HandleFrame(io::TlvFrame frame, io::Connection& conn) 
   // GatewayTlvHandler's default seam (child-outcome frames are claimed by the
   // bundled "default" scheduler through the same route).
   if (scheduler_ == nullptr) {
-    LOG_WARNING("No scheduler installed to handle frame type {}",
-                static_cast<int>(frame.type_id));
+    LOG_WARNING("No scheduler installed to handle frame type {}", static_cast<int>(frame.type_id));
     return;
   }
 

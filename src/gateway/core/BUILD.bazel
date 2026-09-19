@@ -19,9 +19,9 @@ strij_cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//api/common/task:task_cc_proto",
+        "//include/strij/gateway:result_receiver_storage_interface",
         "//src/common/core/io:outbound_mailbox_lib",
         "//src/common/core/io:tlv_frame",
-        "//include/strij/gateway:result_receiver_storage_interface",
     ],
 )
 

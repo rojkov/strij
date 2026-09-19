@@ -21,7 +21,6 @@
 #include "gateway/config/gateway.pb.h"
 #include "gateway/core/node.hh"
 #include "gateway/core/node_connection_result_receiver.hh"
-#include "gateway/core/result_receiver_storage.hh"
 #include "strij/extensions/factory_context.hh"
 #include "strij/extensions/scheduler.hh"
 #include "strij/gateway/result_receiver_storage.hh"
@@ -148,8 +147,7 @@ auto SchedulerRouter::handleChildSubmission(const io::TlvFrame& frame, io::Conne
 
   // Register the node-connection receiver keyed by the SUBMITTING node so the
   // existing disconnect cleanup unwinds a node's outstanding forwarded children.
-  storage_.Put(task.id(),
-               std::make_unique<NodeConnectionResultReceiver>(task.id(), conn.Mailbox()),
+  storage_.Put(task.id(), std::make_unique<NodeConnectionResultReceiver>(task.id(), conn.Mailbox()),
                node->GetNodeId());
 
   // Route through the normal per-type dispatch. The constituent scheduler's own

@@ -10,6 +10,7 @@ void OutboundMailbox::Enqueue(std::vector<std::byte> frame) {
   if (!active_) {
     return;
   }
+
   write_fn_(std::move(frame));
 }
 
@@ -19,6 +20,7 @@ auto OutboundMailbox::RegisterOnClose(CloseCallback close_cb) -> std::size_t {
     close_cb();
     return token;
   }
+
   close_callbacks_.emplace_back(token, std::move(close_cb));
   return token;
 }
@@ -30,10 +32,12 @@ void OutboundMailbox::UnregisterOnClose(std::size_t token) {
 
 void OutboundMailbox::Close() {
   active_ = false;
+
   for (auto& [token, close_cb] : close_callbacks_) {
     (void)token;
     close_cb();
   }
+
   close_callbacks_.clear();
 }
 

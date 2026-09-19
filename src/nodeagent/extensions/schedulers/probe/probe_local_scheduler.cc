@@ -37,10 +37,11 @@ auto parseMessage(const io::TlvFrame& frame, google::protobuf::Message& message)
 
 } // namespace
 
-ProbeLocalScheduler::ProbeLocalScheduler(
-    nodeagent::RunTaskService& run_task_service,
-    nodeagent::AdmissionControllerSharedPtr admission, nodeagent::DataDependencyFetcherRouter& router,
-    event::Dispatcher& dispatcher, size_t queue_capacity, size_t max_concurrent_preallocations)
+ProbeLocalScheduler::ProbeLocalScheduler(nodeagent::RunTaskService& run_task_service,
+                                         nodeagent::AdmissionControllerSharedPtr admission,
+                                         nodeagent::DataDependencyFetcherRouter& router,
+                                         event::Dispatcher& dispatcher, size_t queue_capacity,
+                                         size_t max_concurrent_preallocations)
     : run_task_service_{run_task_service}, admission_{std::move(admission)}, router_{router},
       dispatcher_{dispatcher}, max_concurrent_preallocations_{max_concurrent_preallocations},
       queue_{queue_capacity} {

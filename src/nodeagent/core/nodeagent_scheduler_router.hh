@@ -94,7 +94,7 @@ private:
 // never receive child submissions. Fails on an empty list, an unknown
 // scheduler name, or ambiguous authority declarations.
 auto BuildNodeagentSchedulerRouter(const config::NodeAgentConfig& config,
-                               extensions::NodeagentFactoryContext& context)
+                                   extensions::NodeagentFactoryContext& context)
     -> absl::StatusOr<std::unique_ptr<NodeagentSchedulerRouter>>;
 
 } // namespace strij::nodeagent

@@ -9,12 +9,12 @@
 #include <string_view>
 #include <utility>
 
-#include "gateway/core/requirements_resolver.hh"
 #include "common/core/io/connection.hh"
 #include "common/core/io/llhttp_parser.hh"
 #include "common/core/logging/log.hh"
-#include "common/task/task.pb.h"
 #include "common/core/utils/task_id.hh"
+#include "common/task/task.pb.h"
+#include "gateway/core/requirements_resolver.hh"
 #include "strij/extensions/scheduler.hh"
 
 namespace strij::gateway {
@@ -74,11 +74,13 @@ void GatewayHttpHandler::HandleMessage(const io::HttpRequest& request, io::Conne
   auto task_type = ParseTaskType(request.path);
   if (!task_type.has_value()) {
     writeErrorResponse(conn, kStatusNotFound, "Not Found");
+
     return;
   }
 
   if (task_type->empty()) {
     writeErrorResponse(conn, kStatusBadRequest, "Bad Request");
+
     return;
   }
 

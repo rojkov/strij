@@ -3,7 +3,6 @@
 #include <memory>
 #include <span>
 #include <string_view>
-#include <utility>
 
 #include "absl/status/status.h"
 #include "common/core/io/connection.hh"

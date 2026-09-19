@@ -12,7 +12,6 @@
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
-#include "common/config/extensions.pb.h"
 #include "common/extensions/scheduler_loader.hh"
 #include "common/task/task.pb.h"
 #include "nodeagent/config/nodeagent.pb.h"
@@ -49,7 +48,8 @@ void NodeagentSchedulerRouter::Submit(task::Task task, gateway::ResultReceiverPt
   Schedule(task, std::move(receiver));
 }
 
-void NodeagentSchedulerRouter::Schedule(const task::Task& task, gateway::ResultReceiverPtr receiver) {
+void NodeagentSchedulerRouter::Schedule(const task::Task& task,
+                                        gateway::ResultReceiverPtr receiver) {
   extensions::Scheduler* scheduler = findChildScheduler(task);
   if (scheduler == nullptr) {
     receiver->DeliverError(absl::StrCat("no local scheduler claims task type '", task.type(),
@@ -60,7 +60,8 @@ void NodeagentSchedulerRouter::Schedule(const task::Task& task, gateway::ResultR
   scheduler->Schedule(task, std::move(receiver));
 }
 
-auto NodeagentSchedulerRouter::findChildScheduler(const task::Task& task) -> extensions::Scheduler* {
+auto NodeagentSchedulerRouter::findChildScheduler(const task::Task& task)
+    -> extensions::Scheduler* {
   extensions::Scheduler* fallback = nullptr;
   for (auto& routed : schedulers_) {
     if (routed.local_default) {
@@ -83,7 +84,9 @@ auto NodeagentSchedulerRouter::findFrameOwner(uint8_t type_id) -> extensions::Sc
   return nullptr;
 }
 
-auto NodeagentSchedulerRouter::RequiredProtocol() const -> std::string_view { return required_protocol_; }
+auto NodeagentSchedulerRouter::RequiredProtocol() const -> std::string_view {
+  return required_protocol_;
+}
 
 auto NodeagentSchedulerRouter::HandledFrameTypes() const -> std::span<const uint8_t> {
   return handled_types_;
@@ -101,7 +104,7 @@ auto NodeagentSchedulerRouter::HandleFrame(const io::TlvFrame& frame, io::Connec
 }
 
 auto BuildNodeagentSchedulerRouter(const config::NodeAgentConfig& config,
-                               extensions::NodeagentFactoryContext& context)
+                                   extensions::NodeagentFactoryContext& context)
     -> absl::StatusOr<std::unique_ptr<NodeagentSchedulerRouter>> {
   if (config.schedulers().empty()) {
     return absl::InvalidArgumentError(
@@ -120,9 +123,9 @@ auto BuildNodeagentSchedulerRouter(const config::NodeAgentConfig& config,
     // an explicit local_default=true marks the fallback authority.
     if (!scheduler_config.task_type().empty() &&
         !claimed_types.insert(scheduler_config.task_type()).second) {
-      return absl::InvalidArgumentError(absl::StrCat(
-          "NodeAgentConfig.schedulers claims task_type '", scheduler_config.task_type(),
-          "' more than once"));
+      return absl::InvalidArgumentError(
+          absl::StrCat("NodeAgentConfig.schedulers claims task_type '",
+                       scheduler_config.task_type(), "' more than once"));
     }
 
     if (scheduler_config.local_default() && ++local_default_count > 1) {

@@ -13,19 +13,18 @@
 #include "test/mocks/event/mocks.hh"
 #include "test/mocks/extensions/extensions_mocks.hh"
 
-#include "gateway/config/gateway.pb.h"
-#include "gateway/core/node_directory.hh"
-#include "gateway/core/result_receiver_storage.hh"
+#include "absl/status/status.h"
 #include "common/core/io/connection.hh"
 #include "common/core/io/protocol_parser.hh"
 #include "common/core/io/tlv_frame.hh"
 #include "common/core/io/tlv_parser.hh"
-#include "absl/status/status.h"
 #include "common/task/task.pb.h"
-#include "gateway/extensions/schedulers/round_robin/round_robin_scheduler.hh"
+#include "gateway/config/gateway.pb.h"
+#include "gateway/core/node_directory.hh"
+#include "gateway/core/result_receiver_storage.hh"
 #include "gateway/core/scheduler_router/scheduler_router.hh"
-#include "strij/extensions/scheduler.hh"
 #include "gtest/gtest.h"
+#include "strij/extensions/scheduler.hh"
 
 namespace strij::gateway {
 namespace {
@@ -73,20 +72,22 @@ public:
   std::shared_ptr<std::vector<std::string>> errors_;
 };
 
-auto MakeReceiver() -> std::pair<gateway::ResultReceiverPtr, std::shared_ptr<std::vector<std::string>>> {
+auto MakeReceiver()
+    -> std::pair<gateway::ResultReceiverPtr, std::shared_ptr<std::vector<std::string>>> {
   auto errors = std::make_shared<std::vector<std::string>>();
   auto receiver = std::make_unique<RecordingReceiver>(errors);
   return {std::move(receiver), std::move(errors)};
 }
 
-auto MakeTask(const std::string& id, const std::string& type) -> task::Task {
+auto MakeTask(const std::string& task_id, const std::string& type) -> task::Task {
   task::Task task;
-  task.set_id(id);
+  task.set_id(task_id);
   task.set_type(type);
   return task;
 }
 
-auto Routed(std::string task_type, extensions::SchedulerPtr scheduler) -> SchedulerRouter::RoutedScheduler {
+auto Routed(std::string task_type, extensions::SchedulerPtr scheduler)
+    -> SchedulerRouter::RoutedScheduler {
   return SchedulerRouter::RoutedScheduler{.scheduler = std::move(scheduler),
                                           .task_type = std::move(task_type)};
 }
@@ -133,24 +134,23 @@ protected:
 // NOLINTBEGIN(modernize-use-trailing-return-type)
 
 TEST_F(SchedulerRouterTest, RoutesByExactTaskTypeAndFallsBackToDefault) {
-  auto* echo = new StubScheduler("push");
-  auto* cv = new StubScheduler("push");
-  auto* fallback = new StubScheduler("push");
-  auto router =
-      MakeRouter(storage_, Routed("echo", extensions::SchedulerPtr(echo)),
-                 Routed("cv", extensions::SchedulerPtr(cv)),
-                 Routed("", extensions::SchedulerPtr(fallback)));
+  auto* echo_sched = new StubScheduler("push");
+  auto* cv_sched = new StubScheduler("push");
+  auto* fallback_sched = new StubScheduler("push");
+  auto router = MakeRouter(storage_, Routed("echo", extensions::SchedulerPtr(echo_sched)),
+                           Routed("cv", extensions::SchedulerPtr(cv_sched)),
+                           Routed("", extensions::SchedulerPtr(fallback_sched)));
 
   router->Schedule(MakeTask("1", "echo"), MakeReceiver().first);
   router->Schedule(MakeTask("2", "cv"), MakeReceiver().first);
   router->Schedule(MakeTask("3", "other"), MakeReceiver().first);
 
-  ASSERT_EQ(echo->scheduled_types_.size(), 1U);
-  EXPECT_EQ(echo->scheduled_types_.front(), "echo");
-  ASSERT_EQ(cv->scheduled_types_.size(), 1U);
-  EXPECT_EQ(cv->scheduled_types_.front(), "cv");
-  ASSERT_EQ(fallback->scheduled_types_.size(), 1U);
-  EXPECT_EQ(fallback->scheduled_types_.front(), "other");
+  ASSERT_EQ(echo_sched->scheduled_types_.size(), 1U);
+  EXPECT_EQ(echo_sched->scheduled_types_.front(), "echo");
+  ASSERT_EQ(cv_sched->scheduled_types_.size(), 1U);
+  EXPECT_EQ(cv_sched->scheduled_types_.front(), "cv");
+  ASSERT_EQ(fallback_sched->scheduled_types_.size(), 1U);
+  EXPECT_EQ(fallback_sched->scheduled_types_.front(), "other");
   EXPECT_EQ(router->RoutedSchedulerCount(), 3U);
 }
 
@@ -166,11 +166,10 @@ TEST_F(SchedulerRouterTest, DeliversErrorWhenNoMatchAndNoDefault) {
 }
 
 TEST_F(SchedulerRouterTest, RoutesFramesToOwningScheduler) {
-  auto* a = new StubScheduler("push", {6});
-  auto* b = new StubScheduler("push", {4});
-  auto router =
-      MakeRouter(storage_, Routed("echo", extensions::SchedulerPtr(a)),
-                 Routed("", extensions::SchedulerPtr(b)));
+  auto* a_sched = new StubScheduler("push", {6});
+  auto* b_sched = new StubScheduler("push", {4});
+  auto router = MakeRouter(storage_, Routed("echo", extensions::SchedulerPtr(a_sched)),
+                           Routed("", extensions::SchedulerPtr(b_sched)));
 
   // The router itself claims kTaskSubmission (type 0) alongside the constituents'.
   ASSERT_EQ(router->HandledFrameTypes().size(), 3U);
@@ -184,28 +183,28 @@ TEST_F(SchedulerRouterTest, RoutesFramesToOwningScheduler) {
   EXPECT_CALL(*dispatcher_,
               PrepareRead(::testing::_, ::testing::_, ::testing::_, ::testing::_, ::testing::_))
       .WillOnce(::testing::Return());
-  io::Connection conn(fds[0], dispatcher_, &owner,
-                      [](io::Connection&) -> io::ProtocolParserPtr {
-                        return std::make_unique<io::TrivialParser>();
-                      });
+  io::Connection conn(fds[0], dispatcher_, &owner, [](io::Connection&) -> io::ProtocolParserPtr {
+    return std::make_unique<io::TrivialParser>();
+  });
 
   EXPECT_TRUE(router->HandleFrame(io::TlvFrame{6, {}}, conn).ok());
   EXPECT_TRUE(router->HandleFrame(io::TlvFrame{4, {}}, conn).ok());
 
   EXPECT_FALSE(router->HandleFrame(io::TlvFrame{5, {}}, conn).ok());
 
-  ASSERT_EQ(a->handled_frames_.size(), 1U);
-  EXPECT_EQ(a->handled_frames_[0], 6U);
-  ASSERT_EQ(b->handled_frames_.size(), 1U);
-  EXPECT_EQ(b->handled_frames_[0], 4U);
+  ASSERT_EQ(a_sched->handled_frames_.size(), 1U);
+  EXPECT_EQ(a_sched->handled_frames_[0], 6U);
+  ASSERT_EQ(b_sched->handled_frames_.size(), 1U);
+  EXPECT_EQ(b_sched->handled_frames_[0], 4U);
 
   close(fds[0]);
   close(fds[1]);
 }
 
 TEST_F(SchedulerRouterTest, RequiredProtocolComesFromConstituents) {
-auto router = MakeRouter(storage_, Routed("echo", extensions::SchedulerPtr(new StubScheduler("push"))),
-                         Routed("", extensions::SchedulerPtr(new StubScheduler("probe"))));
+  auto router =
+      MakeRouter(storage_, Routed("echo", extensions::SchedulerPtr(new StubScheduler("push"))),
+                 Routed("", extensions::SchedulerPtr(new StubScheduler("probe"))));
   EXPECT_EQ(router->RequiredProtocol(), "push");
 }
 
@@ -278,9 +277,8 @@ TEST_F(SchedulerRouterTest, InboundChildSubmissionRoutesByTypeAndStoresReceiver)
   task.set_body("hello");
   std::string serialized;
   ASSERT_TRUE(task.SerializeToString(&serialized));
-  io::TlvFrame frame{
-      .type_id = io::TlvFrame::kTaskSubmission,
-      .value = std::as_bytes(std::span(serialized.data(), serialized.size()))};
+  io::TlvFrame frame{.type_id = io::TlvFrame::kTaskSubmission,
+                     .value = std::as_bytes(std::span(serialized.data(), serialized.size()))};
 
   auto status = router->HandleFrame(frame, *conn);
   EXPECT_TRUE(status.ok());
@@ -304,7 +302,7 @@ TEST_F(SchedulerRouterTest, InboundChildSubmissionRoutesByTypeAndStoresReceiver)
   receiver->Deliver(std::as_bytes(std::span(result_body)), true);
 
   std::vector<io::TlvFrame> frames;
-  io::TlvParser parser([&frames](io::TlvFrame f) { frames.push_back(f); });
+  io::TlvParser parser([&frames](io::TlvFrame frm) { frames.push_back(frm); });
   auto read_buf = parser.GetReadBuffer();
   std::memcpy(read_buf.data(), written.data(), written.size());
   parser.OnData(written.size());
@@ -329,9 +327,8 @@ TEST_F(SchedulerRouterTest, InboundChildSubmissionWritesRejectedBackWhenNoMatch)
   task::Task task = MakeTask("child-1", "no_such_type");
   std::string serialized;
   ASSERT_TRUE(task.SerializeToString(&serialized));
-  io::TlvFrame frame{
-      .type_id = io::TlvFrame::kTaskSubmission,
-      .value = std::as_bytes(std::span(serialized.data(), serialized.size()))};
+  io::TlvFrame frame{.type_id = io::TlvFrame::kTaskSubmission,
+                     .value = std::as_bytes(std::span(serialized.data(), serialized.size()))};
 
   // The router's Schedule path unregisters the node-connection receiver — a
   // kTaskRejected frame is written back over the submitting connection.
@@ -348,7 +345,7 @@ TEST_F(SchedulerRouterTest, InboundChildSubmissionWritesRejectedBackWhenNoMatch)
   EXPECT_TRUE(echo->scheduled_types_.empty());
 
   std::vector<io::TlvFrame> frames;
-  io::TlvParser parser([&frames](io::TlvFrame f) { frames.push_back(f); });
+  io::TlvParser parser([&frames](io::TlvFrame frm) { frames.push_back(frm); });
   auto read_buf = parser.GetReadBuffer();
   std::memcpy(read_buf.data(), written.data(), written.size());
   parser.OnData(written.size());
@@ -372,9 +369,8 @@ TEST_F(SchedulerRouterTest, InboundChildSubmissionErrorOnConstituentReject) {
   task::Task task = MakeTask("child-1", "echo");
   std::string serialized;
   ASSERT_TRUE(task.SerializeToString(&serialized));
-  io::TlvFrame frame{
-      .type_id = io::TlvFrame::kTaskSubmission,
-      .value = std::as_bytes(std::span(serialized.data(), serialized.size()))};
+  io::TlvFrame frame{.type_id = io::TlvFrame::kTaskSubmission,
+                     .value = std::as_bytes(std::span(serialized.data(), serialized.size()))};
 
   std::span<const std::byte> written;
   EXPECT_CALL(*dispatcher_,
@@ -391,7 +387,7 @@ TEST_F(SchedulerRouterTest, InboundChildSubmissionErrorOnConstituentReject) {
   EXPECT_EQ(storage_.Get("child-1"), nullptr);
 
   std::vector<io::TlvFrame> frames;
-  io::TlvParser parser([&frames](io::TlvFrame f) { frames.push_back(f); });
+  io::TlvParser parser([&frames](io::TlvFrame frm) { frames.push_back(frm); });
   auto read_buf = parser.GetReadBuffer();
   std::memcpy(read_buf.data(), written.data(), written.size());
   parser.OnData(written.size());
@@ -414,17 +410,15 @@ TEST_F(SchedulerRouterTest, InboundChildSubmissionRejectsNonNodeConnection) {
   EXPECT_CALL(*dispatcher_,
               PrepareRead(::testing::_, ::testing::_, ::testing::_, ::testing::_, ::testing::_))
       .WillOnce(::testing::Return());
-  io::Connection conn(fds[0], dispatcher_, &owner,
-                      [](io::Connection&) -> io::ProtocolParserPtr {
-                        return std::make_unique<io::TrivialParser>();
-                      });
+  io::Connection conn(fds[0], dispatcher_, &owner, [](io::Connection&) -> io::ProtocolParserPtr {
+    return std::make_unique<io::TrivialParser>();
+  });
 
   task::Task task = MakeTask("child-1", "echo");
   std::string serialized;
   ASSERT_TRUE(task.SerializeToString(&serialized));
-  io::TlvFrame frame{
-      .type_id = io::TlvFrame::kTaskSubmission,
-      .value = std::as_bytes(std::span(serialized.data(), serialized.size()))};
+  io::TlvFrame frame{.type_id = io::TlvFrame::kTaskSubmission,
+                     .value = std::as_bytes(std::span(serialized.data(), serialized.size()))};
 
   auto status = router->HandleFrame(frame, conn);
   EXPECT_FALSE(status.ok());
@@ -442,7 +436,8 @@ TEST_F(SchedulerRouterTest, InboundChildSubmissionRejectsMalformedTask) {
   auto* conn = directory->GetNode("A")->GetConnection();
   ASSERT_NE(conn, nullptr);
 
-  std::array<std::byte, 4> garbage{std::byte{0xDE}, std::byte{0xAD}, std::byte{0xBE}, std::byte{0xEF}};
+  std::array<std::byte, 4> garbage{std::byte{0xDE}, std::byte{0xAD}, std::byte{0xBE},
+                                   std::byte{0xEF}};
   io::TlvFrame frame{.type_id = io::TlvFrame::kTaskSubmission, .value = garbage};
 
   auto status = router->HandleFrame(frame, *conn);

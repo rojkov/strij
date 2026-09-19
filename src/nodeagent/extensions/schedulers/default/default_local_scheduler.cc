@@ -29,13 +29,12 @@ namespace strij::nodeagent::schedulers {
 DefaultLocalScheduler::DefaultLocalScheduler(nodeagent::RunTaskService& run_task_service,
                                              nodeagent::AdmissionControllerSharedPtr admission,
                                              nodeagent::ChildTaskForwarder* forward)
-    : run_task_service_{run_task_service}, admission_{std::move(admission)},
-      forward_{forward} {}
+    : run_task_service_{run_task_service}, admission_{std::move(admission)}, forward_{forward} {}
 
 void DefaultLocalScheduler::Schedule(const task::Task& task, gateway::ResultReceiverPtr receiver) {
   // 1. Register home first so the receiver is observable (and resolvable) from
   //    the moment Schedule returns.
-  const std::string child_id = task.id();
+  const std::string& child_id = task.id();
   storage_.Put(child_id, std::move(receiver));
 
   // 2. No handler for the child's type: never admit — forward (or error).
@@ -149,9 +148,8 @@ auto DefaultLocalSchedulerFactory::CreateEmptyConfigProto() -> MessagePtr {
 auto DefaultLocalSchedulerFactory::Create(const ::google::protobuf::Message& /*config*/,
                                           extensions::NodeagentFactoryContext& context)
     -> extensions::SchedulerPtr {
-  return std::make_unique<DefaultLocalScheduler>(context.RunTaskService(),
-                                                 context.AdmissionController(),
-                                                 &context.ChildTaskForwarder());
+  return std::make_unique<DefaultLocalScheduler>(
+      context.RunTaskService(), context.AdmissionController(), &context.ChildTaskForwarder());
 }
 
 } // namespace strij::nodeagent::schedulers

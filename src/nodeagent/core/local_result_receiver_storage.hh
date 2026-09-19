@@ -22,6 +22,7 @@ namespace strij::nodeagent {
 class LocalResultReceiverStorage {
 public:
   LocalResultReceiverStorage() = default;
+  ~LocalResultReceiverStorage() = default;
 
   LocalResultReceiverStorage(const LocalResultReceiverStorage&) = delete;
   auto operator=(const LocalResultReceiverStorage&) -> LocalResultReceiverStorage& = delete;

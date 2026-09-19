@@ -6,11 +6,11 @@
 #include <utility>
 
 #include "absl/status/statusor.h"
-#include "common/task/task.pb.h"
 #include "common/core/utils/task_id.hh"
+#include "common/task/task.pb.h"
+#include "nodeagent/extensions/task_handlers/workflow/workflow.pb.h"
 #include "strij/extensions/extension_registry.hh"
 #include "strij/gateway/result_receiver_storage.hh"
-#include "nodeagent/extensions/task_handlers/workflow/workflow.pb.h"
 
 namespace strij::nodeagent::task_handlers {
 namespace {
@@ -24,7 +24,7 @@ public:
       : errored_{errored}, body_{body}, error_{error} {}
 
   void Deliver(std::span<const std::byte> value, bool /*is_final*/) override {
-    body_.append(reinterpret_cast<const char*>(value.data()), value.size());
+    body_.append(std::bit_cast<const char*>(value.data()), value.size());
   }
 
   void DeliverError(std::string_view reason) override {
@@ -45,7 +45,7 @@ WorkflowTaskHandler::WorkflowTaskHandler(strij::nodeagent::ChildTaskSubmitter& s
 
 void WorkflowTaskHandler::HandleTask(const task::Task& task, ResultSenderPtr sender) {
   extensions::task_handlers::workflow::WorkflowPlan plan;
-  std::string error_body;
+  std::string error_body{};
   if (!plan.ParseFromArray(task.body().data(), static_cast<int>(task.body().size()))) {
     error_body = "malformed workflow plan";
   }
@@ -67,7 +67,7 @@ void WorkflowTaskHandler::HandleTask(const task::Task& task, ResultSenderPtr sen
     auto receiver = std::make_unique<WorkflowChildReceiver>(errored, child_body, child_error);
     submitter_.Submit(std::move(child), std::move(receiver));
     if (errored) {
-      error_body = "child '" + child_id + "' failed: " + child_error;
+      error_body.append("child '").append(child_id).append("' failed: ").append(child_error);
       break;
     }
     aggregate += child_body;
@@ -80,6 +80,7 @@ void WorkflowTaskHandler::HandleTask(const task::Task& task, ResultSenderPtr sen
   } else {
     result.set_body(aggregate);
   }
+
   result.set_is_final(true);
   sender->Send(std::move(result));
 }
@@ -91,7 +92,8 @@ auto WorkflowTaskHandlerFactory::CreateEmptyConfigProto() -> MessagePtr {
 }
 
 auto WorkflowTaskHandlerFactory::Create(const ::google::protobuf::Message& /*config*/,
-                                        extensions::NodeagentFactoryContext& context) -> TaskHandlerPtr {
+                                        extensions::NodeagentFactoryContext& context)
+    -> TaskHandlerPtr {
   return std::make_unique<WorkflowTaskHandler>(context.ChildTaskSubmitter());
 }
 
@@ -108,4 +110,5 @@ auto WorkflowTaskHandlerFactory::ParseConfig(const ::google::protobuf::Message& 
 } // namespace strij::nodeagent::task_handlers
 
 REGISTER_FACTORY_FULLY_QUALIFIED(strij::nodeagent::task_handlers::WorkflowTaskHandlerFactory,
-                                 strij::nodeagent::TaskHandlerFactory, workflow_task_handler_registrar)
+                                 strij::nodeagent::TaskHandlerFactory,
+                                 workflow_task_handler_registrar)

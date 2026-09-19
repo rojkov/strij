@@ -1,8 +1,8 @@
 #pragma once
 
 #include "common/task/task.pb.h"
-#include "strij/gateway/result_receiver_storage.hh"
 #include "strij/common/pure.hh"
+#include "strij/gateway/result_receiver_storage.hh"
 
 namespace strij::nodeagent {
 

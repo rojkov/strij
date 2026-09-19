@@ -26,8 +26,7 @@ public:
   void RunTask(const task::Task& task, io::Connection& conn) override;
   void RunTask(const task::Task& task, io::Connection& conn, AdmissionScopePtr reserved) override;
   void RunTask(const task::Task& task, ResultSenderPtr sender) override;
-  void RunTask(const task::Task& task, ResultSenderPtr sender,
-               AdmissionScopePtr reserved) override;
+  void RunTask(const task::Task& task, ResultSenderPtr sender, AdmissionScopePtr reserved) override;
   [[nodiscard]] auto HasHandler(std::string_view type) const -> bool override;
 
 private:
@@ -36,8 +35,8 @@ private:
   // Wraps `sender` in an AdmissionTrackingSender carrying `scope`, then hands
   // it to `handler` (guaranteed non-null). The scope releases on the final
   // result or on destruction.
-  void runWithHandler(const task::Task& task, nodeagent::TaskHandler* handler,
-                      ResultSenderPtr sender, AdmissionScopePtr scope);
+  static void runWithHandler(const task::Task& task, nodeagent::TaskHandler* handler,
+                             ResultSenderPtr sender, AdmissionScopePtr scope);
 
   std::shared_ptr<TaskHandlerManager> manager_;
   std::shared_ptr<AdmissionController> admission_;

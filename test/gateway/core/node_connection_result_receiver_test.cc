@@ -33,7 +33,7 @@ auto MakeReceiver(const std::string& task_id, std::vector<std::vector<std::byte>
 
 auto ParseFrames(const std::vector<std::byte>& wire) -> std::vector<io::TlvFrame> {
   std::vector<io::TlvFrame> frames;
-  io::TlvParser parser([&frames](io::TlvFrame f) { frames.push_back(f); });
+  io::TlvParser parser([&frames](io::TlvFrame frm) { frames.push_back(frm); });
   auto buf = parser.GetReadBuffer();
   std::memcpy(buf.data(), wire.data(), wire.size());
   parser.OnData(wire.size());
@@ -108,10 +108,9 @@ TEST(NodeConnectionResultReceiverTest, DeliveryOnClosedMailboxIsNoop) {
   EXPECT_CALL(*dispatcher,
               PrepareRead(::testing::_, ::testing::_, ::testing::_, ::testing::_, ::testing::_))
       .WillOnce(::testing::Return());
-  io::Connection conn(fds[0], dispatcher, &owner,
-                      [](io::Connection&) -> io::ProtocolParserPtr {
-                        return std::make_unique<io::TrivialParser>();
-                      });
+  io::Connection conn(fds[0], dispatcher, &owner, [](io::Connection&) -> io::ProtocolParserPtr {
+    return std::make_unique<io::TrivialParser>();
+  });
 
   NodeConnectionResultReceiver receiver("t1", conn.Mailbox());
   conn.Close();

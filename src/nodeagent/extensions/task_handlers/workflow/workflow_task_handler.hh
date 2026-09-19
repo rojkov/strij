@@ -34,8 +34,8 @@ class WorkflowTaskHandlerFactory final : public TaskHandlerFactory {
 public:
   [[nodiscard]] auto Name() const -> std::string override;
   auto CreateEmptyConfigProto() -> MessagePtr override;
-  auto Create(const ::google::protobuf::Message& config, extensions::NodeagentFactoryContext& context)
-      -> TaskHandlerPtr override;
+  auto Create(const ::google::protobuf::Message& config,
+              extensions::NodeagentFactoryContext& context) -> TaskHandlerPtr override;
   auto ParseConfig(const ::google::protobuf::Message& config)
       -> absl::StatusOr<node::HandlerCapacity> override;
 };

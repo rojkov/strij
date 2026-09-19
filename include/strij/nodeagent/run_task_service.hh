@@ -74,5 +74,5 @@ public:
   [[nodiscard]] virtual auto HasHandler(std::string_view type) const -> bool PURE;
 };
 
-} // namespace strij::nodeagent
+} // namespace nodeagent
 } // namespace strij

@@ -8,14 +8,14 @@
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
-#include "nodeagent/config/nodeagent.pb.h"
-#include "strij/extensions/extension_registry.hh"
-#include "common/node/capabilities.pb.h"
 #include "common/core/utils/task_id.hh"
-#include "strij/extensions/scheduler.hh"
-#include "nodeagent/extensions/task_handlers/task_handlers.hh"
+#include "common/node/capabilities.pb.h"
 #include "google/protobuf/any.pb.h"
 #include "google/protobuf/message.h"
+#include "nodeagent/config/nodeagent.pb.h"
+#include "nodeagent/extensions/task_handlers/task_handlers.hh"
+#include "strij/extensions/extension_registry.hh"
+#include "strij/extensions/scheduler.hh"
 
 namespace strij::nodeagent {
 

@@ -36,8 +36,7 @@ void NodeConnectionResultReceiver::DeliverError(std::string_view reason) {
   std::string serialized;
   rejected.SerializeToString(&serialized);
   mailbox_->Enqueue(io::SerializeTlvFrame(
-      io::TlvFrame::kTaskRejected,
-      std::as_bytes(std::span(serialized.data(), serialized.size()))));
+      io::TlvFrame::kTaskRejected, std::as_bytes(std::span(serialized.data(), serialized.size()))));
 }
 
 } // namespace strij::gateway
