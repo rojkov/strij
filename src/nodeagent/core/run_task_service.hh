@@ -25,7 +25,6 @@ public:
   // RunTaskService
   void RunTask(const task::Task& task, io::Connection& conn) override;
   void RunTask(const task::Task& task, io::Connection& conn, AdmissionScopePtr reserved) override;
-  void RunTask(const task::Task& task, ResultSenderPtr sender) override;
   void RunTask(const task::Task& task, ResultSenderPtr sender, AdmissionScopePtr reserved) override;
   [[nodiscard]] auto HasHandler(std::string_view type) const -> bool override;
 

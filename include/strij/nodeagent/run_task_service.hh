@@ -51,16 +51,10 @@ public:
   virtual void RunTask(const task::Task& task, io::Connection& conn,
                        AdmissionScopePtr reserved) PURE;
 
-  // Sender-backed variants of the above: results are delivered through the
+  // Sender-backed variant of the above: results are delivered through the
   // caller's ResultSender instead of a connection-bound sender. Used by the
   // local child policy step with a StorageResultSender.
   //
-  // Admitting overload: on admission failure or an unknown handler type the
-  // task is dropped with a warning (there is no connection to send kTaskRejected
-  // over; the caller drives fallback behavior from its own Admit/HasHandler
-  // checks before calling this).
-  virtual void RunTask(const task::Task& task, std::unique_ptr<ResultSender> sender) PURE;
-
   // Preallocated overload: runs the task with an already-held reservation; the
   // caller's successful Admit must have produced `reserved`. An unknown handler
   // type drops the task; the scope releases in its destructor.

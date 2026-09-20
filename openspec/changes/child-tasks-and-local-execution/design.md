@@ -50,11 +50,10 @@ A node-side `NodeagentSchedulerRouter` (implementing `extensions::Scheduler`, an
 
 The child policy lives in **one place**: the bundled `default` scheduler (`DefaultLocalScheduler`, factory name `"default"`), whose config entry is configured with `local_default: true`. Its `Schedule` is the admit-or-forward step: register the receiver in its own `LocalResultReceiverStorage` first, then *try to admit locally; if admitted, run locally; else forward*. The push/probe schedulers' `Schedule` facets are **Unimplemented** — they log a warning and deliver an error through the receiver (never hang), because a node must not carry two competing local authorities. `probe`'s child path specifically does **not** queue: a child is local, so the probe dance is pointless; `probe` remains a pure wire-protocol counterpart.
 
-### D3: Local child run — sender-backed `RunTask` overloads
+### D3: Local child run — sender-backed `RunTask` overload
 
-`RunTaskService` gains two overloads without a `Connection`:
-- `RunTask(const task::Task&, ResultSenderPtr sender)` — admitting path, replaces the `ConnectionResultSender` with the caller's sender.
-- `RunTask(const task::Task&, ResultSenderPtr sender, AdmissionScopePtr reserved)` — preallocated path.
+`RunTaskService` gains an overload without a `Connection`:
+- `RunTask(const task::Task&, ResultSenderPtr sender, AdmissionScopePtr reserved)` — preallocated path; the caller's successful `Admit` produced `reserved`.
 
 The existing `io::Connection`-bound overloads remain as thin wrappers (building `ConnectionResultSender`), so the push path is byte-identical. The local child's sender is a `StorageResultSender { LocalResultReceiverStorage&, task_id }`: `Send(TaskResult)` looks up the parent's receiver by id, delivers `body`/`is_final`, and `Erase`s the storage entry on the final result.
 
@@ -65,7 +64,7 @@ parent handler          child router            default scheduler
    │                    │  Schedule(child,recv) │
    │                    │──────────────────────►│ storage.Put(child_id, recv)
    │                    │                       │ Admit(child) ok?
-   │                    │                       │  yes → RunTask(child, StorageResultSender(storage, child_id))
+   │                    │                       │  yes → RunTask(child, StorageResultSender(storage, child_id), scope)
    │                    │                       │  no  → Forward → GatewayClient (D5), or DeliverError
    │                    │                       │
    │  ◄── final result ─┼───────────────────────┼── storage.Get(child_id).Deliver → erases entry
@@ -130,7 +129,7 @@ parent handler        NodeagentSchedulerRouter     default scheduler
    │───────────────────────►  type → owning sched  │
    │                        │  Schedule(child,recv)│
    │                        │─────────────────────►│  storage.Put(id) → Admit ok
-   │                        │                     │── RunTask(child, StorageResultSender(storage, id))
+   │                        │                     │── RunTask(child, StorageResultSender(storage, id), scope)
    │                        │                     │   handler.Send(final) → storage → parent → Erase
    │  ◄── result ───────────┼─────────────────────│
 ```
@@ -163,7 +162,7 @@ nodeA (parent)          gateway G                    nodeB (worker)
 
 ## Migration Plan
 
-1. **Phase 4A (node, land first)** — `NodeagentFactoryContext.ChildTaskSubmitter` + `NodeagentSchedulerRouter` (now also the frame demux) + bundled `default` scheduler owning `LocalResultReceiverStorage` + router-owned child-outcome cases + `StorageResultSender` + sender-backed `RunTask` overloads + example workflow handler + `schedulers` config shape change (`default` with `local_default: true`). Self-contained; egress absent (forwarding is disabled, so capacity-deficient children error — preserving the Phase-0 behavior of a node that cannot enlist remote capacity). **BREAKING config**: `schedulers` entry shape.
+1. **Phase 4A (node, land first)** — `NodeagentFactoryContext.ChildTaskSubmitter` + `NodeagentSchedulerRouter` (now also the frame demux) + bundled `default` scheduler owning `LocalResultReceiverStorage` + router-owned child-outcome cases + `StorageResultSender` + sender-backed `RunTask` overload + example workflow handler + `schedulers` config shape change (`default` with `local_default: true`). Self-contained; egress absent (forwarding is disabled, so capacity-deficient children error — preserving the Phase-0 behavior of a node that cannot enlist remote capacity). **BREAKING config**: `schedulers` entry shape.
 2. **Phase 4B (forward)** — `GatewayClient` + `gateway_client` config + gateway inbound child routing (`NodeConnectionResultReceiver`, router claims `kTaskSubmission`). Wire-unchanged; node and gateway can roll independently (a gateway rejecting `kTaskSubmission` before upgrade drops them, so the node sees a dropped forward → parent error; upgrade order: gateway first).
 3. **Rollback** — revert the affected binary; both halves stay interoperable on the unchanged wire.
 

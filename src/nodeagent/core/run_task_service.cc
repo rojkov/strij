@@ -76,23 +76,6 @@ void RunTaskServiceImpl::RunTask(const task::Task& task, io::Connection& conn,
                  std::move(reserved));
 }
 
-void RunTaskServiceImpl::RunTask(const task::Task& task, ResultSenderPtr sender) {
-  nodeagent::TaskHandler* handler = manager_->GetHandler(task.type());
-  if (handler == nullptr) {
-    LOG_WARNING("No task handler for type '{}'; dropping task '{}'", task.type(), task.id());
-    return;
-  }
-
-  const absl::Status admit_status = admission_->Admit(task.type(), task.requirements());
-  if (!admit_status.ok()) {
-    LOG_WARNING("Task '{}' not admitted: {}", task.id(), admit_status.message());
-    return;
-  }
-
-  auto scope = std::make_unique<AdmissionScope>(admission_, task.type(), task.requirements());
-  runWithHandler(task, handler, std::move(sender), std::move(scope));
-}
-
 void RunTaskServiceImpl::RunTask(const task::Task& task, ResultSenderPtr sender,
                                  AdmissionScopePtr reserved) {
   nodeagent::TaskHandler* handler = manager_->GetHandler(task.type());

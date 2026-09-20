@@ -9,7 +9,7 @@ The system SHALL define a `NodeAgentConfig` protobuf message in `api/nodeagent/c
 #### Scenario: Listener and logging sections load into the message
 
 - **WHEN** a `NodeAgentConfig` is loaded from YAML with `tlv_listener`, `logging`, and `schedulers` sections
-- **THEN** the resulting message SHALL contain the corresponding `TlvListener`, `Logging`, and `SchedulerConfig` values
+- **THEN** the resulting message SHALL contain the corresponding `TlvListener`, `Logging`, and `NodeSchedulerConfig` values
 
 #### Scenario: Scheduler sections load into the message
 
@@ -95,5 +95,5 @@ The nodeagent SHALL load one local scheduler instance per `NodeAgentConfig.sched
 #### Scenario: Gateway client addresses load and validate
 
 - **WHEN** a `NodeAgentConfig` declares `gateway_client.addresses`
-- **THEN** the nodeagent SHALL parse the list and validate each entry as an endpoint
-- **AND** an address that is not a valid endpoint SHALL fail validation
+- **THEN** the nodeagent SHALL parse the list and validate that each entry is a non-empty string
+- **AND** an empty address SHALL fail validation

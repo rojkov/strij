@@ -77,13 +77,13 @@ The node's child-task policy *run locally if capacity allows, else forward* SHAL
 - **THEN** the child SHALL NOT be enqueued, pulled, or probed
 - **AND** no `kTaskProbe`, `kTaskPull`, or `kTaskGrant` frame SHALL be emitted for it
 
-### Requirement: Sender-backed RunTask overloads
+### Requirement: Sender-backed RunTask overload
 
-`RunTaskService` SHALL provide overloads that run an admitted task with a caller-supplied `ResultSenderPtr` instead of an `io::Connection`: one admitting variant (`RunTask(task, sender)`) and one preallocated variant (`RunTask(task, sender, AdmissionScopePtr reserved)`). The overloads SHALL own and forward the sender to the handler; the preallocated variant SHALL release the scope on the final result. The existing connection-bound overloads SHALL remain and SHALL delegate to the same shared execution path.
+`RunTaskService` SHALL provide an overload that runs a task whose capacity was already reserved by the caller, with a caller-supplied `ResultSenderPtr` instead of an `io::Connection`: `RunTask(task, sender, AdmissionScopePtr reserved)`. The overload SHALL own and forward the sender to the handler and SHALL release the scope on the final result. The existing connection-bound overloads SHALL remain and SHALL delegate to the same shared execution path.
 
 #### Scenario: Local child runs with a receiver-backed sender
 
-- **WHEN** the bundled `default` scheduler admits a child and invokes `RunTask(child, StorageResultSender)`
+- **WHEN** the bundled `default` scheduler admits a child and invokes `RunTask(child, StorageResultSender, scope)`
 - **THEN** the child's handler SHALL be invoked with that sender
 - **AND** results SHALL reach the parent's receiver, not a connection
 

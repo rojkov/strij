@@ -6,10 +6,10 @@
 
 The nodeagent SHALL provide a `LocalResultReceiverStorage` mapping `task_id → ResultReceiver`, the nodeagent mirror of the gateway's `ResultReceiverStorage`. It SHALL expose `Put(task_id, ReceiverPtr)`, `Get(task_id)`, `Erase(task_id)`, and `Empty()`/`Size()`. The storage is owned and maintained by the bundled `default` local scheduler (`node-local-scheduler`): its `Schedule` SHALL register the child's receiver before submitting the child, and its `HandleFrame` resolves it on inbound outcome frames.
 
-#### Scenario: Parent registers a child receiver
+#### Scenario: Child receiver is registered before the child runs
 
-- **WHEN** a workflow handler prepares to submit a child with id `C`
-- **THEN** the handler SHALL `Put("C", receiver)` before `Submit`
+- **WHEN** a workflow handler submits a child with id `C` and receiver `receiver` through the submitter
+- **THEN** the bundled `default` scheduler's `Schedule` SHALL `Put("C", receiver)` before the child runs
 - **AND** `Get("C")` SHALL return that receiver until it is delivered or erased
 
 #### Scenario: Erase removes the entry
