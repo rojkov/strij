@@ -50,7 +50,7 @@ void NodeagentSchedulerRouter::Submit(task::Task task, gateway::ResultReceiverPt
 
 void NodeagentSchedulerRouter::Schedule(const task::Task& task,
                                         gateway::ResultReceiverPtr receiver) {
-  extensions::Scheduler* scheduler = findChildScheduler(task);
+  extensions::Scheduler* scheduler = findChildTaskScheduler(task);
   if (scheduler == nullptr) {
     receiver->DeliverError(absl::StrCat("no local scheduler claims task type '", task.type(),
                                         "' and no local default is declared"));
@@ -60,7 +60,7 @@ void NodeagentSchedulerRouter::Schedule(const task::Task& task,
   scheduler->Schedule(task, std::move(receiver));
 }
 
-auto NodeagentSchedulerRouter::findChildScheduler(const task::Task& task)
+auto NodeagentSchedulerRouter::findChildTaskScheduler(const task::Task& task)
     -> extensions::Scheduler* {
   extensions::Scheduler* fallback = nullptr;
   for (auto& routed : schedulers_) {

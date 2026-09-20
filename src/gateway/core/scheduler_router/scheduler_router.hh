@@ -58,10 +58,10 @@ public:
   [[nodiscard]] auto RoutedSchedulerCount() const -> size_t { return schedulers_.size(); }
 
 private:
-  // Handles an inbound upstream kTaskSubmission (a node forwarding a child
+  // Handles an inbound upstream kTaskSubmission (a node forwarding a child task
   // upstream): stores a node-connection receiver keyed by the submitting node
   // and routes the task through the normal per-type dispatch.
-  auto handleChildSubmission(const io::TlvFrame& frame, io::Connection& conn) -> absl::Status;
+  auto handleChildTaskSubmission(const io::TlvFrame& frame, io::Connection& conn) -> absl::Status;
 
   auto findSchedulerFor(const task::Task& task) -> extensions::Scheduler*;
   auto findFrameOwner(uint8_t type_id) -> extensions::Scheduler*;

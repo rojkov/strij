@@ -602,6 +602,7 @@ auto validateMessage(const google::protobuf::Message& message, const std::string
           return status;
         }
       }
+
       continue;
     }
 

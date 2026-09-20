@@ -35,8 +35,8 @@ auto in_types(std::span<const uint8_t> types, uint8_t type_id) -> bool {
 
 // Forwards outcome calls to the receiver currently registered in
 // ResultReceiverStorage under `task_id`, erasing the entry on terminal
-// outcomes. Handed to the per-type scheduler's Schedule when routing an
-// upstream child submission: the scheduler either accepts the task (storing it
+// outcomes. Handed to the per-type scheduler's Schedule() when routing an
+// upstream child task submission: the scheduler either accepts the task (storing it
 // itself is a no-op — the node-connection receiver was already registered by
 // the router) or delivers an error through this forwarding receiver, which
 // surfaces the error on the submitting node's connection and erases the entry.
@@ -50,6 +50,7 @@ public:
     if (receiver == nullptr) {
       return;
     }
+
     receiver->Deliver(value, is_final);
     if (is_final) {
       storage_->Erase(task_id_);
@@ -61,6 +62,7 @@ public:
     if (receiver != nullptr) {
       receiver->DeliverError(reason);
     }
+
     storage_->Erase(task_id_);
   }
 
@@ -74,7 +76,8 @@ private:
 SchedulerRouter::SchedulerRouter(std::vector<RoutedScheduler> schedulers,
                                  gateway::ResultReceiverStorage& storage)
     : schedulers_{std::move(schedulers)}, storage_{storage} {
-  // The router owns the upstream child-forward claim (kTaskSubmission) itself.
+  // The router owns handling of kTaskSubmission frames containing the tasks
+  // originated from nodeagents.
   handled_types_.push_back(io::TlvFrame::kTaskSubmission);
   std::set<uint8_t> seen_types{io::TlvFrame::kTaskSubmission};
   for (const auto& routed : schedulers_) {
@@ -131,7 +134,7 @@ auto SchedulerRouter::HandledFrameTypes() const -> std::span<const uint8_t> {
   return handled_types_;
 }
 
-auto SchedulerRouter::handleChildSubmission(const io::TlvFrame& frame, io::Connection& conn)
+auto SchedulerRouter::handleChildTaskSubmission(const io::TlvFrame& frame, io::Connection& conn)
     -> absl::Status {
   task::Task task;
   if (!task.ParseFromArray(std::bit_cast<const char*>(frame.value.data()),
@@ -173,7 +176,7 @@ auto SchedulerRouter::HandleFrame(const io::TlvFrame& frame, io::Connection& con
   // forwards a child upstream, so the router (not a wire-protocol scheduler)
   // owns the claim. Everything else routes to the constituent that owns it.
   if (frame.type_id == io::TlvFrame::kTaskSubmission) {
-    return handleChildSubmission(frame, conn);
+    return handleChildTaskSubmission(frame, conn);
   }
 
   extensions::Scheduler* owner = findFrameOwner(frame.type_id);

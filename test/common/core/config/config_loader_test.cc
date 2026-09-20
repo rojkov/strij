@@ -121,7 +121,7 @@ schedulers:
 logging:
   level: "debug"
   format: "json"
-  output: "stderr" 
+  output: "stderr"
 )";
   std::string path = createTempFile(yaml);
   ASSERT_FALSE(path.empty());

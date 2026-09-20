@@ -19,14 +19,14 @@
 namespace strij::nodeagent {
 
 // Node-side composite of the configured local schedulers, and the single child
-// submission handle a workflow handler holds (via
+// task submission handle a workflow handler holds (via
 // NodeagentFactoryContext::ChildTaskSubmitter()).
 //
 // Submit()/Schedule() dispatches a child task to the entry that declares its
 // type via NodeSchedulerConfig.task_type, falling back to the single entry
-// declared with local_default=true. A child whose type is claimed by no entry
+// declared with local_default=true. A child task whose type is claimed by no entry
 // and with no local default declared is delivered an error through its
-// receiver. Entries with neither role declaration never receive child
+// receiver. Entries with neither role declaration never receive child task
 // submissions here — they are pure wire-protocol counterparts and appear only
 // in the frame dispatcher.
 //
@@ -75,7 +75,7 @@ public:
   [[nodiscard]] auto RoutedSchedulerCount() const -> size_t { return schedulers_.size(); }
 
 private:
-  auto findChildScheduler(const task::Task& task) -> extensions::Scheduler*;
+  auto findChildTaskScheduler(const task::Task& task) -> extensions::Scheduler*;
   auto findFrameOwner(uint8_t type_id) -> extensions::Scheduler*;
 
   std::vector<ChildRoutedScheduler> schedulers_;
@@ -88,11 +88,11 @@ private:
 };
 
 // Loads one scheduler per NodeAgentConfig.schedulers entry via
-// CreateNodeScheduler and composes them into a router, applying the node-side
-// authority doctrine (D2): an empty task_type is NOT a default, at most one
-// local_default entry, unique non-empty task_type claims, and no-role entries
-// never receive child submissions. Fails on an empty list, an unknown
-// scheduler name, or ambiguous authority declarations.
+// CreateNodeScheduler and composes them into a router: an empty task_type
+// is NOT a default, at most one local_default entry, unique non-empty
+// task_type claims, and no-role entries never receive child task submissions.
+// Fails on an empty list, an unknown scheduler name, or ambiguous
+// authority declarations.
 auto BuildNodeagentSchedulerRouter(const config::NodeAgentConfig& config,
                                    extensions::NodeagentFactoryContext& context)
     -> absl::StatusOr<std::unique_ptr<NodeagentSchedulerRouter>>;

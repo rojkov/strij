@@ -68,7 +68,7 @@ public:
                        AdmissionScopePtr reserved) PURE;
 
   // Whether a task handler is registered for `type`. Local schedulers check
-  // this before attempting admission so an unhandled child can be forwarded
+  // this before attempting admission so an unhandled child task can be forwarded
   // rather than run (a successful Admit for an unknown type is capacity-only,
   // and RunTask would then drop it).
   [[nodiscard]] virtual auto HasHandler(std::string_view type) const -> bool PURE;
