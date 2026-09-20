@@ -60,7 +60,8 @@ public:
   // surface. Extension authors can't depend on the framework's concrete
   // io::Connection; replace it with a small abstract connection/seam type so
   // nodeagent schedulers never leak the framework type.
-  virtual auto HandleFrame(const io::TlvFrame& /*frame*/, io::Connection& /*conn*/) -> absl::Status {
+  virtual auto HandleFrame(const io::TlvFrame& /*frame*/, io::Connection& /*conn*/)
+      -> absl::Status {
     return absl::OkStatus();
   }
   // The TLV frame type_ids this scheduler owns (e.g. {kTaskSubmission} for
@@ -72,7 +73,7 @@ public:
 
 using SchedulerPtr = std::unique_ptr<Scheduler>;
 
-} // namespace strij::extensions
+} // namespace extensions
 
 } // namespace strij
 
