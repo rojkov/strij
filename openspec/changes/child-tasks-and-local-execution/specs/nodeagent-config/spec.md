@@ -84,7 +84,7 @@ The nodeagent SHALL load one local scheduler instance per `NodeAgentConfig.sched
 
 ### Requirement: Gateway client configuration section
 
-`NodeAgentConfig` SHALL define a `gateway_client` section with a `repeated string addresses` field naming outbound gateway endpoints for the child-forward path. The section SHALL be optional and additive; its absence SHALL NOT change validation of existing configurations. The addresses feed the `GatewayClient`'s dial fallback (`gateway-client`).
+`NodeAgentConfig` SHALL define a `gateway_client` section with a `repeated string addresses` field naming outbound gateway endpoints for the child-forward path. The section SHALL be optional and additive; its absence SHALL NOT change validation of existing configurations. The addresses are reserved for a future outbound dial fallback (`gateway-client`); they SHALL NOT be required for the forward path, which operates over live registered connections.
 
 #### Scenario: Gateway client is optional
 
@@ -95,5 +95,5 @@ The nodeagent SHALL load one local scheduler instance per `NodeAgentConfig.sched
 #### Scenario: Gateway client addresses load and validate
 
 - **WHEN** a `NodeAgentConfig` declares `gateway_client.addresses`
-- **THEN** the nodeagent SHALL parse the list and pass it to the `GatewayClient`
+- **THEN** the nodeagent SHALL parse the list and validate each entry as an endpoint
 - **AND** an address that is not a valid endpoint SHALL fail validation
