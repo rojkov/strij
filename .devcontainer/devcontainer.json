@@ -1,0 +1,49 @@
+{
+  "name": "Strij Devel",
+  "build": {
+    "context": "../docker/devcontainer",
+    "dockerfile": "../docker/devcontainer/Dockerfile",
+    "args": {
+      "USER": "${localEnv:USER}"
+    }
+  },
+  "runArgs": [
+    "--cap-add=SYS_PTRACE"
+  ],
+  "containerEnv": {
+    "TEST_VAR": "test value"
+  },
+  "mounts": [
+    "source=${localEnv:HOME},target=${localEnv:HOME},type=bind"
+  ],
+  "remoteUser": "${localEnv:USER}",
+  "updateRemoteUserUID": true,
+  "postStartCommand": "bash -c 'setsid -f opencode serve --port 4096 --hostname 0.0.0.0 > /tmp/opencode.log 2>&1 < /dev/null'",
+  "forwardPorts": [
+    4096
+  ],
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "xaver.clang-format",
+        "llvm-vs-code-extensions.vscode-clangd",
+        "ms-azuretools.vscode-containers"
+      ],
+      "settings": {
+        "editor.formatOnSave": true,
+        "[cpp]": {
+          "editor.defaultFormatter": "xaver.clang-format"
+        },
+        "[c]": {
+          "editor.defaultFormatter": "xaver.clang-format"
+        },
+        "clang-format.executable": "clang-format",
+        "clangd.arguments": [
+          "--background-index",
+          "--clang-tidy"
+        ],
+        "git.openRepositoryInParentFolders": "always"
+      }
+    }
+  }
+}
