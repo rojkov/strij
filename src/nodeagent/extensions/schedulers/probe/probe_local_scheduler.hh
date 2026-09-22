@@ -124,8 +124,8 @@ public:
   [[nodiscard]] auto Name() const -> std::string override { return "probe"; }
   [[nodiscard]] auto RequiredProtocol() const -> std::string_view override { return "probe"; }
   auto CreateEmptyConfigProto() -> MessagePtr override;
-  auto Create(const ::google::protobuf::Message& config,
-              extensions::NodeagentFactoryContext& context) -> extensions::SchedulerPtr override;
+  auto Create(const ::google::protobuf::Message& config, const NodeSchedulerDeps& deps)
+      -> extensions::SchedulerPtr override;
 };
 
 } // namespace strij::nodeagent::schedulers::probe

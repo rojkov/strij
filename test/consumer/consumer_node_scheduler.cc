@@ -2,7 +2,6 @@
 
 #include <memory>
 #include <string>
-#include <utility>
 
 #include "common/config/extensions.pb.h"
 #include "strij/extensions/extension_registry.hh"
@@ -28,7 +27,7 @@ auto ConsumerNodeSchedulerFactory::CreateEmptyConfigProto() -> MessagePtr {
 }
 
 auto ConsumerNodeSchedulerFactory::Create(const ::google::protobuf::Message& /*config*/,
-                                          strij::extensions::NodeagentFactoryContext& /*context*/)
+                                          const strij::nodeagent::NodeSchedulerDeps& /*deps*/)
     -> strij::extensions::SchedulerPtr {
   return std::make_unique<ConsumerNodeScheduler>();
 }

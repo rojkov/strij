@@ -6,10 +6,10 @@
 
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
-#include "strij/extensions/extension_registry.hh"
 #include "common/core/logging/log.hh"
 #include "google/protobuf/any.pb.h"
 #include "google/protobuf/message.h"
+#include "strij/extensions/extension_registry.hh"
 
 namespace strij::nodeagent {
 
@@ -22,19 +22,14 @@ void TaskHandlerManager::AddHandler(std::string type, nodeagent::TaskHandlerPtr 
   handlers_.insert_or_assign(std::move(type), std::move(handler));
 }
 
-void TaskHandlerManager::RemoveHandler(const std::string& type) { handlers_.erase(type); }
-
 auto TaskHandlerManager::empty() const -> bool { return handlers_.empty(); }
 
-auto BuildTaskHandlerManager(
+auto TaskHandlerManager::LoadTaskHandlers(
     const ::google::protobuf::RepeatedPtrField<config::ExtensionConfig>& configs,
-    extensions::NodeagentFactoryContext& context)
-    -> absl::StatusOr<std::shared_ptr<TaskHandlerManager>> {
-  auto manager = std::make_shared<TaskHandlerManager>();
-
+    const TaskHandlerDeps& deps) -> absl::Status {
   if (configs.empty()) {
     LOG_WARNING("No task handlers configured; all tasks will be dropped");
-    return manager;
+    return absl::OkStatus();
   }
 
   auto& registry = extensions::Registry<nodeagent::TaskHandlerFactory>::instance();
@@ -56,12 +51,12 @@ auto BuildTaskHandlerManager(
                        "': unknown type '", unpacked.type_url(), "'"));
     }
 
-    auto handler = factory->Create(*config_msg, context);
-    manager->AddHandler(factory->Name(), std::move(handler));
+    auto handler = factory->Create(*config_msg, deps);
+    AddHandler(factory->Name(), std::move(handler));
     LOG_INFO("Task handler '{}' loaded", ext.name());
   }
 
-  return manager;
+  return absl::OkStatus();
 }
 
 } // namespace strij::nodeagent

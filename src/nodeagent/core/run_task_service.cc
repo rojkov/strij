@@ -13,8 +13,8 @@
 #include "common/task/task.pb.h"
 #include "nodeagent/core/admission_tracking_sender.hh"
 #include "nodeagent/core/result_sender.hh"
-#include "nodeagent/extensions/task_handlers/task_handlers.hh"
 #include "strij/nodeagent/admission_controller.hh"
+#include "strij/nodeagent/task_handlers.hh"
 
 namespace strij::nodeagent {
 

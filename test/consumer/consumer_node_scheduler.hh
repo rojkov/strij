@@ -34,7 +34,7 @@ public:
   [[nodiscard]] auto RequiredProtocol() const -> std::string_view override;
   auto CreateEmptyConfigProto() -> MessagePtr override;
   auto Create(const ::google::protobuf::Message& config,
-              strij::extensions::NodeagentFactoryContext& context)
+              const strij::nodeagent::NodeSchedulerDeps& deps)
       -> strij::extensions::SchedulerPtr override;
 };
 

@@ -4,11 +4,13 @@ strij_cc_test(
     name = "workflow_task_handler_test",
     srcs = ["workflow_task_handler_test.cc"],
     deps = [
+        "//api/common/config:config_cc_proto",
         "//api/common/node:node_cc_proto",
         "//api/common/task:task_cc_proto",
         "//api/nodeagent/extensions/task_handlers/workflow:workflow_cc_proto",
         "//include/strij/extensions:extension_registry_lib",
         "//src/nodeagent/core:admission_controller_lib",
+        "//src/nodeagent/core:function_resolver_lib",
         "//src/nodeagent/core:nodeagent_scheduler_router_lib",
         "//src/nodeagent/core:run_task_service_lib",
         "//src/nodeagent/core:task_handler_manager_lib",
@@ -18,6 +20,6 @@ strij_cc_test(
         "//test/mocks/event:event_mocks_lib",
         "//test/mocks/extensions:extensions_mocks_lib",
         "@googletest//:gtest_main",
-        "@protobuf//:protobuf",
+        "@protobuf",
     ],
 )

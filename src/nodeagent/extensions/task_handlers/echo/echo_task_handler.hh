@@ -4,7 +4,7 @@
 
 #include "absl/status/statusor.h"
 #include "common/node/capabilities.pb.h"
-#include "nodeagent/extensions/task_handlers/task_handlers.hh"
+#include "strij/nodeagent/task_handlers.hh"
 
 namespace strij::nodeagent::task_handlers {
 
@@ -17,7 +17,7 @@ class EchoTaskHandlerFactory final : public TaskHandlerFactory {
 public:
   [[nodiscard]] auto Name() const -> std::string override;
   auto CreateEmptyConfigProto() -> MessagePtr override;
-  auto Create(const ::google::protobuf::Message& config, extensions::NodeagentFactoryContext& context)
+  auto Create(const ::google::protobuf::Message& config, const TaskHandlerDeps& deps)
       -> TaskHandlerPtr override;
   auto ParseConfig(const ::google::protobuf::Message& config)
       -> absl::StatusOr<node::HandlerCapacity> override;

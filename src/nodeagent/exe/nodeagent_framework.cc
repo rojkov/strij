@@ -1,5 +1,6 @@
 #include "nodeagent_framework.hh"
 
+#include <cassert>
 #include <memory>
 #include <vector>
 
@@ -25,9 +26,9 @@
 #include "nodeagent/core/run_task_service.hh"
 #include "nodeagent/core/state_reporter.hh"
 #include "nodeagent/core/task_handler_manager.hh"
-#include "nodeagent_factory_context.hh"
 #include "strij/extensions/data_dependency_fetcher.hh"
 #include "strij/extensions/scheduler.hh"
+#include "strij/nodeagent/task_handlers.hh"
 
 // Generated protobuf headers
 #include "nodeagent/config/nodeagent.pb.h"
@@ -79,7 +80,7 @@ auto RunNodeagent(int argc, char** argv) -> int {
       std::make_shared<node::NodeCapabilities>(std::move(capabilities_result).value());
 
   // Admission controller tracks per-pool/per-type usage; both the task handlers
-  // and (via the factory context) the configured schedulers share it.
+  // and the configured schedulers share it.
   const auto admission = std::make_shared<AdmissionControllerImpl>(*capabilities, *dispatcher);
 
   auto function_resolver = std::make_unique<LocalFunctionResolver>();
@@ -87,28 +88,27 @@ auto RunNodeagent(int argc, char** argv) -> int {
 
   // The GatewayClient is the node's only outbound capability: every accepted
   // gateway connection is registered with it (below), and it forwards children
-  // upstream over live connections (no dial fallback). It is dependency-free,
-  // so it is handed to the factory context directly at construction — the
-  // bundled "default" scheduler's forward path exists from the context's first
-  // moment rather than from a later install step.
+  // upstream over live connections (no dial fallback). It is dependency-free and
+  // is handed to scheduler factories through NodeSchedulerDeps, so the bundled
+  // "default" scheduler's forward path exists from the moment it is created.
   auto gateway_client = std::make_unique<GatewayClient>();
-  NodeagentFactoryContextImpl factory_context(dispatcher, std::move(function_resolver), admission,
-                                              object_cache, *gateway_client);
 
-  // Build the task handler manager from config. This must run before the
-  // --validate_only short-circuit so that unknown handler names fail validation.
-  auto manager_result = BuildTaskHandlerManager(config.task_handlers(), factory_context);
-  if (!manager_result.ok()) {
-    LOG_ERROR("Task handler config error: {}", manager_result.status().message());
-    return 1;
-  }
+  // Service construction order resolves the cycle
+  //   manager -> (workflow) submitter -> scheduler router -> run-task -> manager
+  // by creating the manager empty, building RunTaskService over it, building
+  // the scheduler router, and only then populating the manager with handlers.
+  // Nothing executes a task before Dispatcher::Run(), so the empty window is
+  // never observed by RunTask.
+  auto task_handler_manager = std::make_shared<TaskHandlerManager>();
+  auto run_task_service = std::make_unique<RunTaskServiceImpl>(task_handler_manager, admission);
 
   // Build the data dependency fetchers and the scheme router. Runs before the
   // --validate_only short-circuit so that unknown fetcher names and duplicate
   // source schemes fail validation too. An empty list is valid: probes still
   // declare deps, but no prefetching occurs and deps never gate readiness.
+  const DataDependencyFetcherDeps fetcher_deps{*dispatcher, *object_cache};
   auto data_dependency_fetchers_result =
-      BuildDataDependencyFetchers(config.data_dependency_fetchers(), factory_context);
+      BuildDataDependencyFetchers(config.data_dependency_fetchers(), fetcher_deps);
   if (!data_dependency_fetchers_result.ok()) {
     LOG_ERROR("Data dependency fetcher config error: {}",
               data_dependency_fetchers_result.status().message());
@@ -125,15 +125,6 @@ auto RunNodeagent(int argc, char** argv) -> int {
   }
   const DataDependencyFetcherRouterPtr& fetch_router = fetcher_router_result.value();
 
-  const std::shared_ptr<TaskHandlerManager>& task_handler_manager = manager_result.value();
-
-  // The RunTask service is the schedulers' only route to task execution; it is
-  // installed into the factory context two-phase so that scheduler factories
-  // created below can reach it.
-  auto run_task_service = std::make_unique<RunTaskServiceImpl>(task_handler_manager, admission);
-  factory_context.SetRunTaskService(*run_task_service);
-  factory_context.SetDataDependencyFetcherRouter(*fetch_router);
-
   // One local scheduler instance per configured scheduler entry, composed into
   // the node-side child router (the submission composite that routes
   // locally-originated children by declared authority). The router also owns
@@ -142,13 +133,29 @@ auto RunNodeagent(int argc, char** argv) -> int {
   // or the authority declarations are ambiguous (duplicate non-empty
   // task_type, more than one local_default) is intentional: a misconfigured
   // node must not silently advertise a scheduling protocol.
-  auto child_router_result = BuildNodeagentSchedulerRouter(config, factory_context);
+  const NodeSchedulerDeps scheduler_deps{*dispatcher, *run_task_service, admission, *gateway_client,
+                                         *fetch_router};
+  auto child_router_result = BuildNodeagentSchedulerRouter(config, scheduler_deps);
   if (!child_router_result.ok()) {
     LOG_ERROR("Scheduler config error: {}", child_router_result.status().message());
     return 1;
   }
   const std::unique_ptr<NodeagentSchedulerRouter>& child_router = child_router_result.value();
-  factory_context.SetChildTaskSubmitter(*child_router);
+
+  // Build the task handlers last: the router (the ChildTaskSubmitter) already
+  // exists, so a workflow handler factory receives a valid submitter. This must
+  // run before the --validate_only short-circuit so that unknown handler names
+  // fail validation.
+  const TaskHandlerDeps handler_deps{*dispatcher, *function_resolver, *child_router};
+  const absl::Status handler_load_status =
+      task_handler_manager->LoadTaskHandlers(config.task_handlers(), handler_deps);
+  if (!handler_load_status.ok()) {
+    LOG_ERROR("Task handler config error: {}", handler_load_status.message());
+    return 1;
+  }
+  // Guard the empty-then-populated window: once loading succeeds, a non-empty
+  // config must have produced a non-empty manager before anything can run.
+  assert(!task_handler_manager->empty() || config.task_handlers().empty());
 
   if (absl::GetFlag(FLAGS_validate_only)) {
     LOG_INFO("Config validation passed");

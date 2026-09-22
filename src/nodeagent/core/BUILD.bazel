@@ -23,7 +23,7 @@ strij_cc_library(
     deps = [
         ":admission_controller_lib",
         ":result_sender_lib",
-        "//src/nodeagent/extensions/task_handlers:task_handlers_interface",
+        "//include/strij/nodeagent:task_handlers_interface",
     ],
 )
 
@@ -49,9 +49,9 @@ strij_cc_library(
         "//api/nodeagent/config:nodeagent_config_cc_proto",
         "//include/strij/extensions:extension_registry_lib",
         "//include/strij/extensions:scheduler_interface",
+        "//include/strij/nodeagent:task_handlers_interface",
         "//src/common/core/logging:log_lib",
         "//src/common/core/utils:task_id_lib",
-        "//src/nodeagent/extensions/task_handlers:task_handlers_interface",
         "@abseil-cpp//absl/status",
         "@abseil-cpp//absl/status:statusor",
         "@abseil-cpp//absl/strings",
@@ -85,10 +85,10 @@ strij_cc_library(
         ":task_handler_manager_lib",
         "//api/common/task:task_cc_proto",
         "//include/strij/nodeagent:run_task_service_interface",
+        "//include/strij/nodeagent:task_handlers_interface",
         "//src/common/core/io:connection_lib",
         "//src/common/core/io:tlv_frame",
         "//src/common/core/logging:log_lib",
-        "//src/nodeagent/extensions/task_handlers:task_handlers_interface",
         "@abseil-cpp//absl/status",
         "@protobuf",
     ],
@@ -101,9 +101,9 @@ strij_cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//api/common/task:task_cc_proto",
+        "//include/strij/nodeagent:task_handlers_interface",
         "//src/common/core/io:connection_lib",
         "//src/common/core/io:tlv_frame",
-        "//src/nodeagent/extensions/task_handlers:task_handlers_interface",
     ],
 )
 
@@ -119,7 +119,7 @@ strij_cc_library(
         "//include/strij/event:dispatcher_interface",
         "//include/strij/extensions:data_dependency_fetcher_interface",
         "//include/strij/extensions:extension_registry_lib",
-        "//include/strij/extensions:factory_context_lib",
+        "//include/strij/extensions:factory_context_interface",
         "//src/common/core/logging:log_lib",
         "@abseil-cpp//absl/status",
         "@abseil-cpp//absl/status:statusor",
@@ -148,9 +148,9 @@ strij_cc_library(
     deps = [
         "//api/common/config:config_cc_proto",
         "//include/strij/extensions:extension_registry_lib",
-        "//include/strij/extensions:factory_context_lib",
+        "//include/strij/extensions:factory_context_interface",
+        "//include/strij/nodeagent:task_handlers_interface",
         "//src/common/core/logging:log_lib",
-        "//src/nodeagent/extensions/task_handlers:task_handlers_interface",
         "@abseil-cpp//absl/status",
         "@abseil-cpp//absl/status:statusor",
         "@abseil-cpp//absl/strings",
@@ -164,9 +164,9 @@ strij_cc_library(
     hdrs = ["gateway_client.hh"],
     visibility = ["//visibility:public"],
     deps = [
-        ":child_task_forwarder_lib",
         "//api/common/task:task_cc_proto",
-        "//include/strij/nodeagent:child_task_submitter",
+        "//include/strij/nodeagent:child_task_forwarder_interface",
+        "//include/strij/nodeagent:child_task_submitter_interface",
         "//src/common/core/io:connection_lib",
         "//src/common/core/io:tlv_frame",
         "//src/common/core/logging:log_lib",
@@ -204,19 +204,8 @@ strij_cc_library(
     deps = [
         ":local_result_receiver_storage_lib",
         "//include/strij/gateway:result_receiver_storage_interface",
+        "//include/strij/nodeagent:task_handlers_interface",
         "//src/common/core/logging:log_lib",
-        "//src/nodeagent/extensions/task_handlers:task_handlers_interface",
-    ],
-)
-
-strij_cc_library(
-    name = "child_task_forwarder_lib",
-    hdrs = ["child_task_forwarder.hh"],
-    visibility = ["//visibility:public"],
-    deps = [
-        "//api/common/task:task_cc_proto",
-        "//include/strij/common:pure_lib",
-        "@abseil-cpp//absl/status",
     ],
 )
 
@@ -229,9 +218,8 @@ strij_cc_library(
         "//api/common/config:config_cc_proto",
         "//api/common/task:task_cc_proto",
         "//api/nodeagent/config:nodeagent_config_cc_proto",
-        "//include/strij/extensions:factory_context_lib",
         "//include/strij/extensions:scheduler_interface",
-        "//include/strij/nodeagent:child_task_submitter",
+        "//include/strij/nodeagent:child_task_submitter_interface",
         "//src/common/core/io:connection_lib",
         "//src/common/core/io:tlv_frame",
         "//src/common/extensions:scheduler_loader_lib",

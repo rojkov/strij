@@ -9,15 +9,15 @@
 #include <vector>
 
 #include "test/mocks/event/mocks.hh"
-#include "test/mocks/extensions/extensions_mocks.hh"
+#include "test/mocks/extensions/nodeagent_deps.hh"
 
-#include "nodeagent/core/function_resolver.hh"
 #include "common/task/task.pb.h"
+#include "gmock/gmock.h"
+#include "gtest/gtest.h"
+#include "nodeagent/core/function_resolver.hh"
 #include "nodeagent/extensions/task_handlers/piped_executable/child_process.hh"
 #include "nodeagent/extensions/task_handlers/piped_executable/piped_executable.pb.h"
 #include "nodeagent/extensions/task_handlers/piped_executable/piped_executable_task_handler.hh"
-#include "gmock/gmock.h"
-#include "gtest/gtest.h"
 
 namespace strij::nodeagent::task_handlers {
 namespace {
@@ -26,7 +26,6 @@ using ::testing::_;
 using ::testing::DoAll;
 using ::testing::NiceMock;
 using ::testing::Return;
-using ::testing::ReturnRef;
 using ::testing::SaveArg;
 
 // Tags documented in the design: ChildProcess keeps them private.
@@ -88,12 +87,11 @@ TEST(PipedExecutableTaskHandlerFactoryTest, NameIsPipedExecutable) {
 TEST(PipedExecutableTaskHandlerFactoryTest, CreateUsesSharedResolverAndDispatcher) {
   NiceMock<event::MockDispatcher> dispatcher;
   nodeagent::LocalFunctionResolver resolver;
-  extensions::MockNodeagentFactoryContext context;
-  ON_CALL(context, Dispatcher()).WillByDefault(ReturnRef(dispatcher));
-  ON_CALL(context, FunctionResolver()).WillByDefault(ReturnRef(resolver));
+  extensions::StubChildTaskSubmitter submitter;
+  const TaskHandlerDeps deps{dispatcher, resolver, submitter};
 
   extensions::task_handlers::piped_executable::PipedExecutableTaskHandlerConfig config;
-  auto handler = PipedExecutableTaskHandlerFactory().Create(config, context);
+  auto handler = PipedExecutableTaskHandlerFactory().Create(config, deps);
 
   ASSERT_NE(handler, nullptr);
   // The handler is wired to the shared resolver and dispatcher: a task with a

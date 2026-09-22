@@ -92,9 +92,8 @@ auto WorkflowTaskHandlerFactory::CreateEmptyConfigProto() -> MessagePtr {
 }
 
 auto WorkflowTaskHandlerFactory::Create(const ::google::protobuf::Message& /*config*/,
-                                        extensions::NodeagentFactoryContext& context)
-    -> TaskHandlerPtr {
-  return std::make_unique<WorkflowTaskHandler>(context.ChildTaskSubmitter());
+                                        const TaskHandlerDeps& deps) -> TaskHandlerPtr {
+  return std::make_unique<WorkflowTaskHandler>(deps.child_task_submitter_);
 }
 
 auto WorkflowTaskHandlerFactory::ParseConfig(const ::google::protobuf::Message& config)

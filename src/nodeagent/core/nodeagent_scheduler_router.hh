@@ -20,7 +20,7 @@ namespace strij::nodeagent {
 
 // Node-side composite of the configured local schedulers, and the single child
 // task submission handle a workflow handler holds (via
-// NodeagentFactoryContext::ChildTaskSubmitter()).
+// TaskHandlerDeps::child_task_submitter_).
 //
 // Submit()/Schedule() dispatches a child task to the entry that declares its
 // type via NodeSchedulerConfig.task_type, falling back to the single entry
@@ -94,7 +94,7 @@ private:
 // Fails on an empty list, an unknown scheduler name, or ambiguous
 // authority declarations.
 auto BuildNodeagentSchedulerRouter(const config::NodeAgentConfig& config,
-                                   extensions::NodeagentFactoryContext& context)
+                                   const NodeSchedulerDeps& deps)
     -> absl::StatusOr<std::unique_ptr<NodeagentSchedulerRouter>>;
 
 } // namespace strij::nodeagent

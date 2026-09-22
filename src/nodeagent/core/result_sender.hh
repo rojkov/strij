@@ -5,7 +5,7 @@
 #include <memory>
 
 #include "common/core/io/outbound_mailbox.hh"
-#include "nodeagent/extensions/task_handlers/task_handlers.hh"
+#include "strij/nodeagent/task_handlers.hh"
 
 namespace strij::nodeagent {
 

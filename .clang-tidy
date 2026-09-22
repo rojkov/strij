@@ -17,3 +17,8 @@ Checks:
 CheckOptions:
   readability-identifier-length.MinimumLoopCounterNameLength: '2'
   readability-function-cognitive-complexity.Threshold: 25
+  # Dependency bundles and other plain records keep their fields public (e.g.
+  # TaskHandlerDeps/NodeSchedulerDeps/DataDependencyFetcherDeps). A user-declared
+  # constructor makes such a record "have behavior", which would otherwise trip
+  # this check; ignore records whose fields are all public.
+  misc-non-private-member-variables-in-classes.IgnoreClassesWithAllMemberVariablesBeingPublic: true

@@ -5,6 +5,6 @@ strij_cc_test_library(
     hdrs = ["common_mocks.hh"],
     deps = [
         "//include/strij/event:command_handler_interface",
-        "//src/common/core/io:protocol_parser",
+        "//src/common/core/io:protocol_parser_interface",
     ],
 )

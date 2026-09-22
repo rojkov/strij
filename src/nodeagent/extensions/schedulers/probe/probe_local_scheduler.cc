@@ -283,8 +283,7 @@ auto ProbeLocalSchedulerFactory::CreateEmptyConfigProto() -> MessagePtr {
 }
 
 auto ProbeLocalSchedulerFactory::Create(const ::google::protobuf::Message& config,
-                                        extensions::NodeagentFactoryContext& context)
-    -> extensions::SchedulerPtr {
+                                        const NodeSchedulerDeps& deps) -> extensions::SchedulerPtr {
   const auto* typed =
       dynamic_cast<const extensions::schedulers::probe::ProbeSchedulerConfig*>(&config);
   if (typed == nullptr) {
@@ -304,9 +303,8 @@ auto ProbeLocalSchedulerFactory::Create(const ::google::protobuf::Message& confi
   }
 
   return std::make_unique<ProbeLocalScheduler>(
-      context.RunTaskService(), context.AdmissionController(),
-      context.DataDependencyFetcherRouter(), context.Dispatcher(), queue_capacity,
-      max_preallocations);
+      deps.run_task_service_, deps.admission_, deps.data_dependency_fetcher_router_,
+      deps.dispatcher_, queue_capacity, max_preallocations);
 }
 
 } // namespace strij::nodeagent::schedulers::probe

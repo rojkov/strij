@@ -8,11 +8,11 @@
 #include "common/core/io/connection.hh"
 #include "common/core/io/tlv_frame.hh"
 #include "common/task/task.pb.h"
-#include "nodeagent/core/child_task_forwarder.hh"
 #include "nodeagent/core/local_result_receiver_storage.hh"
 #include "strij/extensions/scheduler.hh"
 #include "strij/gateway/result_receiver_storage.hh"
 #include "strij/nodeagent/admission_controller.hh"
+#include "strij/nodeagent/child_task_forwarder.hh"
 #include "strij/nodeagent/run_task_service.hh"
 
 namespace strij::nodeagent::schedulers {
@@ -92,8 +92,8 @@ public:
   [[nodiscard]] auto Name() const -> std::string override { return "default"; }
   [[nodiscard]] auto RequiredProtocol() const -> std::string_view override { return {}; }
   auto CreateEmptyConfigProto() -> MessagePtr override;
-  auto Create(const ::google::protobuf::Message& config,
-              extensions::NodeagentFactoryContext& context) -> extensions::SchedulerPtr override;
+  auto Create(const ::google::protobuf::Message& config, const NodeSchedulerDeps& deps)
+      -> extensions::SchedulerPtr override;
 };
 
 } // namespace strij::nodeagent::schedulers

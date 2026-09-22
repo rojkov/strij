@@ -1,7 +1,5 @@
 #pragma once
 
-#include <memory>
-
 #include "strij/common/pure.hh"
 #include "strij/event/dispatcher.hh"
 
@@ -12,24 +10,16 @@ class ResultReceiverStorage;
 
 } // namespace strij::gateway
 
-namespace strij::nodeagent {
-
-class FunctionResolver;
-class AdmissionController;
-class RunTaskService;
-class ObjectCache;
-class DataDependencyFetcherRouter;
-class ChildTaskSubmitter;
-class ChildTaskForwarder;
-using AdmissionControllerSharedPtr = std::shared_ptr<AdmissionController>;
-
-} // namespace strij::nodeagent
-
 namespace strij::extensions {
 
-// Base services shared by every extension factory category. Factory contexts
-// are constructed once per process and handed to extension factories at Create;
-// extensions must not retain the context past their owner's lifetime.
+// Base services shared by every gateway extension factory category. Factory
+// contexts are constructed once per process and handed to extension factories
+// at Create; extensions must not retain the context past their owner's
+// lifetime.
+//
+// The nodeagent side does not use a shared factory context: each nodeagent
+// extension category receives its own narrow dependency bundle
+// (TaskHandlerDeps, NodeSchedulerDeps, DataDependencyFetcherDeps).
 class FactoryContext {
 public:
   FactoryContext() = default;
@@ -54,28 +44,6 @@ class GatewayFactoryContext : public FactoryContext {
 public:
   virtual auto NodeDirectory() -> gateway::NodeDirectory& PURE;
   virtual auto ResultReceiverStorage() -> gateway::ResultReceiverStorage& PURE;
-};
-
-// Nodeagent-side extension services. Only nodeagent scheduler extensions and
-// task handler extensions are created with this context.
-class NodeagentFactoryContext : public FactoryContext {
-public:
-  virtual auto FunctionResolver() -> nodeagent::FunctionResolver& PURE;
-  virtual auto AdmissionController() -> nodeagent::AdmissionControllerSharedPtr PURE;
-  virtual auto RunTaskService() -> nodeagent::RunTaskService& PURE;
-  virtual auto ObjectCache() -> nodeagent::ObjectCache& PURE;
-  // The process-global data dependency fetch router, built at startup from
-  // NodeAgentConfig.data_dependency_fetchers. Schedulers use it to prefetch
-  // Task.deps and to gate task readiness on dep availability.
-  virtual auto DataDependencyFetcherRouter() -> nodeagent::DataDependencyFetcherRouter& PURE;
-  // The node's outbound forward path for child locally originated tasks that
-  // cannot be satisfied locally (implemented by the node-global GatewayClient).
-  // Consumed by the bundled "default" scheduler's child-policy step. Installed
-  // before schedulers are created.
-  virtual auto ChildTaskForwarder() -> nodeagent::ChildTaskForwarder& PURE;
-  // The node-global child submission handle wrapping the composite
-  // NodeagentSchedulerRouter. Installed after the local schedulers are built.
-  virtual auto ChildTaskSubmitter() -> nodeagent::ChildTaskSubmitter& PURE;
 };
 
 } // namespace strij::extensions

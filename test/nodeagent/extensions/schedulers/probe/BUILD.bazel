@@ -13,6 +13,8 @@ strij_cc_test(
         "//src/common/core/io:tlv_frame",
         "//src/common/core/io:tlv_parser_lib",
         "//src/nodeagent/core:admission_controller_lib",
+        "//src/nodeagent/core:data_dependency_fetcher_router_lib",
+        "//src/nodeagent/core:object_cache_lib",
         "//src/nodeagent/core:run_task_service_lib",
         "//src/nodeagent/core:task_handler_manager_lib",
         "//src/nodeagent/extensions/schedulers/probe:probe_local_scheduler_lib",

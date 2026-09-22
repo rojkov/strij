@@ -15,7 +15,6 @@
 #include "common/extensions/scheduler_loader.hh"
 #include "common/task/task.pb.h"
 #include "nodeagent/config/nodeagent.pb.h"
-#include "strij/extensions/factory_context.hh"
 #include "strij/extensions/scheduler.hh"
 
 namespace strij::nodeagent {
@@ -104,7 +103,7 @@ auto NodeagentSchedulerRouter::HandleFrame(const io::TlvFrame& frame, io::Connec
 }
 
 auto BuildNodeagentSchedulerRouter(const config::NodeAgentConfig& config,
-                                   extensions::NodeagentFactoryContext& context)
+                                   const NodeSchedulerDeps& deps)
     -> absl::StatusOr<std::unique_ptr<NodeagentSchedulerRouter>> {
   if (config.schedulers().empty()) {
     return absl::InvalidArgumentError(
@@ -135,7 +134,7 @@ auto BuildNodeagentSchedulerRouter(const config::NodeAgentConfig& config,
   }
 
   for (const auto& scheduler_config : config.schedulers()) {
-    auto scheduler_result = CreateNodeScheduler(scheduler_config.extension(), context);
+    auto scheduler_result = CreateNodeScheduler(scheduler_config.extension(), deps);
     if (!scheduler_result.ok()) {
       return scheduler_result.status();
     }

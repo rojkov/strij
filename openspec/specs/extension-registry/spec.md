@@ -32,21 +32,30 @@ The system SHALL provide a `REGISTER_FACTORY(FactoryClass, FactoryInterface)` ma
 - **THEN** `Registry<SomeFactoryInterface>::instance().getFactory("my_factory")` returns a non-null pointer
 - **AND** the returned pointer's `name()` equals `"my_factory"`
 
-### Requirement: FactoryContext
+### Requirement: Gateway factory context
 
-The system SHALL provide an abstract `FactoryContext` interface with `Dispatcher()` and `Logger()` accessors, and a general `FactoryContextImpl` concrete implementation storing a `DispatcherSharedPtr`. The context SHALL be passed to every factory's `Create()` method. A `MockFactoryContext` SHALL be available for unit tests that need to supply a context without a real dispatcher.
+The system SHALL provide an abstract `FactoryContext` base interface with `Dispatcher()` and `SharedDispatcher()` accessors. The gateway side SHALL define `GatewayFactoryContext` extending it (adding `NodeDirectory()` and `ResultReceiverStorage()`) and SHALL pass it to every gateway factory's `Create()` method. The nodeagent side SHALL NOT pass a single shared factory context to its factories: each nodeagent extension category SHALL receive its own dependency bundle (see `nodeagent-task-handlers`, `node-local-scheduler`, `data-dependency-fetcher`). A mock gateway factory context SHALL be available for unit tests that need to supply a context without a real dispatcher.
 
-#### Scenario: FactoryContext provides dispatcher and logger
+#### Scenario: Gateway factory context provides the dispatcher
 
-- **WHEN** a `FactoryContextImpl` is constructed with a valid `DispatcherSharedPtr`
+- **WHEN** a gateway factory context is constructed with a valid `DispatcherSharedPtr`
 - **AND** `context.Dispatcher()` is called
 - **THEN** a valid `event::Dispatcher&` is returned
-- **AND** when `context.Logger()` is called, a valid `logging::Logger&` is returned
 
-#### Scenario: MockFactoryContext supports unit tests
+#### Scenario: Mock gateway factory context supports unit tests
 
-- **WHEN** a test constructs a `MockFactoryContext`
-- **THEN** it SHALL satisfy the `FactoryContext` interface with configurable `Dispatcher()` and `Logger()` expectations
+- **WHEN** a test constructs a mock gateway factory context
+- **THEN** it SHALL satisfy the `GatewayFactoryContext` interface with configurable `Dispatcher()` and `NodeDirectory()` expectations
+
+#### Scenario: Gateway factories receive the gateway context
+
+- **WHEN** a gateway scheduler or node-discovery factory's `Create()` is called
+- **THEN** it SHALL receive a `GatewayFactoryContext&`
+
+#### Scenario: Nodeagent factories receive their category bundle
+
+- **WHEN** a nodeagent task-handler, scheduler, or data-dependency-fetcher factory's `Create()` is called
+- **THEN** it SHALL receive its category's dependency bundle and SHALL NOT receive a shared `FactoryContext`
 
 ### Requirement: ExtensionConfig protobuf
 
@@ -60,7 +69,7 @@ The system SHALL define an `ExtensionConfig` message with `name` (string) and `t
 
 ### Requirement: Bazel integration
 
-The system SHALL provide a header-only `extension_registry_lib` Bazel target (no runtime deps beyond standard library) and a `factory_context_lib` target depending on `dispatcher_interface` and `log_lib`. Users SHALL add extension `.cc` files to `gateway/BUILD.bazel` deps to link them in.
+The system SHALL provide a header-only `extension_registry_lib` Bazel target (no runtime deps beyond standard library) and a `factory_context_interface` target depending on `dispatcher_interface`. Interface targets SHALL be named with the `_interface` suffix. Users SHALL add extension `.cc` files to `gateway/BUILD.bazel` deps to link them in.
 
 #### Scenario: Bazel targets compile
 

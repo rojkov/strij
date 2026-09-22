@@ -13,7 +13,7 @@ strij_cc_library(
         "//api/common/task:task_cc_proto",
         "//api/gateway/extensions/schedulers/round_robin:round_robin_scheduler_cc_proto",
         "//include/strij/extensions:extension_registry_lib",
-        "//include/strij/extensions:factory_context_lib",
+        "//include/strij/extensions:factory_context_interface",
         "//include/strij/extensions:scheduler_interface",
         "//src/common/core/io:connection_lib",
         "//src/common/core/io:tlv_frame",

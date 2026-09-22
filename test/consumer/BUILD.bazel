@@ -16,7 +16,7 @@ strij_cc_library(
         "@strij//api/common/config:config_cc_proto",
         "@strij//api/common/task:task_cc_proto",
         "@strij//include/strij/extensions:extension_registry_lib",
-        "@strij//include/strij/extensions:factory_context_lib",
+        "@strij//include/strij/extensions:factory_context_interface",
         "@strij//include/strij/extensions:scheduler_interface",
         "@strij//include/strij/gateway:result_receiver_storage_interface",
     ],
@@ -29,9 +29,9 @@ strij_cc_test(
     deps = [
         ":consumer_node_scheduler_lib",
         ":consumer_scheduler_lib",
+        "@googletest//:gtest_main",
         "@strij//include/strij/extensions:extension_registry_lib",
         "@strij//include/strij/extensions:scheduler_interface",
-        "@googletest//:gtest_main",
     ],
 )
 
@@ -48,7 +48,7 @@ strij_cc_library(
         "@strij//api/common/config:config_cc_proto",
         "@strij//api/common/task:task_cc_proto",
         "@strij//include/strij/extensions:extension_registry_lib",
-        "@strij//include/strij/extensions:factory_context_lib",
+        "@strij//include/strij/extensions:factory_context_interface",
         "@strij//include/strij/extensions:scheduler_interface",
         "@strij//include/strij/gateway:result_receiver_storage_interface",
     ],
