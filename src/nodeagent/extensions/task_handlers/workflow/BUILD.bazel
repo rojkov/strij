@@ -10,10 +10,11 @@ strij_cc_library(
     ],
     deps = [
         "//api/nodeagent/extensions/task_handlers/workflow:workflow_cc_proto",
+        "//include/strij/extensions:extension_registry_lib",
         "//include/strij/gateway:result_receiver_storage_interface",
-        "//include/strij/nodeagent:child_task_submitter",
+        "//include/strij/nodeagent:child_task_submitter_interface",
+        "//include/strij/nodeagent:task_handlers_interface",
         "//src/common/core/utils:task_id_lib",
-        "//src/nodeagent/extensions/task_handlers:task_handlers_interface",
     ],
     alwayslink = True,
 )

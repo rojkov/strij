@@ -14,7 +14,7 @@
 
 #include "test/mocks/common/common_mocks.hh"
 #include "test/mocks/event/mocks.hh"
-#include "test/mocks/extensions/extensions_mocks.hh"
+#include "test/mocks/extensions/nodeagent_deps.hh"
 
 #include "common/core/io/connection.hh"
 #include "common/core/io/protocol_parser.hh"
@@ -22,6 +22,7 @@
 #include "common/node/capabilities.pb.h"
 #include "common/task/probe.pb.h"
 #include "common/task/task.pb.h"
+#include "gtest/gtest.h"
 #include "nodeagent/core/admission_controller.hh"
 #include "nodeagent/core/data_dependency_fetcher_router.hh"
 #include "nodeagent/core/object_cache.hh"
@@ -31,7 +32,6 @@
 #include "nodeagent/extensions/schedulers/probe/probe_local_scheduler.hh"
 #include "nodeagent/extensions/task_handlers/echo/echo_task_handler.hh"
 #include "strij/event/command.hh"
-#include "gtest/gtest.h"
 
 namespace strij::nodeagent::schedulers::probe {
 namespace {
@@ -65,7 +65,8 @@ public:
 // Records (ref, task_id) pairs instead of fetching; never submits
 class RecordingFetcher final : public extensions::DataDependencyFetcher {
 public:
-  explicit RecordingFetcher(std::string source) : source_value_(std::move(source)), source_(source_value_) {}
+  explicit RecordingFetcher(std::string source)
+      : source_value_(std::move(source)), source_(source_value_) {}
 
   void Fetch(const task::DataRef& ref, const std::string& task_id,
              event::Dispatcher& /*dispatcher*/, event::CommandHandler* /*destination*/) override {
@@ -137,16 +138,18 @@ protected:
   // Writes any queued outputs to the socket and completes each write so the
   // connection drains its write queue (multiple frames need this).
   void ExpectWrites() {
-    EXPECT_CALL(*dispatcher_, PrepareWrite(::testing::_, ::testing::_, ::testing::_, ::testing::_, 0))
-        .WillRepeatedly(::testing::Invoke([this](event::Completable* /*io*/, uint8_t tag, int fd,
+    EXPECT_CALL(*dispatcher_,
+                PrepareWrite(::testing::_, ::testing::_, ::testing::_, ::testing::_, 0))
+        .WillRepeatedly(::testing::Invoke([this](event::Completable* /*io*/, uint8_t tag, int fdesc,
                                                  std::span<const std::byte> buf, off_t /*off*/) {
-          ::write(fd, buf.data(), buf.size());
+          ::write(fdesc, buf.data(), buf.size());
           conn_->HandleCompletion(tag, static_cast<int>(buf.size()), 0);
         }));
   }
 
   void ExpectNoWrites() {
-    EXPECT_CALL(*dispatcher_, PrepareWrite(::testing::_, ::testing::_, ::testing::_, ::testing::_, 0))
+    EXPECT_CALL(*dispatcher_,
+                PrepareWrite(::testing::_, ::testing::_, ::testing::_, ::testing::_, 0))
         .Times(0);
   }
 
@@ -226,12 +229,12 @@ protected:
     event::Command cmd;
     cmd.type_ = event::Command::DEP_COMPLETED;
     cmd.args_ = const_cast<std::string*>(&task_id);
-    scheduler_->ProcessCommand(std::move(cmd));
+    scheduler_->ProcessCommand(cmd);
   }
 
-  auto SendCancel(const std::string& id) -> absl::Status {
+  auto SendCancel(const std::string& task_id) -> absl::Status {
     task::TaskProbeCancel cancel;
-    cancel.set_id(id);
+    cancel.set_id(task_id);
     std::string serialized;
     cancel.SerializeToString(&serialized);
     return scheduler_->HandleFrame(
@@ -242,20 +245,19 @@ protected:
 
   auto ReadFrames() -> std::vector<WireFrame> {
     std::array<std::byte, 4096> buf{};
-    const ssize_t n = ::recv(fds_[1], buf.data(), buf.size(), MSG_DONTWAIT);
-    if (n <= 0) {
+    const ssize_t num = ::recv(fds_[1], buf.data(), buf.size(), MSG_DONTWAIT);
+    if (num <= 0) {
       return {};
     }
     std::vector<WireFrame> frames;
     size_t off = 0;
-    while (off + 5 <= static_cast<size_t>(n)) {
+    while (off + 5 <= static_cast<size_t>(num)) {
       const uint8_t type = static_cast<uint8_t>(buf[off]);
       uint32_t net_len{};
       std::memcpy(&net_len, buf.data() + off + 1, 4);
       const uint32_t len = ntohl(net_len);
-      auto begin = std::next(buf.begin(), static_cast<std::ptrdiff_t>(off) + 5);
-      frames.push_back(
-          {.type = type, .payload = std::vector<std::byte>(begin, begin + len)});
+      auto* begin = std::next(buf.begin(), static_cast<std::ptrdiff_t>(off) + 5);
+      frames.push_back({.type = type, .payload = std::vector<std::byte>(begin, begin + len)});
       off += 5U + len;
     }
     return frames;
@@ -532,8 +534,8 @@ TEST_F(ProbeLocalSchedulerTest, MalformedProbeFrameIsRejected) {
 
   auto garbage =
       std::vector<std::byte>{std::byte{0xDE}, std::byte{0xAD}, std::byte{0xBE}, std::byte{0xEF}};
-  const absl::Status status = scheduler_->HandleFrame(
-      {.type_id = io::TlvFrame::kTaskProbe, .value = garbage}, *conn_);
+  const absl::Status status =
+      scheduler_->HandleFrame({.type_id = io::TlvFrame::kTaskProbe, .value = garbage}, *conn_);
   EXPECT_FALSE(status.ok());
   EXPECT_EQ(status.code(), absl::StatusCode::kInvalidArgument);
 }
@@ -746,8 +748,7 @@ TEST_F(ProbeLocalSchedulerTest, ScheduleIsUnimplemented) {
   scheduler_->Schedule(child, std::move(receiver));
 
   ASSERT_FALSE(log->delivered);
-  EXPECT_NE(log->error.find("unimplemented"), std::string::npos) << "error='" << log->error
-                                                                 << "'";
+  EXPECT_NE(log->error.find("unimplemented"), std::string::npos) << "error='" << log->error << "'";
 
   // Nothing was reserved, queued, or pulled: the probe queue machinery is
   // untouched by a misrouted child submission.
@@ -782,33 +783,30 @@ TEST_F(ProbeLocalSchedulerTest, FactoryCreateValidatesConfig) {
   InMemoryObjectCache cache;
   auto router = DataDependencyFetcherRouter::Build(cache, {}).value();
 
-  extensions::MockNodeagentFactoryContext context;
-  EXPECT_CALL(context, AdmissionController()).WillRepeatedly(::testing::Return(admission));
-  EXPECT_CALL(context, RunTaskService()).WillRepeatedly(::testing::ReturnRef(run_task_service));
-  EXPECT_CALL(context, Dispatcher()).WillRepeatedly(::testing::ReturnRef(*dispatcher));
-  EXPECT_CALL(context, DataDependencyFetcherRouter()).WillRepeatedly(::testing::ReturnRef(*router));
+  extensions::StubChildTaskForwarder forwarder;
+  const NodeSchedulerDeps deps{*dispatcher, run_task_service, admission, forwarder, *router};
 
   ProbeLocalSchedulerFactory factory;
   {
     auto config = std::make_unique<extensions::schedulers::probe::ProbeSchedulerConfig>();
     config->set_queue_capacity(0);
-    EXPECT_EQ(factory.Create(*config, context), nullptr);
+    EXPECT_EQ(factory.Create(*config, deps), nullptr);
   }
   {
     auto config = std::make_unique<extensions::schedulers::probe::ProbeSchedulerConfig>();
     config->set_max_concurrent_preallocations(0);
-    EXPECT_EQ(factory.Create(*config, context), nullptr);
+    EXPECT_EQ(factory.Create(*config, deps), nullptr);
   }
   {
     // Absent fields fall back to defaults.
     auto config = std::make_unique<extensions::schedulers::probe::ProbeSchedulerConfig>();
-    EXPECT_NE(factory.Create(*config, context), nullptr);
+    EXPECT_NE(factory.Create(*config, deps), nullptr);
   }
   {
     auto config = std::make_unique<extensions::schedulers::probe::ProbeSchedulerConfig>();
     config->set_queue_capacity(7);
     config->set_max_concurrent_preallocations(3);
-    EXPECT_NE(factory.Create(*config, context), nullptr);
+    EXPECT_NE(factory.Create(*config, deps), nullptr);
   }
 }
 
@@ -826,15 +824,12 @@ TEST_F(ProbeLocalSchedulerTest, FactoryRejectsWrongConfigType) {
   InMemoryObjectCache cache;
   auto router = DataDependencyFetcherRouter::Build(cache, {}).value();
 
-  extensions::MockNodeagentFactoryContext context;
-  EXPECT_CALL(context, AdmissionController()).WillRepeatedly(::testing::Return(admission));
-  EXPECT_CALL(context, RunTaskService()).WillRepeatedly(::testing::ReturnRef(run_task_service));
-  EXPECT_CALL(context, Dispatcher()).WillRepeatedly(::testing::ReturnRef(*dispatcher));
-  EXPECT_CALL(context, DataDependencyFetcherRouter()).WillRepeatedly(::testing::ReturnRef(*router));
+  extensions::StubChildTaskForwarder forwarder;
+  const NodeSchedulerDeps deps{*dispatcher, run_task_service, admission, forwarder, *router};
 
   task::Task unrelated;
   ProbeLocalSchedulerFactory factory;
-  EXPECT_EQ(factory.Create(unrelated, context), nullptr);
+  EXPECT_EQ(factory.Create(unrelated, deps), nullptr);
 }
 
 // NOLINTEND(modernize-use-trailing-return-type)

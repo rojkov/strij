@@ -1,26 +1,25 @@
 load("//bazel:build_system.bzl", "strij_cc_library")
 load("//bazel:strij_binaries.bzl", "strij_nodeagent_binary")
 
-# The nodeagent framework: RunNodeagent(), flag definitions, the concrete
-# NodeagentFactoryContextImpl, and a thin main(). Extension implementations stay
-# out of this library and are linked at the binary via strij_nodeagent_binary.
+# The nodeagent framework: RunNodeagent(), flag definitions, and a thin main().
+# Extension implementations stay out of this library and are linked at the
+# binary via strij_nodeagent_binary.
 strij_cc_library(
     name = "nodeagent_framework",
     srcs = [
         "nodeagent.cc",
-        "nodeagent_factory_context.cc",
         "nodeagent_framework.cc",
     ],
     hdrs = [
-        "nodeagent_factory_context.hh",
         "nodeagent_framework.hh",
     ],
     visibility = ["//visibility:public"],
     deps = [
         "//api/nodeagent/config:nodeagent_config_cc_proto",
         "//include/strij/extensions:data_dependency_fetcher_interface",
-        "//include/strij/extensions:factory_context_lib",
+        "//include/strij/extensions:factory_context_interface",
         "//include/strij/extensions:scheduler_interface",
+        "//include/strij/nodeagent:task_handlers_interface",
         "//src/common/core/common:signal_monitor_lib",
         "//src/common/core/config:config_loader_lib",
         "//src/common/core/event:dispatcher_impl_lib",

@@ -7,7 +7,7 @@
 #include <utility>
 
 #include "nodeagent/core/local_result_receiver_storage.hh"
-#include "nodeagent/extensions/task_handlers/task_handlers.hh"
+#include "strij/nodeagent/task_handlers.hh"
 
 namespace strij::nodeagent {
 

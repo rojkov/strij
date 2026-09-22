@@ -6,9 +6,13 @@
 #include "test/mocks/event/mocks.hh"
 #include "test/mocks/extensions/extensions_mocks.hh"
 
+#include "common/config/extensions.pb.h"
 #include "common/node/capabilities.pb.h"
 #include "common/task/task.pb.h"
+#include "gmock/gmock.h"
+#include "gtest/gtest.h"
 #include "nodeagent/core/admission_controller.hh"
+#include "nodeagent/core/function_resolver.hh"
 #include "nodeagent/core/nodeagent_scheduler_router.hh"
 #include "nodeagent/core/run_task_service.hh"
 #include "nodeagent/core/task_handler_manager.hh"
@@ -17,8 +21,6 @@
 #include "nodeagent/extensions/task_handlers/workflow/workflow.pb.h"
 #include "nodeagent/extensions/task_handlers/workflow/workflow_task_handler.hh"
 #include "strij/extensions/extension_registry.hh"
-#include "gmock/gmock.h"
-#include "gtest/gtest.h"
 
 namespace strij::nodeagent::task_handlers {
 namespace {
@@ -44,9 +46,8 @@ protected:
     // child's receiver in its own storage, runs it locally when admitted, or
     // errors it. No forward path is installed here (mirroring a node without
     // gateway connections), so delivered-deficient children error locally.
-    auto default_scheduler =
-        std::make_unique<nodeagent::schedulers::DefaultLocalScheduler>(*run_task_service_,
-                                                                       admission_, nullptr);
+    auto default_scheduler = std::make_unique<nodeagent::schedulers::DefaultLocalScheduler>(
+        *run_task_service_, admission_, nullptr);
     default_scheduler_raw_ = default_scheduler.get();
     std::vector<NodeagentSchedulerRouter::ChildRoutedScheduler> routed;
     routed.push_back(
@@ -137,12 +138,43 @@ TEST_F(WorkflowTaskHandlerTest, FactoryRetrievesChildTaskSubmitter) {
   ASSERT_NE(factory, nullptr);
   EXPECT_EQ(factory->Name(), "workflow");
 
-  extensions::MockNodeagentFactoryContext context;
-  EXPECT_CALL(context, ChildTaskSubmitter()).WillRepeatedly(::testing::ReturnRef(*router_));
+  nodeagent::LocalFunctionResolver resolver;
+  const TaskHandlerDeps deps{*dispatcher_, resolver, *router_};
 
   auto config = factory->CreateEmptyConfigProto();
-  auto handler = factory->Create(*config, context);
+  auto handler = factory->Create(*config, deps);
   ASSERT_NE(handler, nullptr);
+}
+
+// Regression for the construction-order bug: a handler built through the real
+// loader path must receive a live ChildTaskSubmitter (the scheduler router),
+// which the nodeagent builds before any handler factory runs. A null or unwired
+// submitter would crash or hang when the handler submits its child.
+TEST_F(WorkflowTaskHandlerTest, LoadTaskHandlersWiresLiveSubmitter) {
+  nodeagent::LocalFunctionResolver resolver;
+  const TaskHandlerDeps deps{*dispatcher_, resolver, *router_};
+
+  TaskHandlerManager manager;
+  ::google::protobuf::RepeatedPtrField<config::ExtensionConfig> configs;
+  auto* ext = configs.Add();
+  ext->set_name("workflow");
+  extensions::task_handlers::workflow::WorkflowTaskHandlerConfig typed;
+  ext->mutable_typed_config()->PackFrom(typed);
+
+  ASSERT_TRUE(manager.LoadTaskHandlers(configs, deps).ok());
+  auto* handler = manager.GetHandler("workflow");
+  ASSERT_NE(handler, nullptr);
+
+  task::Task parent = MakeParent("parent-live", SerializePlan({{"echo", "z"}}));
+  auto sender = std::make_unique<extensions::MockResultSender>();
+  task::TaskResult sent;
+  EXPECT_CALL(*sender, Send(::testing::_)).WillOnce(::testing::SaveArg<0>(&sent));
+  handler->HandleTask(parent, std::move(sender));
+
+  EXPECT_EQ(sent.id(), "parent-live");
+  EXPECT_EQ(sent.body(), "z");
+  EXPECT_TRUE(sent.is_final());
+  EXPECT_TRUE(default_scheduler_raw_->Storage().Empty());
 }
 
 } // namespace

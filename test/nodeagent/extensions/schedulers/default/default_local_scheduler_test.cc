@@ -1,5 +1,4 @@
 #include <array>
-#include <bit>
 #include <cstddef>
 #include <memory>
 #include <span>
@@ -8,7 +7,6 @@
 
 #include "test/mocks/common/common_mocks.hh"
 #include "test/mocks/event/mocks.hh"
-#include "test/mocks/extensions/extensions_mocks.hh"
 
 #include "absl/status/status.h"
 #include "common/core/io/connection.hh"
@@ -16,16 +14,17 @@
 #include "common/core/io/tlv_frame.hh"
 #include "common/node/capabilities.pb.h"
 #include "common/task/task.pb.h"
+#include "gtest/gtest.h"
 #include "nodeagent/core/admission_controller.hh"
-#include "nodeagent/core/child_task_forwarder.hh"
+#include "nodeagent/core/data_dependency_fetcher_router.hh"
+#include "nodeagent/core/object_cache.hh"
 #include "nodeagent/core/run_task_service.hh"
 #include "nodeagent/core/task_handler_manager.hh"
 #include "nodeagent/extensions/schedulers/default/default_local_scheduler.hh"
 #include "nodeagent/extensions/task_handlers/echo/echo_task_handler.hh"
 #include "strij/extensions/scheduler.hh"
 #include "strij/gateway/result_receiver_storage.hh"
-
-#include "gtest/gtest.h"
+#include "strij/nodeagent/child_task_forwarder.hh"
 
 namespace strij::nodeagent {
 namespace {
@@ -122,8 +121,7 @@ protected:
     ASSERT_EQ(0, socketpair(AF_UNIX, SOCK_STREAM, 0, fds_.data()));
     dispatcher_ = std::make_shared<event::MockDispatcher>();
     EXPECT_CALL(*dispatcher_,
-                PrepareRead(::testing::_, ::testing::_, ::testing::_, ::testing::_,
-                            ::testing::_))
+                PrepareRead(::testing::_, ::testing::_, ::testing::_, ::testing::_, ::testing::_))
         .WillOnce(::testing::Return());
     conn_ = std::make_unique<io::Connection>(fds_[0], dispatcher_, &owner_,
                                              [](io::Connection&) -> io::ProtocolParserPtr {
@@ -131,7 +129,8 @@ protected:
                                              });
     admission_ = std::make_shared<AdmissionControllerImpl>(*MakeCaps(), *dispatcher_);
     run_task_service_ = std::make_unique<RunTaskServiceImpl>(MakeEchoManager(), admission_);
-    scheduler_ = std::make_unique<nodeagent::schedulers::DefaultLocalScheduler>(*run_task_service_, admission_, nullptr);
+    scheduler_ = std::make_unique<nodeagent::schedulers::DefaultLocalScheduler>(
+        *run_task_service_, admission_, nullptr);
   }
 
   void TearDown() override {
@@ -174,8 +173,8 @@ TEST_F(DefaultLocalSchedulerTest, UnhandledChildDeliversErrorAndErasesEntry) {
   scheduler_->Schedule(MakeChild("child-1", "ghost", 4), std::move(receiver));
 
   ASSERT_FALSE(log->delivered);
-  EXPECT_NE(log->error.find("no local capacity"), std::string::npos) << "error='" << log->error
-                                                                     << "'";
+  EXPECT_NE(log->error.find("no local capacity"), std::string::npos)
+      << "error='" << log->error << "'";
   EXPECT_TRUE(scheduler_->Storage().Empty());
 }
 
@@ -189,14 +188,15 @@ TEST_F(DefaultLocalSchedulerTest, UnadmittedChildDeliversErrorAndErasesEntry) {
   scheduler_->Schedule(MakeChild("child-1", "echo", 4), std::move(receiver));
 
   ASSERT_FALSE(log->delivered);
-  EXPECT_NE(log->error.find("no local capacity"), std::string::npos) << "error='" << log->error
-                                                                     << "'";
+  EXPECT_NE(log->error.find("no local capacity"), std::string::npos)
+      << "error='" << log->error << "'";
   EXPECT_TRUE(scheduler_->Storage().Empty());
 }
 
 TEST_F(DefaultLocalSchedulerTest, ForwardedChildKeepsEntryUntilResultFrame) {
   StubForwarder forwarder;
-  scheduler_ = std::make_unique<nodeagent::schedulers::DefaultLocalScheduler>(*run_task_service_, admission_, &forwarder);
+  scheduler_ = std::make_unique<nodeagent::schedulers::DefaultLocalScheduler>(
+      *run_task_service_, admission_, &forwarder);
 
   // Unhandled type with a live forward path: forwarded upstream, the receiver
   // stays registered under the child id awaiting the outcome frame.
@@ -224,7 +224,8 @@ TEST_F(DefaultLocalSchedulerTest, ForwardedChildKeepsEntryUntilResultFrame) {
 TEST_F(DefaultLocalSchedulerTest, FailedForwardDeliversErrorAndErasesEntry) {
   StubForwarder forwarder;
   forwarder.status = absl::UnavailableError("no gateways");
-  scheduler_ = std::make_unique<nodeagent::schedulers::DefaultLocalScheduler>(*run_task_service_, admission_, &forwarder);
+  scheduler_ = std::make_unique<nodeagent::schedulers::DefaultLocalScheduler>(
+      *run_task_service_, admission_, &forwarder);
 
   auto receiver = std::make_unique<RecordingReceiver>();
   auto log = receiver->log;
@@ -232,14 +233,15 @@ TEST_F(DefaultLocalSchedulerTest, FailedForwardDeliversErrorAndErasesEntry) {
 
   EXPECT_EQ(forwarder.calls, 1);
   ASSERT_FALSE(log->delivered);
-  EXPECT_NE(log->error.find("no local capacity"), std::string::npos) << "error='" << log->error
-                                                                     << "'";
+  EXPECT_NE(log->error.find("no local capacity"), std::string::npos)
+      << "error='" << log->error << "'";
   EXPECT_TRUE(scheduler_->Storage().Empty());
 }
 
 TEST_F(DefaultLocalSchedulerTest, AdmittedChildRunsLocallyEvenWithForwardPath) {
   StubForwarder forwarder;
-  scheduler_ = std::make_unique<nodeagent::schedulers::DefaultLocalScheduler>(*run_task_service_, admission_, &forwarder);
+  scheduler_ = std::make_unique<nodeagent::schedulers::DefaultLocalScheduler>(
+      *run_task_service_, admission_, &forwarder);
 
   // Local capacity wins over forwarding: an admitted child never touches the
   // forwarder.
@@ -286,8 +288,7 @@ TEST_F(DefaultLocalSchedulerTest, NonFinalResultFrameKeepsEntry) {
 }
 
 TEST_F(DefaultLocalSchedulerTest, ResultFrameForUnknownChildDrops) {
-  const absl::Status status =
-      scheduler_->HandleFrame(MakeResultFrame("ghost", "x", true), *conn_);
+  const absl::Status status = scheduler_->HandleFrame(MakeResultFrame("ghost", "x", true), *conn_);
   EXPECT_TRUE(status.ok());
   EXPECT_TRUE(scheduler_->Storage().Empty());
 }
@@ -338,18 +339,17 @@ TEST_F(DefaultLocalSchedulerTest, FactoryCreateBuildsSchedulerFromContextService
   manager->AddHandler("echo", std::make_unique<nodeagent::task_handlers::EchoTaskHandler>());
   RunTaskServiceImpl run_task_service(manager, admission);
   StubForwarder forwarder;
+  InMemoryObjectCache cache;
+  auto router = DataDependencyFetcherRouter::Build(cache, {}).value();
 
-  extensions::MockNodeagentFactoryContext context;
-  EXPECT_CALL(context, RunTaskService()).WillRepeatedly(::testing::ReturnRef(run_task_service));
-  EXPECT_CALL(context, AdmissionController()).WillRepeatedly(::testing::Return(admission));
-  EXPECT_CALL(context, ChildTaskForwarder()).WillRepeatedly(::testing::ReturnRef(forwarder));
+  const NodeSchedulerDeps deps{*dispatcher, run_task_service, admission, forwarder, *router};
 
   nodeagent::schedulers::DefaultLocalSchedulerFactory factory;
   EXPECT_EQ(factory.Name(), "default");
   EXPECT_TRUE(factory.RequiredProtocol().empty());
   auto config = factory.CreateEmptyConfigProto();
   ASSERT_NE(config, nullptr);
-  auto scheduler = factory.Create(*config, context);
+  auto scheduler = factory.Create(*config, deps);
   ASSERT_NE(scheduler, nullptr);
 }
 

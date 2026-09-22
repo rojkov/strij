@@ -24,7 +24,7 @@ namespace nodeagent {
 class ResultSender;
 
 // Pure-abstract contract for running admitted tasks to completion on the
-// nodeagent event-loop thread. NodeagentFactoryContext exposes this service so
+// nodeagent event-loop thread. NodeSchedulerDeps exposes this service so
 // scheduler factories can reach it without knowing the concrete handler manager.
 class RunTaskService {
 public:

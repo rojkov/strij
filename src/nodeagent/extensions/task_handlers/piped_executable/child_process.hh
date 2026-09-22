@@ -6,10 +6,10 @@
 #include <string>
 #include <vector>
 
-#include "nodeagent/extensions/task_handlers/task_handlers.hh"
 #include "strij/event/command_handler.hh"
 #include "strij/event/completable.hh"
 #include "strij/event/dispatcher.hh"
+#include "strij/nodeagent/task_handlers.hh"
 
 namespace strij::nodeagent::task_handlers {
 

@@ -88,7 +88,7 @@ A `DataDependencyFetcherRouter` SHALL dispatch each `DataRef` to the fetcher own
 
 ### Requirement: Node-global ObjectCache
 
-An `ObjectCache` interface SHALL be defined with `Populate(ref, data)` and `IsCached(ref) -> bool`. The cache SHALL be owned by the node agent's main component and injected into `NodeagentFactoryContext`. Cache key SHALL be source-qualified (`source + ":" + key`). Two tasks sharing a ref SHALL not double-fetch. Cache eviction is a fetcher concern (not defined by this interface).
+An `ObjectCache` interface SHALL be defined with `Populate(ref, data)` and `IsCached(ref) -> bool`. The cache SHALL be owned by the node agent's main component and injected into the `DataDependencyFetcherDeps` bundle. Cache key SHALL be source-qualified (`source + ":" + key`). Two tasks sharing a ref SHALL not double-fetch. Cache eviction is a fetcher concern (not defined by this interface).
 
 #### Scenario: Two tasks sharing a ref do not double-fetch
 
@@ -141,7 +141,7 @@ The probe local scheduler SHALL, on probe arrival, initiate fetching for all dep
 
 ### Requirement: DataDependencyFetcher config
 
-`NodeAgentConfig` SHALL gain a `data_dependency_fetchers` list of `ExtensionConfig` entries (optional; empty means no prefetching). Each entry SHALL be looked up in `Registry<DataDependencyFetcherFactory>` and constructed with `NodeagentFactoryContext`. Startup SHALL fail if a named factory is not found.
+`NodeAgentConfig` SHALL gain a `data_dependency_fetchers` list of `ExtensionConfig` entries (optional; empty means no prefetching). Each entry SHALL be looked up in `Registry<DataDependencyFetcherFactory>` and constructed with a `DataDependencyFetcherDeps` bundle exposing the event dispatcher and the shared `ObjectCache`. Startup SHALL fail if a named factory is not found.
 
 #### Scenario: Empty fetcher list is valid
 

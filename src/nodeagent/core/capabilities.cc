@@ -13,9 +13,9 @@
 #include "google/protobuf/any.pb.h"
 #include "google/protobuf/message.h"
 #include "nodeagent/config/nodeagent.pb.h"
-#include "nodeagent/extensions/task_handlers/task_handlers.hh"
 #include "strij/extensions/extension_registry.hh"
 #include "strij/extensions/scheduler.hh"
+#include "strij/nodeagent/task_handlers.hh"
 
 namespace strij::nodeagent {
 

@@ -8,7 +8,7 @@ namespace strij::nodeagent {
 
 // The narrow public submission handle for child tasks, held by workflow
 // (or any multi-step) task handlers. Obtained once at handler construction
-// via NodeagentFactoryContext::ChildTaskSubmitter(); the concrete instance is
+// via TaskHandlerDeps::child_task_submitter_; the concrete instance is
 // the node-global NodeagentSchedulerRouter (a composite extensions::Scheduler).
 //
 // Submit() takes ownership of `receiver`; the child's result eventually

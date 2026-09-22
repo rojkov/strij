@@ -10,7 +10,7 @@
 #include "strij/common/pure.hh"
 #include "strij/event/command_handler.hh"
 #include "strij/event/dispatcher.hh"
-#include "strij/extensions/factory_context.hh"
+#include "strij/nodeagent/object_cache.hh"
 
 namespace strij::extensions {
 
@@ -22,7 +22,7 @@ namespace strij::extensions {
 //
 // Contract: Fetch() is fire-and-forget and must not block the event loop. On
 // completion the fetcher Populates the shared ObjectCache (reached via its
-// NodeagentFactoryContext at construction) and then submits a DEP_COMPLETED
+// DataDependencyFetcherDeps::object_cache_ at construction) and then submits a DEP_COMPLETED
 // command (destination_ = `destination`, args_ = a stable std::string* holding
 // `task_id` owned by the receiver) through `dispatcher`; if the ref is already
 // cached the fetcher must short-circuit and submit DEP_COMPLETED immediately.
@@ -52,6 +52,20 @@ using DataDependencyFetcherPtr = std::unique_ptr<DataDependencyFetcher>;
 
 namespace strij::nodeagent {
 
+struct DataDependencyFetcherDeps {
+  DataDependencyFetcherDeps(event::Dispatcher& dispatcher_ref, ObjectCache& object_cache_ref)
+      : dispatcher_{dispatcher_ref}, object_cache_{object_cache_ref} {}
+  ~DataDependencyFetcherDeps() = default;
+
+  DataDependencyFetcherDeps(const DataDependencyFetcherDeps&) = delete;
+  auto operator=(const DataDependencyFetcherDeps&) -> DataDependencyFetcherDeps& = delete;
+  DataDependencyFetcherDeps(DataDependencyFetcherDeps&&) noexcept = delete;
+  auto operator=(DataDependencyFetcherDeps&&) noexcept -> DataDependencyFetcherDeps& = delete;
+
+  event::Dispatcher& dispatcher_;
+  ObjectCache& object_cache_;
+};
+
 // Nodeagent-side data dependency fetcher factory, registered in
 // extensions::Registry<nodeagent::DataDependencyFetcherFactory>.
 class DataDependencyFetcherFactory {
@@ -69,7 +83,7 @@ public:
   [[nodiscard]] virtual auto Name() const -> std::string PURE;
   virtual auto CreateEmptyConfigProto() -> MessagePtr PURE;
   virtual auto Create(const ::google::protobuf::Message& config,
-                      extensions::NodeagentFactoryContext& context)
+                      const DataDependencyFetcherDeps& deps)
       -> extensions::DataDependencyFetcherPtr PURE;
 };
 

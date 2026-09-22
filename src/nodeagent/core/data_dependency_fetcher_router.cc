@@ -17,7 +17,7 @@ namespace strij::nodeagent {
 
 auto BuildDataDependencyFetchers(
     const ::google::protobuf::RepeatedPtrField<config::ExtensionConfig>& configs,
-    extensions::NodeagentFactoryContext& context)
+    const DataDependencyFetcherDeps& deps)
     -> absl::StatusOr<std::vector<extensions::DataDependencyFetcherPtr>> {
   std::vector<extensions::DataDependencyFetcherPtr> fetchers;
   fetchers.reserve(static_cast<size_t>(configs.size()));
@@ -45,7 +45,7 @@ auto BuildDataDependencyFetchers(
                        "': unknown type '", unpacked.type_url(), "'"));
     }
 
-    auto fetcher = factory->Create(*config_msg, context);
+    auto fetcher = factory->Create(*config_msg, deps);
     if (fetcher == nullptr) {
       return absl::InvalidArgumentError(absl::StrCat("Data dependency fetcher factory '",
                                                      ext.name(), "' rejected the configuration"));

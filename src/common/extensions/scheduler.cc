@@ -68,9 +68,9 @@ auto CreateGatewayScheduler(const config::ExtensionConfig& config,
 namespace strij::nodeagent {
 
 auto CreateNodeScheduler(const config::ExtensionConfig& config,
-                         extensions::NodeagentFactoryContext& context)
+                         const nodeagent::NodeSchedulerDeps& deps)
     -> absl::StatusOr<extensions::SchedulerPtr> {
-  return extensions::createSchedulerFromExtension<NodeSchedulerFactory>(config, context);
+  return extensions::createSchedulerFromExtension<NodeSchedulerFactory>(config, deps);
 }
 
 } // namespace strij::nodeagent

@@ -13,7 +13,7 @@
 namespace strij::nodeagent {
 
 // Pure-abstract contract for the nodeagent's admission controller, reached by
-// node schedulers and task handlers via NodeagentFactoryContext::AdmissionController().
+// the run-task service and node schedulers via NodeSchedulerDeps::admission_.
 // Extension authors consume it through this interface rather than the concrete
 // AdmissionControllerImpl and SHALL NOT subclass the Impl.
 class AdmissionController {

@@ -13,25 +13,24 @@
 
 #include "test/mocks/common/common_mocks.hh"
 #include "test/mocks/event/mocks.hh"
-#include "test/mocks/extensions/extensions_mocks.hh"
+#include "test/mocks/extensions/nodeagent_deps.hh"
 
 #include "absl/status/status.h"
-#include "absl/strings/str_cat.h"
 #include "common/core/io/connection.hh"
 #include "common/core/io/protocol_parser.hh"
 #include "common/core/io/tlv_frame.hh"
 #include "common/node/capabilities.pb.h"
 #include "common/task/task.pb.h"
-#include "nodeagent/config/nodeagent.pb.h"
-#include "nodeagent/core/admission_controller.hh"
-#include "nodeagent/core/nodeagent_scheduler_router.hh"
-#include "nodeagent/core/run_task_service.hh"
-#include "nodeagent/core/task_handler_manager.hh"
-#include "nodeagent/extensions/task_handlers/echo/echo_task_handler.hh"
-#include "strij/gateway/result_receiver_storage.hh"
-
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
+#include "nodeagent/config/nodeagent.pb.h"
+#include "nodeagent/core/admission_controller.hh"
+#include "nodeagent/core/data_dependency_fetcher_router.hh"
+#include "nodeagent/core/nodeagent_scheduler_router.hh"
+#include "nodeagent/core/object_cache.hh"
+#include "nodeagent/core/run_task_service.hh"
+#include "nodeagent/core/task_handler_manager.hh"
+#include "strij/gateway/result_receiver_storage.hh"
 
 namespace strij::nodeagent {
 namespace {
@@ -105,8 +104,7 @@ protected:
     ASSERT_EQ(0, socketpair(AF_UNIX, SOCK_STREAM, 0, fds_.data()));
     dispatcher_ = std::make_shared<event::MockDispatcher>();
     EXPECT_CALL(*dispatcher_,
-                PrepareRead(::testing::_, ::testing::_, ::testing::_, ::testing::_,
-                            ::testing::_))
+                PrepareRead(::testing::_, ::testing::_, ::testing::_, ::testing::_, ::testing::_))
         .WillOnce(::testing::Return());
     conn_ = std::make_unique<io::Connection>(fds_[0], dispatcher_, &owner_,
                                              [](io::Connection&) -> io::ProtocolParserPtr {
@@ -134,7 +132,8 @@ TEST(NodeagentSchedulerRouterTest, RoutesByClaimedTaskType) {
 
   std::vector<NodeagentSchedulerRouter::ChildRoutedScheduler> routed;
   routed.push_back({.scheduler = std::move(claiming), .task_type = "echo", .local_default = true});
-  routed.push_back({.scheduler = std::move(fallback), .task_type = "other", .local_default = false});
+  routed.push_back(
+      {.scheduler = std::move(fallback), .task_type = "other", .local_default = false});
   NodeagentSchedulerRouter router(std::move(routed));
 
   task::Task child;
@@ -153,7 +152,8 @@ TEST(NodeagentSchedulerRouterTest, FallsBackToLocalDefault) {
   RecordingScheduler* fallback_raw = fallback.get();
 
   std::vector<NodeagentSchedulerRouter::ChildRoutedScheduler> routed;
-  routed.push_back({.scheduler = std::move(typed), .task_type = "typed-only", .local_default = false});
+  routed.push_back(
+      {.scheduler = std::move(typed), .task_type = "typed-only", .local_default = false});
   routed.push_back({.scheduler = std::move(fallback), .task_type = "", .local_default = true});
   NodeagentSchedulerRouter router(std::move(routed));
 
@@ -175,7 +175,8 @@ TEST(NodeagentSchedulerRouterTest, NoClaimWithoutDefaultDeliversError) {
   RecordingScheduler* typed_raw = typed.get();
 
   std::vector<NodeagentSchedulerRouter::ChildRoutedScheduler> routed;
-  routed.push_back({.scheduler = std::move(typed), .task_type = "typed-only", .local_default = false});
+  routed.push_back(
+      {.scheduler = std::move(typed), .task_type = "typed-only", .local_default = false});
   NodeagentSchedulerRouter router(std::move(routed));
 
   task::Task child;
@@ -218,14 +219,14 @@ TEST(NodeagentSchedulerRouterTest, NoRoleEntryNeverReceivesSubmissions) {
 }
 
 TEST_F(NodeagentSchedulerRouterFrameTest, HandledFrameTypesIsDeduplicatedUnion) {
-  auto a = std::make_unique<FrameClaimingScheduler>(
+  auto a_sched = std::make_unique<FrameClaimingScheduler>(
       std::vector<uint8_t>({io::TlvFrame::kTaskSubmission}));
-  auto b = std::make_unique<FrameClaimingScheduler>(
+  auto b_sched = std::make_unique<FrameClaimingScheduler>(
       std::vector<uint8_t>({io::TlvFrame::kTaskSubmission, io::TlvFrame::kTaskProbe}));
 
   std::vector<NodeagentSchedulerRouter::ChildRoutedScheduler> routed;
-  routed.push_back({.scheduler = std::move(a), .task_type = "", .local_default = false});
-  routed.push_back({.scheduler = std::move(b), .task_type = "", .local_default = false});
+  routed.push_back({.scheduler = std::move(a_sched), .task_type = "", .local_default = false});
+  routed.push_back({.scheduler = std::move(b_sched), .task_type = "", .local_default = false});
   NodeagentSchedulerRouter router(std::move(routed));
 
   // Overlapping claims are deduplicated in the router's owned union.
@@ -261,8 +262,8 @@ TEST_F(NodeagentSchedulerRouterFrameTest, RoutesFrameToOwningConstituent) {
 }
 
 TEST_F(NodeagentSchedulerRouterFrameTest, UnclaimedFrameTypeReturnsNotFound) {
-  auto probe_owner = std::make_unique<FrameClaimingScheduler>(
-      std::vector<uint8_t>({io::TlvFrame::kTaskProbe}));
+  auto probe_owner =
+      std::make_unique<FrameClaimingScheduler>(std::vector<uint8_t>({io::TlvFrame::kTaskProbe}));
 
   std::vector<NodeagentSchedulerRouter::ChildRoutedScheduler> routed;
   routed.push_back({.scheduler = std::move(probe_owner), .task_type = "", .local_default = false});
@@ -273,27 +274,56 @@ TEST_F(NodeagentSchedulerRouterFrameTest, UnclaimedFrameTypeReturnsNotFound) {
   EXPECT_EQ(status.code(), absl::StatusCode::kNotFound);
 }
 
-TEST(BuildNodeagentSchedulerRouterTest, EmptySchedulerListFails) {
+class BuildNodeagentSchedulerRouterTest : public ::testing::Test {
+protected:
+  BuildNodeagentSchedulerRouterTest()
+      : caps_{MakeCaps()}, dispatcher_{std::make_shared<event::MockDispatcher>()},
+        admission_{std::make_shared<AdmissionControllerImpl>(*caps_, *dispatcher_)},
+        manager_{std::make_shared<TaskHandlerManager>()},
+        run_task_service_{std::make_unique<RunTaskServiceImpl>(manager_, admission_)},
+        fetcher_router_{DataDependencyFetcherRouter::Build(cache_, {}).value()},
+        deps_{*dispatcher_, *run_task_service_, admission_, forwarder_, *fetcher_router_} {}
+
+  static auto MakeCaps() -> std::shared_ptr<node::NodeCapabilities> {
+    auto caps = std::make_shared<node::NodeCapabilities>();
+    caps->set_node_id("node-test");
+    caps->set_capability_version(1);
+    auto* pool = caps->add_pools();
+    pool->set_name("cpu");
+    pool->set_total(16);
+    return caps;
+  }
+
+  std::shared_ptr<node::NodeCapabilities> caps_;
+  std::shared_ptr<event::MockDispatcher> dispatcher_;
+  std::shared_ptr<AdmissionControllerImpl> admission_;
+  std::shared_ptr<TaskHandlerManager> manager_;
+  std::unique_ptr<RunTaskServiceImpl> run_task_service_;
+  InMemoryObjectCache cache_;
+  DataDependencyFetcherRouterPtr fetcher_router_;
+  extensions::StubChildTaskForwarder forwarder_;
+  NodeSchedulerDeps deps_;
+};
+
+TEST_F(BuildNodeagentSchedulerRouterTest, EmptySchedulerListFails) {
   config::NodeAgentConfig config;
-  extensions::MockNodeagentFactoryContext context;
-  auto result = BuildNodeagentSchedulerRouter(config, context);
+  auto result = BuildNodeagentSchedulerRouter(config, deps_);
   ASSERT_FALSE(result.ok());
   EXPECT_NE(result.status().message().find("empty"), std::string::npos);
 }
 
-TEST(BuildNodeagentSchedulerRouterTest, DuplicateTaskTypeFails) {
+TEST_F(BuildNodeagentSchedulerRouterTest, DuplicateTaskTypeFails) {
   config::NodeAgentConfig config;
   config.add_schedulers()->mutable_extension()->set_name("push");
   config.mutable_schedulers(0)->set_task_type("echo");
   config.add_schedulers()->mutable_extension()->set_name("push");
   config.mutable_schedulers(1)->set_task_type("echo");
-  extensions::MockNodeagentFactoryContext context;
-  auto result = BuildNodeagentSchedulerRouter(config, context);
+  auto result = BuildNodeagentSchedulerRouter(config, deps_);
   ASSERT_FALSE(result.ok());
   EXPECT_NE(result.status().message().find("more than once"), std::string::npos);
 }
 
-TEST(BuildNodeagentSchedulerRouterTest, MultipleLocalDefaultsFail) {
+TEST_F(BuildNodeagentSchedulerRouterTest, MultipleLocalDefaultsFail) {
   config::NodeAgentConfig config;
   config.add_schedulers()->mutable_extension()->set_name("push");
   config.mutable_schedulers(0)->set_task_type("a");
@@ -301,23 +331,21 @@ TEST(BuildNodeagentSchedulerRouterTest, MultipleLocalDefaultsFail) {
   config.add_schedulers()->mutable_extension()->set_name("push");
   config.mutable_schedulers(1)->set_task_type("b");
   config.mutable_schedulers(1)->set_local_default(true);
-  extensions::MockNodeagentFactoryContext context;
-  auto result = BuildNodeagentSchedulerRouter(config, context);
+  auto result = BuildNodeagentSchedulerRouter(config, deps_);
   ASSERT_FALSE(result.ok());
   EXPECT_NE(result.status().message().find("more than one local_default"), std::string::npos);
 }
 
-TEST(BuildNodeagentSchedulerRouterTest, UnknownSchedulerNameFails) {
+TEST_F(BuildNodeagentSchedulerRouterTest, UnknownSchedulerNameFails) {
   config::NodeAgentConfig config;
   config.add_schedulers()->mutable_extension()->set_name("ghost");
-  extensions::MockNodeagentFactoryContext context;
-  auto result = BuildNodeagentSchedulerRouter(config, context);
+  auto result = BuildNodeagentSchedulerRouter(config, deps_);
   ASSERT_FALSE(result.ok());
   EXPECT_EQ(result.status().code(), absl::StatusCode::kNotFound);
   EXPECT_NE(result.status().message().find("ghost"), std::string::npos);
 }
 
-TEST(BuildNodeagentSchedulerRouterTest, EmptyTaskTypeIsNotADefault) {
+TEST_F(BuildNodeagentSchedulerRouterTest, EmptyTaskTypeIsNotADefault) {
   // Two no-role entries (empty task_type, no local_default) are valid: the
   // config declares no fallback authority, an accepted shape for wire-only
   // counterpart schedulers.
@@ -325,62 +353,30 @@ TEST(BuildNodeagentSchedulerRouterTest, EmptyTaskTypeIsNotADefault) {
   config.add_schedulers()->mutable_extension()->set_name("push");
   config.add_schedulers()->mutable_extension()->set_name("push");
 
-  auto caps = std::make_shared<node::NodeCapabilities>();
-  caps->set_node_id("node-test");
-  caps->set_capability_version(1);
-  auto* pool = caps->add_pools();
-  pool->set_name("cpu");
-  pool->set_total(16);
-
-  auto dispatcher = std::make_shared<event::MockDispatcher>();
-  auto admission = std::make_shared<AdmissionControllerImpl>(*caps, *dispatcher);
-  auto manager = std::make_shared<TaskHandlerManager>();
-  manager->AddHandler("echo", std::make_unique<nodeagent::task_handlers::EchoTaskHandler>());
-  RunTaskServiceImpl run_task_service(manager, admission);
-
-  extensions::MockNodeagentFactoryContext context;
-  EXPECT_CALL(context, RunTaskService()).WillRepeatedly(::testing::ReturnRef(run_task_service));
-
-  auto result = BuildNodeagentSchedulerRouter(config, context);
+  auto result = BuildNodeagentSchedulerRouter(config, deps_);
   ASSERT_TRUE(result.ok());
   EXPECT_EQ(result.value()->RoutedSchedulerCount(), 2U);
   // Both push entries claim the same frame type; the router deduplicates.
   EXPECT_EQ(result.value()->HandledFrameTypes().size(), 1U);
 }
 
-TEST(BuildNodeagentSchedulerRouterTest, ValidConfigBuildsRouterWithOwnedFrameUnion) {
+TEST_F(BuildNodeagentSchedulerRouterTest, ValidConfigBuildsRouterWithOwnedFrameUnion) {
   config::NodeAgentConfig config;
   config.add_schedulers()->mutable_extension()->set_name("push");
   config.mutable_schedulers(0)->set_task_type("echo");
   config.mutable_schedulers(0)->set_local_default(true);
   config.add_schedulers()->mutable_extension()->set_name("push");
 
-  auto caps = std::make_shared<node::NodeCapabilities>();
-  caps->set_node_id("node-test");
-  caps->set_capability_version(1);
-  auto* pool = caps->add_pools();
-  pool->set_name("cpu");
-  pool->set_total(16);
-
-  auto dispatcher = std::make_shared<event::MockDispatcher>();
-  auto admission = std::make_shared<AdmissionControllerImpl>(*caps, *dispatcher);
-  auto manager = std::make_shared<TaskHandlerManager>();
-  manager->AddHandler("echo", std::make_unique<nodeagent::task_handlers::EchoTaskHandler>());
-  RunTaskServiceImpl run_task_service(manager, admission);
-
-  extensions::MockNodeagentFactoryContext context;
-  EXPECT_CALL(context, RunTaskService()).WillRepeatedly(::testing::ReturnRef(run_task_service));
-
-  auto result = BuildNodeagentSchedulerRouter(config, context);
+  auto result = BuildNodeagentSchedulerRouter(config, deps_);
   ASSERT_TRUE(result.ok());
   EXPECT_EQ(result.value()->RoutedSchedulerCount(), 2U);
 
-  // The router's frame demux claims the push entries' kTaskSubmission (the 
+  // The router's frame demux claims the push entries' kTaskSubmission (the
   // inbound-frame facet the nodeagent handler hands every frame to).
   EXPECT_EQ(result.value()->HandledFrameTypes().size(), 1U);
-  EXPECT_TRUE(std::ranges::find(result.value()->HandledFrameTypes(),
-                                io::TlvFrame::kTaskSubmission) !=
-              result.value()->HandledFrameTypes().end());
+  EXPECT_TRUE(
+      std::ranges::find(result.value()->HandledFrameTypes(), io::TlvFrame::kTaskSubmission) !=
+      result.value()->HandledFrameTypes().end());
 }
 
 } // namespace

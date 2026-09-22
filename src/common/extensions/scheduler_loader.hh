@@ -24,7 +24,7 @@ namespace strij::nodeagent {
 // unpacks (or tolerates the absence of) its typed_config, and creates the
 // instance. NotFoundError when the name is not registered.
 auto CreateNodeScheduler(const config::ExtensionConfig& config,
-                         extensions::NodeagentFactoryContext& context)
+                         const nodeagent::NodeSchedulerDeps& deps)
     -> absl::StatusOr<extensions::SchedulerPtr>;
 
 } // namespace strij::nodeagent

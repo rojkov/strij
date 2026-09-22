@@ -4,23 +4,23 @@
 
 #include "test/mocks/event/mocks.hh"
 #include "test/mocks/extensions/extensions_mocks.hh"
+#include "test/mocks/extensions/nodeagent_deps.hh"
 
 #include "common/config/extensions.pb.h"
-#include "strij/extensions/extension_registry.hh"
+#include "gmock/gmock.h"
+#include "google/protobuf/repeated_ptr_field.h"
+#include "gtest/gtest.h"
 #include "nodeagent/core/function_resolver.hh"
 #include "nodeagent/core/task_handler_manager.hh"
 #include "nodeagent/extensions/task_handlers/echo/echo_task_handler.pb.h"
 #include "nodeagent/extensions/task_handlers/piped_executable/piped_executable.pb.h"
-#include "gmock/gmock.h"
-#include "google/protobuf/repeated_ptr_field.h"
-#include "gtest/gtest.h"
+#include "strij/extensions/extension_registry.hh"
 
 namespace strij::nodeagent {
 namespace {
 
 using ::testing::_;
 using ::testing::Return;
-using ::testing::ReturnRef;
 
 // NOLINTBEGIN(modernize-use-trailing-return-type)
 
@@ -47,39 +47,37 @@ TEST(TaskHandlerManagerTest, AddHandlerOverwritesSameType) {
   EXPECT_EQ(manager.GetHandler("echo"), raw);
 }
 
-TEST(TaskHandlerManagerTest, RemoveHandlerErasesType) {
+class TaskHandlerManagerLoaderTest : public ::testing::Test {
+protected:
+  event::MockDispatcher dispatcher_;
+  LocalFunctionResolver resolver_;
+  extensions::StubChildTaskSubmitter submitter_;
+  TaskHandlerDeps deps_{dispatcher_, resolver_, submitter_};
+};
+
+TEST_F(TaskHandlerManagerLoaderTest, EmptyListBuildsEmptyManager) {
   TaskHandlerManager manager;
-  manager.AddHandler("echo", std::make_unique<extensions::MockTaskHandler>());
+  ::google::protobuf::RepeatedPtrField<config::ExtensionConfig> configs;
 
-  manager.RemoveHandler("echo");
+  auto status = manager.LoadTaskHandlers(configs, deps_);
 
-  EXPECT_EQ(manager.GetHandler("echo"), nullptr);
+  ASSERT_TRUE(status.ok());
   EXPECT_TRUE(manager.empty());
 }
 
-TEST(TaskHandlerManagerTest, EmptyListBuildsEmptyManager) {
-  extensions::MockNodeagentFactoryContext context;
-  ::google::protobuf::RepeatedPtrField<config::ExtensionConfig> configs;
-
-  auto result = BuildTaskHandlerManager(configs, context);
-
-  ASSERT_TRUE(result.ok());
-  EXPECT_TRUE((*result)->empty());
-}
-
-TEST(TaskHandlerManagerTest, UnknownHandlerNameReturnsError) {
-  extensions::MockNodeagentFactoryContext context;
+TEST_F(TaskHandlerManagerLoaderTest, UnknownHandlerNameReturnsError) {
+  TaskHandlerManager manager;
   ::google::protobuf::RepeatedPtrField<config::ExtensionConfig> configs;
   auto* ext = configs.Add();
   ext->set_name("no_such_handler");
 
-  auto result = BuildTaskHandlerManager(configs, context);
+  auto status = manager.LoadTaskHandlers(configs, deps_);
 
-  ASSERT_FALSE(result.ok());
-  EXPECT_NE(result.status().message().find("no_such_handler"), std::string::npos);
+  ASSERT_FALSE(status.ok());
+  EXPECT_NE(status.message().find("no_such_handler"), std::string::npos);
 }
 
-TEST(TaskHandlerManagerTest, BuildInstantiatesHandlerFromConfig) {
+TEST_F(TaskHandlerManagerLoaderTest, BuildInstantiatesHandlerFromConfig) {
   auto factory = std::make_unique<extensions::MockTaskHandlerFactory>();
   EXPECT_CALL(*factory, Name()).WillRepeatedly(Return("mock"));
   EXPECT_CALL(*factory, CreateEmptyConfigProto())
@@ -91,37 +89,33 @@ TEST(TaskHandlerManagerTest, BuildInstantiatesHandlerFromConfig) {
   extensions::Registry<nodeagent::TaskHandlerFactory>::instance().RegisterFactory(
       "mock", factory.release());
 
-  extensions::MockNodeagentFactoryContext context;
+  TaskHandlerManager manager;
   ::google::protobuf::RepeatedPtrField<config::ExtensionConfig> configs;
   auto* ext = configs.Add();
   ext->set_name("mock");
   extensions::task_handlers::echo::EchoTaskHandlerConfig typed;
   ext->mutable_typed_config()->PackFrom(typed);
 
-  auto result = BuildTaskHandlerManager(configs, context);
+  auto status = manager.LoadTaskHandlers(configs, deps_);
 
-  ASSERT_TRUE(result.ok());
-  EXPECT_FALSE((*result)->empty());
-  EXPECT_NE((*result)->GetHandler("mock"), nullptr);
+  ASSERT_TRUE(status.ok());
+  EXPECT_FALSE(manager.empty());
+  EXPECT_NE(manager.GetHandler("mock"), nullptr);
 }
 
-TEST(TaskHandlerManagerTest, BuildInstantiatesPipedExecutableHandlerFromConfig) {
-  extensions::MockNodeagentFactoryContext context;
-  nodeagent::LocalFunctionResolver resolver;
-  event::MockDispatcher dispatcher;
-  ON_CALL(context, Dispatcher()).WillByDefault(ReturnRef(dispatcher));
-  ON_CALL(context, FunctionResolver()).WillByDefault(ReturnRef(resolver));
+TEST_F(TaskHandlerManagerLoaderTest, BuildInstantiatesPipedExecutableHandlerFromConfig) {
+  TaskHandlerManager manager;
   ::google::protobuf::RepeatedPtrField<config::ExtensionConfig> configs;
   auto* ext = configs.Add();
   ext->set_name("piped_executable");
   extensions::task_handlers::piped_executable::PipedExecutableTaskHandlerConfig typed;
   ext->mutable_typed_config()->PackFrom(typed);
 
-  auto result = BuildTaskHandlerManager(configs, context);
+  auto status = manager.LoadTaskHandlers(configs, deps_);
 
-  ASSERT_TRUE(result.ok());
-  EXPECT_FALSE((*result)->empty());
-  EXPECT_NE((*result)->GetHandler("piped_executable"), nullptr);
+  ASSERT_TRUE(status.ok());
+  EXPECT_FALSE(manager.empty());
+  EXPECT_NE(manager.GetHandler("piped_executable"), nullptr);
 }
 
 // NOLINTEND(modernize-use-trailing-return-type)

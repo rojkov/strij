@@ -11,7 +11,6 @@
 #include "strij/event/command_handler.hh"
 #include "strij/event/dispatcher.hh"
 #include "strij/extensions/data_dependency_fetcher.hh"
-#include "strij/extensions/factory_context.hh"
 
 namespace strij::nodeagent {
 
@@ -25,7 +24,7 @@ namespace strij::nodeagent {
 // are handed to DataDependencyFetcherRouter::Build.
 auto BuildDataDependencyFetchers(
     const ::google::protobuf::RepeatedPtrField<config::ExtensionConfig>& configs,
-    extensions::NodeagentFactoryContext& context)
+    const DataDependencyFetcherDeps& deps)
     -> absl::StatusOr<std::vector<extensions::DataDependencyFetcherPtr>>;
 
 // Routes task data dependencies to the fetcher owning each DataRef's `source`

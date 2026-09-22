@@ -13,7 +13,7 @@ namespace strij::nodeagent {
 // pair. Fetchers populate it when a data dependency finishes downloading;
 // node schedulers query it to decide whether a probe's dependencies are ready.
 // One instance is owned by the nodeagent process and shared by all schedulers
-// and fetchers via NodeagentFactoryContext::ObjectCache(). Extension authors
+// and fetchers via DataDependencyFetcherDeps::object_cache_. Extension authors
 // consume it through this interface rather than a concrete implementation.
 class ObjectCache {
 public:

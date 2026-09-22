@@ -2,13 +2,17 @@ load("//bazel:build_system.bzl", "strij_cc_test_library")
 
 strij_cc_test_library(
     name = "extensions_mocks_lib",
-    hdrs = ["extensions_mocks.hh"],
+    hdrs = [
+        "extensions_mocks.hh",
+        "nodeagent_deps.hh",
+    ],
     deps = [
         "//api/common/task:task_cc_proto",
         "//include/strij/extensions:data_dependency_fetcher_interface",
-        "//include/strij/extensions:factory_context_lib",
-        "//include/strij/nodeagent:child_task_submitter",
-        "//src/nodeagent/core:child_task_forwarder_lib",
-        "//src/nodeagent/extensions/task_handlers:task_handlers_interface",
+        "//include/strij/extensions:factory_context_interface",
+        "//include/strij/nodeagent:child_task_forwarder_interface",
+        "//include/strij/nodeagent:child_task_submitter_interface",
+        "//include/strij/nodeagent:task_handlers_interface",
+        "@abseil-cpp//absl/status",
     ],
 )

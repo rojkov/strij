@@ -4,13 +4,18 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <utility>
 
 #include "absl/status/status.h"
 #include "common/task/task.pb.h"
 #include "google/protobuf/message.h"
 #include "strij/common/pure.hh"
+#include "strij/event/dispatcher.hh"
 #include "strij/extensions/factory_context.hh"
 #include "strij/gateway/result_receiver_storage.hh"
+#include "strij/nodeagent/admission_controller.hh"
+#include "strij/nodeagent/child_task_forwarder.hh"
+#include "strij/nodeagent/run_task_service.hh"
 
 namespace strij {
 
@@ -103,6 +108,30 @@ public:
 
 namespace strij::nodeagent {
 
+class DataDependencyFetcherRouter;
+
+struct NodeSchedulerDeps {
+  NodeSchedulerDeps(event::Dispatcher& dispatcher_ref, RunTaskService& run_task_service_ref,
+                    AdmissionControllerSharedPtr admission_ref,
+                    ChildTaskForwarder& child_task_forwarder_ref,
+                    DataDependencyFetcherRouter& data_dependency_fetcher_router_ref)
+      : dispatcher_{dispatcher_ref}, run_task_service_{run_task_service_ref},
+        admission_{std::move(admission_ref)}, child_task_forwarder_{child_task_forwarder_ref},
+        data_dependency_fetcher_router_{data_dependency_fetcher_router_ref} {}
+  ~NodeSchedulerDeps() = default;
+
+  NodeSchedulerDeps(const NodeSchedulerDeps&) = delete;
+  auto operator=(const NodeSchedulerDeps&) -> NodeSchedulerDeps& = delete;
+  NodeSchedulerDeps(NodeSchedulerDeps&&) noexcept = delete;
+  auto operator=(NodeSchedulerDeps&&) noexcept -> NodeSchedulerDeps& = delete;
+
+  event::Dispatcher& dispatcher_;
+  RunTaskService& run_task_service_;
+  AdmissionControllerSharedPtr admission_;
+  ChildTaskForwarder& child_task_forwarder_;
+  DataDependencyFetcherRouter& data_dependency_fetcher_router_;
+};
+
 // Nodeagent-side scheduler factory, registered in
 // extensions::Registry<nodeagent::NodeSchedulerFactory>.
 class NodeSchedulerFactory {
@@ -122,8 +151,7 @@ public:
   // node's NodeCapabilities.scheduling_protocols (see BuildNodeCapabilities).
   [[nodiscard]] virtual auto RequiredProtocol() const -> std::string_view PURE;
   virtual auto CreateEmptyConfigProto() -> MessagePtr PURE;
-  virtual auto Create(const ::google::protobuf::Message& config,
-                      extensions::NodeagentFactoryContext& context)
+  virtual auto Create(const ::google::protobuf::Message& config, const NodeSchedulerDeps& deps)
       -> extensions::SchedulerPtr PURE;
 };
 

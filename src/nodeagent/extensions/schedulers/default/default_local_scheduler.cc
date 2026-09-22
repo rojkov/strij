@@ -14,7 +14,6 @@
 #include "common/core/io/tlv_frame.hh"
 #include "common/core/logging/log.hh"
 #include "common/task/task.pb.h"
-#include "nodeagent/core/child_task_forwarder.hh"
 #include "nodeagent/core/local_result_receiver_storage.hh"
 #include "nodeagent/core/storage_result_sender.hh"
 #include "nodeagent/extensions/schedulers/default/default.pb.h"
@@ -22,6 +21,7 @@
 #include "strij/extensions/scheduler.hh"
 #include "strij/gateway/result_receiver_storage.hh"
 #include "strij/nodeagent/admission_controller.hh"
+#include "strij/nodeagent/child_task_forwarder.hh"
 #include "strij/nodeagent/run_task_service.hh"
 
 namespace strij::nodeagent::schedulers {
@@ -146,10 +146,10 @@ auto DefaultLocalSchedulerFactory::CreateEmptyConfigProto() -> MessagePtr {
 }
 
 auto DefaultLocalSchedulerFactory::Create(const ::google::protobuf::Message& /*config*/,
-                                          extensions::NodeagentFactoryContext& context)
+                                          const NodeSchedulerDeps& deps)
     -> extensions::SchedulerPtr {
-  return std::make_unique<DefaultLocalScheduler>(
-      context.RunTaskService(), context.AdmissionController(), &context.ChildTaskForwarder());
+  return std::make_unique<DefaultLocalScheduler>(deps.run_task_service_, deps.admission_,
+                                                 &deps.child_task_forwarder_);
 }
 
 } // namespace strij::nodeagent::schedulers

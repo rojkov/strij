@@ -35,7 +35,7 @@ strij_cc_test(
     srcs = ["connection_test.cc"],
     deps = [
         "//src/common/core/io:connection_lib",
-        "//src/common/core/io:protocol_parser",
+        "//src/common/core/io:protocol_parser_interface",
         "//test/mocks/common:common_mocks_lib",
         "//test/mocks/event:event_mocks_lib",
         "@googletest//:gtest_main",
@@ -47,7 +47,7 @@ strij_cc_test(
     srcs = ["outbound_mailbox_test.cc"],
     deps = [
         "//src/common/core/io:connection_lib",
-        "//src/common/core/io:protocol_parser",
+        "//src/common/core/io:protocol_parser_interface",
         "//test/mocks/common:common_mocks_lib",
         "//test/mocks/event:event_mocks_lib",
         "@googletest//:gtest_main",

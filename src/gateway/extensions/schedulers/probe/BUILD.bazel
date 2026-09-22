@@ -13,7 +13,7 @@ strij_cc_library(
         "//api/common/task:task_cc_proto",
         "//api/gateway/extensions/schedulers/probe:probe_role_scheduler_cc_proto",
         "//include/strij/extensions:extension_registry_lib",
-        "//include/strij/extensions:factory_context_lib",
+        "//include/strij/extensions:factory_context_interface",
         "//include/strij/extensions:scheduler_interface",
         "//include/strij/gateway:node_directory_interface",
         "//src/common/core/io:connection_lib",

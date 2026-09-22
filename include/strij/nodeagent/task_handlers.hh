@@ -10,7 +10,9 @@
 #include "common/task/task.pb.h"
 #include "google/protobuf/message.h"
 #include "strij/common/pure.hh"
-#include "strij/extensions/factory_context.hh"
+#include "strij/event/dispatcher.hh"
+#include "strij/nodeagent/child_task_submitter.hh"
+#include "strij/nodeagent/function_resolver.hh"
 
 namespace strij::nodeagent {
 
@@ -68,6 +70,23 @@ public:
 
 using TaskHandlerPtr = std::unique_ptr<TaskHandler>;
 
+struct TaskHandlerDeps {
+  TaskHandlerDeps(event::Dispatcher& dispatcher_ref, FunctionResolver& function_resolver_ref,
+                  ChildTaskSubmitter& child_task_submitter_ref)
+      : dispatcher_{dispatcher_ref}, function_resolver_{function_resolver_ref},
+        child_task_submitter_{child_task_submitter_ref} {}
+  ~TaskHandlerDeps() = default;
+
+  TaskHandlerDeps(const TaskHandlerDeps&) = delete;
+  auto operator=(const TaskHandlerDeps&) -> TaskHandlerDeps& = delete;
+  TaskHandlerDeps(TaskHandlerDeps&&) noexcept = delete;
+  auto operator=(TaskHandlerDeps&&) noexcept -> TaskHandlerDeps& = delete;
+
+  event::Dispatcher& dispatcher_;
+  FunctionResolver& function_resolver_;
+  ChildTaskSubmitter& child_task_submitter_;
+};
+
 class TaskHandlerFactory {
 public:
   using MessagePtr = std::unique_ptr<::google::protobuf::Message>;
@@ -82,8 +101,8 @@ public:
 
   [[nodiscard]] virtual auto Name() const -> std::string PURE;
   virtual auto CreateEmptyConfigProto() -> MessagePtr PURE;
-  virtual auto Create(const ::google::protobuf::Message& config,
-                      extensions::NodeagentFactoryContext& context) -> TaskHandlerPtr PURE;
+  virtual auto Create(const ::google::protobuf::Message& config, const TaskHandlerDeps& deps)
+      -> TaskHandlerPtr PURE;
   // Parses the operator-declared capacity (concurrency limit) out of the
   // factory's config message. The default implementation declares no
   // concurrency limit.

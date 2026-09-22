@@ -6,9 +6,9 @@
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "strij/extensions/extension_registry.hh"
 #include "common/task/task.pb.h"
 #include "nodeagent/extensions/task_handlers/echo/echo_task_handler.pb.h"
+#include "strij/extensions/extension_registry.hh"
 
 namespace strij::nodeagent::task_handlers {
 
@@ -27,13 +27,14 @@ auto EchoTaskHandlerFactory::CreateEmptyConfigProto() -> MessagePtr {
 }
 
 auto EchoTaskHandlerFactory::Create(const ::google::protobuf::Message& /*config*/,
-                                    extensions::NodeagentFactoryContext& /*context*/) -> TaskHandlerPtr {
+                                    const TaskHandlerDeps& /*deps*/) -> TaskHandlerPtr {
   return std::make_unique<EchoTaskHandler>();
 }
 
 auto EchoTaskHandlerFactory::ParseConfig(const ::google::protobuf::Message& config)
     -> absl::StatusOr<node::HandlerCapacity> {
-  const auto* echo_config = dynamic_cast<const extensions::task_handlers::echo::EchoTaskHandlerConfig*>(&config);
+  const auto* echo_config =
+      dynamic_cast<const extensions::task_handlers::echo::EchoTaskHandlerConfig*>(&config);
   if (echo_config == nullptr) {
     return absl::InvalidArgumentError("config is not an EchoTaskHandlerConfig");
   }

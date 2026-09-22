@@ -53,9 +53,8 @@ auto PushLocalSchedulerFactory::CreateEmptyConfigProto() -> MessagePtr {
 }
 
 auto PushLocalSchedulerFactory::Create(const ::google::protobuf::Message& /*config*/,
-                                       extensions::NodeagentFactoryContext& context)
-    -> extensions::SchedulerPtr {
-  return std::make_unique<PushLocalScheduler>(context.RunTaskService());
+                                       const NodeSchedulerDeps& deps) -> extensions::SchedulerPtr {
+  return std::make_unique<PushLocalScheduler>(deps.run_task_service_);
 }
 
 } // namespace strij::nodeagent::schedulers

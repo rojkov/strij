@@ -61,12 +61,35 @@ exposed on the factory contexts are all contracts:
 
 | Context accessor | Contract (`include/strij/`) | Impl (`src/`) |
 |---|---|---|
-| `FactoryContext::Dispatcher()` | `strij/event/dispatcher.hh` (`event::Dispatcher`) | `src/common/core/event/dispatcher_impl.*` |
+| `FactoryContext::Dispatcher()` (gateway base) | `strij/event/dispatcher.hh` (`event::Dispatcher`) | `src/common/core/event/dispatcher_impl.*` |
 | `GatewayFactoryContext::NodeDirectory()` | `strij/gateway/node_directory.hh` | `src/gateway/core/node_directory.*` |
 | `GatewayFactoryContext::ResultReceiverStorage()` | `strij/gateway/result_receiver_storage.hh` | `src/gateway/core/result_receiver_storage.*` |
-| `NodeagentFactoryContext::FunctionResolver()` | `strij/nodeagent/function_resolver.hh` | `src/nodeagent/core/function_resolver.*` |
-| `NodeagentFactoryContext::AdmissionController()` | `strij/nodeagent/admission_controller.hh` | `src/nodeagent/core/admission_controller.*` |
-| `NodeagentFactoryContext::RunTaskService()` | `strij/nodeagent/run_task_service.hh` | `src/nodeagent/core/run_task_service.*` |
+| `TaskHandlerDeps::dispatcher_` | `strij/event/dispatcher.hh` | `src/common/core/event/dispatcher_impl.*` |
+| `TaskHandlerDeps::function_resolver_` | `strij/nodeagent/function_resolver.hh` | `src/nodeagent/core/function_resolver.*` |
+| `TaskHandlerDeps::child_task_submitter_` | `strij/nodeagent/child_task_submitter.hh` | `src/nodeagent/core/nodeagent_scheduler_router.*` |
+| `NodeSchedulerDeps::run_task_service_` | `strij/nodeagent/run_task_service.hh` | `src/nodeagent/core/run_task_service.*` |
+| `NodeSchedulerDeps::admission_` | `strij/nodeagent/admission_controller.hh` | `src/nodeagent/core/admission_controller.*` |
+| `NodeSchedulerDeps::child_task_forwarder_` | `strij/nodeagent/child_task_forwarder.hh` | `src/nodeagent/core/gateway_client.*` |
+| `NodeSchedulerDeps::data_dependency_fetcher_router_` | `src/nodeagent/core/data_dependency_fetcher_router.hh` (concrete) | `src/nodeagent/core/data_dependency_fetcher_router.*` |
+| `DataDependencyFetcherDeps::object_cache_` | `strij/nodeagent/object_cache.hh` | `src/nodeagent/core/object_cache.*` |
+
+**Nodeagent factory dependency bundles.** Nodeagent factories no longer receive
+a shared `NodeagentFactoryContext`. Each extension category receives a small
+reference bundle, passed by const reference to `Create`:
+
+- `TaskHandlerDeps` — `strij/nodeagent/task_handlers.hh` (beside
+  `TaskHandlerFactory`): `dispatcher_`, `function_resolver_`,
+  `child_task_submitter_`.
+- `NodeSchedulerDeps` — `strij/extensions/scheduler.hh` (beside
+  `NodeSchedulerFactory`): `dispatcher_`, `run_task_service_`, `admission_`,
+  `child_task_forwarder_`, `data_dependency_fetcher_router_`.
+- `DataDependencyFetcherDeps` — `strij/extensions/data_dependency_fetcher.hh`
+  (beside `DataDependencyFetcherFactory`): `dispatcher_`, `object_cache_`.
+
+Reference members cannot be default-initialized, so an unset dependency is a
+compile error, and the constructor order guarantees `child_task_submitter_` is a
+live submitter whenever a task-handler factory runs. The gateway side keeps
+`FactoryContext`/`GatewayFactoryContext`.
 
 `io::Connection` is the one deliberate exclusion: it stays concrete on the
 public surface (abstracting a leaf shell that owns an fd is invasive). The
