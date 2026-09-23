@@ -1,0 +1,22 @@
+load("//bazel:build_system.bzl", "strij_cc_library")
+
+# Bundled jq evaluator implementation (spec expression-evaluation): the
+# reference "jq" factory/instance on top of libjq (//:libjq). alwayslink keeps
+# the static REGISTER_FACTORY registration alive once a binary links the lib.
+strij_cc_library(
+    name = "jq_evaluator_lib",
+    srcs = ["jq_evaluator.cc"],
+    hdrs = ["jq_evaluator.hh"],
+    alwayslink = True,
+    visibility = ["//visibility:public"],
+    deps = [
+        "//:libjq",
+        "//api/common/extensions/evaluators/jq:jq_cc_proto",
+        "//include/strij/extensions:extension_registry_lib",
+        "//src/common/core/utils:jv_lib",
+        "//src/common/extensions/evaluators:evaluator_interface_lib",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@protobuf",
+    ],
+)

@@ -1,0 +1,8 @@
+syntax = "proto3";
+
+package strij.extensions.evaluators.jq;
+
+// Empty placeholder: the jq evaluator has no tunables in v1. The message type
+// still anchors the factory's config (CreateEmptyConfigProto) so typed_config
+// round-trips. (See design.md D6 / open question on future resource hints.)
+message JqEvaluatorConfig {}

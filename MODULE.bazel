@@ -88,3 +88,14 @@ cc_library(
     strip_prefix = "yaml-cpp-yaml-cpp-0.7.0",
     urls = ["https://github.com/jbeder/yaml-cpp/archive/refs/tags/yaml-cpp-0.7.0.tar.gz"],
 )
+
+http_archive(
+    name = "jq",
+    build_file_content = _ALL_CONTENT,
+    sha256 = "71b8d6e8f5fe81f6c6d0d110e3892251f6ce76ed095abd315e26e6e1193af3af",
+    strip_prefix = "jq-1.8.2",
+    # The release-dance tarball (not the tag archive) ships the autotools
+    # output (configure, parser.c, lexer.c) and the vendored oniguruma, so the
+    # configure_make build needs no autoreconf/bison/flex.
+    urls = ["https://github.com/jqlang/jq/releases/download/jq-1.8.2/jq-1.8.2.tar.gz"],
+)

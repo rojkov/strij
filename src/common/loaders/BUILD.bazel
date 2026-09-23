@@ -1,0 +1,21 @@
+load("//bazel:build_system.bzl", "strij_cc_library")
+
+# Config->instance glue shared by gateway and nodeagent consumers: resolve an
+# evaluator ExtensionConfig to a registered factory, unpack (or tolerate the
+# absence of) its typed_config, and compile an expression. Kept out of
+# src/common/extensions (which hosts pluggable implementations, not loaders).
+strij_cc_library(
+    name = "evaluator_loader_lib",
+    srcs = ["evaluator_loader.cc"],
+    hdrs = ["evaluator_loader.hh"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//api/common/config:config_cc_proto",
+        "//include/strij/extensions:extension_registry_lib",
+        "//src/common/extensions/evaluators:evaluator_interface_lib",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@protobuf",
+    ],
+)

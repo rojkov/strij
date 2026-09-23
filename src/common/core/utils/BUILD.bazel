@@ -19,3 +19,15 @@ strij_cc_library(
     hdrs = ["bounded_queue.hh"],
     visibility = ["//visibility:public"],
 )
+
+strij_cc_library(
+    name = "jv_lib",
+    srcs = ["jv.cc"],
+    hdrs = ["jv.hh"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//:libjq",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+    ],
+)

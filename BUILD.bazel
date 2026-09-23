@@ -10,6 +10,23 @@ configure_make(
     visibility = ["//visibility:public"],
 )
 
+configure_make(
+    name = "libjq",
+    args = ["-j8"],
+    configure_in_place = True,
+    configure_options = [
+        "--disable-maintainer-mode",
+        "--disable-shared",
+        "--with-oniguruma=builtin",
+    ],
+    lib_source = "@jq//:all_srcs",
+    # Builtin oniguruma (regex support behind test()/match()/capture()) is
+    # vendored in-tree and installed separately; the probe target must link
+    # both archives.
+    out_static_libs = ["libjq.a", "libonig.a"],
+    visibility = ["//visibility:public"],
+)
+
 cmake(
     name = "llhttp",
     cache_entries = {

@@ -1,0 +1,16 @@
+load("//bazel:build_system.bzl", "strij_cc_library")
+
+# Shared expression-evaluation category (spec expression-evaluation): the
+# Evaluator/EvaluatorFactory contracts plus the Registry<EvaluatorFactory>
+# registration. Interface only; bundled implementations live in the jq/
+# subpackage, loaders in //src/common/loaders.
+strij_cc_library(
+    name = "evaluator_interface_lib",
+    hdrs = ["evaluator.hh"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//src/common/core/utils:jv_lib",
+        "@abseil-cpp//absl/status:statusor",
+        "@protobuf",
+    ],
+)

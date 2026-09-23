@@ -1,0 +1,14 @@
+load("//bazel:build_system.bzl", "strij_cc_test")
+
+strij_cc_test(
+    name = "jq_evaluator_test",
+    srcs = ["jq_evaluator_test.cc"],
+    deps = [
+        "//include/strij/extensions:extension_registry_lib",
+        "//src/common/core/utils:jv_lib",
+        "//src/common/extensions/evaluators:evaluator_interface_lib",
+        "//src/common/extensions/evaluators/jq:jq_evaluator_lib",
+        "@abseil-cpp//absl/status",
+        "@googletest//:gtest_main",
+    ],
+)
