@@ -7,7 +7,7 @@ strij_cc_test(
         "//api/common/config:config_cc_proto",
         "//include/strij/extensions:extension_registry_lib",
         "//src/common/core/utils:jv_lib",
-        "//src/common/extensions/evaluators:evaluator_interface_lib",
+        "//src/common/extensions/evaluators:evaluator_interface",
         "@abseil-cpp//absl/status",
         "@googletest//:gtest_main",
     ],

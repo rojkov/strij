@@ -65,10 +65,10 @@ auto stringOf(jv value) -> std::string {
 // from jq_next), then halt_error message, then anything err_cb captured.
 auto extractRunError(jq_state* jqs, jv output, const ErrorCapture& capture) -> std::string {
   std::string text;
-  if (jv_invalid_has_msg(jv_copy(output))) {
+  if (jv_invalid_has_msg(jv_copy(output)) != 0) {
     text = stringOf(jv_invalid_get_msg(jv_copy(output)));
   }
-  if (text.empty() && jq_halted(jqs)) {
+  if (text.empty() && (jq_halted(jqs) != 0)) {
     text = stringOf(jq_get_error_message(jqs));
   }
   if (text.empty()) {
@@ -84,32 +84,32 @@ JqEvaluator::JqEvaluator(std::string source, std::vector<std::string> variable_n
 
 auto JqEvaluator::Run(const utils::Jv& input, std::span<const utils::Jv> args)
     -> absl::StatusOr<std::vector<utils::Jv>> {
-  jq_state* jq = jq_init();
-  if (jq == nullptr) {
+  jq_state* jqs = jq_init();
+  if (jqs == nullptr) {
     return absl::InternalError("jq: jq_init failed");
   }
   ErrorCapture capture;
-  jq_set_error_cb(jq, captureError, &capture);
+  jq_set_error_cb(jqs, captureError, &capture);
 
   jv arg_array = buildArgs(variable_names_, args);
-  if (!compileExpression(jq, source_, arg_array)) {
+  if (!compileExpression(jqs, source_, arg_array)) {
     std::string message = capture.text_;
-    jq_teardown(&jq);
+    jq_teardown(&jqs);
     return absl::InvalidArgumentError(message.empty() ? "jq: failed to compile expression"
                                                       : message);
   }
 
-  jq_start(jq, utils::JvRawCopy(input), 0);
+  jq_start(jqs, utils::JvRawCopy(input), 0);
   std::vector<utils::Jv> outputs;
-  jv output = jq_next(jq);
-  while (jv_is_valid(output)) {
+  jv output = jq_next(jqs);
+  while (jv_is_valid(output) != 0) {
     outputs.push_back(utils::Acquire(output));
-    output = jq_next(jq);
+    output = jq_next(jqs);
   }
 
-  std::string error = extractRunError(jq, output, capture);
+  std::string error = extractRunError(jqs, output, capture);
   jv_free(output);
-  jq_teardown(&jq);
+  jq_teardown(&jqs);
 
   if (!error.empty()) {
     return absl::InvalidArgumentError(error);
@@ -129,21 +129,21 @@ auto JqEvaluatorFactory::Compile(const ::google::protobuf::Message& /*config*/,
   // Validation compile: bind null placeholders for the declared variables so a
   // source referencing them parses, while a syntax/unbound-variable error
   // surfaces here with jq's message instead of at the first Run.
-  jq_state* jq = jq_init();
-  if (jq == nullptr) {
+  jq_state* jqs = jq_init();
+  if (jqs == nullptr) {
     return absl::InternalError("jq: jq_init failed");
   }
   ErrorCapture capture;
-  jq_set_error_cb(jq, captureError, &capture);
+  jq_set_error_cb(jqs, captureError, &capture);
 
   jv placeholder_args = buildArgs(variable_names, {});
-  if (!compileExpression(jq, source, placeholder_args)) {
+  if (!compileExpression(jqs, source, placeholder_args)) {
     std::string message = capture.text_;
-    jq_teardown(&jq);
+    jq_teardown(&jqs);
     return absl::InvalidArgumentError(message.empty() ? "jq: failed to compile expression"
                                                       : message);
   }
-  jq_teardown(&jq);
+  jq_teardown(&jqs);
 
   return std::make_unique<JqEvaluator>(std::string(source), std::move(variable_names));
 }

@@ -5,7 +5,7 @@ load("//bazel:build_system.bzl", "strij_cc_library")
 # registration. Interface only; bundled implementations live in the jq/
 # subpackage, loaders in //src/common/loaders.
 strij_cc_library(
-    name = "evaluator_interface_lib",
+    name = "evaluator_interface",
     hdrs = ["evaluator.hh"],
     visibility = ["//visibility:public"],
     deps = [

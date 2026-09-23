@@ -12,7 +12,7 @@ strij_cc_library(
     deps = [
         "//api/common/config:config_cc_proto",
         "//include/strij/extensions:extension_registry_lib",
-        "//src/common/extensions/evaluators:evaluator_interface_lib",
+        "//src/common/extensions/evaluators:evaluator_interface",
         "@abseil-cpp//absl/status",
         "@abseil-cpp//absl/status:statusor",
         "@abseil-cpp//absl/strings",

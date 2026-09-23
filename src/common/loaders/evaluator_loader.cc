@@ -15,8 +15,7 @@
 namespace strij::extensions {
 namespace {
 
-auto createEvaluatorFromExtension(const config::ExtensionConfig& ext,
-                                  std::string_view source,
+auto createEvaluatorFromExtension(const config::ExtensionConfig& ext, std::string_view source,
                                   std::vector<std::string> variable_names,
                                   const evaluators::EvaluatorDeps& deps)
     -> absl::StatusOr<evaluators::EvaluatorPtr> {
@@ -25,8 +24,8 @@ auto createEvaluatorFromExtension(const config::ExtensionConfig& ext,
   if (factory == nullptr) {
     const auto names = registry.GetRegisteredNames();
     return absl::NotFoundError(
-        absl::StrCat("Evaluator '", ext.name(), "' is not registered. Registered: ",
-                     absl::StrJoin(names, ", ")));
+        absl::StrCat("Evaluator '", ext.name(),
+                     "' is not registered. Registered: ", absl::StrJoin(names, ", ")));
   }
 
   auto config_msg = factory->CreateEmptyConfigProto();
@@ -58,11 +57,10 @@ auto createEvaluatorFromExtension(const config::ExtensionConfig& ext,
 namespace strij::loaders {
 
 auto CreateEvaluator(const config::ExtensionConfig& config,
-                     const extensions::evaluators::EvaluatorDeps& deps,
-                     std::string_view source, std::vector<std::string> variable_names)
+                     const extensions::evaluators::EvaluatorDeps& deps, std::string_view source,
+                     std::vector<std::string> variable_names)
     -> absl::StatusOr<extensions::evaluators::EvaluatorPtr> {
-  return extensions::createEvaluatorFromExtension(config, source, std::move(variable_names),
-                                                  deps);
+  return extensions::createEvaluatorFromExtension(config, source, std::move(variable_names), deps);
 }
 
 } // namespace strij::loaders

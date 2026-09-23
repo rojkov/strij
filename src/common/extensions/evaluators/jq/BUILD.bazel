@@ -13,7 +13,7 @@ strij_cc_library(
         "//api/common/extensions/evaluators/jq:jq_cc_proto",
         "//include/strij/extensions:extension_registry_lib",
         "//src/common/core/utils:jv_lib",
-        "//src/common/extensions/evaluators:evaluator_interface_lib",
+        "//src/common/extensions/evaluators:evaluator_interface",
         "@abseil-cpp//absl/status",
         "@abseil-cpp//absl/status:statusor",
         "@protobuf",

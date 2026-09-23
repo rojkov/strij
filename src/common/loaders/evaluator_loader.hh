@@ -19,8 +19,8 @@ namespace strij::loaders {
 // by gateway and nodeagent consumers; deliberate config->instance glue, hence
 // its own loaders/ layer.
 auto CreateEvaluator(const config::ExtensionConfig& config,
-                     const extensions::evaluators::EvaluatorDeps& deps,
-                     std::string_view source, std::vector<std::string> variable_names)
+                     const extensions::evaluators::EvaluatorDeps& deps, std::string_view source,
+                     std::vector<std::string> variable_names)
     -> absl::StatusOr<extensions::evaluators::EvaluatorPtr>;
 
 } // namespace strij::loaders
