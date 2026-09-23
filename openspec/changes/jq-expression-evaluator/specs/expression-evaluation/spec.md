@@ -10,6 +10,8 @@ Defines the shared expression-evaluation extension category used by workflow-sty
 
 The system SHALL provide an expression evaluator extension category shared by gateway and nodeagent consumers, with evaluator instances created through a factory registered in the extension `Registry` and resolved at runtime by the `name` in an `ExtensionConfig`. An evaluator instance SHALL compile an expression source into a reusable compiled program and run it zero or more times against differing inputs.
 
+> Note: bytecode reuse across runs with differing variable bindings is not possible with libjq. `jq_compile_args` resolves declared variables to compile-time constants (`LOADK`) rather than runtime variable slots (`LOADV`/`frame_local_var`), so applying caller-supplied argument values requires recompiling the source. The reference `jq` evaluator therefore validates at `Compile` and recompiles per `Run`; the evaluator handle itself stays immutable and reusable.
+
 #### Scenario: Compile then run
 
 - **WHEN** an evaluator is created and a syntactically valid expression is compiled

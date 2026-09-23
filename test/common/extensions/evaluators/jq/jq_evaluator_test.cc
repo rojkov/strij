@@ -88,6 +88,15 @@ TEST_F(JqEvaluatorTest, ReferenceSemantics) {
   EXPECT_EQ((*outputs)[0].Dump(), R"({"name":"bob","len":2,"msg":"hi bob"})");
 }
 
+TEST_F(JqEvaluatorTest, MapConstructMatchesReference) {
+  auto evaluator = compile("map(.x)");
+  ASSERT_TRUE(evaluator.ok()) << evaluator.status().message();
+  auto outputs = (*evaluator)->Run(utils::Jv::Parse(R"([{"x":1},{"x":2},{"x":3}])").value(), {});
+  ASSERT_TRUE(outputs.ok()) << outputs.status().message();
+  ASSERT_EQ(outputs->size(), static_cast<size_t>(1));
+  EXPECT_EQ((*outputs)[0].Dump(), "[1,2,3]");
+}
+
 TEST_F(JqEvaluatorTest, RuntimeErrorCarriesMessageAndDoesNotCorrupt) {
   auto evaluator = compile(".foo");
   ASSERT_TRUE(evaluator.ok()) << evaluator.status().message();

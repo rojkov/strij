@@ -1,8 +1,16 @@
+#include <type_traits>
+#include <utility>
+
 #include "common/core/utils/jv.hh"
 #include "gtest/gtest.h"
 
 namespace strij::utils {
 namespace {
+
+static_assert(!std::is_copy_constructible_v<Jv>);
+static_assert(!std::is_copy_assignable_v<Jv>);
+static_assert(std::is_move_constructible_v<Jv>);
+static_assert(std::is_move_assignable_v<Jv>);
 
 // NOLINTBEGIN(modernize-use-trailing-return-type)
 
