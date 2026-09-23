@@ -12,14 +12,14 @@
 #include "google/protobuf/any.pb.h"
 #include "strij/extensions/extension_registry.hh"
 
-namespace strij::extensions {
+namespace strij::loaders {
 namespace {
 
 auto createEvaluatorFromExtension(const config::ExtensionConfig& ext, std::string_view source,
                                   std::vector<std::string> variable_names,
-                                  const evaluators::EvaluatorDeps& deps)
-    -> absl::StatusOr<evaluators::EvaluatorPtr> {
-  auto& registry = Registry<evaluators::EvaluatorFactory>::instance();
+                                  const extensions::evaluators::EvaluatorDeps& deps)
+    -> absl::StatusOr<extensions::evaluators::EvaluatorPtr> {
+  auto& registry = extensions::Registry<extensions::evaluators::EvaluatorFactory>::instance();
   auto* factory = registry.GetFactory(ext.name());
   if (factory == nullptr) {
     const auto names = registry.GetRegisteredNames();
@@ -52,15 +52,12 @@ auto createEvaluatorFromExtension(const config::ExtensionConfig& ext, std::strin
 }
 
 } // namespace
-} // namespace strij::extensions
-
-namespace strij::loaders {
 
 auto CreateEvaluator(const config::ExtensionConfig& config,
                      const extensions::evaluators::EvaluatorDeps& deps, std::string_view source,
                      std::vector<std::string> variable_names)
     -> absl::StatusOr<extensions::evaluators::EvaluatorPtr> {
-  return extensions::createEvaluatorFromExtension(config, source, std::move(variable_names), deps);
+  return createEvaluatorFromExtension(config, source, std::move(variable_names), deps);
 }
 
 } // namespace strij::loaders
