@@ -18,8 +18,8 @@ public:
   }
 
   auto GetFactory(const std::string& name) const -> FactoryInterface* {
-    auto it = factories_.find(name);
-    return it != factories_.end() ? it->second : nullptr;
+    auto iter = factories_.find(name);
+    return iter != factories_.end() ? iter->second : nullptr;
   }
 
   auto GetRegisteredNames() const -> std::vector<std::string> {
@@ -49,7 +49,7 @@ private:
 #define REGISTER_FACTORY(FactoryClass, FactoryInterface)                                           \
   namespace {                                                                                      \
   static void do_register_##FactoryClass() {                                                       \
-    ::strij::extensions::Registry<FactoryInterface>::instance().RegisterFactory(                  \
+    ::strij::extensions::Registry<FactoryInterface>::instance().RegisterFactory(                   \
         FactoryClass().Name(), new FactoryClass());                                                \
   }                                                                                                \
   static const bool registered_##FactoryClass = (do_register_##FactoryClass(), true);              \
@@ -68,7 +68,7 @@ private:
 #define REGISTER_FACTORY_FULLY_QUALIFIED(FactoryClass, FactoryInterface, RegistrarName)            \
   namespace {                                                                                      \
   static void do_register_##RegistrarName() {                                                      \
-    ::strij::extensions::Registry<FactoryInterface>::instance().RegisterFactory(                  \
+    ::strij::extensions::Registry<FactoryInterface>::instance().RegisterFactory(                   \
         FactoryClass().Name(), new FactoryClass());                                                \
   }                                                                                                \
   static const bool registered_##RegistrarName = (do_register_##RegistrarName(), true);            \

@@ -18,7 +18,7 @@ complete story across the source tree. Mirrored directories:
 
 | | Public API | Private impl | Config protos | Tests |
 |---|---|---|---|---|
-| Shared | `include/strij/common/` | `src/common/{core,extensions}/` | `api/common/` | `test/common/` |
+| Shared | `include/strij/common/` | `src/common/{core,extensions,loaders}/` | `api/common/` | `test/common/` |
 | Gateway | `include/strij/gateway/` | `src/gateway/{core,extensions,exe}/` | `api/gateway/` | `test/gateway/` |
 | Nodeagent | `include/strij/nodeagent/` | `src/nodeagent/{core,extensions,exe}/` | `api/nodeagent/` | `test/nodeagent/` |
 
@@ -38,7 +38,9 @@ See AGENTS.md for the full architecture.
 Namespaces express *ownership* and dot exactly as the directory mind-map:
 
 - Shared concerns use bare concern namespaces: `strij::event`, `strij::io`,
-  `strij::logging`, `strij::config`, `strij::task`.
+  `strij::logging`, `strij::config`, `strij::task`, `strij::loaders`
+  (config→instance glue shared by both sides, e.g.
+  `strij::loaders::CreateEvaluator`).
 - Shared cross-cutting *plugin scaffolding* lives in `strij::extensions`
   (`Registry`, `Scheduler`, base `FactoryContext`). The `::extensions` marker
   is a namespace-level signal that "this is a plugin point".
@@ -127,6 +129,12 @@ Two consumer-side requirements to be aware of:
   `MODULE.bazel`. `test/consumer/MODULE.bazel` is the canonical working copy;
   moving these into a module extension so consumers don't have to mirror them is
   tracked as follow-up in the extension-api-layout change.
+- **`jq` (libjq 1.8.2, `//:libjq`)** is also a root-module `http_archive`, but is
+  *not* part of the framework graph today: only the `src/`-internal jq
+  evaluator (`//src/common/extensions/evaluators/jq:jq_evaluator_lib`) links it,
+  so consumers do **not** need to redeclare `jq` unless they pull that target in
+  (see the jq-expression-evaluator change). If the framework ever links
+  `//:libjq`, add `jq` to the redeclaration set above.
 
 ### 2. Implement an interface
 
