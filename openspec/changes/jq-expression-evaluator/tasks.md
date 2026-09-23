@@ -7,7 +7,7 @@
 
 ## 2. Jv RAII wrapper
 
-- [x] 2.1 Implement `strij::utils::Jv` as a move-only RAII class in `src/common/core/utils/jv.hh` (owns a `jv`, frees it in the destructor, records copy via `jv_copy`, exposes `Parse(text)` -> `Jv` and a ToJSON-text dump helper backed by `jv_parse`/`jv_dumpf`), packaged as `strij_cc_library(name = "jv_lib", ...)` with dep `//:libjq`, and verify `bazel build //src/common/core/utils:jv_lib` compiles and `make check_includes` / `make check_namespaces` still pass (wrapper must not appear under `include/`)
+- [x] 2.1 Implement `strij::utils::Jv` as a move-only RAII class in `src/common/core/utils/jv.hh` (owns a `jv`, frees it in the destructor, records copy via `jv_copy`, exposes `Parse(text)` -> `Jv` and a ToJSON-text dump helper backed by `jv_parse`/`jv_dump_string`), packaged as `strij_cc_library(name = "jv_lib", ...)` with dep `//:libjq`, and verify `bazel build //src/common/core/utils:jv_lib` compiles and `make check_includes` / `make check_namespaces` still pass (wrapper must not appear under `include/`)
 - [x] 2.2 Write `test/common/core/utils/jv_test.cc` covering: construction from valid JSON text and round-trip back to equivalent JSON text; parse failure surfaces as an error (no throw out of the wrapper boundary, no leak); move-only semantics (copy deleted, move transfers ownership, double-free is impossible); refcount safety by copying a `Jv` and destroying both copies, and verify `bazel test //test/common/core/utils:jv_test` passes with ASan (`make test_asan`) to confirm no leaks/double-frees
 
 ## 3. Evaluator interface, factory, deps

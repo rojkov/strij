@@ -18,7 +18,7 @@ auto Acquire(jv value) -> Jv;
 // The caller becomes the owner and MUST jv_free it. Internal-to-src plumbing.
 [[nodiscard]] auto JvRawCopy(const Jv& value) -> jv;
 
-// RAII owner of a libjq value (see design.md D2). Move-only; refcounts are
+// RAII owner of a libjq value. Move-only; refcounts are
 // managed here, never by consumers. Lives under src/ only: jv.h is a libjq
 // header, and the public include/ surface may reference only include/, absl,
 // protobuf, and std (include-purity).

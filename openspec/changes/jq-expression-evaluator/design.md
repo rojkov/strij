@@ -32,7 +32,7 @@ Alternatives considered: **shelling out to a `jq` binary** per expression (per-e
 
 ### D2. One RAII `Jv` type, internal to `src/`
 
-`strij::utils::Jv` at `src/common/core/utils/jv.hh` (package prefix `common/core/utils`, next to the existing utils). Move-only wrapper: owns one `jv`, `jv_copy`s on copy where libjq needs it, `jv_free`s on destruction (its `jv`-destructor semantics are the wrapper's job, never the consumer's). Statics/helpers for the constructor-from-JSON-text (`jv_parse`) and render-back-to-JSON-text (`jv_dumpf`) cases. Lives in `strij::utils` because it is a shared value concern, not an extension.
+`strij::utils::Jv` at `src/common/core/utils/jv.hh` (package prefix `common/core/utils`, next to the existing utils). Move-only wrapper: owns one `jv`, `jv_copy`s on copy where libjq needs it, `jv_free`s on destruction (its `jv`-destructor semantics are the wrapper's job, never the consumer's). Statics/helpers for the constructor-from-JSON-text (`jv_parse`) and render-back-to-JSON-text (`jv_dump_string`) cases. Dump uses `jv_dump_string` (not `jv_dumpf`) so no raw `FILE*`/`malloc` buffer is involved — keeps the wrapper free of `cppcoreguidelines-owning-memory`-style lint. Lives in `strij::utils` because it is a shared value concern, not an extension.
 
 Alternatives: **raw `jv` everywhere with manual refcount calls** — error-prone, exactly what the RAII wrapper exists to prevent; **a second value type (e.g. `boost::json`)** — not jq compatible at the boundary.
 

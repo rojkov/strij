@@ -20,10 +20,10 @@ configure_make(
         "--with-oniguruma=builtin",
     ],
     lib_source = "@jq//:all_srcs",
-    # Builtin oniguruma (regex support behind test()/match()/capture()) is
-    # vendored in-tree and installed separately; the probe target must link
-    # both archives.
-    out_static_libs = ["libjq.a", "libonig.a"],
+    out_static_libs = [
+        "libjq.a",
+        "libonig.a",
+    ],
     visibility = ["//visibility:public"],
 )
 

@@ -76,10 +76,9 @@ public:
   // are bound per Run() invocation. Returns an error (with the engine's
   // message) when the source does not compile; on failure no instance is left
   // half-constructed, and a null EvaluatorPtr is a config error.
-  [[nodiscard]] virtual auto Compile(const ::google::protobuf::Message& config,
-                                     std::string_view source,
-                                     std::vector<std::string> variable_names,
-                                     const EvaluatorDeps& deps)
+  [[nodiscard]] virtual auto
+  Compile(const ::google::protobuf::Message& config, std::string_view source,
+          std::vector<std::string> variable_names, const EvaluatorDeps& deps)
       -> absl::StatusOr<EvaluatorPtr> PURE;
 };
 

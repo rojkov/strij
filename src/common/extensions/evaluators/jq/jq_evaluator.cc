@@ -1,7 +1,6 @@
 #include "common/extensions/evaluators/jq/jq_evaluator.hh"
 
 #include <memory>
-#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
@@ -19,7 +18,7 @@ namespace {
 // Builds the jq_compile_args argument array [{name, value}, ...] from aligned
 // names/values; a name without a value binds null. The returned handle is
 // consumed by jq_compile_args.
-jv buildArgs(std::span<const std::string> names, std::span<const utils::Jv> values) {
+auto buildArgs(std::span<const std::string> names, std::span<const utils::Jv> values) -> jv {
   jv array = jv_array();
   for (size_t i = 0; i < names.size(); ++i) {
     jv entry = jv_object();
@@ -31,29 +30,29 @@ jv buildArgs(std::span<const std::string> names, std::span<const utils::Jv> valu
   return array;
 }
 
-int compileExpression(jq_state* jq, std::string_view source, jv args) {
+auto compileExpression(jq_state* jqs, std::string_view source, jv args) -> bool {
   // Compile errors (and jq_report_error output) reach the error callback, not
   // jq_get_error_message (that only serves halt/halt_error); the callback is
   // installed by the caller before this runs.
-  return jq_compile_args(jq, std::string(source).c_str(), args);
+  return jq_compile_args(jqs, std::string(source).c_str(), args) != 0;
 }
 
 // Accumulates every jq_report_error message (compile errors, explicit runtime
 // error()) so they survive even though jq_get_error_message only covers halt.
 struct ErrorCapture {
-  std::string text;
+  std::string text_;
 };
 
 void captureError(void* data, jv message) {
   auto* capture = static_cast<ErrorCapture*>(data);
   if (jv_get_kind(message) == JV_KIND_STRING && jv_string_value(message) != nullptr) {
-    capture->text += jv_string_value(message);
-    capture->text += "\n";
+    capture->text_ += jv_string_value(message);
+    capture->text_ += "\n";
   }
   jv_free(message);
 }
 
-std::string stringOf(jv value) {
+auto stringOf(jv value) -> std::string {
   std::string text;
   if (jv_get_kind(value) == JV_KIND_STRING && jv_string_value(value) != nullptr) {
     text = jv_string_value(value);
@@ -64,16 +63,16 @@ std::string stringOf(jv value) {
 
 // Layered runtime error extraction: uncaught jq exception (invalid-with-msg
 // from jq_next), then halt_error message, then anything err_cb captured.
-std::string extractRunError(jq_state* jq, jv output, const ErrorCapture& capture) {
+auto extractRunError(jq_state* jqs, jv output, const ErrorCapture& capture) -> std::string {
   std::string text;
   if (jv_invalid_has_msg(jv_copy(output))) {
     text = stringOf(jv_invalid_get_msg(jv_copy(output)));
   }
-  if (text.empty() && jq_halted(jq)) {
-    text = stringOf(jq_get_error_message(jq));
+  if (text.empty() && jq_halted(jqs)) {
+    text = stringOf(jq_get_error_message(jqs));
   }
   if (text.empty()) {
-    text = capture.text;
+    text = capture.text_;
   }
   return text;
 }
@@ -94,10 +93,10 @@ auto JqEvaluator::Run(const utils::Jv& input, std::span<const utils::Jv> args)
 
   jv arg_array = buildArgs(variable_names_, args);
   if (!compileExpression(jq, source_, arg_array)) {
-    std::string message = capture.text;
+    std::string message = capture.text_;
     jq_teardown(&jq);
     return absl::InvalidArgumentError(message.empty() ? "jq: failed to compile expression"
-                                                       : message);
+                                                      : message);
   }
 
   jq_start(jq, utils::JvRawCopy(input), 0);
@@ -139,10 +138,10 @@ auto JqEvaluatorFactory::Compile(const ::google::protobuf::Message& /*config*/,
 
   jv placeholder_args = buildArgs(variable_names, {});
   if (!compileExpression(jq, source, placeholder_args)) {
-    std::string message = capture.text;
+    std::string message = capture.text_;
     jq_teardown(&jq);
     return absl::InvalidArgumentError(message.empty() ? "jq: failed to compile expression"
-                                                       : message);
+                                                      : message);
   }
   jq_teardown(&jq);
 

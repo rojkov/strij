@@ -7,7 +7,6 @@ strij_cc_library(
     name = "jq_evaluator_lib",
     srcs = ["jq_evaluator.cc"],
     hdrs = ["jq_evaluator.hh"],
-    alwayslink = True,
     visibility = ["//visibility:public"],
     deps = [
         "//:libjq",
@@ -19,4 +18,5 @@ strij_cc_library(
         "@abseil-cpp//absl/status:statusor",
         "@protobuf",
     ],
+    alwayslink = True,
 )
