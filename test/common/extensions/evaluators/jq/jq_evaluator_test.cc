@@ -5,7 +5,6 @@
 #include "absl/status/status.h"
 #include "common/core/utils/jv.hh"
 #include "common/extensions/evaluators/evaluator.hh"
-#include "common/extensions/evaluators/jq/jq_evaluator.hh"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "strij/extensions/extension_registry.hh"
@@ -37,8 +36,7 @@ protected:
 TEST_F(JqEvaluatorTest, CompileThenRunReturnsOutput) {
   auto evaluator = compile(".name");
   ASSERT_TRUE(evaluator.ok()) << evaluator.status().message();
-  auto outputs = (*evaluator)
-                     ->Run(utils::Jv::Parse(R"({"name":"world"})").value(), {});
+  auto outputs = (*evaluator)->Run(utils::Jv::Parse(R"({"name":"world"})").value(), {});
   ASSERT_TRUE(outputs.ok()) << outputs.status().message();
   ASSERT_EQ(outputs->size(), static_cast<size_t>(1));
   EXPECT_EQ((*outputs)[0].Dump(), "\"world\"");
@@ -72,8 +70,7 @@ TEST_F(JqEvaluatorTest, NamedVariablesBindArgumentsAtRunTime) {
 TEST_F(JqEvaluatorTest, MultiOutputGeneratorsReturnEveryOutput) {
   auto evaluator = compile(".[]");
   ASSERT_TRUE(evaluator.ok()) << evaluator.status().message();
-  auto outputs =
-      (*evaluator)->Run(utils::Jv::Parse("[1, 2, 3]").value(), {});
+  auto outputs = (*evaluator)->Run(utils::Jv::Parse("[1, 2, 3]").value(), {});
   ASSERT_TRUE(outputs.ok()) << outputs.status().message();
   ASSERT_EQ(outputs->size(), static_cast<size_t>(3));
   EXPECT_EQ((*outputs)[0].Dump(), "1");
@@ -84,13 +81,11 @@ TEST_F(JqEvaluatorTest, MultiOutputGeneratorsReturnEveryOutput) {
 TEST_F(JqEvaluatorTest, ReferenceSemantics) {
   auto evaluator = compile(".user | {name: .name, len: (.items | length), msg: \"hi \\(.name)\"}");
   ASSERT_TRUE(evaluator.ok()) << evaluator.status().message();
-  auto outputs = (*evaluator)
-                     ->Run(utils::Jv::Parse(R"({"user":{"name":"bob","items":[1,2]}})").value(),
-                           {});
+  auto outputs =
+      (*evaluator)->Run(utils::Jv::Parse(R"({"user":{"name":"bob","items":[1,2]}})").value(), {});
   ASSERT_TRUE(outputs.ok()) << outputs.status().message();
   ASSERT_EQ(outputs->size(), static_cast<size_t>(1));
-  EXPECT_EQ((*outputs)[0].Dump(),
-            R"({"name":"bob","len":2,"msg":"hi bob"})");
+  EXPECT_EQ((*outputs)[0].Dump(), R"({"name":"bob","len":2,"msg":"hi bob"})");
 }
 
 TEST_F(JqEvaluatorTest, RuntimeErrorCarriesMessageAndDoesNotCorrupt) {
@@ -102,8 +97,7 @@ TEST_F(JqEvaluatorTest, RuntimeErrorCarriesMessageAndDoesNotCorrupt) {
   EXPECT_EQ(failing.status().code(), absl::StatusCode::kInvalidArgument);
   EXPECT_NE(failing.status().message().find("Cannot index number"), std::string::npos);
 
-  auto succeeding =
-      (*evaluator)->Run(utils::Jv::Parse(R"({"foo":7})").value(), {});
+  auto succeeding = (*evaluator)->Run(utils::Jv::Parse(R"({"foo":7})").value(), {});
   ASSERT_TRUE(succeeding.ok()) << succeeding.status().message();
   ASSERT_EQ(succeeding->size(), static_cast<size_t>(1));
   EXPECT_EQ((*succeeding)[0].Dump(), "7");
@@ -112,9 +106,8 @@ TEST_F(JqEvaluatorTest, RuntimeErrorCarriesMessageAndDoesNotCorrupt) {
 TEST_F(JqEvaluatorTest, JsonBoundaryRoundTrip) {
   auto evaluator = compile(".payload.items[0]");
   ASSERT_TRUE(evaluator.ok()) << evaluator.status().message();
-  auto outputs = (*evaluator)
-                     ->Run(utils::Jv::Parse(R"({"payload":{"items":["a","b"]}})").value(),
-                           {});
+  auto outputs =
+      (*evaluator)->Run(utils::Jv::Parse(R"({"payload":{"items":["a","b"]}})").value(), {});
   ASSERT_TRUE(outputs.ok()) << outputs.status().message();
   EXPECT_EQ((*outputs)[0].Dump(), "\"a\"");
 }

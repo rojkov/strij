@@ -87,8 +87,7 @@ TEST(EvaluatorLoaderTest, CreatesRegisteredEvaluatorWithoutTypedConfig) {
 TEST(EvaluatorLoaderTest, UnpacksTypedConfig) {
   config::ExtensionConfig config;
   config.set_name("jq");
-  config.mutable_typed_config()->PackFrom(
-      strij::extensions::evaluators::jq::JqEvaluatorConfig());
+  config.mutable_typed_config()->PackFrom(strij::extensions::evaluators::jq::JqEvaluatorConfig());
   extensions::evaluators::EvaluatorDeps deps;
 
   auto result = CreateEvaluator(config, deps, ".x", {});
@@ -118,12 +117,12 @@ TEST(EvaluatorLoaderTest, PinsOneLanguageToEachConfiguredName) {
   config::ExtensionConfig fake_config;
   fake_config.set_name("fake_eval");
 
-  auto jq = CreateEvaluator(jq_config, deps, ".name", {});
-  ASSERT_TRUE(jq.ok()) << jq.status().message();
+  auto jq_status = CreateEvaluator(jq_config, deps, ".name", {});
+  ASSERT_TRUE(jq_status.ok()) << jq_status.status().message();
   auto fake = CreateEvaluator(fake_config, deps, ".unused", {});
   ASSERT_TRUE(fake.ok()) << fake.status().message();
 
-  auto jq_outputs = (*jq)->Run(utils::Jv::Parse(R"({"name":"x"})").value(), {});
+  auto jq_outputs = (*jq_status)->Run(utils::Jv::Parse(R"({"name":"x"})").value(), {});
   ASSERT_TRUE(jq_outputs.ok()) << jq_outputs.status().message();
   EXPECT_EQ((*jq_outputs)[0].Dump(), "\"x\"");
 

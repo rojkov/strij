@@ -1,5 +1,3 @@
-#include <string>
-
 #include "common/core/utils/jv.hh"
 #include "gtest/gtest.h"
 
@@ -9,26 +7,26 @@ namespace {
 // NOLINTBEGIN(modernize-use-trailing-return-type)
 
 TEST(JvTest, ParsesAndDumpsJson) {
-  auto jv = Jv::Parse(R"({"name":"world","n":42})");
-  ASSERT_TRUE(jv.ok());
-  EXPECT_EQ(jv->Dump(), R"({"name":"world","n":42})");
+  auto jvalue = Jv::Parse(R"({"name":"world","n":42})");
+  ASSERT_TRUE(jvalue.ok());
+  EXPECT_EQ(jvalue->Dump(), R"({"name":"world","n":42})");
 }
 
 TEST(JvTest, ParseRejectsInvalidJson) {
-  auto jv = Jv::Parse("{ not json ");
-  EXPECT_FALSE(jv.ok());
+  auto jvalue = Jv::Parse("{ not json ");
+  EXPECT_FALSE(jvalue.ok());
 }
 
 TEST(JvTest, EmptyObjectDumpsAsObject) {
-  auto jv = Jv::Parse("{}");
-  ASSERT_TRUE(jv.ok());
-  EXPECT_EQ(jv->Dump(), "{}");
+  auto jvalue = Jv::Parse("{}");
+  ASSERT_TRUE(jvalue.ok());
+  EXPECT_EQ(jvalue->Dump(), "{}");
 }
 
 TEST(JvTest, MoveOnlySemantics) {
-  auto jv = Jv::Parse("[1,2]");
-  ASSERT_TRUE(jv.ok());
-  Jv moved(std::move(*jv));
+  auto jvalue = Jv::Parse("[1,2]");
+  ASSERT_TRUE(jvalue.ok());
+  Jv moved(std::move(*jvalue));
   EXPECT_EQ(moved.Dump(), "[1,2]");
 }
 
@@ -64,9 +62,9 @@ TEST(JvTest, AcquireTakesOwnership) {
 }
 
 TEST(JvTest, RoundTripsNestedStructure) {
-  auto jv = Jv::Parse(R"({"a":[1,"x",null,true,{"b":2}]})");
-  ASSERT_TRUE(jv.ok());
-  EXPECT_EQ(jv->Dump(), R"({"a":[1,"x",null,true,{"b":2}]})");
+  auto jvalue = Jv::Parse(R"({"a":[1,"x",null,true,{"b":2}]})");
+  ASSERT_TRUE(jvalue.ok());
+  EXPECT_EQ(jvalue->Dump(), R"({"a":[1,"x",null,true,{"b":2}]})");
 }
 
 // NOLINTEND(modernize-use-trailing-return-type)
