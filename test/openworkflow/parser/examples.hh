@@ -605,7 +605,8 @@ do:
         endpoint: https://petstore.swagger.io/v2/pet/{petId}
 )YAML";
 
-inline constexpr std::string_view kCallHttpQueryHeaders = R"YAML(# yaml-language-server: $schema=../schema/workflow.yaml
+inline constexpr std::string_view kCallHttpQueryHeaders =
+    R"YAML(# yaml-language-server: $schema=../schema/workflow.yaml
 document:
   dsl: '1.0.3'
   namespace: examples
@@ -638,7 +639,8 @@ do:
       
 )YAML";
 
-inline constexpr std::string_view kCallHttpQueryParameters = R"YAML(# yaml-language-server: $schema=../schema/workflow.yaml
+inline constexpr std::string_view kCallHttpQueryParameters =
+    R"YAML(# yaml-language-server: $schema=../schema/workflow.yaml
 document:
   dsl: '1.0.3'
   namespace: examples
@@ -665,7 +667,8 @@ do:
       
 )YAML";
 
-inline constexpr std::string_view kCallHttpRedirect = R"YAML(# yaml-language-server: $schema=../schema/workflow.yaml
+inline constexpr std::string_view kCallHttpRedirect =
+    R"YAML(# yaml-language-server: $schema=../schema/workflow.yaml
 document:
   dsl: '1.0.3'
   namespace: examples
@@ -1257,7 +1260,8 @@ do:
                 body:
                   event: ${ $event })YAML";
 
-inline constexpr std::string_view kStarWarsHomeworld = R"YAML(# yaml-language-server: $schema=../schema/workflow.yaml
+inline constexpr std::string_view kStarWarsHomeworld =
+    R"YAML(# yaml-language-server: $schema=../schema/workflow.yaml
 document:
   dsl: '1.0.3'
   namespace: examples
@@ -1361,4 +1365,4 @@ do:
           customer: .customer
           bet: .bet)YAML";
 
-}  // namespace strij::openworkflow::test
+} // namespace strij::openworkflow::test

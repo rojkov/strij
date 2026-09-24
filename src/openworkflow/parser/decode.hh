@@ -1,9 +1,7 @@
 #pragma once
 
-#include <yaml-cpp/yaml.h>
-
 #include "openworkflow/document.hh"
-#include "openworkflow/parser/errors.hh"
+#include "yaml-cpp/yaml.h"
 
 namespace strij::openworkflow::parser {
 
@@ -15,9 +13,8 @@ auto DecodeDocument(const YAML::Node& node, Document& out) -> bool;
 
 namespace YAML {
 
-template <>
-struct convert<strij::openworkflow::Document> {
-    static auto decode(const Node& node, strij::openworkflow::Document& rhs) -> bool;
+template <> struct convert<strij::openworkflow::Document> {
+  static auto decode(const Node& node, strij::openworkflow::Document& rhs) -> bool;
 };
 
 } // namespace YAML
