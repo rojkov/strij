@@ -82,202 +82,194 @@ auto decodeRequired(const YAML::Node& node, std::string_view key, std::string_vi
 }
 
 template <typename T>
-void decodeOptional(const YAML::Node& node, std::string_view key, std::optional<T>& out) {
+auto decodeOptional(const YAML::Node& node, std::string_view key) -> std::optional<T> {
   const YAML::Node child = getChild(node, key);
   if (child.IsDefined() && !child.IsNull()) {
-    out = child.as<T>();
+    return child.as<T>();
   }
+  return std::nullopt;
 }
 
-template <typename T> void decodeIfPresent(const YAML::Node& node, std::string_view key, T& out) {
-  const YAML::Node child = getChild(node, key);
-  if (child.IsDefined() && !child.IsNull()) {
-    out = child.as<T>();
-  }
-}
-
-void decodeStringList(const YAML::Node& node, std::string_view key, std::vector<std::string>& out) {
+auto decodeStringList(const YAML::Node& node, std::string_view key) -> std::vector<std::string> {
+  std::vector<std::string> out;
   const YAML::Node child = getChild(node, key);
   if (child.IsDefined() && !child.IsNull()) {
     requireSequence(child, std::string(key));
-    out.clear();
     for (const auto& item : child) {
       out.push_back(item.as<std::string>());
     }
   }
+  return out;
 }
 
 // ---------------------------------------------------------------------------
 // Forward declarations
 // ---------------------------------------------------------------------------
 
-void decodeValue(const YAML::Node& node, Value& out);
-void decodeDurationUnits(const YAML::Node& node, DurationUnits& out);
-void decodeDuration(const YAML::Node& node, Duration& out);
-void decodeOAuth2Token(const YAML::Node& node, OAuth2Token& out);
-void decodeOAuth2Client(const YAML::Node& node, OAuth2AuthenticationProperties::Client& out);
-void decodeOAuth2Request(const YAML::Node& node, OAuth2AuthenticationProperties::Request& out);
-void decodeOAuth2Endpoints(const YAML::Node& node, OAuth2AuthenticationProperties::Endpoints& out);
-void decodeOAuth2Properties(const YAML::Node& node, OAuth2AuthenticationProperties& out);
-void decodeBasicAuthentication(const YAML::Node& node, BasicAuthentication& out);
-void decodeBearerAuthentication(const YAML::Node& node, BearerAuthentication& out);
-void decodeDigestAuthentication(const YAML::Node& node, DigestAuthentication& out);
-void decodeOAuth2Authentication(const YAML::Node& node, OAuth2Authentication& out);
-void decodeOidcAuthentication(const YAML::Node& node, OidcAuthentication& out);
-void decodeAuthentication(const YAML::Node& node, Authentication& out);
-void decodeEndpointObject(const YAML::Node& node, EndpointObject& out);
-void decodeEndpoint(const YAML::Node& node, Endpoint& out);
-void decodeExternalResource(const YAML::Node& node, ExternalResource& out);
-void decodeSchema(const YAML::Node& node, Schema& out);
-void decodeInput(const YAML::Node& node, Input& out);
-void decodeOutput(const YAML::Node& node, Output& out);
-void decodeExport(const YAML::Node& node, Export& out);
-void decodeError(const YAML::Node& node, Error& out);
-void decodeErrorFilter(const YAML::Node& node, ErrorFilter& out);
-void decodeBackoff(const YAML::Node& node, Backoff& out);
-void decodeJitter(const YAML::Node& node, Jitter& out);
-void decodeRetryAttempt(const YAML::Node& node, RetryLimit::Attempt& out);
-void decodeRetryLimit(const YAML::Node& node, RetryLimit& out);
-void decodeRetryPolicy(const YAML::Node& node, RetryPolicy& out);
-void decodeCatalog(const YAML::Node& node, Catalog& out);
-void decodeTimeout(const YAML::Node& node, Timeout& out);
-void decodeEventProperties(const YAML::Node& node, EventProperties& out);
-void decodeCorrelation(const YAML::Node& node, Correlation& out);
-void decodeEventFilter(const YAML::Node& node, EventFilter& out);
-void decodeEventFilterList(const YAML::Node& node, std::vector<EventFilter>& out);
-void decodeEventConsumptionStrategy(const YAML::Node& node, EventConsumptionStrategy& out);
-void decodeSubscriptionIterator(const YAML::Node& node, SubscriptionIterator& out);
-void decodeContainerLifetime(const YAML::Node& node, ContainerLifetime& out);
-void decodeContainerProcess(const YAML::Node& node, ContainerProcess& out);
-void decodeScriptProcess(const YAML::Node& node, ScriptProcess& out);
-void decodeShellProcess(const YAML::Node& node, ShellProcess& out);
-void decodeWorkflowProcess(const YAML::Node& node, WorkflowProcess& out);
-void decodeCallBody(const YAML::Node& node, CallBody& out);
-void decodeDoBody(const YAML::Node& node, DoBody& out);
-void decodeEmitBody(const YAML::Node& node, EmitBody& out);
-void decodeEvent(const YAML::Node& node, Event& out);
-void decodeForSpec(const YAML::Node& node, ForSpec& out);
-void decodeForBody(const YAML::Node& node, ForBody& out);
-void decodeForkBody(const YAML::Node& node, ForkBody& out);
-void decodeListenBody(const YAML::Node& node, ListenBody& out);
-void decodeRaiseBody(const YAML::Node& node, RaiseBody& out);
-void decodeRunBody(const YAML::Node& node, RunBody& out);
-void decodeSetBody(const YAML::Node& node, SetBody& out);
-void decodeSwitchBody(const YAML::Node& node, SwitchBody& out);
-void decodeCatch(const YAML::Node& node, Catch& out);
-void decodeTryBody(const YAML::Node& node, TryBody& out);
-void decodeWaitBody(const YAML::Node& node, WaitBody& out);
-void decodeTask(const YAML::Node& node, Task& out);
-void decodeTasks(const YAML::Node& node, Tasks& out);
-void decodeExtension(const YAML::Node& node, Extension& out);
-void decodeUse(const YAML::Node& node, Use& out);
-void decodeDocumentInfo(const YAML::Node& node, DocumentInfo& out);
-void decodeSchedule(const YAML::Node& node, Schedule& out);
-void decodeEvaluate(const YAML::Node& node, Evaluate& out);
+auto decodeValue(const YAML::Node& node) -> Value;
+auto decodeDurationUnits(const YAML::Node& node) -> DurationUnits;
+auto decodeDuration(const YAML::Node& node) -> Duration;
+auto decodeOAuth2Token(const YAML::Node& node) -> OAuth2Token;
+auto decodeOAuth2Client(const YAML::Node& node) -> OAuth2AuthenticationProperties::Client;
+auto decodeOAuth2Request(const YAML::Node& node) -> OAuth2AuthenticationProperties::Request;
+auto decodeOAuth2Endpoints(const YAML::Node& node) -> OAuth2AuthenticationProperties::Endpoints;
+auto decodeOAuth2Properties(const YAML::Node& node) -> OAuth2AuthenticationProperties;
+auto decodeBasicAuthentication(const YAML::Node& node) -> BasicAuthentication;
+auto decodeBearerAuthentication(const YAML::Node& node) -> BearerAuthentication;
+auto decodeDigestAuthentication(const YAML::Node& node) -> DigestAuthentication;
+auto decodeOAuth2Authentication(const YAML::Node& node) -> OAuth2Authentication;
+auto decodeOidcAuthentication(const YAML::Node& node) -> OidcAuthentication;
+auto decodeAuthentication(const YAML::Node& node) -> Authentication;
+auto decodeEndpointObject(const YAML::Node& node) -> EndpointObject;
+auto decodeEndpoint(const YAML::Node& node) -> Endpoint;
+auto decodeExternalResource(const YAML::Node& node) -> ExternalResource;
+auto decodeSchema(const YAML::Node& node) -> Schema;
+auto decodeInput(const YAML::Node& node) -> Input;
+auto decodeOutput(const YAML::Node& node) -> Output;
+auto decodeExport(const YAML::Node& node) -> Export;
+auto decodeError(const YAML::Node& node) -> Error;
+auto decodeErrorFilter(const YAML::Node& node) -> ErrorFilter;
+auto decodeBackoff(const YAML::Node& node) -> Backoff;
+auto decodeJitter(const YAML::Node& node) -> Jitter;
+auto decodeRetryAttempt(const YAML::Node& node) -> RetryLimit::Attempt;
+auto decodeRetryLimit(const YAML::Node& node) -> RetryLimit;
+auto decodeRetryPolicy(const YAML::Node& node) -> RetryPolicy;
+auto decodeCatalog(const YAML::Node& node) -> Catalog;
+auto decodeTimeout(const YAML::Node& node) -> Timeout;
+auto decodeEventProperties(const YAML::Node& node) -> EventProperties;
+auto decodeCorrelation(const YAML::Node& node) -> Correlation;
+auto decodeEventFilter(const YAML::Node& node) -> EventFilter;
+auto decodeEventFilterList(const YAML::Node& node) -> std::vector<EventFilter>;
+auto decodeEventConsumptionStrategy(const YAML::Node& node) -> EventConsumptionStrategy;
+auto decodeSubscriptionIterator(const YAML::Node& node) -> SubscriptionIterator;
+auto decodeContainerLifetime(const YAML::Node& node) -> ContainerLifetime;
+auto decodeContainerProcess(const YAML::Node& node) -> ContainerProcess;
+auto decodeScriptProcess(const YAML::Node& node) -> ScriptProcess;
+auto decodeShellProcess(const YAML::Node& node) -> ShellProcess;
+auto decodeWorkflowProcess(const YAML::Node& node) -> WorkflowProcess;
+auto decodeCallBody(const YAML::Node& node) -> CallBody;
+auto decodeDoBody(const YAML::Node& node) -> DoBody;
+auto decodeEmitBody(const YAML::Node& node) -> EmitBody;
+auto decodeEvent(const YAML::Node& node) -> Event;
+auto decodeForSpec(const YAML::Node& node) -> ForSpec;
+auto decodeForBody(const YAML::Node& node) -> ForBody;
+auto decodeForkBody(const YAML::Node& node) -> ForkBody;
+auto decodeListenBody(const YAML::Node& node) -> ListenBody;
+auto decodeRaiseBody(const YAML::Node& node) -> RaiseBody;
+auto decodeRunBody(const YAML::Node& node) -> RunBody;
+auto decodeSetBody(const YAML::Node& node) -> SetBody;
+auto decodeSwitchBody(const YAML::Node& node) -> SwitchBody;
+auto decodeCatch(const YAML::Node& node) -> Catch;
+auto decodeTryBody(const YAML::Node& node) -> TryBody;
+auto decodeWaitBody(const YAML::Node& node) -> WaitBody;
+auto decodeTask(const YAML::Node& node) -> Task;
+auto decodeTasks(const YAML::Node& node) -> Tasks;
+auto decodeExtension(const YAML::Node& node) -> Extension;
+auto decodeUse(const YAML::Node& node) -> Use;
+auto decodeDocumentInfo(const YAML::Node& node) -> DocumentInfo;
+auto decodeSchedule(const YAML::Node& node) -> Schedule;
+auto decodeEvaluate(const YAML::Node& node) -> Evaluate;
 
 // ---------------------------------------------------------------------------
 // Leaf and shared shapes
 // ---------------------------------------------------------------------------
 
-void decodeValue(const YAML::Node& node, Value& out) {
+auto decodeValue(const YAML::Node& node) -> Value {
   if (!node.IsDefined() || node.IsNull()) {
-    out = Value();
-    return;
+    return Value();
   }
   if (node.IsSequence()) {
     Value::Array array;
     array.reserve(node.size());
     for (const auto& item : node) {
-      Value element;
-      decodeValue(item, element);
-      array.push_back(std::move(element));
+      array.push_back(decodeValue(item));
     }
-    out = std::move(array);
-    return;
+    return std::move(array);
   }
   if (node.IsMap()) {
     Value::Object object;
     for (const auto& entry : node) {
-      Value element;
-      decodeValue(entry.second, element);
-      object.emplace(entry.first.Scalar(), std::move(element));
+      object.emplace(entry.first.Scalar(), decodeValue(entry.second));
     }
-    out = std::move(object);
-    return;
+    return std::move(object);
   }
 
   bool boolean_value = false;
   if (YAML::convert<bool>::decode(node, boolean_value)) {
-    out = boolean_value;
-    return;
+    return boolean_value;
   }
   std::int64_t integer_value = 0;
   if (YAML::convert<std::int64_t>::decode(node, integer_value)) {
-    out = integer_value;
-    return;
+    return integer_value;
   }
   double double_value = 0.0;
   if (YAML::convert<double>::decode(node, double_value)) {
-    out = double_value;
-    return;
+    return double_value;
   }
-  out = node.Scalar();
+  return node.Scalar();
 }
 
-void decodeDurationUnits(const YAML::Node& node, DurationUnits& out) {
+auto decodeDurationUnits(const YAML::Node& node) -> DurationUnits {
+  DurationUnits out;
   requireMap(node, "duration");
   rejectUnknownKeys(node, {"days", "hours", "minutes", "seconds", "milliseconds"}, "duration");
-  decodeOptional(node, "days", out.days_);
-  decodeOptional(node, "hours", out.hours_);
-  decodeOptional(node, "minutes", out.minutes_);
-  decodeOptional(node, "seconds", out.seconds_);
-  decodeOptional(node, "milliseconds", out.milliseconds_);
+  out.days_ = decodeOptional<std::int64_t>(node, "days");
+  out.hours_ = decodeOptional<std::int64_t>(node, "hours");
+  out.minutes_ = decodeOptional<std::int64_t>(node, "minutes");
+  out.seconds_ = decodeOptional<std::int64_t>(node, "seconds");
+  out.milliseconds_ = decodeOptional<std::int64_t>(node, "milliseconds");
+  return out;
 }
 
-void decodeDuration(const YAML::Node& node, Duration& out) {
+auto decodeDuration(const YAML::Node& node) -> Duration {
   if (node.IsScalar()) {
-    out = node.as<std::string>();
-    return;
+    return node.as<std::string>();
   }
   if (node.IsMap()) {
-    DurationUnits units;
-    decodeDurationUnits(node, units);
-    out = units;
-    return;
+    return decodeDurationUnits(node);
   }
   fail(node.Mark(), "duration must be a string or a mapping");
 }
 
-void decodeOAuth2Token(const YAML::Node& node, OAuth2Token& out) {
+auto decodeOAuth2Token(const YAML::Node& node) -> OAuth2Token {
+  OAuth2Token out;
   requireMap(node, "oauth2 token");
   rejectUnknownKeys(node, {"token", "type"}, "oauth2 token");
   out.token_ = decodeRequired<std::string>(node, "token", "oauth2 token");
   out.type_ = decodeRequired<std::string>(node, "type", "oauth2 token");
+  return out;
 }
 
-void decodeOAuth2Client(const YAML::Node& node, OAuth2AuthenticationProperties::Client& out) {
+auto decodeOAuth2Client(const YAML::Node& node) -> OAuth2AuthenticationProperties::Client {
+  OAuth2AuthenticationProperties::Client out;
   requireMap(node, "oauth2 client");
   rejectUnknownKeys(node, {"id", "secret", "assertion", "authentication"}, "oauth2 client");
-  decodeOptional(node, "id", out.id_);
-  decodeOptional(node, "secret", out.secret_);
-  decodeOptional(node, "assertion", out.assertion_);
-  decodeOptional(node, "authentication", out.authentication_);
+  out.id_ = decodeOptional<std::string>(node, "id");
+  out.secret_ = decodeOptional<std::string>(node, "secret");
+  out.assertion_ = decodeOptional<std::string>(node, "assertion");
+  out.authentication_ = decodeOptional<std::string>(node, "authentication");
+  return out;
 }
 
-void decodeOAuth2Request(const YAML::Node& node, OAuth2AuthenticationProperties::Request& out) {
+auto decodeOAuth2Request(const YAML::Node& node) -> OAuth2AuthenticationProperties::Request {
+  OAuth2AuthenticationProperties::Request out;
   requireMap(node, "oauth2 request");
   rejectUnknownKeys(node, {"encoding"}, "oauth2 request");
-  decodeOptional(node, "encoding", out.encoding_);
+  out.encoding_ = decodeOptional<std::string>(node, "encoding");
+  return out;
 }
 
-void decodeOAuth2Endpoints(const YAML::Node& node, OAuth2AuthenticationProperties::Endpoints& out) {
+auto decodeOAuth2Endpoints(const YAML::Node& node) -> OAuth2AuthenticationProperties::Endpoints {
+  OAuth2AuthenticationProperties::Endpoints out;
   requireMap(node, "oauth2 endpoints");
   rejectUnknownKeys(node, {"token", "introspection"}, "oauth2 endpoints");
-  decodeOptional(node, "token", out.token_);
-  decodeOptional(node, "introspection", out.introspection_);
+  out.token_ = decodeOptional<std::string>(node, "token");
+  out.introspection_ = decodeOptional<std::string>(node, "introspection");
+  return out;
 }
 
-void decodeOAuth2Properties(const YAML::Node& node, OAuth2AuthenticationProperties& out) {
+auto decodeOAuth2Properties(const YAML::Node& node) -> OAuth2AuthenticationProperties {
+  OAuth2AuthenticationProperties out;
   requireMap(node, "oauth2 authentication");
   rejectUnknownKeys(node,
                     {"authority", "grant", "client", "request", "endpoints", "issuers", "scopes",
@@ -286,589 +278,612 @@ void decodeOAuth2Properties(const YAML::Node& node, OAuth2AuthenticationProperti
   out.authority_ = decodeRequired<std::string>(node, "authority", "oauth2 authentication");
   out.grant_ = decodeRequired<std::string>(node, "grant", "oauth2 authentication");
   if (has(node, "client")) {
-    out.client_.emplace();
-    decodeOAuth2Client(getChild(node, "client"), *out.client_);
+    out.client_ = decodeOAuth2Client(getChild(node, "client"));
   }
   if (has(node, "request")) {
-    out.request_.emplace();
-    decodeOAuth2Request(getChild(node, "request"), *out.request_);
+    out.request_ = decodeOAuth2Request(getChild(node, "request"));
   }
   if (has(node, "endpoints")) {
-    out.endpoints_.emplace();
-    decodeOAuth2Endpoints(getChild(node, "endpoints"), *out.endpoints_);
+    out.endpoints_ = decodeOAuth2Endpoints(getChild(node, "endpoints"));
   }
-  decodeStringList(node, "issuers", out.issuers_);
-  decodeStringList(node, "scopes", out.scopes_);
-  decodeStringList(node, "audiences", out.audiences_);
-  decodeOptional(node, "username", out.username_);
-  decodeOptional(node, "password", out.password_);
+  out.issuers_ = decodeStringList(node, "issuers");
+  out.scopes_ = decodeStringList(node, "scopes");
+  out.audiences_ = decodeStringList(node, "audiences");
+  out.username_ = decodeOptional<std::string>(node, "username");
+  out.password_ = decodeOptional<std::string>(node, "password");
   if (has(node, "subject")) {
-    out.subject_.emplace();
-    decodeOAuth2Token(getChild(node, "subject"), *out.subject_);
+    out.subject_ = decodeOAuth2Token(getChild(node, "subject"));
   }
   if (has(node, "actor")) {
-    out.actor_.emplace();
-    decodeOAuth2Token(getChild(node, "actor"), *out.actor_);
+    out.actor_ = decodeOAuth2Token(getChild(node, "actor"));
   }
+  return out;
 }
 
-void decodeBasicAuthentication(const YAML::Node& node, BasicAuthentication& out) {
+auto decodeBasicAuthentication(const YAML::Node& node) -> BasicAuthentication {
+  BasicAuthentication out;
   requireMap(node, "basic authentication");
   if (has(node, "use")) {
     rejectUnknownKeys(node, {"use"}, "basic authentication reference");
     out.use_ = decodeRequired<std::string>(node, "use", "basic authentication reference");
-    return;
+    return out;
   }
   rejectUnknownKeys(node, {"username", "password"}, "basic authentication");
   out.username_ = decodeRequired<std::string>(node, "username", "basic authentication");
   out.password_ = decodeRequired<std::string>(node, "password", "basic authentication");
+  return out;
 }
 
-void decodeBearerAuthentication(const YAML::Node& node, BearerAuthentication& out) {
+auto decodeBearerAuthentication(const YAML::Node& node) -> BearerAuthentication {
+  BearerAuthentication out;
   requireMap(node, "bearer authentication");
   if (has(node, "use")) {
     rejectUnknownKeys(node, {"use"}, "bearer authentication reference");
     out.use_ = decodeRequired<std::string>(node, "use", "bearer authentication reference");
-    return;
+    return out;
   }
   rejectUnknownKeys(node, {"token"}, "bearer authentication");
   out.token_ = decodeRequired<std::string>(node, "token", "bearer authentication");
+  return out;
 }
 
-void decodeDigestAuthentication(const YAML::Node& node, DigestAuthentication& out) {
+auto decodeDigestAuthentication(const YAML::Node& node) -> DigestAuthentication {
+  DigestAuthentication out;
   requireMap(node, "digest authentication");
   if (has(node, "use")) {
     rejectUnknownKeys(node, {"use"}, "digest authentication reference");
     out.use_ = decodeRequired<std::string>(node, "use", "digest authentication reference");
-    return;
+    return out;
   }
   rejectUnknownKeys(node, {"username", "password"}, "digest authentication");
   out.username_ = decodeRequired<std::string>(node, "username", "digest authentication");
   out.password_ = decodeRequired<std::string>(node, "password", "digest authentication");
+  return out;
 }
 
-void decodeOAuth2Authentication(const YAML::Node& node, OAuth2Authentication& out) {
+auto decodeOAuth2Authentication(const YAML::Node& node) -> OAuth2Authentication {
+  OAuth2Authentication out;
   requireMap(node, "oauth2 authentication");
   if (has(node, "use")) {
     rejectUnknownKeys(node, {"use"}, "oauth2 authentication reference");
     out.use_ = decodeRequired<std::string>(node, "use", "oauth2 authentication reference");
-    return;
+    return out;
   }
-  out.properties_.emplace();
-  decodeOAuth2Properties(node, *out.properties_);
+  out.properties_ = decodeOAuth2Properties(node);
+  return out;
 }
 
-void decodeOidcAuthentication(const YAML::Node& node, OidcAuthentication& out) {
+auto decodeOidcAuthentication(const YAML::Node& node) -> OidcAuthentication {
+  OidcAuthentication out;
   requireMap(node, "oidc authentication");
   if (has(node, "use")) {
     rejectUnknownKeys(node, {"use"}, "oidc authentication reference");
     out.use_ = decodeRequired<std::string>(node, "use", "oidc authentication reference");
-    return;
+    return out;
   }
-  out.properties_.emplace();
-  decodeOAuth2Properties(node, *out.properties_);
+  out.properties_ = decodeOAuth2Properties(node);
+  return out;
 }
 
-void decodeAuthentication(const YAML::Node& node, Authentication& out) {
+auto decodeAuthentication(const YAML::Node& node) -> Authentication {
+  Authentication out;
   requireMap(node, "authentication");
   if (has(node, "use")) {
     rejectUnknownKeys(node, {"use"}, "authentication");
     out.scheme_ =
         AuthenticationReference{decodeRequired<std::string>(node, "use", "authentication")};
-    return;
+    return out;
   }
   const std::string_view scheme =
       SelectOne(node, {"basic", "bearer", "digest", "oauth2", "oidc"}, "authentication scheme");
   rejectUnknownKeys(node, {"basic", "bearer", "digest", "oauth2", "oidc"}, "authentication");
   const YAML::Node scheme_node = getChild(node, scheme);
   if (scheme == "basic") {
-    BasicAuthentication value;
-    decodeBasicAuthentication(scheme_node, value);
-    out.scheme_ = std::move(value);
+    out.scheme_ = decodeBasicAuthentication(scheme_node);
   } else if (scheme == "bearer") {
-    BearerAuthentication value;
-    decodeBearerAuthentication(scheme_node, value);
-    out.scheme_ = std::move(value);
+    out.scheme_ = decodeBearerAuthentication(scheme_node);
   } else if (scheme == "digest") {
-    DigestAuthentication value;
-    decodeDigestAuthentication(scheme_node, value);
-    out.scheme_ = std::move(value);
+    out.scheme_ = decodeDigestAuthentication(scheme_node);
   } else if (scheme == "oauth2") {
-    OAuth2Authentication value;
-    decodeOAuth2Authentication(scheme_node, value);
-    out.scheme_ = std::move(value);
+    out.scheme_ = decodeOAuth2Authentication(scheme_node);
   } else {
-    OidcAuthentication value;
-    decodeOidcAuthentication(scheme_node, value);
-    out.scheme_ = std::move(value);
+    out.scheme_ = decodeOidcAuthentication(scheme_node);
   }
+  return out;
 }
 
-void decodeEndpointObject(const YAML::Node& node, EndpointObject& out) {
+auto decodeEndpointObject(const YAML::Node& node) -> EndpointObject {
+  EndpointObject out;
   requireMap(node, "endpoint");
   rejectUnknownKeys(node, {"uri", "authentication"}, "endpoint");
   out.uri_ = decodeRequired<std::string>(node, "uri", "endpoint");
   if (has(node, "authentication")) {
-    out.authentication_.emplace();
-    decodeAuthentication(getChild(node, "authentication"), *out.authentication_);
+    out.authentication_ = decodeAuthentication(getChild(node, "authentication"));
   }
+  return out;
 }
 
-void decodeEndpoint(const YAML::Node& node, Endpoint& out) {
+auto decodeEndpoint(const YAML::Node& node) -> Endpoint {
+  Endpoint out;
   if (node.IsScalar()) {
     out.value_ = node.as<std::string>();
-    return;
+    return out;
   }
   if (node.IsMap()) {
-    EndpointObject value;
-    decodeEndpointObject(node, value);
-    out.value_ = std::move(value);
-    return;
+    out.value_ = decodeEndpointObject(node);
+    return out;
   }
   fail(node.Mark(), "endpoint must be a string or a mapping");
 }
 
-void decodeExternalResource(const YAML::Node& node, ExternalResource& out) {
+auto decodeExternalResource(const YAML::Node& node) -> ExternalResource {
+  ExternalResource out;
   requireMap(node, "external resource");
   rejectUnknownKeys(node, {"name", "endpoint"}, "external resource");
-  decodeOptional(node, "name", out.name_);
+  out.name_ = decodeOptional<std::string>(node, "name");
   requireKey(node, "endpoint", "external resource");
-  decodeEndpoint(getChild(node, "endpoint"), out.endpoint_);
+  out.endpoint_ = decodeEndpoint(getChild(node, "endpoint"));
+  return out;
 }
 
-void decodeSchema(const YAML::Node& node, Schema& out) {
+auto decodeSchema(const YAML::Node& node) -> Schema {
+  Schema out;
   requireMap(node, "schema");
   rejectUnknownKeys(node, {"format", "document", "resource"}, "schema");
-  decodeIfPresent(node, "format", out.format_);
+  out.format_ = decodeOptional<std::string>(node, "format").value_or(out.format_);
   const std::string_view source = SelectOne(node, {"document", "resource"}, "schema source");
   const YAML::Node source_node = getChild(node, source);
   if (source == "document") {
-    Value value;
-    decodeValue(source_node, value);
-    out.source_ = std::move(value);
+    out.source_ = decodeValue(source_node);
   } else {
-    ExternalResource value;
-    decodeExternalResource(source_node, value);
-    out.source_ = std::move(value);
+    out.source_ = decodeExternalResource(source_node);
   }
+  return out;
 }
 
-void decodeInput(const YAML::Node& node, Input& out) {
+auto decodeInput(const YAML::Node& node) -> Input {
+  Input out;
   requireMap(node, "input");
   rejectUnknownKeys(node, {"schema", "from"}, "input");
   if (has(node, "schema")) {
-    out.schema_.emplace();
-    decodeSchema(getChild(node, "schema"), *out.schema_);
+    out.schema_ = decodeSchema(getChild(node, "schema"));
   }
   if (has(node, "from")) {
     const YAML::Node child = getChild(node, "from");
     if (child.IsScalar()) {
       out.from_ = child.as<std::string>();
     } else {
-      Value value;
-      decodeValue(child, value);
-      out.from_ = std::move(value);
+      out.from_ = decodeValue(child);
     }
   }
+  return out;
 }
 
-void decodeOutput(const YAML::Node& node, Output& out) {
+auto decodeOutput(const YAML::Node& node) -> Output {
+  Output out;
   requireMap(node, "output");
   rejectUnknownKeys(node, {"schema", "as"}, "output");
   if (has(node, "schema")) {
-    out.schema_.emplace();
-    decodeSchema(getChild(node, "schema"), *out.schema_);
+    out.schema_ = decodeSchema(getChild(node, "schema"));
   }
   if (has(node, "as")) {
     const YAML::Node child = getChild(node, "as");
     if (child.IsScalar()) {
       out.as_ = child.as<std::string>();
     } else {
-      Value value;
-      decodeValue(child, value);
-      out.as_ = std::move(value);
+      out.as_ = decodeValue(child);
     }
   }
+  return out;
 }
 
-void decodeExport(const YAML::Node& node, Export& out) {
+auto decodeExport(const YAML::Node& node) -> Export {
+  Export out;
   requireMap(node, "export");
   rejectUnknownKeys(node, {"schema", "as"}, "export");
   if (has(node, "schema")) {
-    out.schema_.emplace();
-    decodeSchema(getChild(node, "schema"), *out.schema_);
+    out.schema_ = decodeSchema(getChild(node, "schema"));
   }
   if (has(node, "as")) {
     const YAML::Node child = getChild(node, "as");
     if (child.IsScalar()) {
       out.as_ = child.as<std::string>();
     } else {
-      Value value;
-      decodeValue(child, value);
-      out.as_ = std::move(value);
+      out.as_ = decodeValue(child);
     }
   }
+  return out;
 }
 
-void decodeError(const YAML::Node& node, Error& out) {
+auto decodeError(const YAML::Node& node) -> Error {
+  Error out;
   requireMap(node, "error");
   rejectUnknownKeys(node, {"type", "status", "instance", "title", "detail"}, "error");
   out.type_ = decodeRequired<std::string>(node, "type", "error");
   out.status_ = decodeRequired<std::int64_t>(node, "status", "error");
-  decodeOptional(node, "instance", out.instance_);
-  decodeOptional(node, "title", out.title_);
-  decodeOptional(node, "detail", out.detail_);
+  out.instance_ = decodeOptional<std::string>(node, "instance");
+  out.title_ = decodeOptional<std::string>(node, "title");
+  out.detail_ = decodeOptional<std::string>(node, "detail");
+  return out;
 }
 
-void decodeErrorFilter(const YAML::Node& node, ErrorFilter& out) {
+auto decodeErrorFilter(const YAML::Node& node) -> ErrorFilter {
+  ErrorFilter out;
   requireMap(node, "error filter");
   rejectUnknownKeys(node, {"type", "status", "instance", "title", "detail"}, "error filter");
-  decodeOptional(node, "type", out.type_);
-  decodeOptional(node, "status", out.status_);
-  decodeOptional(node, "instance", out.instance_);
-  decodeOptional(node, "title", out.title_);
-  decodeOptional(node, "detail", out.detail_);
+  out.type_ = decodeOptional<std::string>(node, "type");
+  out.status_ = decodeOptional<std::int64_t>(node, "status");
+  out.instance_ = decodeOptional<std::string>(node, "instance");
+  out.title_ = decodeOptional<std::string>(node, "title");
+  out.detail_ = decodeOptional<std::string>(node, "detail");
+  return out;
 }
 
-void decodeBackoff(const YAML::Node& node, Backoff& out) {
+auto decodeBackoff(const YAML::Node& node) -> Backoff {
+  Backoff out;
   requireMap(node, "retry backoff");
   const std::string_view kind =
       SelectOne(node, {"constant", "exponential", "linear"}, "retry backoff branch");
   rejectUnknownKeys(node, {"constant", "exponential", "linear"}, "retry backoff");
   out.kind_ = std::string(kind);
-  decodeValue(getChild(node, kind), out.parameters_);
+  out.parameters_ = decodeValue(getChild(node, kind));
+  return out;
 }
 
-void decodeJitter(const YAML::Node& node, Jitter& out) {
+auto decodeJitter(const YAML::Node& node) -> Jitter {
+  Jitter out;
   requireMap(node, "retry jitter");
   rejectUnknownKeys(node, {"from", "to"}, "retry jitter");
   requireKey(node, "from", "retry jitter");
   requireKey(node, "to", "retry jitter");
-  decodeDuration(getChild(node, "from"), out.from_);
-  decodeDuration(getChild(node, "to"), out.to_);
+  out.from_ = decodeDuration(getChild(node, "from"));
+  out.to_ = decodeDuration(getChild(node, "to"));
+  return out;
 }
 
-void decodeRetryAttempt(const YAML::Node& node, RetryLimit::Attempt& out) {
+auto decodeRetryAttempt(const YAML::Node& node) -> RetryLimit::Attempt {
+  RetryLimit::Attempt out;
   requireMap(node, "retry attempt");
   rejectUnknownKeys(node, {"count", "duration"}, "retry attempt");
-  decodeOptional(node, "count", out.count_);
+  out.count_ = decodeOptional<std::int64_t>(node, "count");
   if (has(node, "duration")) {
-    decodeDuration(getChild(node, "duration"), out.duration_.emplace());
+    out.duration_ = decodeDuration(getChild(node, "duration"));
   }
+  return out;
 }
 
-void decodeRetryLimit(const YAML::Node& node, RetryLimit& out) {
+auto decodeRetryLimit(const YAML::Node& node) -> RetryLimit {
+  RetryLimit out;
   requireMap(node, "retry limit");
   rejectUnknownKeys(node, {"attempt", "duration"}, "retry limit");
   if (has(node, "attempt")) {
-    out.attempt_.emplace();
-    decodeRetryAttempt(getChild(node, "attempt"), *out.attempt_);
+    out.attempt_ = decodeRetryAttempt(getChild(node, "attempt"));
   }
   if (has(node, "duration")) {
-    decodeDuration(getChild(node, "duration"), out.duration_.emplace());
+    out.duration_ = decodeDuration(getChild(node, "duration"));
   }
+  return out;
 }
 
-void decodeRetryPolicy(const YAML::Node& node, RetryPolicy& out) {
+auto decodeRetryPolicy(const YAML::Node& node) -> RetryPolicy {
+  RetryPolicy out;
   requireMap(node, "retry policy");
   rejectUnknownKeys(node, {"when", "exceptWhen", "delay", "backoff", "limit", "jitter"},
                     "retry policy");
-  decodeOptional(node, "when", out.when_);
-  decodeOptional(node, "exceptWhen", out.exceptWhen_);
+  out.when_ = decodeOptional<std::string>(node, "when");
+  out.exceptWhen_ = decodeOptional<std::string>(node, "exceptWhen");
   if (has(node, "delay")) {
-    decodeDuration(getChild(node, "delay"), out.delay_.emplace());
+    out.delay_ = decodeDuration(getChild(node, "delay"));
   }
   if (has(node, "backoff")) {
-    out.backoff_.emplace();
-    decodeBackoff(getChild(node, "backoff"), *out.backoff_);
+    out.backoff_ = decodeBackoff(getChild(node, "backoff"));
   }
   if (has(node, "limit")) {
-    out.limit_.emplace();
-    decodeRetryLimit(getChild(node, "limit"), *out.limit_);
+    out.limit_ = decodeRetryLimit(getChild(node, "limit"));
   }
   if (has(node, "jitter")) {
-    out.jitter_.emplace();
-    decodeJitter(getChild(node, "jitter"), *out.jitter_);
+    out.jitter_ = decodeJitter(getChild(node, "jitter"));
   }
+  return out;
 }
 
-void decodeCatalog(const YAML::Node& node, Catalog& out) {
+auto decodeCatalog(const YAML::Node& node) -> Catalog {
+  Catalog out;
   requireMap(node, "catalog");
   rejectUnknownKeys(node, {"endpoint"}, "catalog");
   requireKey(node, "endpoint", "catalog");
-  decodeEndpoint(getChild(node, "endpoint"), out.endpoint_);
+  out.endpoint_ = decodeEndpoint(getChild(node, "endpoint"));
+  return out;
 }
 
-void decodeTimeout(const YAML::Node& node, Timeout& out) {
+auto decodeTimeout(const YAML::Node& node) -> Timeout {
+  Timeout out;
   requireMap(node, "timeout");
   rejectUnknownKeys(node, {"after"}, "timeout");
   requireKey(node, "after", "timeout");
-  decodeDuration(getChild(node, "after"), out.after_);
+  out.after_ = decodeDuration(getChild(node, "after"));
+  return out;
 }
 
 // ---------------------------------------------------------------------------
 // Event machinery
 // ---------------------------------------------------------------------------
 
-void decodeEventProperties(const YAML::Node& node, EventProperties& out) {
+auto decodeEventProperties(const YAML::Node& node) -> EventProperties {
+  EventProperties out;
   requireMap(node, "event properties");
   rejectUnknownKeys(
       node, {"id", "source", "type", "time", "subject", "datacontenttype", "dataschema", "data"},
       "event properties");
-  decodeOptional(node, "id", out.id_);
-  decodeOptional(node, "source", out.source_);
-  decodeOptional(node, "type", out.type_);
-  decodeOptional(node, "time", out.time_);
-  decodeOptional(node, "subject", out.subject_);
-  decodeOptional(node, "datacontenttype", out.datacontenttype_);
-  decodeOptional(node, "dataschema", out.dataschema_);
+  out.id_ = decodeOptional<std::string>(node, "id");
+  out.source_ = decodeOptional<std::string>(node, "source");
+  out.type_ = decodeOptional<std::string>(node, "type");
+  out.time_ = decodeOptional<std::string>(node, "time");
+  out.subject_ = decodeOptional<std::string>(node, "subject");
+  out.datacontenttype_ = decodeOptional<std::string>(node, "datacontenttype");
+  out.dataschema_ = decodeOptional<std::string>(node, "dataschema");
   if (has(node, "data")) {
-    out.data_.emplace();
-    decodeValue(getChild(node, "data"), *out.data_);
+    out.data_ = decodeValue(getChild(node, "data"));
   }
+  return out;
 }
 
-void decodeCorrelation(const YAML::Node& node, Correlation& out) {
+auto decodeCorrelation(const YAML::Node& node) -> Correlation {
+  Correlation out;
   requireMap(node, "correlation");
   rejectUnknownKeys(node, {"from", "expect"}, "correlation");
   out.from_ = decodeRequired<std::string>(node, "from", "correlation");
-  decodeOptional(node, "expect", out.expect_);
+  out.expect_ = decodeOptional<std::string>(node, "expect");
+  return out;
 }
 
-void decodeEventFilter(const YAML::Node& node, EventFilter& out) {
+auto decodeEventFilter(const YAML::Node& node) -> EventFilter {
+  EventFilter out;
   requireMap(node, "event filter");
   rejectUnknownKeys(node, {"with", "correlate"}, "event filter");
   requireKey(node, "with", "event filter");
-  decodeEventProperties(getChild(node, "with"), out.with_);
+  out.with_ = decodeEventProperties(getChild(node, "with"));
   if (has(node, "correlate")) {
     const YAML::Node correlate = getChild(node, "correlate");
     requireMap(correlate, "event correlation");
     for (const auto& entry : correlate) {
-      Correlation value;
-      decodeCorrelation(entry.second, value);
-      out.correlate_.emplace(entry.first.Scalar(), std::move(value));
+      out.correlate_.emplace(entry.first.Scalar(), decodeCorrelation(entry.second));
     }
   }
+  return out;
 }
 
-void decodeEventFilterList(const YAML::Node& node, std::vector<EventFilter>& out) {
+auto decodeEventFilterList(const YAML::Node& node) -> std::vector<EventFilter> {
+  std::vector<EventFilter> out;
   requireSequence(node, "event list");
-  out.clear();
   for (const auto& item : node) {
-    EventFilter value;
-    decodeEventFilter(item, value);
-    out.push_back(std::move(value));
+    out.push_back(decodeEventFilter(item));
   }
+  return out;
 }
 
-void decodeEventConsumptionStrategy(const YAML::Node& node, EventConsumptionStrategy& out) {
+auto decodeEventConsumptionStrategy(const YAML::Node& node) -> EventConsumptionStrategy {
+  EventConsumptionStrategy out;
   requireMap(node, "event consumption strategy");
   const std::string_view mode =
       SelectOne(node, {"all", "any", "one"}, "event consumption strategy");
   rejectUnknownKeys(node, {"all", "any", "one", "until"}, "event consumption strategy");
   if (mode == "all") {
     out.mode_ = EventConsumptionStrategy::Mode::kAll;
-    decodeEventFilterList(getChild(node, "all"), out.filters_);
+    out.filters_ = decodeEventFilterList(getChild(node, "all"));
   } else if (mode == "any") {
     out.mode_ = EventConsumptionStrategy::Mode::kAny;
-    decodeEventFilterList(getChild(node, "any"), out.filters_);
+    out.filters_ = decodeEventFilterList(getChild(node, "any"));
     if (has(node, "until")) {
-      out.until_.emplace();
-      decodeValue(getChild(node, "until"), *out.until_);
+      out.until_ = decodeValue(getChild(node, "until"));
     }
   } else {
     out.mode_ = EventConsumptionStrategy::Mode::kOne;
-    EventFilter value;
-    decodeEventFilter(getChild(node, "one"), value);
-    out.filters_.push_back(std::move(value));
+    out.filters_.push_back(decodeEventFilter(getChild(node, "one")));
   }
+  return out;
 }
 
-void decodeSubscriptionIterator(const YAML::Node& node, SubscriptionIterator& out) {
+auto decodeSubscriptionIterator(const YAML::Node& node) -> SubscriptionIterator {
+  SubscriptionIterator out;
   requireMap(node, "subscription iterator");
   rejectUnknownKeys(node, {"item", "at", "do", "output", "export"}, "subscription iterator");
-  decodeOptional(node, "item", out.item_);
-  decodeOptional(node, "at", out.at_);
+  out.item_ = decodeOptional<std::string>(node, "item");
+  out.at_ = decodeOptional<std::string>(node, "at");
   if (has(node, "do")) {
-    decodeTasks(getChild(node, "do"), out.do_);
+    out.do_ = decodeTasks(getChild(node, "do"));
   }
   if (has(node, "output")) {
-    out.output_.emplace();
-    decodeOutput(getChild(node, "output"), *out.output_);
+    out.output_ = decodeOutput(getChild(node, "output"));
   }
   if (has(node, "export")) {
-    out.export_.emplace();
-    decodeExport(getChild(node, "export"), *out.export_);
+    out.export_ = decodeExport(getChild(node, "export"));
   }
+  return out;
 }
 
 // ---------------------------------------------------------------------------
 // Task bodies
 // ---------------------------------------------------------------------------
 
-void decodeContainerLifetime(const YAML::Node& node, ContainerLifetime& out) {
+auto decodeContainerLifetime(const YAML::Node& node) -> ContainerLifetime {
+  ContainerLifetime out;
   requireMap(node, "container lifetime");
   rejectUnknownKeys(node, {"cleanup", "after"}, "container lifetime");
   out.cleanup_ = decodeRequired<std::string>(node, "cleanup", "container lifetime");
   if (has(node, "after")) {
-    decodeDuration(getChild(node, "after"), out.after_.emplace());
+    out.after_ = decodeDuration(getChild(node, "after"));
   }
+  return out;
 }
 
-void decodeContainerProcess(const YAML::Node& node, ContainerProcess& out) {
+auto decodeContainerProcess(const YAML::Node& node) -> ContainerProcess {
+  ContainerProcess out;
   requireMap(node, "container process");
   rejectUnknownKeys(node,
                     {"image", "name", "command", "ports", "volumes", "environment", "stdin",
                      "arguments", "lifetime", "pullPolicy"},
                     "container process");
   out.image_ = decodeRequired<std::string>(node, "image", "container process");
-  decodeOptional(node, "name", out.name_);
-  decodeOptional(node, "command", out.command_);
+  out.name_ = decodeOptional<std::string>(node, "name");
+  out.command_ = decodeOptional<std::string>(node, "command");
   if (has(node, "ports")) {
-    out.ports_.emplace();
-    decodeValue(getChild(node, "ports"), *out.ports_);
+    out.ports_ = decodeValue(getChild(node, "ports"));
   }
   if (has(node, "volumes")) {
-    out.volumes_.emplace();
-    decodeValue(getChild(node, "volumes"), *out.volumes_);
+    out.volumes_ = decodeValue(getChild(node, "volumes"));
   }
   if (has(node, "environment")) {
-    out.environment_.emplace();
-    decodeValue(getChild(node, "environment"), *out.environment_);
+    out.environment_ = decodeValue(getChild(node, "environment"));
   }
-  decodeOptional(node, "stdin", out.stdin_);
-  decodeStringList(node, "arguments", out.arguments_);
+  out.stdin_ = decodeOptional<std::string>(node, "stdin");
+  out.arguments_ = decodeStringList(node, "arguments");
   if (has(node, "lifetime")) {
-    out.lifetime_.emplace();
-    decodeContainerLifetime(getChild(node, "lifetime"), *out.lifetime_);
+    out.lifetime_ = decodeContainerLifetime(getChild(node, "lifetime"));
   }
-  decodeOptional(node, "pullPolicy", out.pull_policy_);
+  out.pull_policy_ = decodeOptional<std::string>(node, "pullPolicy");
+  return out;
 }
 
-void decodeScriptProcess(const YAML::Node& node, ScriptProcess& out) {
+auto decodeScriptProcess(const YAML::Node& node) -> ScriptProcess {
+  ScriptProcess out;
   requireMap(node, "script process");
   const std::string_view source = SelectOne(node, {"code", "resource"}, "script process source");
   rejectUnknownKeys(node, {"language", "stdin", "arguments", "environment", "code", "resource"},
                     "script process");
   out.language_ = decodeRequired<std::string>(node, "language", "script process");
-  decodeOptional(node, "stdin", out.stdin_);
-  decodeStringList(node, "arguments", out.arguments_);
+  out.stdin_ = decodeOptional<std::string>(node, "stdin");
+  out.arguments_ = decodeStringList(node, "arguments");
   if (has(node, "environment")) {
-    out.environment_.emplace();
-    decodeValue(getChild(node, "environment"), *out.environment_);
+    out.environment_ = decodeValue(getChild(node, "environment"));
   }
   if (source == "code") {
     out.source_ = ScriptSourceCode{decodeRequired<std::string>(node, "code", "script process")};
   } else {
-    ScriptSourceResource resource;
-    decodeExternalResource(getChild(node, "resource"), resource.source_);
-    out.source_ = std::move(resource);
+    out.source_ = ScriptSourceResource{decodeExternalResource(getChild(node, "resource"))};
   }
+  return out;
 }
 
-void decodeShellProcess(const YAML::Node& node, ShellProcess& out) {
+auto decodeShellProcess(const YAML::Node& node) -> ShellProcess {
+  ShellProcess out;
   requireMap(node, "shell process");
   rejectUnknownKeys(node, {"command", "stdin", "arguments", "environment"}, "shell process");
   out.command_ = decodeRequired<std::string>(node, "command", "shell process");
-  decodeOptional(node, "stdin", out.stdin_);
-  decodeStringList(node, "arguments", out.arguments_);
+  out.stdin_ = decodeOptional<std::string>(node, "stdin");
+  out.arguments_ = decodeStringList(node, "arguments");
   if (has(node, "environment")) {
-    out.environment_.emplace();
-    decodeValue(getChild(node, "environment"), *out.environment_);
+    out.environment_ = decodeValue(getChild(node, "environment"));
   }
+  return out;
 }
 
-void decodeWorkflowProcess(const YAML::Node& node, WorkflowProcess& out) {
+auto decodeWorkflowProcess(const YAML::Node& node) -> WorkflowProcess {
+  WorkflowProcess out;
   requireMap(node, "workflow process");
   rejectUnknownKeys(node, {"namespace", "name", "version", "input"}, "workflow process");
   out.namespace_ = decodeRequired<std::string>(node, "namespace", "workflow process");
   out.name_ = decodeRequired<std::string>(node, "name", "workflow process");
   out.version_ = decodeRequired<std::string>(node, "version", "workflow process");
   if (has(node, "input")) {
-    out.input_.emplace();
-    decodeValue(getChild(node, "input"), *out.input_);
+    out.input_ = decodeValue(getChild(node, "input"));
   }
+  return out;
 }
 
-void decodeCallBody(const YAML::Node& node, CallBody& out) {
+auto decodeCallBody(const YAML::Node& node) -> CallBody {
+  CallBody out;
   requireKey(node, "call", "call task");
   out.call_ = decodeRequired<std::string>(node, "call", "call task");
   if (has(node, "with")) {
-    decodeValue(getChild(node, "with"), out.with_);
+    out.with_ = decodeValue(getChild(node, "with"));
   }
+  return out;
 }
 
-void decodeDoBody(const YAML::Node& node, DoBody& out) {
+auto decodeDoBody(const YAML::Node& node) -> DoBody {
+  DoBody out;
   requireKey(node, "do", "do task");
-  decodeTasks(getChild(node, "do"), out.do_);
+  out.do_ = decodeTasks(getChild(node, "do"));
+  return out;
 }
 
-void decodeEvent(const YAML::Node& node, Event& out) {
+auto decodeEvent(const YAML::Node& node) -> Event {
+  Event out;
   requireMap(node, "event");
   rejectUnknownKeys(node, {"with"}, "event");
   if (has(node, "with")) {
-    decodeEventProperties(getChild(node, "with"), out.with_);
+    out.with_ = decodeEventProperties(getChild(node, "with"));
   }
+  return out;
 }
 
-void decodeEmitBody(const YAML::Node& node, EmitBody& out) {
+auto decodeEmitBody(const YAML::Node& node) -> EmitBody {
+  EmitBody out;
   requireKey(node, "emit", "emit task");
   const YAML::Node emit = getChild(node, "emit");
   requireMap(emit, "emit task");
   rejectUnknownKeys(emit, {"event"}, "emit task");
   requireKey(emit, "event", "emit task");
-  decodeEvent(getChild(emit, "event"), out.event_);
+  out.event_ = decodeEvent(getChild(emit, "event"));
+  return out;
 }
 
-void decodeForSpec(const YAML::Node& node, ForSpec& out) {
+auto decodeForSpec(const YAML::Node& node) -> ForSpec {
+  ForSpec out;
   requireMap(node, "for");
   rejectUnknownKeys(node, {"each", "at", "in"}, "for");
-  decodeOptional(node, "each", out.each_);
-  decodeOptional(node, "at", out.at_);
+  out.each_ = decodeOptional<std::string>(node, "each");
+  out.at_ = decodeOptional<std::string>(node, "at");
   requireKey(node, "in", "for");
   const YAML::Node in_key = getChild(node, "in");
   if (in_key.IsScalar()) {
     out.in_ = in_key.as<std::string>();
   } else {
-    Value value;
-    decodeValue(in_key, value);
-    out.in_ = std::move(value);
+    out.in_ = decodeValue(in_key);
   }
+  return out;
 }
 
-void decodeForBody(const YAML::Node& node, ForBody& out) {
+auto decodeForBody(const YAML::Node& node) -> ForBody {
+  ForBody out;
   requireKey(node, "for", "for task");
-  decodeForSpec(getChild(node, "for"), out.for_);
-  decodeOptional(node, "while", out.while_);
+  out.for_ = decodeForSpec(getChild(node, "for"));
+  out.while_ = decodeOptional<std::string>(node, "while");
   requireKey(node, "do", "for task");
-  decodeTasks(getChild(node, "do"), out.do_);
+  out.do_ = decodeTasks(getChild(node, "do"));
+  return out;
 }
 
-void decodeForkBody(const YAML::Node& node, ForkBody& out) {
+auto decodeForkBody(const YAML::Node& node) -> ForkBody {
+  ForkBody out;
   requireKey(node, "fork", "fork task");
   const YAML::Node fork = getChild(node, "fork");
   requireMap(fork, "fork task");
   rejectUnknownKeys(fork, {"branches", "compete"}, "fork task");
   requireKey(fork, "branches", "fork task");
-  decodeTasks(getChild(fork, "branches"), out.branches_);
-  decodeIfPresent(fork, "compete", out.compete_);
+  out.branches_ = decodeTasks(getChild(fork, "branches"));
+  out.compete_ = decodeOptional<bool>(fork, "compete").value_or(out.compete_);
+  return out;
 }
 
-void decodeListenBody(const YAML::Node& node, ListenBody& out) {
+auto decodeListenBody(const YAML::Node& node) -> ListenBody {
+  ListenBody out;
   requireKey(node, "listen", "listen task");
   const YAML::Node listen = getChild(node, "listen");
   requireMap(listen, "listen task");
   rejectUnknownKeys(listen, {"to", "read"}, "listen task");
   requireKey(listen, "to", "listen task");
-  decodeEventConsumptionStrategy(getChild(listen, "to"), out.to_);
-  decodeOptional(listen, "read", out.read_);
+  out.to_ = decodeEventConsumptionStrategy(getChild(listen, "to"));
+  out.read_ = decodeOptional<std::string>(listen, "read");
   if (has(node, "foreach")) {
-    out.foreach_.emplace();
-    decodeSubscriptionIterator(getChild(node, "foreach"), *out.foreach_);
+    out.foreach_ = decodeSubscriptionIterator(getChild(node, "foreach"));
   }
+  return out;
 }
 
-void decodeRaiseBody(const YAML::Node& node, RaiseBody& out) {
+auto decodeRaiseBody(const YAML::Node& node) -> RaiseBody {
+  RaiseBody out;
   requireKey(node, "raise", "raise task");
   const YAML::Node raise = getChild(node, "raise");
   requireMap(raise, "raise task");
@@ -878,13 +893,13 @@ void decodeRaiseBody(const YAML::Node& node, RaiseBody& out) {
   if (error.IsScalar()) {
     out.error_ = error.as<std::string>();
   } else {
-    Error value;
-    decodeError(error, value);
-    out.error_ = std::move(value);
+    out.error_ = decodeError(error);
   }
+  return out;
 }
 
-void decodeRunBody(const YAML::Node& node, RunBody& out) {
+auto decodeRunBody(const YAML::Node& node) -> RunBody {
+  RunBody out;
   requireKey(node, "run", "run task");
   const YAML::Node run = getChild(node, "run");
   requireMap(run, "run task");
@@ -894,39 +909,33 @@ void decodeRunBody(const YAML::Node& node, RunBody& out) {
                     "run task");
   const YAML::Node process = getChild(run, kind);
   if (kind == "container") {
-    ContainerProcess value;
-    decodeContainerProcess(process, value);
-    out.process_ = std::move(value);
+    out.process_ = decodeContainerProcess(process);
   } else if (kind == "shell") {
-    ShellProcess value;
-    decodeShellProcess(process, value);
-    out.process_ = std::move(value);
+    out.process_ = decodeShellProcess(process);
   } else if (kind == "script") {
-    ScriptProcess value;
-    decodeScriptProcess(process, value);
-    out.process_ = std::move(value);
+    out.process_ = decodeScriptProcess(process);
   } else {
-    WorkflowProcess value;
-    decodeWorkflowProcess(process, value);
-    out.process_ = std::move(value);
+    out.process_ = decodeWorkflowProcess(process);
   }
-  decodeOptional(run, "await", out.await_);
-  decodeOptional(run, "return", out.return_);
+  out.await_ = decodeOptional<bool>(run, "await");
+  out.return_ = decodeOptional<std::string>(run, "return");
+  return out;
 }
 
-void decodeSetBody(const YAML::Node& node, SetBody& out) {
+auto decodeSetBody(const YAML::Node& node) -> SetBody {
+  SetBody out;
   requireKey(node, "set", "set task");
   const YAML::Node set = getChild(node, "set");
   if (set.IsScalar()) {
     out.set_ = set.as<std::string>();
   } else {
-    Value value;
-    decodeValue(set, value);
-    out.set_ = std::move(value);
+    out.set_ = decodeValue(set);
   }
+  return out;
 }
 
-void decodeSwitchBody(const YAML::Node& node, SwitchBody& out) {
+auto decodeSwitchBody(const YAML::Node& node) -> SwitchBody {
+  SwitchBody out;
   requireKey(node, "switch", "switch task");
   const YAML::Node node_switch = getChild(node, "switch");
   requireSequence(node_switch, "switch task");
@@ -942,13 +951,15 @@ void decodeSwitchBody(const YAML::Node& node, SwitchBody& out) {
     const YAML::Node body = entry.second;
     requireMap(body, "switch case");
     rejectUnknownKeys(body, {"when", "then"}, "switch case");
-    decodeOptional(body, "when", named_case.when_);
-    decodeOptional(body, "then", named_case.then_);
+    named_case.when_ = decodeOptional<std::string>(body, "when");
+    named_case.then_ = decodeOptional<std::string>(body, "then");
     out.cases_.push_back(std::move(named_case));
   }
+  return out;
 }
 
-void decodeCatch(const YAML::Node& node, Catch& out) {
+auto decodeCatch(const YAML::Node& node) -> Catch {
+  Catch out;
   requireMap(node, "catch");
   rejectUnknownKeys(node, {"errors", "as", "when", "exceptWhen", "retry", "do", "then"}, "catch");
   if (has(node, "errors")) {
@@ -956,80 +967,77 @@ void decodeCatch(const YAML::Node& node, Catch& out) {
     requireMap(errors, "catch errors");
     rejectUnknownKeys(errors, {"with"}, "catch errors");
     if (has(errors, "with")) {
-      out.errors_.emplace();
-      decodeErrorFilter(getChild(errors, "with"), *out.errors_);
+      out.errors_ = decodeErrorFilter(getChild(errors, "with"));
     }
   }
-  decodeOptional(node, "as", out.as_);
-  decodeOptional(node, "when", out.when_);
-  decodeOptional(node, "exceptWhen", out.exceptWhen_);
+  out.as_ = decodeOptional<std::string>(node, "as");
+  out.when_ = decodeOptional<std::string>(node, "when");
+  out.exceptWhen_ = decodeOptional<std::string>(node, "exceptWhen");
   if (has(node, "retry")) {
     const YAML::Node retry = getChild(node, "retry");
     if (retry.IsScalar()) {
       out.retry_ = retry.as<std::string>();
     } else {
-      RetryPolicy value;
-      decodeRetryPolicy(retry, value);
-      out.retry_ = std::move(value);
+      out.retry_ = decodeRetryPolicy(retry);
     }
   }
   if (has(node, "do")) {
-    decodeTasks(getChild(node, "do"), out.do_);
+    out.do_ = decodeTasks(getChild(node, "do"));
   }
-  decodeOptional(node, "then", out.then_);
+  out.then_ = decodeOptional<std::string>(node, "then");
+  return out;
 }
 
-void decodeTryBody(const YAML::Node& node, TryBody& out) {
+auto decodeTryBody(const YAML::Node& node) -> TryBody {
+  TryBody out;
   requireKey(node, "try", "try task");
-  decodeTasks(getChild(node, "try"), out.try_);
+  out.try_ = decodeTasks(getChild(node, "try"));
   if (has(node, "catch")) {
-    out.catch_.emplace();
-    decodeCatch(getChild(node, "catch"), *out.catch_);
+    out.catch_ = decodeCatch(getChild(node, "catch"));
   }
+  return out;
 }
 
-void decodeWaitBody(const YAML::Node& node, WaitBody& out) {
+auto decodeWaitBody(const YAML::Node& node) -> WaitBody {
+  WaitBody out;
   requireKey(node, "wait", "wait task");
-  decodeDuration(getChild(node, "wait"), out.wait_);
+  out.wait_ = decodeDuration(getChild(node, "wait"));
+  return out;
 }
 
 // ---------------------------------------------------------------------------
 // Task union and collections
 // ---------------------------------------------------------------------------
 
-void decodeTask(const YAML::Node& node, Task& out) {
+auto decodeTask(const YAML::Node& node) -> Task {
+  Task out;
   requireMap(node, "task");
   rejectUnknownKeys(node,
                     {"if",     "input", "output", "export", "timeout", "then",  "metadata", "call",
                      "do",     "emit",  "for",    "fork",   "listen",  "raise", "run",      "set",
                      "switch", "try",   "wait",   "with",   "foreach", "while", "catch"},
                     "task");
-  decodeOptional(node, "if", out.if_);
+  out.if_ = decodeOptional<std::string>(node, "if");
   if (has(node, "input")) {
-    out.input_.emplace();
-    decodeInput(getChild(node, "input"), *out.input_);
+    out.input_ = decodeInput(getChild(node, "input"));
   }
   if (has(node, "output")) {
-    out.output_.emplace();
-    decodeOutput(getChild(node, "output"), *out.output_);
+    out.output_ = decodeOutput(getChild(node, "output"));
   }
   if (has(node, "export")) {
-    out.export_.emplace();
-    decodeExport(getChild(node, "export"), *out.export_);
+    out.export_ = decodeExport(getChild(node, "export"));
   }
   if (has(node, "timeout")) {
     const YAML::Node timeout = getChild(node, "timeout");
     if (timeout.IsScalar()) {
       out.timeout_ = timeout.as<std::string>();
     } else {
-      Timeout value;
-      decodeTimeout(timeout, value);
-      out.timeout_ = std::move(value);
+      out.timeout_ = decodeTimeout(timeout);
     }
   }
-  decodeOptional(node, "then", out.then_);
+  out.then_ = decodeOptional<std::string>(node, "then");
   if (has(node, "metadata")) {
-    decodeValue(getChild(node, "metadata"), out.metadata_);
+    out.metadata_ = decodeValue(getChild(node, "metadata"));
   }
 
   // The `do` key is overloaded: it is the do task kind, but also a sibling
@@ -1057,58 +1065,35 @@ void decodeTask(const YAML::Node& node, Task& out) {
 
   const std::string_view kind = present.front();
   if (kind == "call") {
-    CallBody body;
-    decodeCallBody(node, body);
-    out.body_ = std::move(body);
+    out.body_ = decodeCallBody(node);
   } else if (kind == "do") {
-    DoBody body;
-    decodeDoBody(node, body);
-    out.body_ = std::move(body);
+    out.body_ = decodeDoBody(node);
   } else if (kind == "emit") {
-    EmitBody body;
-    decodeEmitBody(node, body);
-    out.body_ = std::move(body);
+    out.body_ = decodeEmitBody(node);
   } else if (kind == "for") {
-    ForBody body;
-    decodeForBody(node, body);
-    out.body_ = std::move(body);
+    out.body_ = decodeForBody(node);
   } else if (kind == "fork") {
-    ForkBody body;
-    decodeForkBody(node, body);
-    out.body_ = std::move(body);
+    out.body_ = decodeForkBody(node);
   } else if (kind == "listen") {
-    ListenBody body;
-    decodeListenBody(node, body);
-    out.body_ = std::move(body);
+    out.body_ = decodeListenBody(node);
   } else if (kind == "raise") {
-    RaiseBody body;
-    decodeRaiseBody(node, body);
-    out.body_ = std::move(body);
+    out.body_ = decodeRaiseBody(node);
   } else if (kind == "run") {
-    RunBody body;
-    decodeRunBody(node, body);
-    out.body_ = std::move(body);
+    out.body_ = decodeRunBody(node);
   } else if (kind == "set") {
-    SetBody body;
-    decodeSetBody(node, body);
-    out.body_ = std::move(body);
+    out.body_ = decodeSetBody(node);
   } else if (kind == "switch") {
-    SwitchBody body;
-    decodeSwitchBody(node, body);
-    out.body_ = std::move(body);
+    out.body_ = decodeSwitchBody(node);
   } else if (kind == "try") {
-    TryBody body;
-    decodeTryBody(node, body);
-    out.body_ = std::move(body);
+    out.body_ = decodeTryBody(node);
   } else {
-    WaitBody body;
-    decodeWaitBody(node, body);
-    out.body_ = std::move(body);
+    out.body_ = decodeWaitBody(node);
   }
+  return out;
 }
 
-void decodeTasks(const YAML::Node& node, Tasks& out) {
-  out.clear();
+auto decodeTasks(const YAML::Node& node) -> Tasks {
+  Tasks out;
   if (node.IsSequence()) {
     for (const auto& item : node) {
       requireMap(item, "task collection");
@@ -1118,19 +1103,19 @@ void decodeTasks(const YAML::Node& node, Tasks& out) {
       const auto entry = *item.begin();
       NamedTask named_task;
       named_task.name_ = entry.first.Scalar();
-      decodeTask(entry.second, named_task.task_);
+      named_task.task_ = decodeTask(entry.second);
       out.push_back(std::move(named_task));
     }
-    return;
+    return out;
   }
   if (node.IsMap()) {
     for (const auto& entry : node) {
       NamedTask named_task;
       named_task.name_ = entry.first.Scalar();
-      decodeTask(entry.second, named_task.task_);
+      named_task.task_ = decodeTask(entry.second);
       out.push_back(std::move(named_task));
     }
-    return;
+    return out;
   }
   fail(node.Mark(), "task collection must be a sequence or a mapping");
 }
@@ -1139,20 +1124,23 @@ void decodeTasks(const YAML::Node& node, Tasks& out) {
 // Reusable components and the document
 // ---------------------------------------------------------------------------
 
-void decodeExtension(const YAML::Node& node, Extension& out) {
+auto decodeExtension(const YAML::Node& node) -> Extension {
+  Extension out;
   requireMap(node, "extension");
   rejectUnknownKeys(node, {"extend", "when", "before", "after"}, "extension");
   out.extend_ = decodeRequired<std::string>(node, "extend", "extension");
-  decodeOptional(node, "when", out.when_);
+  out.when_ = decodeOptional<std::string>(node, "when");
   if (has(node, "before")) {
-    decodeTasks(getChild(node, "before"), out.before_);
+    out.before_ = decodeTasks(getChild(node, "before"));
   }
   if (has(node, "after")) {
-    decodeTasks(getChild(node, "after"), out.after_);
+    out.after_ = decodeTasks(getChild(node, "after"));
   }
+  return out;
 }
 
-void decodeUse(const YAML::Node& node, Use& out) {
+auto decodeUse(const YAML::Node& node) -> Use {
+  Use out;
   requireMap(node, "use");
   rejectUnknownKeys(node,
                     {"authentications", "errors", "extensions", "functions", "retries", "secrets",
@@ -1162,18 +1150,14 @@ void decodeUse(const YAML::Node& node, Use& out) {
     const YAML::Node authentications = getChild(node, "authentications");
     requireMap(authentications, "use.authentications");
     for (const auto& entry : authentications) {
-      Authentication value;
-      decodeAuthentication(entry.second, value);
-      out.authentications_.emplace(entry.first.Scalar(), std::move(value));
+      out.authentications_.emplace(entry.first.Scalar(), decodeAuthentication(entry.second));
     }
   }
   if (has(node, "errors")) {
     const YAML::Node errors = getChild(node, "errors");
     requireMap(errors, "use.errors");
     for (const auto& entry : errors) {
-      Error value;
-      decodeError(entry.second, value);
-      out.errors_.emplace(entry.first.Scalar(), std::move(value));
+      out.errors_.emplace(entry.first.Scalar(), decodeError(entry.second));
     }
   }
   if (has(node, "extensions")) {
@@ -1187,7 +1171,7 @@ void decodeUse(const YAML::Node& node, Use& out) {
       const auto entry = *item.begin();
       NamedExtension named_extension;
       named_extension.name_ = entry.first.Scalar();
-      decodeExtension(entry.second, named_extension.extension_);
+      named_extension.extension_ = decodeExtension(entry.second);
       out.extensions_.push_back(std::move(named_extension));
     }
   }
@@ -1195,42 +1179,36 @@ void decodeUse(const YAML::Node& node, Use& out) {
     const YAML::Node functions = getChild(node, "functions");
     requireMap(functions, "use.functions");
     for (const auto& entry : functions) {
-      Task value;
-      decodeTask(entry.second, value);
-      out.functions_.emplace(entry.first.Scalar(), std::move(value));
+      out.functions_.emplace(entry.first.Scalar(), decodeTask(entry.second));
     }
   }
   if (has(node, "retries")) {
     const YAML::Node retries = getChild(node, "retries");
     requireMap(retries, "use.retries");
     for (const auto& entry : retries) {
-      RetryPolicy value;
-      decodeRetryPolicy(entry.second, value);
-      out.retries_.emplace(entry.first.Scalar(), std::move(value));
+      out.retries_.emplace(entry.first.Scalar(), decodeRetryPolicy(entry.second));
     }
   }
-  decodeStringList(node, "secrets", out.secrets_);
+  out.secrets_ = decodeStringList(node, "secrets");
   if (has(node, "timeouts")) {
     const YAML::Node timeouts = getChild(node, "timeouts");
     requireMap(timeouts, "use.timeouts");
     for (const auto& entry : timeouts) {
-      Timeout value;
-      decodeTimeout(entry.second, value);
-      out.timeouts_.emplace(entry.first.Scalar(), std::move(value));
+      out.timeouts_.emplace(entry.first.Scalar(), decodeTimeout(entry.second));
     }
   }
   if (has(node, "catalogs")) {
     const YAML::Node catalogs = getChild(node, "catalogs");
     requireMap(catalogs, "use.catalogs");
     for (const auto& entry : catalogs) {
-      Catalog value;
-      decodeCatalog(entry.second, value);
-      out.catalogs_.emplace(entry.first.Scalar(), std::move(value));
+      out.catalogs_.emplace(entry.first.Scalar(), decodeCatalog(entry.second));
     }
   }
+  return out;
 }
 
-void decodeDocumentInfo(const YAML::Node& node, DocumentInfo& out) {
+auto decodeDocumentInfo(const YAML::Node& node) -> DocumentInfo {
+  DocumentInfo out;
   requireMap(node, "document");
   rejectUnknownKeys(node,
                     {"dsl", "namespace", "name", "version", "title", "summary", "tags", "metadata"},
@@ -1239,85 +1217,84 @@ void decodeDocumentInfo(const YAML::Node& node, DocumentInfo& out) {
   out.namespace_ = decodeRequired<std::string>(node, "namespace", "document");
   out.name_ = decodeRequired<std::string>(node, "name", "document");
   out.version_ = decodeRequired<std::string>(node, "version", "document");
-  decodeOptional(node, "title", out.title_);
-  decodeOptional(node, "summary", out.summary_);
+  out.title_ = decodeOptional<std::string>(node, "title");
+  out.summary_ = decodeOptional<std::string>(node, "summary");
   if (has(node, "tags")) {
-    decodeValue(getChild(node, "tags"), out.tags_);
+    out.tags_ = decodeValue(getChild(node, "tags"));
   }
   if (has(node, "metadata")) {
-    decodeValue(getChild(node, "metadata"), out.metadata_);
+    out.metadata_ = decodeValue(getChild(node, "metadata"));
   }
+  return out;
 }
 
-void decodeSchedule(const YAML::Node& node, Schedule& out) {
+auto decodeSchedule(const YAML::Node& node) -> Schedule {
+  Schedule out;
   requireMap(node, "schedule");
   rejectUnknownKeys(node, {"every", "cron", "after", "on", "read"}, "schedule");
   if (has(node, "every")) {
-    decodeDuration(getChild(node, "every"), out.every_.emplace());
+    out.every_ = decodeDuration(getChild(node, "every"));
   }
-  decodeOptional(node, "cron", out.cron_);
+  out.cron_ = decodeOptional<std::string>(node, "cron");
   if (has(node, "after")) {
-    decodeDuration(getChild(node, "after"), out.after_.emplace());
+    out.after_ = decodeDuration(getChild(node, "after"));
   }
   if (has(node, "on")) {
-    out.on_.emplace();
-    decodeEventConsumptionStrategy(getChild(node, "on"), *out.on_);
+    out.on_ = decodeEventConsumptionStrategy(getChild(node, "on"));
   }
-  decodeOptional(node, "read", out.read_);
+  out.read_ = decodeOptional<std::string>(node, "read");
+  return out;
 }
 
-void decodeEvaluate(const YAML::Node& node, Evaluate& out) {
+auto decodeEvaluate(const YAML::Node& node) -> Evaluate {
+  Evaluate out;
   requireMap(node, "evaluate");
   rejectUnknownKeys(node, {"language", "mode"}, "evaluate");
-  decodeOptional(node, "language", out.language_);
-  decodeOptional(node, "mode", out.mode_);
+  out.language_ = decodeOptional<std::string>(node, "language");
+  out.mode_ = decodeOptional<std::string>(node, "mode");
+  return out;
 }
 
-void decodeDocumentImpl(const YAML::Node& node, Document& out) {
+auto decodeDocumentImpl(const YAML::Node& node) -> Document {
+  Document out;
   requireMap(node, "workflow");
   rejectUnknownKeys(node,
                     {"document", "input", "use", "do", "timeout", "output", "schedule", "evaluate"},
                     "workflow");
   requireKey(node, "document", "workflow");
-  decodeDocumentInfo(getChild(node, "document"), out.document_);
+  out.document_ = decodeDocumentInfo(getChild(node, "document"));
   if (has(node, "input")) {
-    out.input_.emplace();
-    decodeInput(getChild(node, "input"), *out.input_);
+    out.input_ = decodeInput(getChild(node, "input"));
   }
   if (has(node, "use")) {
-    out.use_.emplace();
-    decodeUse(getChild(node, "use"), *out.use_);
+    out.use_ = decodeUse(getChild(node, "use"));
   }
   requireKey(node, "do", "workflow");
-  decodeTasks(getChild(node, "do"), out.do_);
+  out.do_ = decodeTasks(getChild(node, "do"));
   if (has(node, "timeout")) {
     const YAML::Node timeout = getChild(node, "timeout");
     if (timeout.IsScalar()) {
       out.timeout_ = timeout.as<std::string>();
     } else {
-      Timeout value;
-      decodeTimeout(timeout, value);
-      out.timeout_ = std::move(value);
+      out.timeout_ = decodeTimeout(timeout);
     }
   }
   if (has(node, "output")) {
-    out.output_.emplace();
-    decodeOutput(getChild(node, "output"), *out.output_);
+    out.output_ = decodeOutput(getChild(node, "output"));
   }
   if (has(node, "schedule")) {
-    out.schedule_.emplace();
-    decodeSchedule(getChild(node, "schedule"), *out.schedule_);
+    out.schedule_ = decodeSchedule(getChild(node, "schedule"));
   }
   if (has(node, "evaluate")) {
-    out.evaluate_.emplace();
-    decodeEvaluate(getChild(node, "evaluate"), *out.evaluate_);
+    out.evaluate_ = decodeEvaluate(getChild(node, "evaluate"));
   }
+  return out;
 }
 
 } // namespace
 
 auto DecodeDocument(const YAML::Node& node, Document& out) -> bool {
-  decodeDocumentImpl(node, out);
+  out = decodeDocumentImpl(node);
   return true;
 }
 
