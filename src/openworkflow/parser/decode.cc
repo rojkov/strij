@@ -477,11 +477,13 @@ auto decodeSchema(const YAML::Node& node) -> Schema {
   out.format_ = decodeOptional<std::string>(node, "format").value_or(out.format_);
   const std::string_view source = SelectOne(node, {"document", "resource"}, "schema source");
   const YAML::Node source_node = getChild(node, source);
+
   if (source == "document") {
     out.source_ = decodeValue(source_node);
   } else {
     out.source_ = decodeExternalResource(source_node);
   }
+
   return out;
 }
 
@@ -489,9 +491,11 @@ auto decodeInput(const YAML::Node& node) -> Input {
   Input out;
   requireMap(node, "input");
   rejectUnknownKeys(node, {"schema", "from"}, "input");
+
   if (has(node, "schema")) {
     out.schema_ = decodeSchema(getChild(node, "schema"));
   }
+
   if (has(node, "from")) {
     const YAML::Node child = getChild(node, "from");
     if (child.IsScalar()) {
@@ -500,6 +504,7 @@ auto decodeInput(const YAML::Node& node) -> Input {
       out.from_ = decodeValue(child);
     }
   }
+
   return out;
 }
 
@@ -507,9 +512,11 @@ auto decodeOutput(const YAML::Node& node) -> Output {
   Output out;
   requireMap(node, "output");
   rejectUnknownKeys(node, {"schema", "as"}, "output");
+
   if (has(node, "schema")) {
     out.schema_ = decodeSchema(getChild(node, "schema"));
   }
+
   if (has(node, "as")) {
     const YAML::Node child = getChild(node, "as");
     if (child.IsScalar()) {
@@ -518,6 +525,7 @@ auto decodeOutput(const YAML::Node& node) -> Output {
       out.as_ = decodeValue(child);
     }
   }
+
   return out;
 }
 
@@ -525,9 +533,11 @@ auto decodeExport(const YAML::Node& node) -> Export {
   Export out;
   requireMap(node, "export");
   rejectUnknownKeys(node, {"schema", "as"}, "export");
+
   if (has(node, "schema")) {
     out.schema_ = decodeSchema(getChild(node, "schema"));
   }
+
   if (has(node, "as")) {
     const YAML::Node child = getChild(node, "as");
     if (child.IsScalar()) {
@@ -536,53 +546,45 @@ auto decodeExport(const YAML::Node& node) -> Export {
       out.as_ = decodeValue(child);
     }
   }
+
   return out;
 }
 
 auto decodeError(const YAML::Node& node) -> Error {
-  Error out;
   requireMap(node, "error");
   rejectUnknownKeys(node, {"type", "status", "instance", "title", "detail"}, "error");
-  out.type_ = decodeRequired<std::string>(node, "type", "error");
-  out.status_ = decodeRequired<std::int64_t>(node, "status", "error");
-  out.instance_ = decodeOptional<std::string>(node, "instance");
-  out.title_ = decodeOptional<std::string>(node, "title");
-  out.detail_ = decodeOptional<std::string>(node, "detail");
-  return out;
+  return {.type_ = decodeRequired<std::string>(node, "type", "error"),
+          .status_ = decodeRequired<std::int64_t>(node, "status", "error"),
+          .instance_ = decodeOptional<std::string>(node, "instance"),
+          .title_ = decodeOptional<std::string>(node, "title"),
+          .detail_ = decodeOptional<std::string>(node, "detail")};
 }
 
 auto decodeErrorFilter(const YAML::Node& node) -> ErrorFilter {
-  ErrorFilter out;
   requireMap(node, "error filter");
   rejectUnknownKeys(node, {"type", "status", "instance", "title", "detail"}, "error filter");
-  out.type_ = decodeOptional<std::string>(node, "type");
-  out.status_ = decodeOptional<std::int64_t>(node, "status");
-  out.instance_ = decodeOptional<std::string>(node, "instance");
-  out.title_ = decodeOptional<std::string>(node, "title");
-  out.detail_ = decodeOptional<std::string>(node, "detail");
-  return out;
+  return {.type_ = decodeOptional<std::string>(node, "type"),
+          .status_ = decodeOptional<std::int64_t>(node, "status"),
+          .instance_ = decodeOptional<std::string>(node, "instance"),
+          .title_ = decodeOptional<std::string>(node, "title"),
+          .detail_ = decodeOptional<std::string>(node, "detail")};
 }
 
 auto decodeBackoff(const YAML::Node& node) -> Backoff {
-  Backoff out;
   requireMap(node, "retry backoff");
   const std::string_view kind =
       SelectOne(node, {"constant", "exponential", "linear"}, "retry backoff branch");
   rejectUnknownKeys(node, {"constant", "exponential", "linear"}, "retry backoff");
-  out.kind_ = std::string(kind);
-  out.parameters_ = decodeValue(getChild(node, kind));
-  return out;
+  return {.kind_ = std::string(kind), .parameters_ = decodeValue(getChild(node, kind))};
 }
 
 auto decodeJitter(const YAML::Node& node) -> Jitter {
-  Jitter out;
   requireMap(node, "retry jitter");
   rejectUnknownKeys(node, {"from", "to"}, "retry jitter");
   requireKey(node, "from", "retry jitter");
   requireKey(node, "to", "retry jitter");
-  out.from_ = decodeDuration(getChild(node, "from"));
-  out.to_ = decodeDuration(getChild(node, "to"));
-  return out;
+  return {.from_ = decodeDuration(getChild(node, "from")),
+          .to_ = decodeDuration(getChild(node, "to"))};
 }
 
 auto decodeRetryAttempt(const YAML::Node& node) -> RetryLimit::Attempt {
@@ -590,9 +592,11 @@ auto decodeRetryAttempt(const YAML::Node& node) -> RetryLimit::Attempt {
   requireMap(node, "retry attempt");
   rejectUnknownKeys(node, {"count", "duration"}, "retry attempt");
   out.count_ = decodeOptional<std::int64_t>(node, "count");
+
   if (has(node, "duration")) {
     out.duration_ = decodeDuration(getChild(node, "duration"));
   }
+
   return out;
 }
 
