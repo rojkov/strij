@@ -471,12 +471,12 @@ auto decodeExternalResource(const YAML::Node& node) -> ExternalResource {
 }
 
 auto decodeSchema(const YAML::Node& node) -> Schema {
-  Schema out;
   requireMap(node, "schema");
   rejectUnknownKeys(node, {"format", "document", "resource"}, "schema");
-  out.format_ = decodeOptional<std::string>(node, "format").value_or(out.format_);
   const std::string_view source = SelectOne(node, {"document", "resource"}, "schema source");
   const YAML::Node source_node = getChild(node, source);
+
+  Schema out{.format_ = decodeOptional<std::string>(node, "format").value_or("json")};
 
   if (source == "document") {
     out.source_ = decodeValue(source_node);
@@ -940,15 +940,13 @@ auto decodeForBody(const YAML::Node& node) -> ForBody {
 }
 
 auto decodeForkBody(const YAML::Node& node) -> ForkBody {
-  ForkBody out;
   requireKey(node, "fork", "fork task");
   const YAML::Node fork = getChild(node, "fork");
   requireMap(fork, "fork task");
   rejectUnknownKeys(fork, {"branches", "compete"}, "fork task");
   requireKey(fork, "branches", "fork task");
-  out.branches_ = decodeTasks(getChild(fork, "branches"));
-  out.compete_ = decodeOptional<bool>(fork, "compete").value_or(out.compete_);
-  return out;
+  return {.branches_ = decodeTasks(getChild(fork, "branches")),
+          .compete_ = decodeOptional<bool>(fork, "compete").value_or(false)};
 }
 
 auto decodeListenBody(const YAML::Node& node) -> ListenBody {

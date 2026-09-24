@@ -118,7 +118,7 @@ struct ExternalResource {
 
 // A schema is either an inline document or an external resource reference.
 struct Schema {
-  std::string format_ = "json";
+  std::string format_{"json"};
   std::variant<Value, ExternalResource> source_;
 };
 
