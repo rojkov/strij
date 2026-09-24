@@ -604,12 +604,15 @@ auto decodeRetryLimit(const YAML::Node& node) -> RetryLimit {
   RetryLimit out;
   requireMap(node, "retry limit");
   rejectUnknownKeys(node, {"attempt", "duration"}, "retry limit");
+
   if (has(node, "attempt")) {
     out.attempt_ = decodeRetryAttempt(getChild(node, "attempt"));
   }
+
   if (has(node, "duration")) {
     out.duration_ = decodeDuration(getChild(node, "duration"));
   }
+
   return out;
 }
 
@@ -618,39 +621,41 @@ auto decodeRetryPolicy(const YAML::Node& node) -> RetryPolicy {
   requireMap(node, "retry policy");
   rejectUnknownKeys(node, {"when", "exceptWhen", "delay", "backoff", "limit", "jitter"},
                     "retry policy");
+
   out.when_ = decodeOptional<std::string>(node, "when");
   out.exceptWhen_ = decodeOptional<std::string>(node, "exceptWhen");
+
   if (has(node, "delay")) {
     out.delay_ = decodeDuration(getChild(node, "delay"));
   }
+
   if (has(node, "backoff")) {
     out.backoff_ = decodeBackoff(getChild(node, "backoff"));
   }
+
   if (has(node, "limit")) {
     out.limit_ = decodeRetryLimit(getChild(node, "limit"));
   }
+
   if (has(node, "jitter")) {
     out.jitter_ = decodeJitter(getChild(node, "jitter"));
   }
+
   return out;
 }
 
 auto decodeCatalog(const YAML::Node& node) -> Catalog {
-  Catalog out;
   requireMap(node, "catalog");
   rejectUnknownKeys(node, {"endpoint"}, "catalog");
   requireKey(node, "endpoint", "catalog");
-  out.endpoint_ = decodeEndpoint(getChild(node, "endpoint"));
-  return out;
+  return {.endpoint_ = decodeEndpoint(getChild(node, "endpoint"))};
 }
 
 auto decodeTimeout(const YAML::Node& node) -> Timeout {
-  Timeout out;
   requireMap(node, "timeout");
   rejectUnknownKeys(node, {"after"}, "timeout");
   requireKey(node, "after", "timeout");
-  out.after_ = decodeDuration(getChild(node, "after"));
-  return out;
+  return {.after_ = decodeDuration(getChild(node, "after"))};
 }
 
 // ---------------------------------------------------------------------------
@@ -663,6 +668,7 @@ auto decodeEventProperties(const YAML::Node& node) -> EventProperties {
   rejectUnknownKeys(
       node, {"id", "source", "type", "time", "subject", "datacontenttype", "dataschema", "data"},
       "event properties");
+
   out.id_ = decodeOptional<std::string>(node, "id");
   out.source_ = decodeOptional<std::string>(node, "source");
   out.type_ = decodeOptional<std::string>(node, "type");
@@ -670,19 +676,19 @@ auto decodeEventProperties(const YAML::Node& node) -> EventProperties {
   out.subject_ = decodeOptional<std::string>(node, "subject");
   out.datacontenttype_ = decodeOptional<std::string>(node, "datacontenttype");
   out.dataschema_ = decodeOptional<std::string>(node, "dataschema");
+
   if (has(node, "data")) {
     out.data_ = decodeValue(getChild(node, "data"));
   }
+
   return out;
 }
 
 auto decodeCorrelation(const YAML::Node& node) -> Correlation {
-  Correlation out;
   requireMap(node, "correlation");
   rejectUnknownKeys(node, {"from", "expect"}, "correlation");
-  out.from_ = decodeRequired<std::string>(node, "from", "correlation");
-  out.expect_ = decodeOptional<std::string>(node, "expect");
-  return out;
+  return {.from_ = decodeRequired<std::string>(node, "from", "correlation"),
+          .expect_ = decodeOptional<std::string>(node, "expect")};
 }
 
 auto decodeEventFilter(const YAML::Node& node) -> EventFilter {
