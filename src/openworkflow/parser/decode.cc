@@ -1109,32 +1109,37 @@ auto decodeWaitBody(const YAML::Node& node) -> WaitBody {
 // ---------------------------------------------------------------------------
 
 auto decodeTask(const YAML::Node& node) -> Task {
-  Task out;
   requireMap(node, "task");
   rejectUnknownKeys(node,
                     {"if",     "input", "output", "export", "timeout", "then",  "metadata", "call",
                      "do",     "emit",  "for",    "fork",   "listen",  "raise", "run",      "set",
                      "switch", "try",   "wait",   "with",   "foreach", "while", "catch"},
                     "task");
-  out.if_ = decodeOptional<std::string>(node, "if");
+  Task out{.if_ = decodeOptional<std::string>(node, "if"),
+           .then_ = decodeOptional<std::string>(node, "then")};
+
   if (has(node, "input")) {
     out.input_ = decodeInput(getChild(node, "input"));
   }
+
   if (has(node, "output")) {
     out.output_ = decodeOutput(getChild(node, "output"));
   }
+
   if (has(node, "export")) {
     out.export_ = decodeExport(getChild(node, "export"));
   }
+
   if (has(node, "timeout")) {
     const YAML::Node timeout = getChild(node, "timeout");
+
     if (timeout.IsScalar()) {
       out.timeout_ = timeout.as<std::string>();
     } else {
       out.timeout_ = decodeTimeout(timeout);
     }
   }
-  out.then_ = decodeOptional<std::string>(node, "then");
+
   if (has(node, "metadata")) {
     out.metadata_ = decodeValue(getChild(node, "metadata"));
   }
@@ -1148,6 +1153,7 @@ auto decodeTask(const YAML::Node& node) -> Task {
       present.push_back(kind);
     }
   }
+
   if (has(node, "for")) {
     present.erase(std::remove(present.begin(), present.end(), "do"), present.end());
   }
@@ -1156,8 +1162,7 @@ auto decodeTask(const YAML::Node& node) -> Task {
     fail(node.Mark(),
          "task must declare exactly one task kind (call, do, emit, for, fork, listen, raise, "
          "run, set, switch, try, wait)");
-  }
-  if (present.size() > 1) {
+  } else if (present.size() > 1) {
     fail(node.Mark(), "task declares mutually exclusive kinds '" + std::string(present[0]) +
                           "' and '" + std::string(present[1]) + "'");
   }
@@ -1188,34 +1193,36 @@ auto decodeTask(const YAML::Node& node) -> Task {
   } else {
     out.body_ = decodeWaitBody(node);
   }
+
   return out;
 }
 
 auto decodeTasks(const YAML::Node& node) -> Tasks {
   Tasks out;
+
   if (node.IsSequence()) {
     for (const auto& item : node) {
       requireMap(item, "task collection");
+
       if (item.size() != 1) {
         fail(item.Mark(), "each task entry must be a single-key mapping");
       }
+
       const auto entry = *item.begin();
-      NamedTask named_task;
-      named_task.name_ = entry.first.Scalar();
-      named_task.task_ = decodeTask(entry.second);
-      out.push_back(std::move(named_task));
+      out.push_back({.name_ = entry.first.Scalar(), .task_ = decodeTask(entry.second)});
     }
+
     return out;
   }
+
   if (node.IsMap()) {
     for (const auto& entry : node) {
-      NamedTask named_task;
-      named_task.name_ = entry.first.Scalar();
-      named_task.task_ = decodeTask(entry.second);
-      out.push_back(std::move(named_task));
+      out.push_back({.name_ = entry.first.Scalar(), .task_ = decodeTask(entry.second)});
     }
+
     return out;
   }
+
   fail(node.Mark(), "task collection must be a sequence or a mapping");
 }
 
