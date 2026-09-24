@@ -859,25 +859,30 @@ auto decodeShellProcess(const YAML::Node& node) -> ShellProcess {
 }
 
 auto decodeWorkflowProcess(const YAML::Node& node) -> WorkflowProcess {
-  WorkflowProcess out;
   requireMap(node, "workflow process");
   rejectUnknownKeys(node, {"namespace", "name", "version", "input"}, "workflow process");
-  out.namespace_ = decodeRequired<std::string>(node, "namespace", "workflow process");
-  out.name_ = decodeRequired<std::string>(node, "name", "workflow process");
-  out.version_ = decodeRequired<std::string>(node, "version", "workflow process");
+
+  WorkflowProcess out{.namespace_ =
+                          decodeRequired<std::string>(node, "namespace", "workflow process"),
+                      .name_ = decodeRequired<std::string>(node, "name", "workflow process"),
+                      .version_ = decodeRequired<std::string>(node, "version", "workflow process")};
+
   if (has(node, "input")) {
     out.input_ = decodeValue(getChild(node, "input"));
   }
+
   return out;
 }
 
 auto decodeCallBody(const YAML::Node& node) -> CallBody {
-  CallBody out;
   requireKey(node, "call", "call task");
-  out.call_ = decodeRequired<std::string>(node, "call", "call task");
+
+  CallBody out{.call_ = decodeRequired<std::string>(node, "call", "call task")};
+
   if (has(node, "with")) {
     out.with_ = decodeValue(getChild(node, "with"));
   }
+
   return out;
 }
 
