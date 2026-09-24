@@ -950,38 +950,42 @@ auto decodeForkBody(const YAML::Node& node) -> ForkBody {
 }
 
 auto decodeListenBody(const YAML::Node& node) -> ListenBody {
-  ListenBody out;
   requireKey(node, "listen", "listen task");
   const YAML::Node listen = getChild(node, "listen");
   requireMap(listen, "listen task");
   rejectUnknownKeys(listen, {"to", "read"}, "listen task");
   requireKey(listen, "to", "listen task");
-  out.to_ = decodeEventConsumptionStrategy(getChild(listen, "to"));
-  out.read_ = decodeOptional<std::string>(listen, "read");
+
+  ListenBody out{.to_ = decodeEventConsumptionStrategy(getChild(listen, "to")),
+                 .read_ = decodeOptional<std::string>(listen, "read")};
+
   if (has(node, "foreach")) {
     out.foreach_ = decodeSubscriptionIterator(getChild(node, "foreach"));
   }
+
   return out;
 }
 
 auto decodeRaiseBody(const YAML::Node& node) -> RaiseBody {
-  RaiseBody out;
   requireKey(node, "raise", "raise task");
   const YAML::Node raise = getChild(node, "raise");
   requireMap(raise, "raise task");
   rejectUnknownKeys(raise, {"error"}, "raise task");
   requireKey(raise, "error", "raise task");
   const YAML::Node error = getChild(raise, "error");
+
+  RaiseBody out;
+
   if (error.IsScalar()) {
     out.error_ = error.as<std::string>();
   } else {
     out.error_ = decodeError(error);
   }
+
   return out;
 }
 
 auto decodeRunBody(const YAML::Node& node) -> RunBody {
-  RunBody out;
   requireKey(node, "run", "run task");
   const YAML::Node run = getChild(node, "run");
   requireMap(run, "run task");
@@ -990,6 +994,10 @@ auto decodeRunBody(const YAML::Node& node) -> RunBody {
   rejectUnknownKeys(run, {"container", "shell", "script", "workflow", "await", "return"},
                     "run task");
   const YAML::Node process = getChild(run, kind);
+
+  RunBody out{.await_ = decodeOptional<bool>(run, "await"),
+              .return_ = decodeOptional<std::string>(run, "return")};
+
   if (kind == "container") {
     out.process_ = decodeContainerProcess(process);
   } else if (kind == "shell") {
@@ -999,51 +1007,57 @@ auto decodeRunBody(const YAML::Node& node) -> RunBody {
   } else {
     out.process_ = decodeWorkflowProcess(process);
   }
-  out.await_ = decodeOptional<bool>(run, "await");
-  out.return_ = decodeOptional<std::string>(run, "return");
+
   return out;
 }
 
 auto decodeSetBody(const YAML::Node& node) -> SetBody {
-  SetBody out;
   requireKey(node, "set", "set task");
   const YAML::Node set = getChild(node, "set");
+
+  SetBody out;
+
   if (set.IsScalar()) {
     out.set_ = set.as<std::string>();
   } else {
     out.set_ = decodeValue(set);
   }
+
   return out;
 }
 
 auto decodeSwitchBody(const YAML::Node& node) -> SwitchBody {
-  SwitchBody out;
   requireKey(node, "switch", "switch task");
   const YAML::Node node_switch = getChild(node, "switch");
   requireSequence(node_switch, "switch task");
-  out.cases_.clear();
+
+  SwitchBody out;
+
   for (const auto& item : node_switch) {
     requireMap(item, "switch case");
+
     if (item.size() != 1) {
       fail(item.Mark(), "each switch case must have exactly one name");
     }
+
     const auto entry = *item.begin();
-    NamedCase named_case;
-    named_case.name_ = entry.first.Scalar();
     const YAML::Node body = entry.second;
     requireMap(body, "switch case");
     rejectUnknownKeys(body, {"when", "then"}, "switch case");
-    named_case.when_ = decodeOptional<std::string>(body, "when");
-    named_case.then_ = decodeOptional<std::string>(body, "then");
-    out.cases_.push_back(std::move(named_case));
+    out.cases_.push_back({.name_ = entry.first.Scalar(),
+                          .when_ = decodeOptional<std::string>(body, "when"),
+                          .then_ = decodeOptional<std::string>(body, "then")});
   }
+
   return out;
 }
 
 auto decodeCatch(const YAML::Node& node) -> Catch {
-  Catch out;
   requireMap(node, "catch");
   rejectUnknownKeys(node, {"errors", "as", "when", "exceptWhen", "retry", "do", "then"}, "catch");
+
+  Catch out;
+
   if (has(node, "errors")) {
     const YAML::Node errors = getChild(node, "errors");
     requireMap(errors, "catch errors");
@@ -1052,9 +1066,11 @@ auto decodeCatch(const YAML::Node& node) -> Catch {
       out.errors_ = decodeErrorFilter(getChild(errors, "with"));
     }
   }
+
   out.as_ = decodeOptional<std::string>(node, "as");
   out.when_ = decodeOptional<std::string>(node, "when");
   out.exceptWhen_ = decodeOptional<std::string>(node, "exceptWhen");
+
   if (has(node, "retry")) {
     const YAML::Node retry = getChild(node, "retry");
     if (retry.IsScalar()) {
@@ -1063,10 +1079,13 @@ auto decodeCatch(const YAML::Node& node) -> Catch {
       out.retry_ = decodeRetryPolicy(retry);
     }
   }
+
   if (has(node, "do")) {
     out.do_ = decodeTasks(getChild(node, "do"));
   }
+
   out.then_ = decodeOptional<std::string>(node, "then");
+
   return out;
 }
 
