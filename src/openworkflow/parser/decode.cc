@@ -1231,17 +1231,20 @@ auto decodeTasks(const YAML::Node& node) -> Tasks {
 // ---------------------------------------------------------------------------
 
 auto decodeExtension(const YAML::Node& node) -> Extension {
-  Extension out;
   requireMap(node, "extension");
   rejectUnknownKeys(node, {"extend", "when", "before", "after"}, "extension");
-  out.extend_ = decodeRequired<std::string>(node, "extend", "extension");
-  out.when_ = decodeOptional<std::string>(node, "when");
+
+  Extension out{.extend_ = decodeRequired<std::string>(node, "extend", "extension"),
+                .when_ = decodeOptional<std::string>(node, "when")};
+
   if (has(node, "before")) {
     out.before_ = decodeTasks(getChild(node, "before"));
   }
+
   if (has(node, "after")) {
     out.after_ = decodeTasks(getChild(node, "after"));
   }
+
   return out;
 }
 
