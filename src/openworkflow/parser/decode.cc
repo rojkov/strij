@@ -826,10 +826,9 @@ auto decodeScriptProcess(const YAML::Node& node) -> ScriptProcess {
   rejectUnknownKeys(node, {"language", "stdin", "arguments", "environment", "code", "resource"},
                     "script process");
 
-  ScriptProcess out;
-  out.language_ = decodeRequired<std::string>(node, "language", "script process");
-  out.stdin_ = decodeOptional<std::string>(node, "stdin");
-  out.arguments_ = decodeStringList(node, "arguments");
+  ScriptProcess out{.language_ = decodeRequired<std::string>(node, "language", "script process"),
+                    .stdin_ = decodeOptional<std::string>(node, "stdin"),
+                    .arguments_ = decodeStringList(node, "arguments")};
 
   if (has(node, "environment")) {
     out.environment_ = decodeValue(getChild(node, "environment"));
@@ -845,15 +844,17 @@ auto decodeScriptProcess(const YAML::Node& node) -> ScriptProcess {
 }
 
 auto decodeShellProcess(const YAML::Node& node) -> ShellProcess {
-  ShellProcess out;
   requireMap(node, "shell process");
   rejectUnknownKeys(node, {"command", "stdin", "arguments", "environment"}, "shell process");
-  out.command_ = decodeRequired<std::string>(node, "command", "shell process");
-  out.stdin_ = decodeOptional<std::string>(node, "stdin");
-  out.arguments_ = decodeStringList(node, "arguments");
+
+  ShellProcess out{.command_ = decodeRequired<std::string>(node, "command", "shell process"),
+                   .stdin_ = decodeOptional<std::string>(node, "stdin"),
+                   .arguments_ = decodeStringList(node, "arguments")};
+
   if (has(node, "environment")) {
     out.environment_ = decodeValue(getChild(node, "environment"));
   }
+
   return out;
 }
 
