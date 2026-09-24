@@ -696,7 +696,9 @@ auto decodeEventFilter(const YAML::Node& node) -> EventFilter {
   requireMap(node, "event filter");
   rejectUnknownKeys(node, {"with", "correlate"}, "event filter");
   requireKey(node, "with", "event filter");
+
   out.with_ = decodeEventProperties(getChild(node, "with"));
+
   if (has(node, "correlate")) {
     const YAML::Node correlate = getChild(node, "correlate");
     requireMap(correlate, "event correlation");
@@ -704,15 +706,18 @@ auto decodeEventFilter(const YAML::Node& node) -> EventFilter {
       out.correlate_.emplace(entry.first.Scalar(), decodeCorrelation(entry.second));
     }
   }
+
   return out;
 }
 
 auto decodeEventFilterList(const YAML::Node& node) -> std::vector<EventFilter> {
   std::vector<EventFilter> out;
   requireSequence(node, "event list");
+
   for (const auto& item : node) {
     out.push_back(decodeEventFilter(item));
   }
+
   return out;
 }
 
@@ -722,6 +727,7 @@ auto decodeEventConsumptionStrategy(const YAML::Node& node) -> EventConsumptionS
   const std::string_view mode =
       SelectOne(node, {"all", "any", "one"}, "event consumption strategy");
   rejectUnknownKeys(node, {"all", "any", "one", "until"}, "event consumption strategy");
+
   if (mode == "all") {
     out.mode_ = EventConsumptionStrategy::Mode::kAll;
     out.filters_ = decodeEventFilterList(getChild(node, "all"));
@@ -735,24 +741,31 @@ auto decodeEventConsumptionStrategy(const YAML::Node& node) -> EventConsumptionS
     out.mode_ = EventConsumptionStrategy::Mode::kOne;
     out.filters_.push_back(decodeEventFilter(getChild(node, "one")));
   }
+
   return out;
 }
 
 auto decodeSubscriptionIterator(const YAML::Node& node) -> SubscriptionIterator {
   SubscriptionIterator out;
+
   requireMap(node, "subscription iterator");
   rejectUnknownKeys(node, {"item", "at", "do", "output", "export"}, "subscription iterator");
+
   out.item_ = decodeOptional<std::string>(node, "item");
   out.at_ = decodeOptional<std::string>(node, "at");
+
   if (has(node, "do")) {
     out.do_ = decodeTasks(getChild(node, "do"));
   }
+
   if (has(node, "output")) {
     out.output_ = decodeOutput(getChild(node, "output"));
   }
+
   if (has(node, "export")) {
     out.export_ = decodeExport(getChild(node, "export"));
   }
+
   return out;
 }
 
@@ -761,61 +774,73 @@ auto decodeSubscriptionIterator(const YAML::Node& node) -> SubscriptionIterator 
 // ---------------------------------------------------------------------------
 
 auto decodeContainerLifetime(const YAML::Node& node) -> ContainerLifetime {
-  ContainerLifetime out;
   requireMap(node, "container lifetime");
   rejectUnknownKeys(node, {"cleanup", "after"}, "container lifetime");
-  out.cleanup_ = decodeRequired<std::string>(node, "cleanup", "container lifetime");
+
+  ContainerLifetime out{.cleanup_ =
+                            decodeRequired<std::string>(node, "cleanup", "container lifetime")};
+
   if (has(node, "after")) {
     out.after_ = decodeDuration(getChild(node, "after"));
   }
+
   return out;
 }
 
 auto decodeContainerProcess(const YAML::Node& node) -> ContainerProcess {
-  ContainerProcess out;
   requireMap(node, "container process");
   rejectUnknownKeys(node,
                     {"image", "name", "command", "ports", "volumes", "environment", "stdin",
                      "arguments", "lifetime", "pullPolicy"},
                     "container process");
-  out.image_ = decodeRequired<std::string>(node, "image", "container process");
-  out.name_ = decodeOptional<std::string>(node, "name");
-  out.command_ = decodeOptional<std::string>(node, "command");
+
+  ContainerProcess out{.image_ = decodeRequired<std::string>(node, "image", "container process"),
+                       .name_ = decodeOptional<std::string>(node, "name"),
+                       .command_ = decodeOptional<std::string>(node, "command"),
+                       .stdin_ = decodeOptional<std::string>(node, "stdin"),
+                       .arguments_ = decodeStringList(node, "arguments"),
+                       .pull_policy_ = decodeOptional<std::string>(node, "pullPolicy")};
+
   if (has(node, "ports")) {
     out.ports_ = decodeValue(getChild(node, "ports"));
   }
+
   if (has(node, "volumes")) {
     out.volumes_ = decodeValue(getChild(node, "volumes"));
   }
+
   if (has(node, "environment")) {
     out.environment_ = decodeValue(getChild(node, "environment"));
   }
-  out.stdin_ = decodeOptional<std::string>(node, "stdin");
-  out.arguments_ = decodeStringList(node, "arguments");
+
   if (has(node, "lifetime")) {
     out.lifetime_ = decodeContainerLifetime(getChild(node, "lifetime"));
   }
-  out.pull_policy_ = decodeOptional<std::string>(node, "pullPolicy");
+
   return out;
 }
 
 auto decodeScriptProcess(const YAML::Node& node) -> ScriptProcess {
-  ScriptProcess out;
   requireMap(node, "script process");
   const std::string_view source = SelectOne(node, {"code", "resource"}, "script process source");
   rejectUnknownKeys(node, {"language", "stdin", "arguments", "environment", "code", "resource"},
                     "script process");
+
+  ScriptProcess out;
   out.language_ = decodeRequired<std::string>(node, "language", "script process");
   out.stdin_ = decodeOptional<std::string>(node, "stdin");
   out.arguments_ = decodeStringList(node, "arguments");
+
   if (has(node, "environment")) {
     out.environment_ = decodeValue(getChild(node, "environment"));
   }
+
   if (source == "code") {
     out.source_ = ScriptSourceCode{decodeRequired<std::string>(node, "code", "script process")};
   } else {
     out.source_ = ScriptSourceResource{decodeExternalResource(getChild(node, "resource"))};
   }
+
   return out;
 }
 
