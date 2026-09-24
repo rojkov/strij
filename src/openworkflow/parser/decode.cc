@@ -224,15 +224,13 @@ auto decodeValue(const YAML::Node& node) -> Value {
 }
 
 auto decodeDurationUnits(const YAML::Node& node) -> DurationUnits {
-  DurationUnits out;
   requireMap(node, "duration");
   rejectUnknownKeys(node, {"days", "hours", "minutes", "seconds", "milliseconds"}, "duration");
-  out.days_ = decodeOptional<std::int64_t>(node, "days");
-  out.hours_ = decodeOptional<std::int64_t>(node, "hours");
-  out.minutes_ = decodeOptional<std::int64_t>(node, "minutes");
-  out.seconds_ = decodeOptional<std::int64_t>(node, "seconds");
-  out.milliseconds_ = decodeOptional<std::int64_t>(node, "milliseconds");
-  return out;
+  return {.days_ = decodeOptional<std::int64_t>(node, "days"),
+          .hours_ = decodeOptional<std::int64_t>(node, "hours"),
+          .minutes_ = decodeOptional<std::int64_t>(node, "minutes"),
+          .seconds_ = decodeOptional<std::int64_t>(node, "seconds"),
+          .milliseconds_ = decodeOptional<std::int64_t>(node, "milliseconds")};
 }
 
 auto decodeDuration(const YAML::Node& node) -> Duration {
