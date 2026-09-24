@@ -887,57 +887,56 @@ auto decodeCallBody(const YAML::Node& node) -> CallBody {
 }
 
 auto decodeDoBody(const YAML::Node& node) -> DoBody {
-  DoBody out;
   requireKey(node, "do", "do task");
-  out.do_ = decodeTasks(getChild(node, "do"));
-  return out;
+  return {.do_ = decodeTasks(getChild(node, "do"))};
 }
 
 auto decodeEvent(const YAML::Node& node) -> Event {
-  Event out;
   requireMap(node, "event");
   rejectUnknownKeys(node, {"with"}, "event");
+
+  Event out;
+
   if (has(node, "with")) {
     out.with_ = decodeEventProperties(getChild(node, "with"));
   }
+
   return out;
 }
 
 auto decodeEmitBody(const YAML::Node& node) -> EmitBody {
-  EmitBody out;
   requireKey(node, "emit", "emit task");
   const YAML::Node emit = getChild(node, "emit");
   requireMap(emit, "emit task");
   rejectUnknownKeys(emit, {"event"}, "emit task");
   requireKey(emit, "event", "emit task");
-  out.event_ = decodeEvent(getChild(emit, "event"));
-  return out;
+  return {.event_ = decodeEvent(getChild(emit, "event"))};
 }
 
 auto decodeForSpec(const YAML::Node& node) -> ForSpec {
-  ForSpec out;
   requireMap(node, "for");
   rejectUnknownKeys(node, {"each", "at", "in"}, "for");
-  out.each_ = decodeOptional<std::string>(node, "each");
-  out.at_ = decodeOptional<std::string>(node, "at");
   requireKey(node, "in", "for");
+
+  ForSpec out{.each_ = decodeOptional<std::string>(node, "each"),
+              .at_ = decodeOptional<std::string>(node, "at")};
+
   const YAML::Node in_key = getChild(node, "in");
   if (in_key.IsScalar()) {
     out.in_ = in_key.as<std::string>();
   } else {
     out.in_ = decodeValue(in_key);
   }
+
   return out;
 }
 
 auto decodeForBody(const YAML::Node& node) -> ForBody {
-  ForBody out;
   requireKey(node, "for", "for task");
-  out.for_ = decodeForSpec(getChild(node, "for"));
-  out.while_ = decodeOptional<std::string>(node, "while");
   requireKey(node, "do", "for task");
-  out.do_ = decodeTasks(getChild(node, "do"));
-  return out;
+  return {.for_ = decodeForSpec(getChild(node, "for")),
+          .while_ = decodeOptional<std::string>(node, "while"),
+          .do_ = decodeTasks(getChild(node, "do"))};
 }
 
 auto decodeForkBody(const YAML::Node& node) -> ForkBody {
