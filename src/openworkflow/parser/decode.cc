@@ -253,31 +253,25 @@ auto decodeOAuth2Token(const YAML::Node& node) -> OAuth2Token {
 }
 
 auto decodeOAuth2Client(const YAML::Node& node) -> OAuth2AuthenticationProperties::Client {
-  OAuth2AuthenticationProperties::Client out;
   requireMap(node, "oauth2 client");
   rejectUnknownKeys(node, {"id", "secret", "assertion", "authentication"}, "oauth2 client");
-  out.id_ = decodeOptional<std::string>(node, "id");
-  out.secret_ = decodeOptional<std::string>(node, "secret");
-  out.assertion_ = decodeOptional<std::string>(node, "assertion");
-  out.authentication_ = decodeOptional<std::string>(node, "authentication");
-  return out;
+  return {.id_ = decodeOptional<std::string>(node, "id"),
+          .secret_ = decodeOptional<std::string>(node, "secret"),
+          .assertion_ = decodeOptional<std::string>(node, "assertion"),
+          .authentication_ = decodeOptional<std::string>(node, "authentication")};
 }
 
 auto decodeOAuth2Request(const YAML::Node& node) -> OAuth2AuthenticationProperties::Request {
-  OAuth2AuthenticationProperties::Request out;
   requireMap(node, "oauth2 request");
   rejectUnknownKeys(node, {"encoding"}, "oauth2 request");
-  out.encoding_ = decodeOptional<std::string>(node, "encoding");
-  return out;
+  return {.encoding_ = decodeOptional<std::string>(node, "encoding")};
 }
 
 auto decodeOAuth2Endpoints(const YAML::Node& node) -> OAuth2AuthenticationProperties::Endpoints {
-  OAuth2AuthenticationProperties::Endpoints out;
   requireMap(node, "oauth2 endpoints");
   rejectUnknownKeys(node, {"token", "introspection"}, "oauth2 endpoints");
-  out.token_ = decodeOptional<std::string>(node, "token");
-  out.introspection_ = decodeOptional<std::string>(node, "introspection");
-  return out;
+  return {.token_ = decodeOptional<std::string>(node, "token"),
+          .introspection_ = decodeOptional<std::string>(node, "introspection")};
 }
 
 auto decodeOAuth2Properties(const YAML::Node& node) -> OAuth2AuthenticationProperties {
