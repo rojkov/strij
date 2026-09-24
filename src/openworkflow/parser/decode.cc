@@ -237,19 +237,19 @@ auto decodeDuration(const YAML::Node& node) -> Duration {
   if (node.IsScalar()) {
     return node.as<std::string>();
   }
+
   if (node.IsMap()) {
     return decodeDurationUnits(node);
   }
+
   fail(node.Mark(), "duration must be a string or a mapping");
 }
 
 auto decodeOAuth2Token(const YAML::Node& node) -> OAuth2Token {
-  OAuth2Token out;
   requireMap(node, "oauth2 token");
   rejectUnknownKeys(node, {"token", "type"}, "oauth2 token");
-  out.token_ = decodeRequired<std::string>(node, "token", "oauth2 token");
-  out.type_ = decodeRequired<std::string>(node, "type", "oauth2 token");
-  return out;
+  return {.token_ = decodeRequired<std::string>(node, "token", "oauth2 token"),
+          .type_ = decodeRequired<std::string>(node, "type", "oauth2 token")};
 }
 
 auto decodeOAuth2Client(const YAML::Node& node) -> OAuth2AuthenticationProperties::Client {
