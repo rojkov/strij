@@ -1,0 +1,14 @@
+load("//bazel:build_system.bzl", "strij_cc_library")
+
+strij_cc_library(
+    name = "openworkflow_model_lib",
+    hdrs = [
+        "document.hh",
+        "events.hh",
+        "task.hh",
+        "types.hh",
+        "use.hh",
+        "value.hh",
+    ],
+    visibility = ["//visibility:public"],
+)

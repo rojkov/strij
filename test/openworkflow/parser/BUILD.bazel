@@ -1,0 +1,25 @@
+load("//bazel:build_system.bzl", "strij_cc_test", "strij_cc_test_library")
+
+strij_cc_test_library(
+    name = "examples_lib",
+    hdrs = ["examples.hh"],
+)
+
+strij_cc_test(
+    name = "errors_test",
+    srcs = ["errors_test.cc"],
+    deps = [
+        "//src/openworkflow/parser:openworkflow_parser_lib",
+        "@googletest//:gtest_main",
+    ],
+)
+
+strij_cc_test(
+    name = "parse_test",
+    srcs = ["parse_test.cc"],
+    deps = [
+        ":examples_lib",
+        "//src/openworkflow/parser:openworkflow_parser_lib",
+        "@googletest//:gtest_main",
+    ],
+)
