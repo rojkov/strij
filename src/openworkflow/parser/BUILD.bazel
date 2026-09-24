@@ -1,0 +1,20 @@
+load("//bazel:build_system.bzl", "strij_cc_library")
+
+strij_cc_library(
+    name = "openworkflow_parser_lib",
+    srcs = [
+        "decode.cc",
+        "parse.cc",
+    ],
+    hdrs = [
+        "decode.hh",
+        "errors.hh",
+        "one_of.hh",
+        "parse.hh",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//src/openworkflow:openworkflow_model_lib",
+        "@yaml_cpp",
+    ],
+)

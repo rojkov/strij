@@ -1,0 +1,10 @@
+load("//bazel:build_system.bzl", "strij_cc_test")
+
+strij_cc_test(
+    name = "value_test",
+    srcs = ["value_test.cc"],
+    deps = [
+        "//src/openworkflow:openworkflow_model_lib",
+        "@googletest//:gtest_main",
+    ],
+)
