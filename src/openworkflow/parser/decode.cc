@@ -29,6 +29,7 @@ auto getChild(const YAML::Node& node, std::string_view key) -> YAML::Node {
   if (!node.IsMap()) {
     return {};
   }
+
   return node[std::string(key)];
 }
 
@@ -60,12 +61,14 @@ void rejectUnknownKeys(const YAML::Node& node, std::initializer_list<std::string
   for (const auto& entry : node) {
     const std::string key = entry.first.Scalar();
     bool known = false;
+
     for (const std::string_view candidate : allowed) {
       if (key == candidate) {
         known = true;
         break;
       }
     }
+
     if (!known) {
       fail(entry.first.Mark(), "unknown key '" + key + "' in " + std::string(what));
     }
@@ -78,6 +81,7 @@ auto decodeRequired(const YAML::Node& node, std::string_view key, std::string_vi
   if (!child.IsDefined() || child.IsNull()) {
     fail(node.Mark(), "missing required key '" + std::string(key) + "' in " + std::string(what));
   }
+
   return child.as<T>();
 }
 
@@ -87,6 +91,7 @@ auto decodeOptional(const YAML::Node& node, std::string_view key) -> std::option
   if (child.IsDefined() && !child.IsNull()) {
     return child.as<T>();
   }
+
   return std::nullopt;
 }
 
@@ -99,6 +104,7 @@ auto decodeStringList(const YAML::Node& node, std::string_view key) -> std::vect
       out.push_back(item.as<std::string>());
     }
   }
+
   return out;
 }
 
@@ -176,36 +182,44 @@ auto decodeEvaluate(const YAML::Node& node) -> Evaluate;
 
 auto decodeValue(const YAML::Node& node) -> Value {
   if (!node.IsDefined() || node.IsNull()) {
-    return Value();
+    return {};
   }
+
   if (node.IsSequence()) {
-    Value::Array array;
+    Value::Array array{};
     array.reserve(node.size());
     for (const auto& item : node) {
       array.push_back(decodeValue(item));
     }
+
     return std::move(array);
   }
+
   if (node.IsMap()) {
-    Value::Object object;
+    Value::Object object{};
+
     for (const auto& entry : node) {
       object.emplace(entry.first.Scalar(), decodeValue(entry.second));
     }
+
     return std::move(object);
   }
 
-  bool boolean_value = false;
+  bool boolean_value{false};
   if (YAML::convert<bool>::decode(node, boolean_value)) {
     return boolean_value;
   }
-  std::int64_t integer_value = 0;
+
+  std::int64_t integer_value{0};
   if (YAML::convert<std::int64_t>::decode(node, integer_value)) {
     return integer_value;
   }
-  double double_value = 0.0;
+
+  double double_value{0.0};
   if (YAML::convert<double>::decode(node, double_value)) {
     return double_value;
   }
+
   return node.Scalar();
 }
 
