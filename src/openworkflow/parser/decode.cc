@@ -1088,20 +1088,20 @@ auto decodeCatch(const YAML::Node& node) -> Catch {
 }
 
 auto decodeTryBody(const YAML::Node& node) -> TryBody {
-  TryBody out;
   requireKey(node, "try", "try task");
-  out.try_ = decodeTasks(getChild(node, "try"));
+
+  TryBody out{.try_ = decodeTasks(getChild(node, "try"))};
+
   if (has(node, "catch")) {
     out.catch_ = decodeCatch(getChild(node, "catch"));
   }
+
   return out;
 }
 
 auto decodeWaitBody(const YAML::Node& node) -> WaitBody {
-  WaitBody out;
   requireKey(node, "wait", "wait task");
-  out.wait_ = decodeDuration(getChild(node, "wait"));
-  return out;
+  return {.wait_ = decodeDuration(getChild(node, "wait"))};
 }
 
 // ---------------------------------------------------------------------------
