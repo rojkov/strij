@@ -281,109 +281,141 @@ auto decodeOAuth2Properties(const YAML::Node& node) -> OAuth2AuthenticationPrope
                     {"authority", "grant", "client", "request", "endpoints", "issuers", "scopes",
                      "audiences", "username", "password", "subject", "actor"},
                     "oauth2 authentication");
+
   out.authority_ = decodeRequired<std::string>(node, "authority", "oauth2 authentication");
   out.grant_ = decodeRequired<std::string>(node, "grant", "oauth2 authentication");
+
   if (has(node, "client")) {
     out.client_ = decodeOAuth2Client(getChild(node, "client"));
   }
+
   if (has(node, "request")) {
     out.request_ = decodeOAuth2Request(getChild(node, "request"));
   }
+
   if (has(node, "endpoints")) {
     out.endpoints_ = decodeOAuth2Endpoints(getChild(node, "endpoints"));
   }
+
   out.issuers_ = decodeStringList(node, "issuers");
   out.scopes_ = decodeStringList(node, "scopes");
   out.audiences_ = decodeStringList(node, "audiences");
   out.username_ = decodeOptional<std::string>(node, "username");
   out.password_ = decodeOptional<std::string>(node, "password");
+
   if (has(node, "subject")) {
     out.subject_ = decodeOAuth2Token(getChild(node, "subject"));
   }
+
   if (has(node, "actor")) {
     out.actor_ = decodeOAuth2Token(getChild(node, "actor"));
   }
+
   return out;
 }
 
 auto decodeBasicAuthentication(const YAML::Node& node) -> BasicAuthentication {
   BasicAuthentication out;
   requireMap(node, "basic authentication");
+
   if (has(node, "use")) {
     rejectUnknownKeys(node, {"use"}, "basic authentication reference");
     out.use_ = decodeRequired<std::string>(node, "use", "basic authentication reference");
+
     return out;
   }
+
   rejectUnknownKeys(node, {"username", "password"}, "basic authentication");
   out.username_ = decodeRequired<std::string>(node, "username", "basic authentication");
   out.password_ = decodeRequired<std::string>(node, "password", "basic authentication");
+
   return out;
 }
 
 auto decodeBearerAuthentication(const YAML::Node& node) -> BearerAuthentication {
   BearerAuthentication out;
   requireMap(node, "bearer authentication");
+
   if (has(node, "use")) {
     rejectUnknownKeys(node, {"use"}, "bearer authentication reference");
     out.use_ = decodeRequired<std::string>(node, "use", "bearer authentication reference");
+
     return out;
   }
+
   rejectUnknownKeys(node, {"token"}, "bearer authentication");
   out.token_ = decodeRequired<std::string>(node, "token", "bearer authentication");
+
   return out;
 }
 
 auto decodeDigestAuthentication(const YAML::Node& node) -> DigestAuthentication {
   DigestAuthentication out;
   requireMap(node, "digest authentication");
+
   if (has(node, "use")) {
     rejectUnknownKeys(node, {"use"}, "digest authentication reference");
     out.use_ = decodeRequired<std::string>(node, "use", "digest authentication reference");
+
     return out;
   }
+
   rejectUnknownKeys(node, {"username", "password"}, "digest authentication");
   out.username_ = decodeRequired<std::string>(node, "username", "digest authentication");
   out.password_ = decodeRequired<std::string>(node, "password", "digest authentication");
+
   return out;
 }
 
 auto decodeOAuth2Authentication(const YAML::Node& node) -> OAuth2Authentication {
   OAuth2Authentication out;
   requireMap(node, "oauth2 authentication");
+
   if (has(node, "use")) {
     rejectUnknownKeys(node, {"use"}, "oauth2 authentication reference");
     out.use_ = decodeRequired<std::string>(node, "use", "oauth2 authentication reference");
+
     return out;
   }
+
   out.properties_ = decodeOAuth2Properties(node);
+
   return out;
 }
 
 auto decodeOidcAuthentication(const YAML::Node& node) -> OidcAuthentication {
   OidcAuthentication out;
   requireMap(node, "oidc authentication");
+
   if (has(node, "use")) {
     rejectUnknownKeys(node, {"use"}, "oidc authentication reference");
     out.use_ = decodeRequired<std::string>(node, "use", "oidc authentication reference");
+
     return out;
   }
+
   out.properties_ = decodeOAuth2Properties(node);
+
   return out;
 }
 
 auto decodeAuthentication(const YAML::Node& node) -> Authentication {
   Authentication out;
   requireMap(node, "authentication");
+
   if (has(node, "use")) {
     rejectUnknownKeys(node, {"use"}, "authentication");
     out.scheme_ =
         AuthenticationReference{decodeRequired<std::string>(node, "use", "authentication")};
+
     return out;
   }
+
   const std::string_view scheme =
       SelectOne(node, {"basic", "bearer", "digest", "oauth2", "oidc"}, "authentication scheme");
   rejectUnknownKeys(node, {"basic", "bearer", "digest", "oauth2", "oidc"}, "authentication");
   const YAML::Node scheme_node = getChild(node, scheme);
+
   if (scheme == "basic") {
     out.scheme_ = decodeBasicAuthentication(scheme_node);
   } else if (scheme == "bearer") {
@@ -395,6 +427,7 @@ auto decodeAuthentication(const YAML::Node& node) -> Authentication {
   } else {
     out.scheme_ = decodeOidcAuthentication(scheme_node);
   }
+
   return out;
 }
 
@@ -403,33 +436,38 @@ auto decodeEndpointObject(const YAML::Node& node) -> EndpointObject {
   requireMap(node, "endpoint");
   rejectUnknownKeys(node, {"uri", "authentication"}, "endpoint");
   out.uri_ = decodeRequired<std::string>(node, "uri", "endpoint");
+
   if (has(node, "authentication")) {
     out.authentication_ = decodeAuthentication(getChild(node, "authentication"));
   }
+
   return out;
 }
 
 auto decodeEndpoint(const YAML::Node& node) -> Endpoint {
   Endpoint out;
+
   if (node.IsScalar()) {
     out.value_ = node.as<std::string>();
+
     return out;
   }
+
   if (node.IsMap()) {
     out.value_ = decodeEndpointObject(node);
+
     return out;
   }
+
   fail(node.Mark(), "endpoint must be a string or a mapping");
 }
 
 auto decodeExternalResource(const YAML::Node& node) -> ExternalResource {
-  ExternalResource out;
   requireMap(node, "external resource");
   rejectUnknownKeys(node, {"name", "endpoint"}, "external resource");
-  out.name_ = decodeOptional<std::string>(node, "name");
   requireKey(node, "endpoint", "external resource");
-  out.endpoint_ = decodeEndpoint(getChild(node, "endpoint"));
-  return out;
+  return {.name_ = decodeOptional<std::string>(node, "name"),
+          .endpoint_ = decodeEndpoint(getChild(node, "endpoint"))};
 }
 
 auto decodeSchema(const YAML::Node& node) -> Schema {
