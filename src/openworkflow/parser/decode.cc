@@ -73,12 +73,12 @@ void rejectUnknownKeys(const YAML::Node& node, std::initializer_list<std::string
 }
 
 template <typename T>
-void decodeRequired(const YAML::Node& node, std::string_view key, T& out, std::string_view what) {
+auto decodeRequired(const YAML::Node& node, std::string_view key, std::string_view what) -> T {
   const YAML::Node child = getChild(node, key);
   if (!child.IsDefined() || child.IsNull()) {
     fail(node.Mark(), "missing required key '" + std::string(key) + "' in " + std::string(what));
   }
-  out = child.as<T>();
+  return child.as<T>();
 }
 
 template <typename T>
@@ -94,12 +94,6 @@ template <typename T> void decodeIfPresent(const YAML::Node& node, std::string_v
   if (child.IsDefined() && !child.IsNull()) {
     out = child.as<T>();
   }
-}
-
-void decodeRequiredString(const YAML::Node& node, std::string_view key,
-                          std::optional<std::string>& out, std::string_view what) {
-  requireKey(node, key, what);
-  out = getChild(node, key).as<std::string>();
 }
 
 void decodeStringList(const YAML::Node& node, std::string_view key, std::vector<std::string>& out) {
@@ -257,8 +251,8 @@ void decodeDuration(const YAML::Node& node, Duration& out) {
 void decodeOAuth2Token(const YAML::Node& node, OAuth2Token& out) {
   requireMap(node, "oauth2 token");
   rejectUnknownKeys(node, {"token", "type"}, "oauth2 token");
-  decodeRequired(node, "token", out.token_, "oauth2 token");
-  decodeRequired(node, "type", out.type_, "oauth2 token");
+  out.token_ = decodeRequired<std::string>(node, "token", "oauth2 token");
+  out.type_ = decodeRequired<std::string>(node, "type", "oauth2 token");
 }
 
 void decodeOAuth2Client(const YAML::Node& node, OAuth2AuthenticationProperties::Client& out) {
@@ -289,8 +283,8 @@ void decodeOAuth2Properties(const YAML::Node& node, OAuth2AuthenticationProperti
                     {"authority", "grant", "client", "request", "endpoints", "issuers", "scopes",
                      "audiences", "username", "password", "subject", "actor"},
                     "oauth2 authentication");
-  decodeRequired(node, "authority", out.authority_, "oauth2 authentication");
-  decodeRequired(node, "grant", out.grant_, "oauth2 authentication");
+  out.authority_ = decodeRequired<std::string>(node, "authority", "oauth2 authentication");
+  out.grant_ = decodeRequired<std::string>(node, "grant", "oauth2 authentication");
   if (has(node, "client")) {
     out.client_.emplace();
     decodeOAuth2Client(getChild(node, "client"), *out.client_);
@@ -322,42 +316,42 @@ void decodeBasicAuthentication(const YAML::Node& node, BasicAuthentication& out)
   requireMap(node, "basic authentication");
   if (has(node, "use")) {
     rejectUnknownKeys(node, {"use"}, "basic authentication reference");
-    decodeRequiredString(node, "use", out.use_, "basic authentication reference");
+    out.use_ = decodeRequired<std::string>(node, "use", "basic authentication reference");
     return;
   }
   rejectUnknownKeys(node, {"username", "password"}, "basic authentication");
-  decodeRequiredString(node, "username", out.username_, "basic authentication");
-  decodeRequiredString(node, "password", out.password_, "basic authentication");
+  out.username_ = decodeRequired<std::string>(node, "username", "basic authentication");
+  out.password_ = decodeRequired<std::string>(node, "password", "basic authentication");
 }
 
 void decodeBearerAuthentication(const YAML::Node& node, BearerAuthentication& out) {
   requireMap(node, "bearer authentication");
   if (has(node, "use")) {
     rejectUnknownKeys(node, {"use"}, "bearer authentication reference");
-    decodeRequiredString(node, "use", out.use_, "bearer authentication reference");
+    out.use_ = decodeRequired<std::string>(node, "use", "bearer authentication reference");
     return;
   }
   rejectUnknownKeys(node, {"token"}, "bearer authentication");
-  decodeRequiredString(node, "token", out.token_, "bearer authentication");
+  out.token_ = decodeRequired<std::string>(node, "token", "bearer authentication");
 }
 
 void decodeDigestAuthentication(const YAML::Node& node, DigestAuthentication& out) {
   requireMap(node, "digest authentication");
   if (has(node, "use")) {
     rejectUnknownKeys(node, {"use"}, "digest authentication reference");
-    decodeRequiredString(node, "use", out.use_, "digest authentication reference");
+    out.use_ = decodeRequired<std::string>(node, "use", "digest authentication reference");
     return;
   }
   rejectUnknownKeys(node, {"username", "password"}, "digest authentication");
-  decodeRequiredString(node, "username", out.username_, "digest authentication");
-  decodeRequiredString(node, "password", out.password_, "digest authentication");
+  out.username_ = decodeRequired<std::string>(node, "username", "digest authentication");
+  out.password_ = decodeRequired<std::string>(node, "password", "digest authentication");
 }
 
 void decodeOAuth2Authentication(const YAML::Node& node, OAuth2Authentication& out) {
   requireMap(node, "oauth2 authentication");
   if (has(node, "use")) {
     rejectUnknownKeys(node, {"use"}, "oauth2 authentication reference");
-    decodeRequiredString(node, "use", out.use_, "oauth2 authentication reference");
+    out.use_ = decodeRequired<std::string>(node, "use", "oauth2 authentication reference");
     return;
   }
   out.properties_.emplace();
@@ -368,7 +362,7 @@ void decodeOidcAuthentication(const YAML::Node& node, OidcAuthentication& out) {
   requireMap(node, "oidc authentication");
   if (has(node, "use")) {
     rejectUnknownKeys(node, {"use"}, "oidc authentication reference");
-    decodeRequiredString(node, "use", out.use_, "oidc authentication reference");
+    out.use_ = decodeRequired<std::string>(node, "use", "oidc authentication reference");
     return;
   }
   out.properties_.emplace();
@@ -379,9 +373,8 @@ void decodeAuthentication(const YAML::Node& node, Authentication& out) {
   requireMap(node, "authentication");
   if (has(node, "use")) {
     rejectUnknownKeys(node, {"use"}, "authentication");
-    AuthenticationReference reference;
-    decodeRequired(node, "use", reference.use_, "authentication");
-    out.scheme_ = std::move(reference);
+    out.scheme_ =
+        AuthenticationReference{decodeRequired<std::string>(node, "use", "authentication")};
     return;
   }
   const std::string_view scheme =
@@ -414,7 +407,7 @@ void decodeAuthentication(const YAML::Node& node, Authentication& out) {
 void decodeEndpointObject(const YAML::Node& node, EndpointObject& out) {
   requireMap(node, "endpoint");
   rejectUnknownKeys(node, {"uri", "authentication"}, "endpoint");
-  decodeRequired(node, "uri", out.uri_, "endpoint");
+  out.uri_ = decodeRequired<std::string>(node, "uri", "endpoint");
   if (has(node, "authentication")) {
     out.authentication_.emplace();
     decodeAuthentication(getChild(node, "authentication"), *out.authentication_);
@@ -520,8 +513,8 @@ void decodeExport(const YAML::Node& node, Export& out) {
 void decodeError(const YAML::Node& node, Error& out) {
   requireMap(node, "error");
   rejectUnknownKeys(node, {"type", "status", "instance", "title", "detail"}, "error");
-  decodeRequired(node, "type", out.type_, "error");
-  decodeRequired(node, "status", out.status_, "error");
+  out.type_ = decodeRequired<std::string>(node, "type", "error");
+  out.status_ = decodeRequired<std::int64_t>(node, "status", "error");
   decodeOptional(node, "instance", out.instance_);
   decodeOptional(node, "title", out.title_);
   decodeOptional(node, "detail", out.detail_);
@@ -638,7 +631,7 @@ void decodeEventProperties(const YAML::Node& node, EventProperties& out) {
 void decodeCorrelation(const YAML::Node& node, Correlation& out) {
   requireMap(node, "correlation");
   rejectUnknownKeys(node, {"from", "expect"}, "correlation");
-  decodeRequired(node, "from", out.from_, "correlation");
+  out.from_ = decodeRequired<std::string>(node, "from", "correlation");
   decodeOptional(node, "expect", out.expect_);
 }
 
@@ -716,7 +709,7 @@ void decodeSubscriptionIterator(const YAML::Node& node, SubscriptionIterator& ou
 void decodeContainerLifetime(const YAML::Node& node, ContainerLifetime& out) {
   requireMap(node, "container lifetime");
   rejectUnknownKeys(node, {"cleanup", "after"}, "container lifetime");
-  decodeRequired(node, "cleanup", out.cleanup_, "container lifetime");
+  out.cleanup_ = decodeRequired<std::string>(node, "cleanup", "container lifetime");
   if (has(node, "after")) {
     decodeDuration(getChild(node, "after"), out.after_.emplace());
   }
@@ -728,7 +721,7 @@ void decodeContainerProcess(const YAML::Node& node, ContainerProcess& out) {
                     {"image", "name", "command", "ports", "volumes", "environment", "stdin",
                      "arguments", "lifetime", "pullPolicy"},
                     "container process");
-  decodeRequired(node, "image", out.image_, "container process");
+  out.image_ = decodeRequired<std::string>(node, "image", "container process");
   decodeOptional(node, "name", out.name_);
   decodeOptional(node, "command", out.command_);
   if (has(node, "ports")) {
@@ -757,7 +750,7 @@ void decodeScriptProcess(const YAML::Node& node, ScriptProcess& out) {
   const std::string_view source = SelectOne(node, {"code", "resource"}, "script process source");
   rejectUnknownKeys(node, {"language", "stdin", "arguments", "environment", "code", "resource"},
                     "script process");
-  decodeRequired(node, "language", out.language_, "script process");
+  out.language_ = decodeRequired<std::string>(node, "language", "script process");
   decodeOptional(node, "stdin", out.stdin_);
   decodeStringList(node, "arguments", out.arguments_);
   if (has(node, "environment")) {
@@ -765,9 +758,7 @@ void decodeScriptProcess(const YAML::Node& node, ScriptProcess& out) {
     decodeValue(getChild(node, "environment"), *out.environment_);
   }
   if (source == "code") {
-    ScriptSourceCode code;
-    decodeRequired(node, "code", code.code_, "script process");
-    out.source_ = std::move(code);
+    out.source_ = ScriptSourceCode{decodeRequired<std::string>(node, "code", "script process")};
   } else {
     ScriptSourceResource resource;
     decodeExternalResource(getChild(node, "resource"), resource.source_);
@@ -778,7 +769,7 @@ void decodeScriptProcess(const YAML::Node& node, ScriptProcess& out) {
 void decodeShellProcess(const YAML::Node& node, ShellProcess& out) {
   requireMap(node, "shell process");
   rejectUnknownKeys(node, {"command", "stdin", "arguments", "environment"}, "shell process");
-  decodeRequired(node, "command", out.command_, "shell process");
+  out.command_ = decodeRequired<std::string>(node, "command", "shell process");
   decodeOptional(node, "stdin", out.stdin_);
   decodeStringList(node, "arguments", out.arguments_);
   if (has(node, "environment")) {
@@ -790,9 +781,9 @@ void decodeShellProcess(const YAML::Node& node, ShellProcess& out) {
 void decodeWorkflowProcess(const YAML::Node& node, WorkflowProcess& out) {
   requireMap(node, "workflow process");
   rejectUnknownKeys(node, {"namespace", "name", "version", "input"}, "workflow process");
-  decodeRequired(node, "namespace", out.namespace_, "workflow process");
-  decodeRequired(node, "name", out.name_, "workflow process");
-  decodeRequired(node, "version", out.version_, "workflow process");
+  out.namespace_ = decodeRequired<std::string>(node, "namespace", "workflow process");
+  out.name_ = decodeRequired<std::string>(node, "name", "workflow process");
+  out.version_ = decodeRequired<std::string>(node, "version", "workflow process");
   if (has(node, "input")) {
     out.input_.emplace();
     decodeValue(getChild(node, "input"), *out.input_);
@@ -801,7 +792,7 @@ void decodeWorkflowProcess(const YAML::Node& node, WorkflowProcess& out) {
 
 void decodeCallBody(const YAML::Node& node, CallBody& out) {
   requireKey(node, "call", "call task");
-  decodeRequired(node, "call", out.call_, "call task");
+  out.call_ = decodeRequired<std::string>(node, "call", "call task");
   if (has(node, "with")) {
     decodeValue(getChild(node, "with"), out.with_);
   }
@@ -1151,7 +1142,7 @@ void decodeTasks(const YAML::Node& node, Tasks& out) {
 void decodeExtension(const YAML::Node& node, Extension& out) {
   requireMap(node, "extension");
   rejectUnknownKeys(node, {"extend", "when", "before", "after"}, "extension");
-  decodeRequired(node, "extend", out.extend_, "extension");
+  out.extend_ = decodeRequired<std::string>(node, "extend", "extension");
   decodeOptional(node, "when", out.when_);
   if (has(node, "before")) {
     decodeTasks(getChild(node, "before"), out.before_);
@@ -1244,10 +1235,10 @@ void decodeDocumentInfo(const YAML::Node& node, DocumentInfo& out) {
   rejectUnknownKeys(node,
                     {"dsl", "namespace", "name", "version", "title", "summary", "tags", "metadata"},
                     "document");
-  decodeRequired(node, "dsl", out.dsl_, "document");
-  decodeRequired(node, "namespace", out.namespace_, "document");
-  decodeRequired(node, "name", out.name_, "document");
-  decodeRequired(node, "version", out.version_, "document");
+  out.dsl_ = decodeRequired<std::string>(node, "dsl", "document");
+  out.namespace_ = decodeRequired<std::string>(node, "namespace", "document");
+  out.name_ = decodeRequired<std::string>(node, "name", "document");
+  out.version_ = decodeRequired<std::string>(node, "version", "document");
   decodeOptional(node, "title", out.title_);
   decodeOptional(node, "summary", out.summary_);
   if (has(node, "tags")) {
