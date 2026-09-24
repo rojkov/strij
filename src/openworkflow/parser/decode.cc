@@ -1056,20 +1056,20 @@ auto decodeCatch(const YAML::Node& node) -> Catch {
   requireMap(node, "catch");
   rejectUnknownKeys(node, {"errors", "as", "when", "exceptWhen", "retry", "do", "then"}, "catch");
 
-  Catch out;
+  Catch out{.as_ = decodeOptional<std::string>(node, "as"),
+            .when_ = decodeOptional<std::string>(node, "when"),
+            .exceptWhen_ = decodeOptional<std::string>(node, "exceptWhen"),
+            .then_ = decodeOptional<std::string>(node, "then")};
 
   if (has(node, "errors")) {
     const YAML::Node errors = getChild(node, "errors");
     requireMap(errors, "catch errors");
     rejectUnknownKeys(errors, {"with"}, "catch errors");
+
     if (has(errors, "with")) {
       out.errors_ = decodeErrorFilter(getChild(errors, "with"));
     }
   }
-
-  out.as_ = decodeOptional<std::string>(node, "as");
-  out.when_ = decodeOptional<std::string>(node, "when");
-  out.exceptWhen_ = decodeOptional<std::string>(node, "exceptWhen");
 
   if (has(node, "retry")) {
     const YAML::Node retry = getChild(node, "retry");
@@ -1083,8 +1083,6 @@ auto decodeCatch(const YAML::Node& node) -> Catch {
   if (has(node, "do")) {
     out.do_ = decodeTasks(getChild(node, "do"));
   }
-
-  out.then_ = decodeOptional<std::string>(node, "then");
 
   return out;
 }
