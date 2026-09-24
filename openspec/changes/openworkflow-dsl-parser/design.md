@@ -94,7 +94,10 @@ subtree.
 written as sequences of single-key maps; declaration order is meaningful for
 sequential execution. `DecodeTasks` accepts both the sequence-of-single-key-maps
 form and a genuine map form, yielding `std::vector<NamedTask>`. `use.functions`
-alone stays a `std::map<string, Task>`.
+alone stays a `std::map<string, Task>`. The `Tasks` alias lives in `events.hh`
+alongside a `struct NamedTask` forward declaration to break the include cycle
+between `task.hh` (the `ListenBody` needs `SubscriptionIterator`) and
+`events.hh` (the `SubscriptionIterator::do_` needs `Tasks`).
 
 ### D6 — string-or-object unions preserved as `std::variant`, never resolved
 
@@ -128,20 +131,25 @@ which dodge C++ keywords) — matching the repo-wide convention.
 ### D10 — backoff branches keep opaque payloads
 
 `Backoff` enforces the constant/exponential/linear one-of structurally, but each
-branch stores its subtree as a `Value` because the reference enumerates no inner
-keys (grep-verified; only `exponential: {}` appears). When a concrete schema
-arrives, the branch payloads can type up without touching the one-of machinery.
+branch's payload is opaque because the reference enumerates no inner keys
+(grep-verified; only `exponential: {}` appears). The model encodes this as a
+flat `{ std::string kind_; Value parameters_; }` — the branch name plus the
+branch subtree as a `Value`. (A `std::variant<Value, Value, Value>` would be
+unusable since all three payloads share one type and cannot be distinguished by
+it.) When a concrete schema arrives, the branch payloads can type up without
+touching the one-of machinery.
 
 ## Component Layout
 
 ```
 src/openworkflow/
 ├── value.hh                 Value (JSON-faithful variant)
-├── types.hh                 Duration/Spec, Input, Output, Export, Schema,
+├── types.hh                 Duration/DurationUnits, Input, Output, Export, Schema,
 │                            ExternalResource, Endpoint, Error/ErrorFilter,
 │                            Timeout, RetryPolicy, Catalog, Authentication(+OAuth2)
-├── events.hh                EventProperties, EventConsumptionStrategy,
-│                            EventFilter, Correlation, SubscriptionIterator
+├── events.hh                Tasks (NamedTask forward-declared), EventProperties,
+│                            EventConsumptionStrategy, EventFilter, Correlation,
+│                            SubscriptionIterator
 ├── document.hh              Document, DocumentInfo, Schedule, Evaluate
 ├── task.hh                  Task, TaskBody, NamedTask, the 12 bodies, Catch, Run processes
 ├── use.hh                   Use, Extension
@@ -150,7 +158,7 @@ src/openworkflow/
     ├── one_of.hh            SelectOne + KeySet
     ├── decode.hh/.cc        YAML::convert<…> specializations (+ select one_of)
     ├── parse.hh/.cc         Parse(text) → expected<Document, ParseError>
-    └── BUILD.bazel          owd_parser_lib (openworkflow_model_lib + parser glue)
+    └── BUILD.bazel          openworkflow_parser_lib (openworkflow_model_lib + parser glue)
 ```
 
 Header-dependency rule: **model headers never include `parser/` or yaml-cpp**;

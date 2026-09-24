@@ -9,7 +9,7 @@
 ## 2. Model DTOs
 
 - [x] 2.1 Implement `value.hh` (`Value` variant: null/bool/int64/double/string/array/object, recursive) with no yaml includes and verify it compiles standalone and round-trips its alternatives in a unit test
-- [x] 2.2 Implement `types.hh` (Duration/DurationRef, Input, Output, Export, Schema, ExternalResource, Endpoint, Error/ErrorFilter, Timeout, RetryPolicy/Limit/Backoff/Jitter, Catalog, Authentication + OAuth2/OAuth2Token) and verify it builds as part of the model lib
+- [x] 2.2 Implement `types.hh` (Duration/DurationUnits, Input, Output, Export, Schema, ExternalResource, Endpoint, Error/ErrorFilter, Timeout, RetryPolicy/Limit/Backoff/Jitter, Catalog, Authentication + OAuth2/OAuth2Token) and verify it builds as part of the model lib
 - [x] 2.3 Implement `events.hh` (EventProperties, EventConsumptionStrategy, EventFilter, Correlation, SubscriptionIterator) and verify it builds
 - [x] 2.4 Implement `document.hh` (Document, DocumentInfo, Schedule, Evaluate) and verify it builds
 - [x] 2.5 Implement `task.hh` (Task, TaskBody, NamedTask, the 12 task bodies, ForSpec, NamedCase, Catch, Run processes, ContainerLifetime) and verify it builds
@@ -19,7 +19,7 @@
 
 - [x] 3.1 Implement `parser/errors.hh` (`ParseError : YAML::Exception` with `position` carry-over) and verify a unit test constructs and formulates it
 - [x] 3.2 Implement `parser/one_of.hh` (`KeySet` + `SelectOne`) and verify it throws positioned `ParseError` on zero or >1 present keys in a unit test
-- [x] 3.3 Implement `parser/decode.hh/.cc` for the leaf/shared shapes (`Value`, `DurationSpec`, `DocumentInfo`, `Schedule`, `Evaluate`, Authentication/OAuth2, retry types, endpoint/resource/schema) and verify decoding parses representative YAML in unit tests
+- [x] 3.3 Implement `parser/decode.hh/.cc` for the leaf/shared shapes (`Value`, `Duration`, `DocumentInfo`, `Schedule`, `Evaluate`, Authentication/OAuth2, retry types, endpoint/resource/schema) and verify decoding parses representative YAML in unit tests
 - [x] 3.4 Implement `parser/decode.hh/.cc` for `Tasks`/`NamedTask` (both sequence-of-single-key-maps and map forms, order-preserving) and verify both forms parse in order-preserving unit tests
 - [x] 3.5 Implement `parser/decode.hh/.cc` for the `Task` union via `SelectOne` (12 kinds) and all task bodies, and verify each kind parses with its common properties
 - [x] 3.6 Implement `parser/decode.hh/.cc` for `Document` (top-level required + optional sections) and `Use` components, verifying multi-`Use`-category YAML parses
