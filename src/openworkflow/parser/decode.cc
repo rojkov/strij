@@ -1243,70 +1243,86 @@ auto decodeExtension(const YAML::Node& node) -> Extension {
 }
 
 auto decodeUse(const YAML::Node& node) -> Use {
-  Use out;
   requireMap(node, "use");
   rejectUnknownKeys(node,
                     {"authentications", "errors", "extensions", "functions", "retries", "secrets",
                      "timeouts", "catalogs"},
                     "use");
+  Use out;
+
   if (has(node, "authentications")) {
     const YAML::Node authentications = getChild(node, "authentications");
     requireMap(authentications, "use.authentications");
+
     for (const auto& entry : authentications) {
       out.authentications_.emplace(entry.first.Scalar(), decodeAuthentication(entry.second));
     }
   }
+
   if (has(node, "errors")) {
     const YAML::Node errors = getChild(node, "errors");
     requireMap(errors, "use.errors");
+
     for (const auto& entry : errors) {
       out.errors_.emplace(entry.first.Scalar(), decodeError(entry.second));
     }
   }
+
   if (has(node, "extensions")) {
     const YAML::Node extensions = getChild(node, "extensions");
     requireSequence(extensions, "use.extensions");
+
     for (const auto& item : extensions) {
       requireMap(item, "use.extensions");
+
       if (item.size() != 1) {
         fail(item.Mark(), "each extension must be a single-key mapping");
       }
+
       const auto entry = *item.begin();
-      NamedExtension named_extension;
-      named_extension.name_ = entry.first.Scalar();
-      named_extension.extension_ = decodeExtension(entry.second);
-      out.extensions_.push_back(std::move(named_extension));
+      out.extensions_.push_back(
+          {.name_ = entry.first.Scalar(), .extension_ = decodeExtension(entry.second)});
     }
   }
+
   if (has(node, "functions")) {
     const YAML::Node functions = getChild(node, "functions");
     requireMap(functions, "use.functions");
+
     for (const auto& entry : functions) {
       out.functions_.emplace(entry.first.Scalar(), decodeTask(entry.second));
     }
   }
+
   if (has(node, "retries")) {
     const YAML::Node retries = getChild(node, "retries");
     requireMap(retries, "use.retries");
+
     for (const auto& entry : retries) {
       out.retries_.emplace(entry.first.Scalar(), decodeRetryPolicy(entry.second));
     }
   }
+
   out.secrets_ = decodeStringList(node, "secrets");
+
   if (has(node, "timeouts")) {
     const YAML::Node timeouts = getChild(node, "timeouts");
     requireMap(timeouts, "use.timeouts");
+
     for (const auto& entry : timeouts) {
       out.timeouts_.emplace(entry.first.Scalar(), decodeTimeout(entry.second));
     }
   }
+
   if (has(node, "catalogs")) {
     const YAML::Node catalogs = getChild(node, "catalogs");
     requireMap(catalogs, "use.catalogs");
+
     for (const auto& entry : catalogs) {
       out.catalogs_.emplace(entry.first.Scalar(), decodeCatalog(entry.second));
     }
   }
+
   return out;
 }
 
