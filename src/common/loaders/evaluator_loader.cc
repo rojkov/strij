@@ -15,6 +15,9 @@
 namespace strij::loaders {
 namespace {
 
+// TODO(loaders): shares its registry-lookup/unpack preamble with
+// scheduler_loader.cc; see the TODO there about extracting a common
+// ResolveExtensionConfig<FactoryT> helper once a third loader category lands.
 auto createEvaluatorFromExtension(const config::ExtensionConfig& ext, std::string_view source,
                                   std::vector<std::string> variable_names,
                                   const extensions::evaluators::EvaluatorDeps& deps)

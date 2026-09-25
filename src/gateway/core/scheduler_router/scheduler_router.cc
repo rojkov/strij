@@ -16,7 +16,7 @@
 #include "absl/strings/str_cat.h"
 #include "common/core/io/connection.hh"
 #include "common/core/io/tlv_frame.hh"
-#include "common/extensions/scheduler_loader.hh"
+#include "common/loaders/scheduler_loader.hh"
 #include "common/task/task.pb.h"
 #include "gateway/config/gateway.pb.h"
 #include "gateway/core/node.hh"
@@ -215,7 +215,7 @@ auto BuildSchedulerRouter(const config::GatewayConfig& config,
                                                      "' more than once"));
     }
 
-    auto scheduler_result = CreateGatewayScheduler(scheduler_config.extension(), context);
+    auto scheduler_result = loaders::CreateScheduler(scheduler_config.extension(), context);
     if (!scheduler_result.ok()) {
       return scheduler_result.status();
     }

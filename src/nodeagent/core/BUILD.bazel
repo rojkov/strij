@@ -222,7 +222,7 @@ strij_cc_library(
         "//include/strij/nodeagent:child_task_submitter_interface",
         "//src/common/core/io:connection_lib",
         "//src/common/core/io:tlv_frame",
-        "//src/common/extensions:scheduler_loader_lib",
+        "//src/common/loaders:scheduler_loader_lib",
         "@abseil-cpp//absl/status",
         "@abseil-cpp//absl/status:statusor",
         "@abseil-cpp//absl/strings",
