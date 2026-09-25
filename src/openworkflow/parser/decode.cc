@@ -275,15 +275,20 @@ auto decodeOAuth2Endpoints(const YAML::Node& node) -> OAuth2AuthenticationProper
 }
 
 auto decodeOAuth2Properties(const YAML::Node& node) -> OAuth2AuthenticationProperties {
-  OAuth2AuthenticationProperties out;
   requireMap(node, "oauth2 authentication");
   rejectUnknownKeys(node,
                     {"authority", "grant", "client", "request", "endpoints", "issuers", "scopes",
                      "audiences", "username", "password", "subject", "actor"},
                     "oauth2 authentication");
 
-  out.authority_ = decodeRequired<std::string>(node, "authority", "oauth2 authentication");
-  out.grant_ = decodeRequired<std::string>(node, "grant", "oauth2 authentication");
+  OAuth2AuthenticationProperties out{
+      .authority_ = decodeRequired<std::string>(node, "authority", "oauth2 authentication"),
+      .grant_ = decodeRequired<std::string>(node, "grant", "oauth2 authentication"),
+      .issuers_ = decodeStringList(node, "issuers"),
+      .scopes_ = decodeStringList(node, "scopes"),
+      .audiences_ = decodeStringList(node, "audiences"),
+      .username_ = decodeOptional<std::string>(node, "username"),
+      .password_ = decodeOptional<std::string>(node, "password")};
 
   if (has(node, "client")) {
     out.client_ = decodeOAuth2Client(getChild(node, "client"));
@@ -296,12 +301,6 @@ auto decodeOAuth2Properties(const YAML::Node& node) -> OAuth2AuthenticationPrope
   if (has(node, "endpoints")) {
     out.endpoints_ = decodeOAuth2Endpoints(getChild(node, "endpoints"));
   }
-
-  out.issuers_ = decodeStringList(node, "issuers");
-  out.scopes_ = decodeStringList(node, "scopes");
-  out.audiences_ = decodeStringList(node, "audiences");
-  out.username_ = decodeOptional<std::string>(node, "username");
-  out.password_ = decodeOptional<std::string>(node, "password");
 
   if (has(node, "subject")) {
     out.subject_ = decodeOAuth2Token(getChild(node, "subject"));
@@ -432,10 +431,9 @@ auto decodeAuthentication(const YAML::Node& node) -> Authentication {
 }
 
 auto decodeEndpointObject(const YAML::Node& node) -> EndpointObject {
-  EndpointObject out;
   requireMap(node, "endpoint");
   rejectUnknownKeys(node, {"uri", "authentication"}, "endpoint");
-  out.uri_ = decodeRequired<std::string>(node, "uri", "endpoint");
+  EndpointObject out{.uri_ = decodeRequired<std::string>(node, "uri", "endpoint")};
 
   if (has(node, "authentication")) {
     out.authentication_ = decodeAuthentication(getChild(node, "authentication"));
