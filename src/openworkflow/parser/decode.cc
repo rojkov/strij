@@ -689,12 +689,11 @@ auto decodeCorrelation(const YAML::Node& node) -> Correlation {
 }
 
 auto decodeEventFilter(const YAML::Node& node) -> EventFilter {
-  EventFilter out;
   requireMap(node, "event filter");
   rejectUnknownKeys(node, {"with", "correlate"}, "event filter");
   requireKey(node, "with", "event filter");
 
-  out.with_ = decodeEventProperties(getChild(node, "with"));
+  EventFilter out{.with_ = decodeEventProperties(getChild(node, "with"))};
 
   if (has(node, "correlate")) {
     const YAML::Node correlate = getChild(node, "correlate");
@@ -743,13 +742,11 @@ auto decodeEventConsumptionStrategy(const YAML::Node& node) -> EventConsumptionS
 }
 
 auto decodeSubscriptionIterator(const YAML::Node& node) -> SubscriptionIterator {
-  SubscriptionIterator out;
-
   requireMap(node, "subscription iterator");
   rejectUnknownKeys(node, {"item", "at", "do", "output", "export"}, "subscription iterator");
 
-  out.item_ = decodeOptional<std::string>(node, "item");
-  out.at_ = decodeOptional<std::string>(node, "at");
+  SubscriptionIterator out{.item_ = decodeOptional<std::string>(node, "item"),
+                           .at_ = decodeOptional<std::string>(node, "at")};
 
   if (has(node, "do")) {
     out.do_ = decodeTasks(getChild(node, "do"));
