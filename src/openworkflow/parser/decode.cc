@@ -1327,69 +1327,77 @@ auto decodeUse(const YAML::Node& node) -> Use {
 }
 
 auto decodeDocumentInfo(const YAML::Node& node) -> DocumentInfo {
-  DocumentInfo out;
   requireMap(node, "document");
   rejectUnknownKeys(node,
                     {"dsl", "namespace", "name", "version", "title", "summary", "tags", "metadata"},
                     "document");
-  out.dsl_ = decodeRequired<std::string>(node, "dsl", "document");
-  out.namespace_ = decodeRequired<std::string>(node, "namespace", "document");
-  out.name_ = decodeRequired<std::string>(node, "name", "document");
-  out.version_ = decodeRequired<std::string>(node, "version", "document");
-  out.title_ = decodeOptional<std::string>(node, "title");
-  out.summary_ = decodeOptional<std::string>(node, "summary");
+
+  DocumentInfo out{.dsl_ = decodeRequired<std::string>(node, "dsl", "document"),
+                   .namespace_ = decodeRequired<std::string>(node, "namespace", "document"),
+                   .name_ = decodeRequired<std::string>(node, "name", "document"),
+                   .version_ = decodeRequired<std::string>(node, "version", "document"),
+                   .title_ = decodeOptional<std::string>(node, "title"),
+                   .summary_ = decodeOptional<std::string>(node, "summary")};
+
   if (has(node, "tags")) {
     out.tags_ = decodeValue(getChild(node, "tags"));
   }
+
   if (has(node, "metadata")) {
     out.metadata_ = decodeValue(getChild(node, "metadata"));
   }
+
   return out;
 }
 
 auto decodeSchedule(const YAML::Node& node) -> Schedule {
-  Schedule out;
   requireMap(node, "schedule");
   rejectUnknownKeys(node, {"every", "cron", "after", "on", "read"}, "schedule");
+
+  Schedule out{.cron_ = decodeOptional<std::string>(node, "cron"),
+               .read_ = decodeOptional<std::string>(node, "read")};
+
   if (has(node, "every")) {
     out.every_ = decodeDuration(getChild(node, "every"));
   }
-  out.cron_ = decodeOptional<std::string>(node, "cron");
+
   if (has(node, "after")) {
     out.after_ = decodeDuration(getChild(node, "after"));
   }
+
   if (has(node, "on")) {
     out.on_ = decodeEventConsumptionStrategy(getChild(node, "on"));
   }
-  out.read_ = decodeOptional<std::string>(node, "read");
+
   return out;
 }
 
 auto decodeEvaluate(const YAML::Node& node) -> Evaluate {
-  Evaluate out;
   requireMap(node, "evaluate");
   rejectUnknownKeys(node, {"language", "mode"}, "evaluate");
-  out.language_ = decodeOptional<std::string>(node, "language");
-  out.mode_ = decodeOptional<std::string>(node, "mode");
-  return out;
+  return {.language_ = decodeOptional<std::string>(node, "language"),
+          .mode_ = decodeOptional<std::string>(node, "mode")};
 }
 
 auto decodeDocumentImpl(const YAML::Node& node) -> Document {
-  Document out;
   requireMap(node, "workflow");
   rejectUnknownKeys(node,
                     {"document", "input", "use", "do", "timeout", "output", "schedule", "evaluate"},
                     "workflow");
   requireKey(node, "document", "workflow");
-  out.document_ = decodeDocumentInfo(getChild(node, "document"));
+  requireKey(node, "do", "workflow");
+
+  Document out{.document_ = decodeDocumentInfo(getChild(node, "document")),
+               .do_ = decodeTasks(getChild(node, "do"))};
+
   if (has(node, "input")) {
     out.input_ = decodeInput(getChild(node, "input"));
   }
+
   if (has(node, "use")) {
     out.use_ = decodeUse(getChild(node, "use"));
   }
-  requireKey(node, "do", "workflow");
-  out.do_ = decodeTasks(getChild(node, "do"));
+
   if (has(node, "timeout")) {
     const YAML::Node timeout = getChild(node, "timeout");
     if (timeout.IsScalar()) {
@@ -1398,15 +1406,19 @@ auto decodeDocumentImpl(const YAML::Node& node) -> Document {
       out.timeout_ = decodeTimeout(timeout);
     }
   }
+
   if (has(node, "output")) {
     out.output_ = decodeOutput(getChild(node, "output"));
   }
+
   if (has(node, "schedule")) {
     out.schedule_ = decodeSchedule(getChild(node, "schedule"));
   }
+
   if (has(node, "evaluate")) {
     out.evaluate_ = decodeEvaluate(getChild(node, "evaluate"));
   }
+
   return out;
 }
 
