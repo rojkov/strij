@@ -661,19 +661,18 @@ auto decodeTimeout(const YAML::Node& node) -> Timeout {
 // ---------------------------------------------------------------------------
 
 auto decodeEventProperties(const YAML::Node& node) -> EventProperties {
-  EventProperties out;
   requireMap(node, "event properties");
   rejectUnknownKeys(
       node, {"id", "source", "type", "time", "subject", "datacontenttype", "dataschema", "data"},
       "event properties");
 
-  out.id_ = decodeOptional<std::string>(node, "id");
-  out.source_ = decodeOptional<std::string>(node, "source");
-  out.type_ = decodeOptional<std::string>(node, "type");
-  out.time_ = decodeOptional<std::string>(node, "time");
-  out.subject_ = decodeOptional<std::string>(node, "subject");
-  out.datacontenttype_ = decodeOptional<std::string>(node, "datacontenttype");
-  out.dataschema_ = decodeOptional<std::string>(node, "dataschema");
+  EventProperties out{.id_ = decodeOptional<std::string>(node, "id"),
+                      .source_ = decodeOptional<std::string>(node, "source"),
+                      .type_ = decodeOptional<std::string>(node, "type"),
+                      .time_ = decodeOptional<std::string>(node, "time"),
+                      .subject_ = decodeOptional<std::string>(node, "subject"),
+                      .datacontenttype_ = decodeOptional<std::string>(node, "datacontenttype"),
+                      .dataschema_ = decodeOptional<std::string>(node, "dataschema")};
 
   if (has(node, "data")) {
     out.data_ = decodeValue(getChild(node, "data"));
