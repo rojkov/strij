@@ -12,7 +12,7 @@
 #include "common/core/io/protocol_parser.hh"
 #include "gateway/extensions/schedulers/round_robin/round_robin.pb.h"
 #include "strij/extensions/scheduler.hh"
-#include "common/extensions/scheduler_loader.hh"
+#include "common/loaders/scheduler_loader.hh"
 #include "gtest/gtest.h"
 
 namespace strij::gateway::schedulers {
@@ -44,7 +44,7 @@ protected:
 TEST_F(SchedulerFactoryTest, EmptySchedulerNameIsRejected) {
   config::ExtensionConfig config;
 
-  auto result = CreateGatewayScheduler(config, context_);
+  auto result = loaders::CreateScheduler(config, context_);
   ASSERT_FALSE(result.ok());
   EXPECT_EQ(result.status().code(), absl::StatusCode::kNotFound);
   EXPECT_NE(result.status().message().find("Scheduler"), std::string::npos);
@@ -54,7 +54,7 @@ TEST_F(SchedulerFactoryTest, UnknownSchedulerNameIsRejected) {
   config::ExtensionConfig config;
   config.set_name("nonexistent");
 
-  auto result = CreateGatewayScheduler(config, context_);
+  auto result = loaders::CreateScheduler(config, context_);
   ASSERT_FALSE(result.ok());
   EXPECT_EQ(result.status().code(), absl::StatusCode::kNotFound);
   EXPECT_NE(result.status().message().find("nonexistent"), std::string::npos);
@@ -66,7 +66,7 @@ TEST_F(SchedulerFactoryTest, CreatesRegisteredSchedulerFromConfig) {
   config.mutable_typed_config()->PackFrom(
       extensions::schedulers::round_robin::RoundRobinSchedulerConfig());
 
-  auto result = CreateGatewayScheduler(config, context_);
+  auto result = loaders::CreateScheduler(config, context_);
   ASSERT_TRUE(result.ok()) << result.status().message();
   EXPECT_EQ((*result)->RequiredProtocol(), "push");
 }

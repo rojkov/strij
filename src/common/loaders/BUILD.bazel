@@ -19,3 +19,25 @@ strij_cc_library(
         "@protobuf",
     ],
 )
+
+# Scheduler config->instance glue behind the public Scheduler contracts:
+# resolve an ExtensionConfig name to a registered factory and instantiate the
+# scheduler. Shared by gateway and nodeagent consumers; the side's registry is
+# selected by the overload's context/deps argument type. Kept out of
+# src/common/extensions (which hosts pluggable implementations, not loaders).
+strij_cc_library(
+    name = "scheduler_loader_lib",
+    srcs = ["scheduler_loader.cc"],
+    hdrs = ["scheduler_loader.hh"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//api/common/config:config_cc_proto",
+        "//include/strij/extensions:extension_registry_lib",
+        "//include/strij/extensions:factory_context_interface",
+        "//include/strij/extensions:scheduler_interface",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@protobuf",
+    ],
+)

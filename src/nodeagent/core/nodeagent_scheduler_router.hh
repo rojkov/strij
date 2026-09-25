@@ -88,7 +88,7 @@ private:
 };
 
 // Loads one scheduler per NodeAgentConfig.schedulers entry via
-// CreateNodeScheduler and composes them into a router: an empty task_type
+// loaders::CreateScheduler and composes them into a router: an empty task_type
 // is NOT a default, at most one local_default entry, unique non-empty
 // task_type claims, and no-role entries never receive child task submissions.
 // Fails on an empty list, an unknown scheduler name, or ambiguous

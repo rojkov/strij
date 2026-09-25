@@ -1,22 +1,30 @@
-#include "strij/extensions/scheduler.hh"
+#include "common/loaders/scheduler_loader.hh"
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "common/config/extensions.pb.h"
-#include "common/extensions/scheduler_loader.hh"
 #include "google/protobuf/any.pb.h"
 #include "strij/extensions/extension_registry.hh"
+#include "strij/extensions/scheduler.hh"
 
-namespace strij::extensions {
+namespace strij::loaders {
 
 namespace {
 
+// TODO(loaders): when a third loader category is introduced, extract the shared
+// registry-lookup/unpack preamble below (find factory -> NotFound with
+// registered names -> CreateEmptyConfigProto -> tolerate/unpack typed_config)
+// into `template <typename FactoryT> ResolveExtensionConfig(const
+// config::ExtensionConfig&, std::string_view kind)` in strij::loaders, leaving
+// each category's create/compile step (and its null semantics) local. With only
+// the evaluator and scheduler loaders the duplication is not yet worth the
+// indirection (see migrate-scheduler-loader design D6).
 template <typename FactoryT, typename ContextT>
 auto createSchedulerFromExtension(const config::ExtensionConfig& ext, ContextT& context)
-    -> absl::StatusOr<SchedulerPtr> {
-  auto& registry = Registry<FactoryT>::instance();
+    -> absl::StatusOr<extensions::SchedulerPtr> {
+  auto& registry = extensions::Registry<FactoryT>::instance();
   auto* factory = registry.GetFactory(ext.name());
   if (factory == nullptr) {
     const auto names = registry.GetRegisteredNames();
@@ -53,24 +61,16 @@ auto createSchedulerFromExtension(const config::ExtensionConfig& ext, ContextT& 
 
 } // namespace
 
-} // namespace strij::extensions
-
-namespace strij::gateway {
-
-auto CreateGatewayScheduler(const config::ExtensionConfig& config,
-                            extensions::GatewayFactoryContext& context)
+auto CreateScheduler(const config::ExtensionConfig& config,
+                     extensions::GatewayFactoryContext& context)
     -> absl::StatusOr<extensions::SchedulerPtr> {
-  return extensions::createSchedulerFromExtension<GatewaySchedulerFactory>(config, context);
+  return createSchedulerFromExtension<gateway::GatewaySchedulerFactory>(config, context);
 }
 
-} // namespace strij::gateway
-
-namespace strij::nodeagent {
-
-auto CreateNodeScheduler(const config::ExtensionConfig& config,
-                         const nodeagent::NodeSchedulerDeps& deps)
+auto CreateScheduler(const config::ExtensionConfig& config,
+                     const nodeagent::NodeSchedulerDeps& deps)
     -> absl::StatusOr<extensions::SchedulerPtr> {
-  return extensions::createSchedulerFromExtension<NodeSchedulerFactory>(config, deps);
+  return createSchedulerFromExtension<nodeagent::NodeSchedulerFactory>(config, deps);
 }
 
-} // namespace strij::nodeagent
+} // namespace strij::loaders

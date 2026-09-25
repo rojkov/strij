@@ -12,7 +12,7 @@
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
-#include "common/extensions/scheduler_loader.hh"
+#include "common/loaders/scheduler_loader.hh"
 #include "common/task/task.pb.h"
 #include "nodeagent/config/nodeagent.pb.h"
 #include "strij/extensions/scheduler.hh"
@@ -134,7 +134,7 @@ auto BuildNodeagentSchedulerRouter(const config::NodeAgentConfig& config,
   }
 
   for (const auto& scheduler_config : config.schedulers()) {
-    auto scheduler_result = CreateNodeScheduler(scheduler_config.extension(), deps);
+    auto scheduler_result = loaders::CreateScheduler(scheduler_config.extension(), deps);
     if (!scheduler_result.ok()) {
       return scheduler_result.status();
     }

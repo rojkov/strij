@@ -27,13 +27,10 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 NS_RE = re.compile(r'namespace\s+((?:\w+(?:::\w+)*))\s*\{')
 
 CROSS_CUTTING_ALLOWLIST = {
-    "src/common/extensions/scheduler.hh",
-    "src/common/extensions/scheduler.cc",
-    "src/common/extensions/scheduler_loader.hh",
     "src/common/extensions/factory_context.hh",
-    # Cross-cutting test of the shared scheduler loader (CreateGatewayScheduler
-    # lives in the shared scheduler.cc under strij::gateway).
-    "test/common/extensions/scheduler_factory_test.cc",
+    # Cross-cutting test of the shared scheduler loader (strij::loaders::
+    # CreateScheduler takes gateway impls to build a MockGatewayFactoryContext).
+    "test/common/loaders/scheduler_factory_test.cc",
 }
 
 BASE_DIRS = ("src", "include", "test")

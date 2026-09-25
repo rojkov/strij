@@ -77,7 +77,7 @@ private:
 };
 
 // Loads one scheduler per GatewayConfig.schedulers entry via
-// CreateGatewayScheduler and composes them into a router. Fails on an empty
+// loaders::CreateScheduler and composes them into a router. Fails on an empty
 // list, an unknown scheduler name, or ambiguous bindings (duplicate task_type
 // or more than one default).
 auto BuildSchedulerRouter(const config::GatewayConfig& config,
