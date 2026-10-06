@@ -19,6 +19,16 @@ strij_cc_test(
 )
 
 strij_cc_test(
+    name = "task_status_test",
+    srcs = ["task_status_test.cc"],
+    deps = [
+        "//api/common/task:task_cc_proto",
+        "//src/common/core/utils:task_status_lib",
+        "@googletest//:gtest_main",
+    ],
+)
+
+strij_cc_test(
     name = "jv_test",
     srcs = ["jv_test.cc"],
     deps = [

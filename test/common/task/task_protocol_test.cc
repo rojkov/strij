@@ -1,5 +1,6 @@
 #include <string>
 
+#include "common/core/utils/task_status.hh"
 #include "common/task/task.pb.h"
 #include "gtest/gtest.h"
 
@@ -56,6 +57,54 @@ TEST(TaskResultTest, ExplicitIsFinalTrueRoundTrips) {
   ASSERT_TRUE(parsed.ParseFromString(serialized));
   EXPECT_TRUE(parsed.has_is_final());
   EXPECT_TRUE(IsFinal(parsed));
+}
+
+TEST(TaskResultTest, AbsentStatusRoundTripsAsUnsetAndReadsAsSuccess) {
+  TaskResult result;
+  result.set_id("42");
+  result.set_body("hello");
+  ASSERT_FALSE(result.has_status());
+
+  std::string serialized;
+  ASSERT_TRUE(result.SerializeToString(&serialized));
+
+  TaskResult parsed;
+  ASSERT_TRUE(parsed.ParseFromString(serialized));
+  EXPECT_FALSE(parsed.has_status());
+  EXPECT_TRUE(utils::IsTaskResultOk(parsed));
+}
+
+TEST(TaskResultTest, FailedResultCarriesStatusAndErrorBody) {
+  TaskResult result;
+  result.set_id("42");
+  result.set_body("gpu pool exhausted");
+  result.set_status(TASK_STATUS_CAPACITY_REFUSED);
+
+  std::string serialized;
+  ASSERT_TRUE(result.SerializeToString(&serialized));
+
+  TaskResult parsed;
+  ASSERT_TRUE(parsed.ParseFromString(serialized));
+  ASSERT_TRUE(parsed.has_status());
+  EXPECT_EQ(parsed.status(), TASK_STATUS_CAPACITY_REFUSED);
+  EXPECT_FALSE(utils::IsTaskResultOk(parsed));
+  EXPECT_EQ(parsed.body(), "gpu pool exhausted");
+}
+
+TEST(TaskResultTest, UnnamedStatusValueSurvivesRoundTripAsFailure) {
+  TaskResult result;
+  result.set_id("42");
+  // A value this schema does not name, as a newer producer would send.
+  result.set_status(static_cast<TaskStatus>(42));
+
+  std::string serialized;
+  ASSERT_TRUE(result.SerializeToString(&serialized));
+
+  TaskResult parsed;
+  ASSERT_TRUE(parsed.ParseFromString(serialized));
+  ASSERT_TRUE(parsed.has_status());
+  EXPECT_EQ(static_cast<int>(parsed.status()), 42);
+  EXPECT_FALSE(utils::IsTaskResultOk(parsed));
 }
 
 TEST(TaskTest, ParametersRoundTrip) {

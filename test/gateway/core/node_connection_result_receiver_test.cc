@@ -84,7 +84,7 @@ TEST(NodeConnectionResultReceiverTest, DeliverErrorWritesRejectedFrame) {
   std::vector<std::vector<std::byte>> captured;
   auto receiver = MakeReceiver("t1", captured);
 
-  receiver->DeliverError("capacity exhausted");
+  receiver->DeliverError("capacity exhausted", task::TASK_STATUS_CAPACITY_REFUSED);
 
   ASSERT_EQ(captured.size(), 1U);
   auto frames = ParseFrames(captured[0]);
@@ -118,7 +118,7 @@ TEST(NodeConnectionResultReceiverTest, DeliveryOnClosedMailboxIsNoop) {
   // After Close(), Enqueue is a no-op — no assertions fire and no data flows.
   std::string body = "late";
   receiver.Deliver(std::as_bytes(std::span(body)), true);
-  receiver.DeliverError("late error");
+  receiver.DeliverError("late error", task::TASK_STATUS_INTERNAL);
 
   close(fds[1]);
 }

@@ -7,6 +7,7 @@
 #include <string_view>
 
 #include "common/core/io/outbound_mailbox.hh"
+#include "common/task/task.pb.h"
 #include "strij/gateway/result_receiver_storage.hh"
 
 namespace strij::gateway {
@@ -23,7 +24,11 @@ public:
   NodeConnectionResultReceiver(std::string task_id, std::shared_ptr<io::OutboundMailbox> mailbox);
 
   void Deliver(std::span<const std::byte> value, bool is_final) override;
-  void DeliverError(std::string_view reason) override;
+  // Writes a kTaskRejected frame. `status` has no representation there:
+  // TaskRejected stays reason-only by design, because a rejection is an
+  // admission outcome, not a task outcome. The code is accepted so every
+  // receiver honours the one DeliverError contract.
+  void DeliverError(std::string_view reason, task::TaskStatus status) override;
 
 private:
   std::string task_id_;

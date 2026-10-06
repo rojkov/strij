@@ -1,10 +1,6 @@
-# streaming-task-results
+# Spec Delta
 
-## Purpose
-
-Defines how task results can be streamed back to HTTP clients: multiple `TaskResult` chunks per task, chunked HTTP framing, and the finality rule governing how the gateway treats results with or without the `is_final` field.
-
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: HttpResultReceiver frames responses by first-result finality
 
@@ -52,18 +48,3 @@ The HTTP status written SHALL be 200 for a successful outcome and the status map
 - **WHEN** a failure carries a code the receiver does not recognize
 - **THEN** the receiver SHALL write the HTTP status designated for an internal failure
 - **AND** SHALL NOT write 200
-
-### Requirement: Multi-chunk task results
-A task handler SHALL be able to deliver a task result as multiple `TaskResult` messages: intermediate chunks with `is_final=false` and a single final chunk with `is_final=true`. The gateway SHALL forward each chunk to the receiver in order.
-
-#### Scenario: Streaming chunks delivered in order
-- **WHEN** a handler sends three results for one task (two non-final, then one final)
-- **THEN** the gateway SHALL deliver the three chunks to the receiver in order
-- **AND** SHALL mark only the last chunk as final
-
-### Requirement: Result finality rule
-Absence of the `is_final` field SHALL be treated as final. Consumers SHALL compute finality with `!has_is_final() || is_final()`.
-
-#### Scenario: Absent is_final is treated as final
-- **WHEN** a `TaskResult` without `is_final` set arrives at the gateway
-- **THEN** the gateway SHALL treat it as final and remove the receiver from storage

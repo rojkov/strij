@@ -28,7 +28,8 @@ void NodeConnectionResultReceiver::Deliver(std::span<const std::byte> value, boo
       io::TlvFrame::kResult, std::as_bytes(std::span(serialized.data(), serialized.size()))));
 }
 
-void NodeConnectionResultReceiver::DeliverError(std::string_view reason) {
+void NodeConnectionResultReceiver::DeliverError(std::string_view reason,
+                                                task::TaskStatus /*status*/) {
   task::TaskRejected rejected;
   rejected.set_id(task_id_);
   rejected.set_reason(std::string(reason));

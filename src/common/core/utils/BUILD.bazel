@@ -15,6 +15,14 @@ strij_cc_library(
 )
 
 strij_cc_library(
+    name = "task_status_lib",
+    srcs = ["task_status.cc"],
+    hdrs = ["task_status.hh"],
+    visibility = ["//visibility:public"],
+    deps = ["//api/common/task:task_cc_proto"],
+)
+
+strij_cc_library(
     name = "bounded_queue_lib",
     hdrs = ["bounded_queue.hh"],
     visibility = ["//visibility:public"],

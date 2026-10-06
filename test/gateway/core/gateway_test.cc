@@ -22,6 +22,7 @@
 #include "gateway/core/requirements_resolver.hh"
 #include "gateway/core/result_receiver_storage.hh"
 #include "common/core/io/connection.hh"
+#include "common/core/logging/logger.hh"
 #include "common/core/io/protocol_parser.hh"
 #include "common/core/io/tlv_frame.hh"
 #include "common/core/io/tlv_parser.hh"
@@ -38,8 +39,10 @@ class MockReceiver : public ResultReceiver {
 public:
   explicit MockReceiver(std::vector<std::byte>* out,
                         std::shared_ptr<std::vector<bool>> finalities = {},
-                        std::shared_ptr<std::vector<std::string>> errors = {})
-      : out_{out}, finalities_{std::move(finalities)}, errors_{std::move(errors)} {}
+                        std::shared_ptr<std::vector<std::string>> errors = {},
+                        std::shared_ptr<std::vector<task::TaskStatus>> statuses = {})
+      : out_{out}, finalities_{std::move(finalities)}, errors_{std::move(errors)},
+        statuses_{std::move(statuses)} {}
 
   void Deliver(std::span<const std::byte> value, bool is_final) override {
     out_->assign(value.begin(), value.end());
@@ -48,9 +51,12 @@ public:
     }
   }
 
-  void DeliverError(std::string_view reason) override {
+  void DeliverError(std::string_view reason, task::TaskStatus status) override {
     if (errors_) {
       errors_->push_back(std::string(reason));
+    }
+    if (statuses_) {
+      statuses_->push_back(status);
     }
   }
 
@@ -58,12 +64,13 @@ private:
   std::vector<std::byte>* out_;
   std::shared_ptr<std::vector<bool>> finalities_;
   std::shared_ptr<std::vector<std::string>> errors_;
+  std::shared_ptr<std::vector<task::TaskStatus>> statuses_;
 };
 
 class NullReceiver : public ResultReceiver {
 public:
   void Deliver(std::span<const std::byte> /*value*/, bool /*is_final*/) override {}
-  void DeliverError(std::string_view /*reason*/) override {}
+  void DeliverError(std::string_view /*reason*/, task::TaskStatus /*status*/) override {}
 };
 
 // Deterministic scheduler for handler wiring tests: records every task it is
@@ -82,7 +89,7 @@ public:
       recorded_->push_back(task);
     }
     if (node_ == nullptr) {
-      receiver->DeliverError("stub scheduler declined");
+      receiver->DeliverError("stub scheduler declined", task::TASK_STATUS_CAPACITY_REFUSED);
       return;
     }
     if (storage_ != nullptr) {
@@ -110,6 +117,25 @@ private:
   gateway::Node* node_;
   gateway::ResultReceiverStorage* storage_;
   std::vector<task::Task>* recorded_;
+};
+
+// Scheduling failure on demand: resolves the receiver with a fixed
+// classification, so a test can drive two different causes through the HTTP
+// boundary and observe two different status codes.
+class FailingScheduler : public extensions::Scheduler {
+public:
+  FailingScheduler(task::TaskStatus status, std::string reason)
+      : status_{status}, reason_{std::move(reason)} {}
+
+  void Schedule(const task::Task& /*task*/, gateway::ResultReceiverPtr receiver) override {
+    receiver->DeliverError(reason_, status_);
+  }
+
+  auto RequiredProtocol() const -> std::string_view override { return "push"; }
+
+private:
+  task::TaskStatus status_;
+  std::string reason_;
 };
 
 auto SerializeTaskResult(const task::TaskResult& result) -> std::string {
@@ -166,6 +192,41 @@ protected:
                                },
                                storage_};
   GatewayTlvHandler handler_{directory_, storage_};
+
+  // Feeds one kResult frame (reconstructed from wire bytes) through the handler
+  // over a throwaway connection; the result path does not read the connection.
+  auto HandleResult(const task::TaskResult& result) -> absl::Status {
+    auto serialized = SerializeTaskResult(result);
+    auto wire = io::SerializeTlvFrame(
+        io::TlvFrame::kResult,
+        std::as_bytes(std::span(serialized.data(), serialized.size())));
+
+    std::array<int, 2> fds{};
+    EXPECT_EQ(0, socketpair(AF_UNIX, SOCK_STREAM, 0, fds.data()));
+    auto dispatcher = std::make_shared<event::MockDispatcher>();
+    event::DummyOwner owner;
+    EXPECT_CALL(*dispatcher,
+                PrepareRead(::testing::_, ::testing::_, ::testing::_, ::testing::_, ::testing::_))
+        .WillOnce(::testing::Return());
+    io::Connection conn(fds[0], dispatcher, &owner,
+                        [](io::Connection&) -> io::ProtocolParserPtr {
+                          return std::make_unique<io::TrivialParser>();
+                        });
+
+    std::vector<io::TlvFrame> received_frames;
+    io::TlvParser parser(
+        [&received_frames](io::TlvFrame frame) { received_frames.push_back(frame); });
+    auto read_buf = parser.GetReadBuffer();
+    std::memcpy(read_buf.data(), wire.data(), wire.size());
+    parser.OnData(wire.size());
+    EXPECT_EQ(received_frames.size(), 1U);
+
+    auto status = handler_.HandleFrame(received_frames[0], conn);
+
+    close(fds[0]);
+    close(fds[1]);
+    return status;
+  }
 };
 
 TEST_F(GatewayTlvHandlerTest, NodeAdvertisementStoresCapabilitiesAndRekeyes) {
@@ -465,7 +526,7 @@ TEST_F(GatewayTlvHandlerTest, RejectedTaskWithoutReceiverIsDropped) {
 
 TEST(HttpResponseFramerTest, ErrorResponseUses503) {
   HttpResponseFramer framer;
-  auto frames = framer.ErrorResponse("gpu.h100 exhausted");
+  auto frames = framer.ErrorResponse("gpu.h100 exhausted", task::TASK_STATUS_UNAVAILABLE);
 
   ASSERT_EQ(frames.size(), 1U);
   std::string response(std::bit_cast<const char*>(frames[0].data()), frames[0].size());
@@ -475,6 +536,29 @@ TEST(HttpResponseFramerTest, ErrorResponseUses503) {
   // A subsequent result must not produce further frames (connection is done).
   std::vector<std::byte> body{std::byte{'x'}};
   EXPECT_TRUE(framer.Next(body, true).empty());
+}
+
+TEST(HttpResponseFramerTest, ErrorResponseMapsStatusCodeToStatusLine) {
+  HttpResponseFramer framer;
+  auto frames = framer.ErrorResponse("no such task type", task::TASK_STATUS_NOT_FOUND);
+
+  ASSERT_EQ(frames.size(), 1U);
+  std::string response(std::bit_cast<const char*>(frames[0].data()), frames[0].size());
+  EXPECT_NE(response.find("HTTP/1.1 404 Not Found"), std::string::npos);
+  EXPECT_NE(response.find("no such task type"), std::string::npos);
+  std::vector<std::byte> body{std::byte{'x'}};
+  EXPECT_TRUE(framer.Next(body, true).empty());
+}
+
+TEST(HttpResponseFramerTest, ErrorResponseUnknownCodeYields500) {
+  HttpResponseFramer framer;
+  auto frames =
+      framer.ErrorResponse("unmapped code", static_cast<task::TaskStatus>(42));
+
+  ASSERT_EQ(frames.size(), 1U);
+  std::string response(std::bit_cast<const char*>(frames[0].data()), frames[0].size());
+  EXPECT_NE(response.find("HTTP/1.1 500 Internal Server Error"), std::string::npos);
+  EXPECT_NE(response.find("unmapped code"), std::string::npos);
 }
 
 TEST_F(GatewayTlvHandlerTest, IntermediateResultKeepsReceiverUntilFinal) {
@@ -541,6 +625,216 @@ TEST_F(GatewayTlvHandlerTest, AbsentIsFinalFieldTreatsResultAsFinal) {
   auto result_serialized = SerializeTaskResult(result);
   auto status = handler_.HandleFrame(toTlvFrame(result_serialized), conn);
   EXPECT_EQ(storage_.Get("7"), nullptr);
+
+  close(fds[0]);
+  close(fds[1]);
+}
+
+TEST_F(GatewayTlvHandlerTest, FailedFirstResultRoutesErrorNotPayload) {
+  std::vector<std::byte> delivered;
+  auto errors = std::make_shared<std::vector<std::string>>();
+  auto statuses = std::make_shared<std::vector<task::TaskStatus>>();
+  storage_.Put("42", std::make_unique<MockReceiver>(&delivered, nullptr, errors, statuses),
+               "node-1");
+
+  task::TaskResult result;
+  result.set_id("42");
+  result.set_body("no such task type");
+  result.set_status(task::TASK_STATUS_NOT_FOUND);
+
+  EXPECT_TRUE(HandleResult(result).ok());
+
+  EXPECT_TRUE(delivered.empty());
+  ASSERT_EQ(errors->size(), 1U);
+  EXPECT_EQ((*errors)[0], "no such task type");
+  ASSERT_EQ(statuses->size(), 1U);
+  EXPECT_EQ((*statuses)[0], task::TASK_STATUS_NOT_FOUND);
+  EXPECT_EQ(storage_.Get("42"), nullptr);
+}
+
+TEST_F(GatewayTlvHandlerTest, FailedNonFinalResultStillRemovesReceiver) {
+  std::vector<std::byte> delivered;
+  auto errors = std::make_shared<std::vector<std::string>>();
+  auto statuses = std::make_shared<std::vector<task::TaskStatus>>();
+  storage_.Put("42", std::make_unique<MockReceiver>(&delivered, nullptr, errors, statuses),
+               "node-1");
+
+  task::TaskResult result;
+  result.set_id("42");
+  result.set_body("handler exploded midway");
+  result.set_status(task::TASK_STATUS_INTERNAL);
+  result.set_is_final(false);
+
+  EXPECT_TRUE(HandleResult(result).ok());
+
+  // A failed task produces no further results, so even a non-final failure
+  // must not leave the receiver registered.
+  EXPECT_TRUE(delivered.empty());
+  ASSERT_EQ(errors->size(), 1U);
+  EXPECT_EQ((*errors)[0], "handler exploded midway");
+  ASSERT_EQ(statuses->size(), 1U);
+  EXPECT_EQ((*statuses)[0], task::TASK_STATUS_INTERNAL);
+  EXPECT_EQ(storage_.Get("42"), nullptr);
+}
+
+TEST_F(GatewayTlvHandlerTest, UnnamedStatusCodeReadsAsFailure) {
+  std::vector<std::byte> delivered;
+  auto errors = std::make_shared<std::vector<std::string>>();
+  auto statuses = std::make_shared<std::vector<task::TaskStatus>>();
+  storage_.Put("42", std::make_unique<MockReceiver>(&delivered, nullptr, errors, statuses),
+               "node-1");
+
+  task::TaskResult result;
+  result.set_id("42");
+  result.set_body("value this schema does not name");
+  result.set_status(static_cast<task::TaskStatus>(42));
+
+  EXPECT_TRUE(HandleResult(result).ok());
+
+  EXPECT_TRUE(delivered.empty());
+  ASSERT_EQ(errors->size(), 1U);
+  ASSERT_EQ(statuses->size(), 1U);
+  EXPECT_EQ((*statuses)[0], static_cast<task::TaskStatus>(42));
+  EXPECT_EQ(storage_.Get("42"), nullptr);
+}
+
+TEST_F(GatewayTlvHandlerTest, FailureFollowedByMoreResultsDoesNotResumeTask) {
+  std::vector<std::byte> delivered;
+  auto errors = std::make_shared<std::vector<std::string>>();
+  auto statuses = std::make_shared<std::vector<task::TaskStatus>>();
+  storage_.Put("42", std::make_unique<MockReceiver>(&delivered, nullptr, errors, statuses),
+               "node-1");
+
+  task::TaskResult failed;
+  failed.set_id("42");
+  failed.set_body("handler exploded midway");
+  failed.set_status(task::TASK_STATUS_INTERNAL);
+  failed.set_is_final(false);
+  EXPECT_TRUE(HandleResult(failed).ok());
+
+  ASSERT_EQ(errors->size(), 1U);
+  EXPECT_EQ(storage_.Get("42"), nullptr);
+
+  // The receiver is gone: a late frame for the same id finds no receiver and
+  // is rejected rather than re-delivered, so the failed task never resumes.
+  task::TaskResult late;
+  late.set_id("42");
+  late.set_body("recovered after the failure");
+  late.set_is_final(true);
+  EXPECT_FALSE(HandleResult(late).ok());
+
+  EXPECT_TRUE(delivered.empty());
+  EXPECT_EQ(errors->size(), 1U);
+  EXPECT_EQ(statuses->size(), 1U);
+  EXPECT_EQ(storage_.Get("42"), nullptr);
+}
+
+// Captures whatever `fn` writes to stderr: tests run without a thread log
+// frontend, so LOG_WARNING falls back to fd 2 (spec `stderr-fallback-logging`).
+template <typename Fn> auto captureStderr(Fn&& fn) -> std::string {
+  std::array<int, 2> fds{};
+  EXPECT_EQ(0, pipe(fds.data()));
+  const int saved = dup(STDERR_FILENO);
+  EXPECT_NE(saved, -1);
+  EXPECT_NE(dup2(fds[1], STDERR_FILENO), -1);
+
+  fn();
+
+  EXPECT_NE(dup2(saved, STDERR_FILENO), -1);
+  close(saved);
+  close(fds[1]);
+
+  std::string out;
+  std::array<char, 512> buf{};
+  ssize_t n = 0;
+  while ((n = read(fds[0], buf.data(), buf.size())) > 0) {
+    out.append(buf.data(), static_cast<size_t>(n));
+  }
+  close(fds[0]);
+  return out;
+}
+
+TEST(HttpResultReceiverTest, SuccessfulFirstResultWritesMappedOkStatus) {
+  std::array<int, 2> fds{};
+  ASSERT_EQ(0, socketpair(AF_UNIX, SOCK_STREAM, 0, fds.data()));
+  auto dispatcher = std::make_shared<event::MockDispatcher>();
+  event::DummyOwner owner;
+  EXPECT_CALL(*dispatcher,
+              PrepareRead(::testing::_, ::testing::_, ::testing::_, ::testing::_, ::testing::_))
+      .WillOnce(::testing::Return());
+  std::vector<std::vector<std::byte>> written;
+  EXPECT_CALL(*dispatcher,
+              PrepareWrite(::testing::_, ::testing::_, ::testing::_, ::testing::_, 0))
+      .WillRepeatedly([&written](event::Completable*, uint8_t, int,
+                                 std::span<const std::byte> buf, off_t) {
+        written.emplace_back(buf.begin(), buf.end());
+      });
+  io::Connection conn(fds[0], dispatcher, &owner, [](io::Connection&) -> io::ProtocolParserPtr {
+    return std::make_unique<io::TrivialParser>();
+  });
+
+  HttpResultReceiver receiver(conn, "t-ok");
+  std::vector<std::byte> body{std::byte{'o'}, std::byte{'k'}};
+  receiver.Deliver(body, true);
+
+  ASSERT_EQ(written.size(), 1U);
+  std::string response(std::bit_cast<const char*>(written[0].data()), written[0].size());
+  EXPECT_NE(response.find("HTTP/1.1 200 OK"), std::string::npos);
+  EXPECT_NE(response.find("Content-Length: 2"), std::string::npos);
+  EXPECT_EQ(response.find("Transfer-Encoding: chunked"), std::string::npos);
+
+  close(fds[0]);
+  close(fds[1]);
+}
+
+TEST(HttpResultReceiverTest, FailureAfterResponseBeganKeepsStatusLineAndLogsTask) {
+  EXPECT_EQ(logging::Logger::local_context_, nullptr)
+      << "captureStderr assumes the stderr fallback path (no thread frontend)";
+  std::array<int, 2> fds{};
+  ASSERT_EQ(0, socketpair(AF_UNIX, SOCK_STREAM, 0, fds.data()));
+  auto dispatcher = std::make_shared<event::MockDispatcher>();
+  event::DummyOwner owner;
+  EXPECT_CALL(*dispatcher,
+              PrepareRead(::testing::_, ::testing::_, ::testing::_, ::testing::_, ::testing::_))
+      .WillOnce(::testing::Return());
+  std::vector<std::vector<std::byte>> written;
+  EXPECT_CALL(*dispatcher,
+              PrepareWrite(::testing::_, ::testing::_, ::testing::_, ::testing::_, 0))
+      .WillRepeatedly([&written](event::Completable*, uint8_t, int,
+                                 std::span<const std::byte> buf, off_t) {
+        written.emplace_back(buf.begin(), buf.end());
+      });
+  io::Connection conn(fds[0], dispatcher, &owner, [](io::Connection&) -> io::ProtocolParserPtr {
+    return std::make_unique<io::TrivialParser>();
+  });
+
+  HttpResultReceiver receiver(conn, "t-late");
+  std::vector<std::byte> body{std::byte{'a'}};
+  receiver.Deliver(body, false);
+
+  // Only the header is submitted; the chunk queues behind it. Drain both so a
+  // later frame would be submitted rather than silently buffered.
+  ASSERT_EQ(written.size(), 1U);
+  conn.HandleCompletion(1 /*kWrite*/, static_cast<int>(written[0].size()), 0);
+  ASSERT_EQ(written.size(), 2U);
+  conn.HandleCompletion(1 /*kWrite*/, static_cast<int>(written[1].size()), 0);
+
+  std::string header_before(written[0].begin(), written[0].end());
+
+  const std::string log =
+      captureStderr([&] { receiver.DeliverError("handler exploded", task::TASK_STATUS_INTERNAL); });
+
+  // The status line written at the first result is never revised, and no
+  // further frames reach the wire.
+  EXPECT_EQ(written.size(), 2U);
+  std::string header_now(written[0].begin(), written[0].end());
+  EXPECT_EQ(header_now, header_before);
+  EXPECT_NE(header_now.find("HTTP/1.1 200 OK"), std::string::npos);
+
+  // The dropped failure is logged with the task and the code.
+  EXPECT_NE(log.find("t-late"), std::string::npos) << log;
+  EXPECT_NE(log.find("status=6"), std::string::npos) << log;
+  EXPECT_NE(log.find("handler exploded"), std::string::npos) << log;
 
   close(fds[0]);
   close(fds[1]);
@@ -677,7 +971,7 @@ TEST_F(GatewayHttpHandlerTest, HandleMessageForwardsParametersToNode) {
   gateway::schedulers::RoundRobinScheduler scheduler(directory, node_storage);
   GatewayHttpHandler handler(
       storage_,
-      [](io::Connection&) -> std::unique_ptr<ResultReceiver> {
+      [](io::Connection&, std::string_view /*task_id*/) -> std::unique_ptr<ResultReceiver> {
         return std::make_unique<NullReceiver>();
       },
       scheduler);
@@ -751,7 +1045,7 @@ TEST_F(GatewayHttpHandlerTest, RoutesTaskThroughScheduler) {
   StubScheduler scheduler(directory.GetNode("B"), &node_storage2, &recorded);
   GatewayHttpHandler handler(
       storage_,
-      [](io::Connection&) -> std::unique_ptr<ResultReceiver> {
+      [](io::Connection&, std::string_view /*task_id*/) -> std::unique_ptr<ResultReceiver> {
         return std::make_unique<NullReceiver>();
       },
       scheduler);
@@ -834,7 +1128,7 @@ TEST_F(GatewayHttpHandlerTest, DeclinedScheduleResolvesReceiverWithoutHttpError)
   auto errors = std::make_shared<std::vector<std::string>>();
   GatewayHttpHandler handler(
       storage_,
-      [errors](io::Connection&) -> std::unique_ptr<ResultReceiver> {
+      [errors](io::Connection&, std::string_view /*task_id*/) -> std::unique_ptr<ResultReceiver> {
         return std::make_unique<MockReceiver>(nullptr, nullptr, errors);
       },
       scheduler);
@@ -854,6 +1148,58 @@ TEST_F(GatewayHttpHandlerTest, DeclinedScheduleResolvesReceiverWithoutHttpError)
 
   close(fds[0]);
   close(fds[1]);
+}
+
+// End-to-end: HTTP request -> GatewayHttpHandler -> scheduler DeliverError ->
+// HttpResultReceiver -> status line on the wire. Two different causes must
+// produce two different statuses, which the former hardcoded 503 could not do.
+TEST_F(GatewayHttpHandlerTest, TwoFailuresProduceDifferentHttpStatuses) {
+  auto responseFor = [this](task::TaskStatus status, std::string reason) -> std::string {
+    std::array<int, 2> fds{};
+    EXPECT_EQ(0, socketpair(AF_UNIX, SOCK_STREAM, 0, fds.data()));
+    auto dispatcher = std::make_shared<event::MockDispatcher>();
+    event::DummyOwner owner;
+    EXPECT_CALL(*dispatcher,
+                PrepareRead(::testing::_, ::testing::_, ::testing::_, ::testing::_, ::testing::_))
+        .WillRepeatedly(::testing::Return());
+
+    io::Connection http_conn(fds[0], dispatcher, &owner,
+                             [](io::Connection&) -> io::ProtocolParserPtr {
+                               return std::make_unique<io::TrivialParser>();
+                             });
+
+    FailingScheduler scheduler(status, std::move(reason));
+    GatewayHttpHandler handler(
+        storage_,
+        [](io::Connection& conn, std::string_view task_id) -> std::unique_ptr<ResultReceiver> {
+          return std::make_unique<HttpResultReceiver>(conn, task_id);
+        },
+        scheduler);
+
+    std::span<const std::byte> written;
+    EXPECT_CALL(*dispatcher,
+                PrepareWrite(::testing::_, ::testing::_, ::testing::_, ::testing::_, ::testing::_))
+        .WillOnce(::testing::DoAll(::testing::SaveArg<3>(&written), ::testing::Return()));
+
+    handler.HandleMessage(io::HttpRequest{.path = "/tasks/echo", .body = {}, .headers = {}},
+                          http_conn);
+
+    std::string response(std::bit_cast<const char*>(written.data()), written.size());
+    close(fds[0]);
+    close(fds[1]);
+    return response;
+  };
+
+  const std::string capacity =
+      responseFor(task::TASK_STATUS_CAPACITY_REFUSED, "gpu pool exhausted");
+  const std::string malformed = responseFor(task::TASK_STATUS_MALFORMED_REQUEST, "unusable plan");
+
+  // Two distinct causes, two distinct statuses: no hardcoded 503 anywhere.
+  EXPECT_NE(capacity.find("HTTP/1.1 429 Too Many Requests"), std::string::npos) << capacity;
+  EXPECT_NE(malformed.find("HTTP/1.1 400 Bad Request"), std::string::npos) << malformed;
+  EXPECT_EQ(capacity.find("HTTP/1.1 503"), std::string::npos);
+  EXPECT_EQ(malformed.find("HTTP/1.1 503"), std::string::npos);
+  EXPECT_NE(capacity, malformed);
 }
 
 // --- Receiver lifecycle tests ---
