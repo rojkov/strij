@@ -31,13 +31,20 @@ using ::testing::SaveArg;
 
 class RecordingReceiver final : public gateway::ResultReceiver {
 public:
-  explicit RecordingReceiver(std::shared_ptr<std::vector<std::string>> errors)
-      : errors_{std::move(errors)} {}
+  explicit RecordingReceiver(std::shared_ptr<std::vector<std::string>> errors,
+                             std::shared_ptr<std::vector<task::TaskStatus>> statuses = {})
+      : errors_{std::move(errors)}, statuses_{std::move(statuses)} {}
 
   void Deliver(std::span<const std::byte> /*value*/, bool /*is_final*/) override {}
-  void DeliverError(std::string_view reason) override { errors_->emplace_back(reason); }
+  void DeliverError(std::string_view reason, task::TaskStatus status) override {
+    errors_->emplace_back(reason);
+    if (statuses_ != nullptr) {
+      statuses_->push_back(status);
+    }
+  }
 
   std::shared_ptr<std::vector<std::string>> errors_;
+  std::shared_ptr<std::vector<task::TaskStatus>> statuses_;
 };
 
 auto MakeReceiver() -> std::pair<gateway::ResultReceiverPtr, std::shared_ptr<std::vector<std::string>>> {
@@ -240,11 +247,16 @@ TEST_F(CapabilityAwareSchedulerTest, DeliversErrorWhenNoEligibleNode) {
   CapabilityAwareScheduler scheduler(*directory, storage_);
   EXPECT_CALL(*dispatcher_, PrepareWrite(_, _, _, _, _)).Times(0);
 
-  auto receiver = MakeReceiver();
-  scheduler.Schedule(MakePinnedTask("1", "echo", {}), std::move(receiver.first));
+  auto errors = std::make_shared<std::vector<std::string>>();
+  auto statuses = std::make_shared<std::vector<task::TaskStatus>>();
+  scheduler.Schedule(MakePinnedTask("1", "echo", {}),
+                     std::make_unique<RecordingReceiver>(errors, statuses));
 
-  ASSERT_EQ(receiver.second->size(), 1U);
-  EXPECT_NE(receiver.second->at(0).find("no eligible node"), std::string::npos);
+  ASSERT_EQ(errors->size(), 1U);
+  EXPECT_NE(errors->at(0).find("no eligible node"), std::string::npos);
+  // An unrecovered refusal reaches the client with the code that names it.
+  ASSERT_EQ(statuses->size(), 1U);
+  EXPECT_EQ(statuses->at(0), task::TASK_STATUS_CAPACITY_REFUSED);
   EXPECT_EQ(storage_.Get("1"), nullptr);
 }
 

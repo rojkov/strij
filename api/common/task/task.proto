@@ -30,6 +30,23 @@ message Task {
   repeated DataRef deps = 6;
 }
 
+// Outcome classification carried by TaskResult.status. Zero means success;
+// any other member means failure. The set is fixed and small, numbered by
+// what the caller should do, and maps one-to-one onto HTTP statuses (see
+// strij::utils::TaskStatusToHttpStatus). proto3 enums are open: a consumer
+// that reads a value this schema does not name must still treat it as a
+// failure. Members are append-only — never renumber a published value.
+enum TaskStatus {
+  TASK_STATUS_OK = 0;
+  TASK_STATUS_MALFORMED_REQUEST = 1;
+  TASK_STATUS_NOT_FOUND = 2;
+  TASK_STATUS_UNIMPLEMENTED = 3;
+  TASK_STATUS_DEADLINE_EXCEEDED = 4;
+  TASK_STATUS_CAPACITY_REFUSED = 5;
+  TASK_STATUS_INTERNAL = 6;
+  TASK_STATUS_UNAVAILABLE = 7;
+}
+
 message TaskResult {
   string id = 1;
   bytes body = 2;
@@ -37,6 +54,12 @@ message TaskResult {
   // fields, so consumers must treat `!has_is_final() || is_final()` as
   // final; producers of single-shot results may leave it unset.
   optional bool is_final = 3;
+  // Absence, or TASK_STATUS_OK, means success. Any other value means
+  // failure, and `body` then carries an error message rather than a result
+  // payload. Only the task's first result may declare failure: the HTTP
+  // status line is fixed at that point, so a later non-OK status is ignored
+  // and logged as unexpected.
+  optional TaskStatus status = 4;
 }
 
 // Sent by a nodeagent when a submitted task was NOT admitted (kTaskRejected).

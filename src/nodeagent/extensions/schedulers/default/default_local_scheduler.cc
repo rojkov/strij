@@ -13,6 +13,7 @@
 #include "common/core/io/connection.hh"
 #include "common/core/io/tlv_frame.hh"
 #include "common/core/logging/log.hh"
+#include "common/core/utils/task_status.hh"
 #include "common/task/task.pb.h"
 #include "nodeagent/core/local_result_receiver_storage.hh"
 #include "nodeagent/core/storage_result_sender.hh"
@@ -75,7 +76,8 @@ void DefaultLocalScheduler::forwardOrError(const task::Task& task, const std::st
   // No forward path (or unreachable gateway): the child cannot be satisfied
   // locally — resolve the receiver so the parent never hangs.
   if (gateway::ResultReceiver* receiver = storage_.Get(child_id); receiver != nullptr) {
-    receiver->DeliverError("no local capacity and no gateway forward path is configured");
+    receiver->DeliverError("no local capacity and no gateway forward path is configured",
+                           task::TASK_STATUS_CAPACITY_REFUSED);
   }
   storage_.Erase(child_id);
 }
@@ -109,6 +111,17 @@ auto DefaultLocalScheduler::handleResultFrame(const io::TlvFrame& frame) -> absl
   const bool is_final = !result.has_is_final() || result.is_final();
   const std::string& body = result.body();
   const auto data = std::as_bytes(std::span(body.data(), body.size()));
+
+  if (!utils::IsTaskResultOk(result)) {
+    // A failure is terminal regardless of is_final: the parent sees the code,
+    // and the entry goes so no later result resurrects the child.
+    receiver->DeliverError(body, result.status());
+    storage_.Erase(result.id());
+    LOG_WARNING("Child {} failed (status={}): {}", result.id(),
+                static_cast<int>(result.status()), body);
+    return absl::OkStatus();
+  }
+
   receiver->Deliver(data, is_final);
   if (is_final) {
     storage_.Erase(result.id());
@@ -130,7 +143,9 @@ auto DefaultLocalScheduler::handleRejectedFrame(const io::TlvFrame& frame) -> ab
     return absl::OkStatus();
   }
 
-  receiver->DeliverError(rejected.reason());
+  // An admission refusal that no scheduler recovered: classify it as the
+  // refusal it is, since TaskRejected itself carries no code (design D5).
+  receiver->DeliverError(rejected.reason(), task::TASK_STATUS_CAPACITY_REFUSED);
   storage_.Erase(rejected.id());
   return absl::OkStatus();
 }

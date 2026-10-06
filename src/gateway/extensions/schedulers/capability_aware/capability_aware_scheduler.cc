@@ -187,13 +187,14 @@ void CapabilityAwareScheduler::Schedule(const task::Task& task,
                                         gateway::ResultReceiverPtr receiver) {
   gateway::Node* node = choose(directory_, task);
   if (node == nullptr) {
-    receiver->DeliverError("no eligible node for task submission");
+    receiver->DeliverError("no eligible node for task submission",
+                           task::TASK_STATUS_CAPACITY_REFUSED);
     return;
   }
 
   std::string serialized;
   if (!task.SerializeToString(&serialized)) {
-    receiver->DeliverError("failed to serialize task for submission");
+    receiver->DeliverError("failed to serialize task for submission", task::TASK_STATUS_INTERNAL);
     return;
   }
 

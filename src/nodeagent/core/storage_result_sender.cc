@@ -4,6 +4,7 @@
 #include <string>
 
 #include "common/core/logging/log.hh"
+#include "common/core/utils/task_status.hh"
 #include "common/task/task.pb.h"
 
 namespace strij::nodeagent {
@@ -17,6 +18,16 @@ void StorageResultSender::Send(task::TaskResult result) {
   if (receiver == nullptr) {
     LOG_WARNING("Result for unknown task '{}' dropped", task_id_);
 
+    return;
+  }
+
+  if (!utils::IsTaskResultOk(result)) {
+    // A failure is terminal: the parent must see the code, not an error body
+    // read as payload, and no further results follow.
+    receiver->DeliverError(body, result.status());
+    storage_.Erase(task_id_);
+    LOG_WARNING("Task {} failed (status={}): {}", task_id_, static_cast<int>(result.status()),
+                body);
     return;
   }
 

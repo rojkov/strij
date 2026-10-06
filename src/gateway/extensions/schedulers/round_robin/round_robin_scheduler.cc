@@ -36,13 +36,14 @@ auto RoundRobinScheduler::choose(gateway::NodeDirectory& dir) -> gateway::Node* 
 void RoundRobinScheduler::Schedule(const task::Task& task, gateway::ResultReceiverPtr receiver) {
   gateway::Node* node = choose(directory_);
   if (node == nullptr) {
-    receiver->DeliverError("no available node for task submission");
+    receiver->DeliverError("no available node for task submission",
+                           task::TASK_STATUS_CAPACITY_REFUSED);
     return;
   }
 
   std::string serialized;
   if (!task.SerializeToString(&serialized)) {
-    receiver->DeliverError("failed to serialize task for submission");
+    receiver->DeliverError("failed to serialize task for submission", task::TASK_STATUS_INTERNAL);
     return;
   }
 

@@ -100,7 +100,7 @@ void GatewayHttpHandler::HandleMessage(const io::HttpRequest& request, io::Conne
   // hangs. The scheduler decides node selection, storage registration, and the
   // kTaskSubmission write. Node-selection and frame-writing are deliberately
   // absent here.
-  auto receiver = make_receiver_(conn);
+  auto receiver = make_receiver_(conn, task_id);
 
   // Clean up the receiver if the HTTP client drops before the task completes.
   // Registered before Schedule so a synchronous error delivery (e.g. no node)

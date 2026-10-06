@@ -37,13 +37,20 @@ using ::testing::ReturnRef;
 
 class RecordingReceiver final : public gateway::ResultReceiver {
 public:
-  explicit RecordingReceiver(std::shared_ptr<std::vector<std::string>> errors)
-      : errors_{std::move(errors)} {}
+  explicit RecordingReceiver(std::shared_ptr<std::vector<std::string>> errors,
+                             std::shared_ptr<std::vector<task::TaskStatus>> statuses = {})
+      : errors_{std::move(errors)}, statuses_{std::move(statuses)} {}
 
   void Deliver(std::span<const std::byte> /*value*/, bool /*is_final*/) override {}
-  void DeliverError(std::string_view reason) override { errors_->emplace_back(reason); }
+  void DeliverError(std::string_view reason, task::TaskStatus status) override {
+    errors_->emplace_back(reason);
+    if (statuses_ != nullptr) {
+      statuses_->push_back(status);
+    }
+  }
 
   std::shared_ptr<std::vector<std::string>> errors_;
+  std::shared_ptr<std::vector<task::TaskStatus>> statuses_;
 };
 
 auto MakeReceiver()
@@ -258,11 +265,14 @@ TEST_F(ProbeSchedulerTest, NoEligibleNodesErrorsImmediately) {
   std::vector<Written> writes;
   RecordWrites(&writes);
 
-  auto receiver = MakeReceiver();
-  scheduler.Schedule(MakeTask("1", "echo"), std::move(receiver.first));
+  auto errors = std::make_shared<std::vector<std::string>>();
+  auto statuses = std::make_shared<std::vector<task::TaskStatus>>();
+  scheduler.Schedule(MakeTask("1", "echo"), std::make_unique<RecordingReceiver>(errors, statuses));
 
-  ASSERT_EQ(receiver.second->size(), 1U);
-  EXPECT_NE(receiver.second->at(0).find("no probe-eligible nodes"), std::string::npos);
+  ASSERT_EQ(errors->size(), 1U);
+  EXPECT_NE(errors->at(0).find("no probe-eligible nodes"), std::string::npos);
+  ASSERT_EQ(statuses->size(), 1U);
+  EXPECT_EQ(statuses->at(0), task::TASK_STATUS_CAPACITY_REFUSED);
   EXPECT_TRUE(writes.empty());
   EXPECT_EQ(storage_.Get("1"), nullptr);
 }
@@ -297,8 +307,10 @@ TEST_F(ProbeSchedulerTest, FirstPullWinsAndLoserIsCancelled) {
   EXPECT_TRUE(HasType(writes, a_conn, io::TlvFrame::kTaskGrant));
   EXPECT_TRUE(HasType(writes, b_conn, io::TlvFrame::kTaskProbeCancel));
 
-  // The receiver transferred into storage for the winner's node id.
+  // The receiver transferred into storage for the winner's node id, and the
+  // losing node's refusal was recovered rather than reported.
   EXPECT_NE(storage_.Get("1"), nullptr);
+  EXPECT_TRUE(receiver.second->empty());
 
   // A late pull (from B) after the round resolved only revokes: no second grant.
   SimulateDrainedWrites(*directory, "B");
@@ -355,8 +367,9 @@ TEST_F(ProbeSchedulerTest, AllDeclinesErrorReceiversImmediately) {
   std::vector<Written> writes;
   RecordWrites(&writes);
 
-  auto receiver = MakeReceiver();
-  scheduler.Schedule(MakeTask("1", "echo"), std::move(receiver.first));
+  auto errors = std::make_shared<std::vector<std::string>>();
+  auto statuses = std::make_shared<std::vector<task::TaskStatus>>();
+  scheduler.Schedule(MakeTask("1", "echo"), std::make_unique<RecordingReceiver>(errors, statuses));
 
   // Drain write queues so decline-frame PrepareWrite calls are visible.
   SimulateDrainedWrites(*directory, "A");
@@ -369,15 +382,20 @@ TEST_F(ProbeSchedulerTest, AllDeclinesErrorReceiversImmediately) {
                              .value = MakeRawDeclinePayload("1", "busy")},
                             *a_conn)
           .ok());
-  EXPECT_TRUE(receiver.second->empty());
+  // A refusal another node may still absorb is not reported to the client.
+  EXPECT_TRUE(errors->empty());
+  EXPECT_TRUE(statuses->empty());
 
   ASSERT_TRUE(
       scheduler.HandleFrame({.type_id = io::TlvFrame::kTaskDecline,
                              .value = MakeRawDeclinePayload("1", "busy")},
                             *b_conn)
           .ok());
-  ASSERT_EQ(receiver.second->size(), 1U);
-  EXPECT_NE(receiver.second->at(0).find("busy"), std::string::npos);
+  ASSERT_EQ(errors->size(), 1U);
+  EXPECT_NE(errors->at(0).find("busy"), std::string::npos);
+  // Every option is exhausted: the refusal reaches the client with its code.
+  ASSERT_EQ(statuses->size(), 1U);
+  EXPECT_EQ(statuses->at(0), task::TASK_STATUS_CAPACITY_REFUSED);
   EXPECT_EQ(storage_.Get("1"), nullptr);
 }
 
@@ -422,9 +440,10 @@ TEST_F(ProbeSchedulerTest, DeadlineExpiryErrorsAndCancelsOutstanding) {
   std::vector<Written> writes;
   RecordWrites(&writes);
 
-  auto receiver = MakeReceiver();
-  scheduler.Schedule(MakeTask("1", "echo"), std::move(receiver.first));
-  EXPECT_TRUE(receiver.second->empty());
+  auto errors = std::make_shared<std::vector<std::string>>();
+  auto statuses = std::make_shared<std::vector<task::TaskStatus>>();
+  scheduler.Schedule(MakeTask("1", "echo"), std::make_unique<RecordingReceiver>(errors, statuses));
+  EXPECT_TRUE(errors->empty());
 
   // Drain probe writes so that cancel-write PrepareWrite calls from the sweep
   // are visible in the recorder.
@@ -434,8 +453,11 @@ TEST_F(ProbeSchedulerTest, DeadlineExpiryErrorsAndCancelsOutstanding) {
   clock.Advance(std::chrono::milliseconds(2000));
   scheduler.SweepExpired();
 
-  ASSERT_EQ(receiver.second->size(), 1U);
-  EXPECT_NE(receiver.second->at(0).find("probe deadline"), std::string::npos);
+  ASSERT_EQ(errors->size(), 1U);
+  EXPECT_NE(errors->at(0).find("probe deadline"), std::string::npos);
+  // A deadline is its own code, not a capacity refusal.
+  ASSERT_EQ(statuses->size(), 1U);
+  EXPECT_EQ(statuses->at(0), task::TASK_STATUS_DEADLINE_EXCEEDED);
   EXPECT_EQ(storage_.Get("1"), nullptr);
 
   const size_t cancels = static_cast<size_t>(std::count_if(

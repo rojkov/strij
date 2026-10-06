@@ -3,6 +3,9 @@
 #include <format>
 #include <string_view>
 
+#include "common/core/logging/log.hh"
+#include "common/core/utils/task_status.hh"
+
 namespace strij::gateway {
 
 namespace {
@@ -10,6 +13,12 @@ namespace {
 auto toBytes(std::string_view text) -> std::vector<std::byte> {
   auto span = std::as_bytes(std::span<const char>(text.data(), text.size()));
   return {span.begin(), span.end()};
+}
+
+// Status line for `http_status`, always carrying the mapped code and its
+// reason phrase ("HTTP/1.1 429 Too Many Requests").
+auto statusLine(int http_status) -> std::string {
+  return std::format("HTTP/1.1 {} {}", http_status, utils::HttpStatusPhrase(http_status));
 }
 
 auto chunkFrame(std::span<const std::byte> body) -> std::vector<std::byte> {
@@ -29,12 +38,13 @@ auto chunkFrame(std::span<const std::byte> body) -> std::vector<std::byte> {
 auto HttpResponseFramer::Next(std::span<const std::byte> body, bool is_final)
     -> std::vector<std::vector<std::byte>> {
   std::vector<std::vector<std::byte>> frames;
+  const std::string line = statusLine(utils::TaskStatusToHttpStatus(task::TASK_STATUS_OK));
   switch (state_) {
   case State::kIdle:
     if (is_final) {
-      auto header = std::format("HTTP/1.1 200 OK\r\nContent-Length: {}\r\nContent-Type: "
+      auto header = std::format("{}\r\nContent-Length: {}\r\nContent-Type: "
                                 "text/plain\r\nConnection: close\r\n\r\n",
-                                body.size());
+                                line, body.size());
       auto header_bytes = toBytes(header);
       std::vector<std::byte> frame;
       frame.reserve(header_bytes.size() + body.size());
@@ -43,8 +53,9 @@ auto HttpResponseFramer::Next(std::span<const std::byte> body, bool is_final)
       frames.push_back(std::move(frame));
       state_ = State::kDone;
     } else {
-      frames.push_back(toBytes("HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nContent-Type: "
-                               "text/plain\r\nConnection: close\r\n\r\n"));
+      frames.push_back(toBytes(std::format("{}\r\nTransfer-Encoding: chunked\r\nContent-Type: "
+                                           "text/plain\r\nConnection: close\r\n\r\n",
+                                           line)));
       frames.push_back(chunkFrame(body));
       state_ = State::kChunked;
     }
@@ -62,16 +73,17 @@ auto HttpResponseFramer::Next(std::span<const std::byte> body, bool is_final)
   return frames;
 }
 
-auto HttpResponseFramer::ErrorResponse(std::string_view reason)
+auto HttpResponseFramer::ErrorResponse(std::string_view reason, task::TaskStatus status)
     -> std::vector<std::vector<std::byte>> {
   std::vector<std::vector<std::byte>> frames;
   if (state_ != State::kIdle) {
     return frames;
   }
 
-  auto header = std::format("HTTP/1.1 503 Service Unavailable\r\nContent-Type: text/plain\r\n"
+  const int http_status = utils::TaskStatusToHttpStatus(status);
+  auto header = std::format("{}\r\nContent-Type: text/plain\r\n"
                             "Content-Length: {}\r\nConnection: close\r\n\r\n",
-                            reason.size());
+                            statusLine(http_status), reason.size());
   auto header_bytes = toBytes(header);
   std::vector<std::byte> frame;
   frame.reserve(header_bytes.size() + reason.size());
@@ -89,8 +101,18 @@ void HttpResultReceiver::Deliver(std::span<const std::byte> value, bool is_final
   }
 }
 
-void HttpResultReceiver::DeliverError(std::string_view reason) {
-  for (const auto& frame : framer_.ErrorResponse(reason)) {
+void HttpResultReceiver::DeliverError(std::string_view reason, task::TaskStatus status) {
+  auto frames = framer_.ErrorResponse(reason, status);
+  if (frames.empty()) {
+    // The status line was fixed at the first result and cannot be revised:
+    // the failure is dropped from the wire, never silently.
+    LOG_WARNING("Task {} failed after the response began (status={}); keeping the written "
+                "status line and dropping the failure: {}",
+                task_id_, static_cast<int>(status), reason);
+    return;
+  }
+
+  for (const auto& frame : frames) {
     conn_.Write(frame);
   }
 }

@@ -42,6 +42,7 @@ struct ReceiverLog {
   bool delivered{false};
   std::string body;
   std::string error;
+  task::TaskStatus status{task::TASK_STATUS_OK};
 };
 
 class RecordingReceiver final : public gateway::ResultReceiver {
@@ -53,7 +54,10 @@ public:
     log->body.assign(reinterpret_cast<const char*>(value.data()), value.size());
   }
 
-  void DeliverError(std::string_view reason) override { log->error = std::string(reason); }
+  void DeliverError(std::string_view reason, task::TaskStatus status) override {
+    log->error = std::string(reason);
+    log->status = status;
+  }
 };
 
 // Stub scheduler that records each Schedule's task type and resolves the
@@ -78,7 +82,7 @@ public:
   explicit FrameClaimingScheduler(std::vector<uint8_t> types) : types_{std::move(types)} {}
 
   void Schedule(const task::Task& /*task*/, gateway::ResultReceiverPtr receiver) override {
-    receiver->DeliverError("stub");
+    receiver->DeliverError("stub", task::TASK_STATUS_INTERNAL);
   }
 
   [[nodiscard]] auto RequiredProtocol() const -> std::string_view override { return "stub"; }

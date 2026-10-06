@@ -20,22 +20,25 @@ namespace {
 // thread, so Deliver/DeliverError run before Submit() returns.
 class WorkflowChildReceiver final : public gateway::ResultReceiver {
 public:
-  WorkflowChildReceiver(bool& errored, std::string& body, std::string& error)
-      : errored_{errored}, body_{body}, error_{error} {}
+  WorkflowChildReceiver(bool& errored, std::string& body, std::string& error,
+                        task::TaskStatus& status)
+      : errored_{errored}, body_{body}, error_{error}, status_{status} {}
 
   void Deliver(std::span<const std::byte> value, bool /*is_final*/) override {
     body_.append(std::bit_cast<const char*>(value.data()), value.size());
   }
 
-  void DeliverError(std::string_view reason) override {
+  void DeliverError(std::string_view reason, task::TaskStatus status) override {
     errored_ = true;
     error_ = std::string(reason);
+    status_ = status;
   }
 
 private:
   bool& errored_;
   std::string& body_;
   std::string& error_;
+  task::TaskStatus& status_;
 };
 
 } // namespace
@@ -46,8 +49,10 @@ WorkflowTaskHandler::WorkflowTaskHandler(strij::nodeagent::ChildTaskSubmitter& s
 void WorkflowTaskHandler::HandleTask(const task::Task& task, ResultSenderPtr sender) {
   extensions::task_handlers::workflow::WorkflowPlan plan;
   std::string error_body{};
+  task::TaskStatus failure_status = task::TASK_STATUS_INTERNAL;
   if (!plan.ParseFromArray(task.body().data(), static_cast<int>(task.body().size()))) {
     error_body = "malformed workflow plan";
+    failure_status = task::TASK_STATUS_MALFORMED_REQUEST;
   }
 
   std::string aggregate;
@@ -64,10 +69,14 @@ void WorkflowTaskHandler::HandleTask(const task::Task& task, ResultSenderPtr sen
     bool errored = false;
     std::string child_body;
     std::string child_error;
-    auto receiver = std::make_unique<WorkflowChildReceiver>(errored, child_body, child_error);
+    task::TaskStatus child_status = task::TASK_STATUS_INTERNAL;
+    auto receiver =
+        std::make_unique<WorkflowChildReceiver>(errored, child_body, child_error, child_status);
     submitter_.Submit(std::move(child), std::move(receiver));
     if (errored) {
       error_body.append("child '").append(child_id).append("' failed: ").append(child_error);
+      failure_status =
+          child_status == task::TASK_STATUS_OK ? task::TASK_STATUS_INTERNAL : child_status;
       break;
     }
     aggregate += child_body;
@@ -76,7 +85,10 @@ void WorkflowTaskHandler::HandleTask(const task::Task& task, ResultSenderPtr sen
   task::TaskResult result;
   result.set_id(task.id());
   if (!error_body.empty()) {
+    // The workflow knows this result is a failure, so it says so: leaving the
+    // status unset would make consumers read an error body as a success.
     result.set_body(error_body);
+    result.set_status(failure_status);
   } else {
     result.set_body(aggregate);
   }

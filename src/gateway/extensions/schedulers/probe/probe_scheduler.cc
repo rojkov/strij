@@ -124,7 +124,7 @@ void ProbeScheduler::Schedule(const task::Task& task, gateway::ResultReceiverPtr
   const std::vector<gateway::Node*> candidates = directory_.GetCandidates(RequiredProtocol());
   const size_t effective_k = std::min(candidate_count_, candidates.size());
   if (effective_k == 0) {
-    receiver->DeliverError("no probe-eligible nodes available");
+    receiver->DeliverError("no probe-eligible nodes available", task::TASK_STATUS_CAPACITY_REFUSED);
     return;
   }
 
@@ -172,7 +172,8 @@ void ProbeScheduler::SweepExpired() {
       }
     }
 
-    it->second.receiver->DeliverError("no node claimed the task within the probe deadline");
+    it->second.receiver->DeliverError("no node claimed the task within the probe deadline",
+                                      task::TASK_STATUS_DEADLINE_EXCEEDED);
     it = pending_.erase(it);
   }
 }
@@ -253,7 +254,7 @@ auto ProbeScheduler::handleTaskDeclineFrame(const io::TlvFrame& frame, io::Conne
 
   if (iter->second.probed_node_ids.empty()) {
     LOG_WARNING("All probed nodes declined task {}: {}", decline.id(), decline.reason());
-    iter->second.receiver->DeliverError(decline.reason());
+    iter->second.receiver->DeliverError(decline.reason(), task::TASK_STATUS_CAPACITY_REFUSED);
     pending_.erase(iter);
   }
 

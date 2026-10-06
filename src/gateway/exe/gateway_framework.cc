@@ -193,8 +193,9 @@ auto RunGateway(int argc, char** argv) -> int {
       [&](strij::io::Connection& conn) -> std::unique_ptr<strij::io::ProtocolParser> {
         auto handler = std::make_unique<strij::gateway::GatewayHttpHandler>(
             storage,
-            [](strij::io::Connection& conn) -> strij::gateway::ResultReceiverPtr {
-              return std::make_unique<strij::gateway::HttpResultReceiver>(conn);
+            [](strij::io::Connection& conn,
+               std::string_view task_id) -> strij::gateway::ResultReceiverPtr {
+              return std::make_unique<strij::gateway::HttpResultReceiver>(conn, task_id);
             },
             *scheduler_router);
         return std::make_unique<strij::io::LlhttpParser>(

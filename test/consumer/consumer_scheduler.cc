@@ -11,7 +11,8 @@ namespace strij_consumer {
 
 void ConsumerScheduler::Schedule(const strij::task::Task& /*task*/,
                                  strij::gateway::ResultReceiverPtr receiver) {
-  receiver->DeliverError("consumer_scheduler rejected task: extension layout smoke test");
+  receiver->DeliverError("consumer_scheduler rejected task: extension layout smoke test",
+                         strij::task::TASK_STATUS_CAPACITY_REFUSED);
 }
 
 auto ConsumerScheduler::RequiredProtocol() const -> std::string_view { return "push"; }

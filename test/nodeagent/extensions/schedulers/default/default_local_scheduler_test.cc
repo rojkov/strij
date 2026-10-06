@@ -1,6 +1,7 @@
 #include <array>
 #include <cstddef>
 #include <memory>
+#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
@@ -36,6 +37,7 @@ struct ReceiverLog {
   bool is_final{false};
   std::string body;
   std::string error;
+  task::TaskStatus status{task::TASK_STATUS_OK};
 };
 
 class RecordingReceiver final : public gateway::ResultReceiver {
@@ -48,7 +50,10 @@ public:
     log->body.assign(reinterpret_cast<const char*>(value.data()), value.size());
   }
 
-  void DeliverError(std::string_view reason) override { log->error = std::string(reason); }
+  void DeliverError(std::string_view reason, task::TaskStatus status) override {
+    log->error = std::string(reason);
+    log->status = status;
+  }
 };
 
 // Recording ChildTaskForwarder stub: records each Forward and returns a
@@ -63,6 +68,20 @@ public:
     ++calls;
     last_task_id = task.id();
     return status;
+  }
+};
+
+// Handler that reports a classified failure: the local-path counterpart of a
+// remote child returning a kResult that carries a non-OK status.
+class FailingTaskHandler final : public TaskHandler {
+public:
+  void HandleTask(const task::Task& task, ResultSenderPtr sender) override {
+    task::TaskResult result;
+    result.set_id(task.id());
+    result.set_body("child boom");
+    result.set_status(task::TASK_STATUS_NOT_FOUND);
+    result.set_is_final(true);
+    sender->Send(std::move(result));
   }
 };
 
@@ -95,12 +114,15 @@ protected:
 
   // The returned TlvFrame spans `frame_storage_`, which lives for the duration
   // of the test (each test consumes at most one frame).
-  auto MakeResultFrame(const std::string& id, const std::string& body, bool is_final)
-      -> io::TlvFrame {
+  auto MakeResultFrame(const std::string& id, const std::string& body, bool is_final,
+                       std::optional<task::TaskStatus> status = std::nullopt) -> io::TlvFrame {
     task::TaskResult result;
     result.set_id(id);
     result.set_body(body);
     result.set_is_final(is_final);
+    if (status.has_value()) {
+      result.set_status(*status);
+    }
     frame_storage_.clear();
     result.SerializeToString(&frame_storage_);
     return io::TlvFrame{io::TlvFrame::kResult,
@@ -285,6 +307,44 @@ TEST_F(DefaultLocalSchedulerTest, NonFinalResultFrameKeepsEntry) {
   EXPECT_FALSE(log->is_final);
   EXPECT_EQ(log->body, "chunk");
   EXPECT_EQ(scheduler_->Storage().Size(), 1U);
+}
+
+TEST_F(DefaultLocalSchedulerTest, FailedResultFrameRoutesErrorAndErasesEntry) {
+  auto receiver = std::make_unique<RecordingReceiver>();
+  auto log = receiver->log;
+  scheduler_->Storage().Put("child-1", std::move(receiver));
+
+  // A failed child result is an error for the parent and ends the task even
+  // though the frame does not claim finality.
+  const absl::Status status = scheduler_->HandleFrame(
+      MakeResultFrame("child-1", "remote boom", false, task::TASK_STATUS_DEADLINE_EXCEEDED),
+      *conn_);
+  EXPECT_TRUE(status.ok());
+  EXPECT_FALSE(log->delivered);
+  EXPECT_EQ(log->error, "remote boom");
+  EXPECT_EQ(log->status, task::TASK_STATUS_DEADLINE_EXCEEDED);
+  EXPECT_TRUE(scheduler_->Storage().Empty());
+}
+
+TEST_F(DefaultLocalSchedulerTest, LocalChildFailureReportsErrorAndErasesEntry) {
+  auto manager = std::make_shared<TaskHandlerManager>();
+  manager->AddHandler("failing", std::make_unique<FailingTaskHandler>());
+  run_task_service_ = std::make_unique<RunTaskServiceImpl>(manager, admission_);
+  scheduler_ = std::make_unique<nodeagent::schedulers::DefaultLocalScheduler>(
+      *run_task_service_, admission_, nullptr);
+
+  auto receiver = std::make_unique<RecordingReceiver>();
+  auto log = receiver->log;
+  scheduler_->Schedule(MakeChild("child-1", "failing", 4), std::move(receiver));
+
+  // The failure rides inside the TaskResult, so the parent's receiver sees the
+  // code rather than an error body read as payload.
+  EXPECT_FALSE(log->delivered);
+  EXPECT_EQ(log->error, "child boom");
+  EXPECT_EQ(log->status, task::TASK_STATUS_NOT_FOUND);
+  EXPECT_TRUE(scheduler_->Storage().Empty());
+  EXPECT_EQ(admission_->InFlight("failing"), 0U);
+  EXPECT_EQ(admission_->SharedFree("cpu"), 16U);
 }
 
 TEST_F(DefaultLocalSchedulerTest, ResultFrameForUnknownChildDrops) {

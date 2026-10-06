@@ -33,7 +33,8 @@ void PopulateParametersFromHeaders(strij::task::Task& task,
 class GatewayHttpHandler final {
 public:
   GatewayHttpHandler(ResultReceiverStorage& storage,
-                     std::function<ResultReceiverPtr(io::Connection& conn)>&& make_receiver,
+                     std::function<ResultReceiverPtr(io::Connection& conn, std::string_view task_id)>&&
+                         make_receiver,
                      extensions::Scheduler& scheduler)
       : storage_{storage}, make_receiver_{std::move(make_receiver)}, scheduler_{scheduler} {}
 
@@ -50,7 +51,8 @@ private:
   // TODO: storage_ is only needed to register a on-disconnect callback. Can we get rid of storage_
   // here by moving the callback registration to schedulers?
   ResultReceiverStorage& storage_;
-  std::function<ResultReceiverPtr(io::Connection& conn)> make_receiver_;
+  std::function<ResultReceiverPtr(io::Connection& conn, std::string_view task_id)>
+      make_receiver_;
   extensions::Scheduler& scheduler_;
 };
 

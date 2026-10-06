@@ -24,6 +24,7 @@ strij_cc_library(
         ":admission_controller_lib",
         ":result_sender_lib",
         "//include/strij/nodeagent:task_handlers_interface",
+        "//src/common/core/utils:task_status_lib",
     ],
 )
 
@@ -206,6 +207,7 @@ strij_cc_library(
         "//include/strij/gateway:result_receiver_storage_interface",
         "//include/strij/nodeagent:task_handlers_interface",
         "//src/common/core/logging:log_lib",
+        "//src/common/core/utils:task_status_lib",
     ],
 )
 

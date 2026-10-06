@@ -15,7 +15,8 @@ void ResultReceiverStorageImpl::NotifyNodeDisconnected(const std::string& node_i
   for (const auto& task_id : task_ids) {
     auto* receiver = Get(task_id);
     if (receiver != nullptr) {
-      receiver->DeliverError("node disconnected");
+      // The task's node went away: a refusal the caller can retry elsewhere.
+      receiver->DeliverError("node disconnected", task::TASK_STATUS_CAPACITY_REFUSED);
     }
 
     Erase(task_id);

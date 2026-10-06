@@ -6,6 +6,7 @@
 
 #include "common/core/io/tlv_frame.hh"
 #include "common/core/logging/log.hh"
+#include "common/core/utils/task_status.hh"
 #include "common/node/capabilities.pb.h"
 #include "strij/extensions/scheduler.hh"
 #include "strij/gateway/result_receiver_storage.hh"
@@ -108,7 +109,9 @@ auto GatewayTlvHandler::handleTaskRejectedFrame(const io::TlvFrame& frame, io::C
     return absl::InternalError(std::format("No receiver for rejected task {}", rejected.id()));
   }
 
-  receiver->DeliverError(rejected.reason());
+  // The node refused admission and nothing recovers it here, so the client
+  // sees a refusal (TaskRejected carries no code of its own, by design).
+  receiver->DeliverError(rejected.reason(), task::TASK_STATUS_CAPACITY_REFUSED);
   storage_.Erase(rejected.id());
   if (state_tracker_ != nullptr) {
     state_tracker_->RecordCompletion(rejected.id());
@@ -135,6 +138,23 @@ auto GatewayTlvHandler::handleTaskResultFrame(const io::TlvFrame& frame, io::Con
   const bool is_final = !result.has_is_final() || result.is_final();
   const auto* body_ptr = std::bit_cast<const std::byte*>(result.body().data());
   auto body = std::span<const std::byte>(body_ptr, result.body().size());
+
+  if (!utils::IsTaskResultOk(result)) {
+    // A failure is terminal: the task produced no further results, so the
+    // receiver goes regardless of is_final and the client sees the code that
+    // travels inside the result payload.
+    receiver->DeliverError(result.body(), result.status());
+    storage_.Erase(result.id());
+
+    if (state_tracker_ != nullptr) {
+      state_tracker_->RecordCompletion(result.id());
+    }
+
+    LOG_WARNING("Task {} failed (status={}): {}", result.id(),
+                static_cast<int>(result.status()), result.body());
+    return absl::OkStatus();
+  }
+
   receiver->Deliver(body, is_final);
 
   if (is_final) {

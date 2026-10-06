@@ -26,7 +26,8 @@ void PushLocalScheduler::Schedule(const task::Task& task, gateway::ResultReceive
               "(configure the \"default\" scheduler as the local authority)",
               task.id(), task.type());
   receiver->DeliverError(
-      "unimplemented: configure the \"default\" scheduler as the local authority for child tasks");
+      "unimplemented: configure the \"default\" scheduler as the local authority for child tasks",
+      task::TASK_STATUS_UNIMPLEMENTED);
 }
 
 auto PushLocalScheduler::RequiredProtocol() const -> std::string_view { return "push"; }

@@ -6,6 +6,7 @@
 #include <string>
 #include <string_view>
 
+#include "common/task/task.pb.h"
 #include "strij/common/pure.hh"
 
 namespace strij::gateway {
@@ -21,10 +22,17 @@ public:
   auto operator=(ResultReceiver&&) noexcept -> ResultReceiver& = delete;
 
   // Delivers one result chunk of a task. `is_final` marks the last result.
+  // The success/failure of a *result* travels inside the serialized
+  // TaskResult payload (its `status` field), so this signature takes no
+  // status (design D4a).
   virtual void Deliver(std::span<const std::byte> value, bool is_final) PURE;
   // Delivers an error outcome (e.g. the node rejected the task); the client
   // connection must not hang. Implementations may finalize their framing.
-  virtual void DeliverError(std::string_view reason) PURE;
+  // `status` classifies the failure where it was determined — the caller
+  // MUST pass a non-OK member, using task::TASK_STATUS_INTERNAL when it has
+  // no more specific classification, so a failure is never reported as a
+  // success.
+  virtual void DeliverError(std::string_view reason, task::TaskStatus status) PURE;
 };
 
 using ResultReceiverPtr = std::unique_ptr<ResultReceiver>;

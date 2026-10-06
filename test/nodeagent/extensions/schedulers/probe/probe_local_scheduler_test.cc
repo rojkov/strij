@@ -48,6 +48,7 @@ struct ReceiverLog {
   bool delivered{false};
   std::string body;
   std::string error;
+  task::TaskStatus status{task::TASK_STATUS_OK};
 };
 
 class RecordingReceiver final : public gateway::ResultReceiver {
@@ -59,7 +60,10 @@ public:
     log->body.assign(reinterpret_cast<const char*>(value.data()), value.size());
   }
 
-  void DeliverError(std::string_view reason) override { log->error = std::string(reason); }
+  void DeliverError(std::string_view reason, task::TaskStatus status) override {
+    log->error = std::string(reason);
+    log->status = status;
+  }
 };
 
 // Records (ref, task_id) pairs instead of fetching; never submits

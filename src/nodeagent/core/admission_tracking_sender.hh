@@ -5,6 +5,7 @@
 #include <memory>
 #include <utility>
 
+#include "common/core/utils/task_status.hh"
 #include "strij/nodeagent/admission_controller.hh"
 #include "strij/nodeagent/task_handlers.hh"
 
@@ -33,9 +34,12 @@ public:
 
   void Send(task::TaskResult result) override {
     const bool is_final = !result.has_is_final() || result.is_final();
+    const bool failed = !utils::IsTaskResultOk(result);
     inner_->Send(std::move(result));
 
-    if (is_final) {
+    // A failure ends the task even without finality: the capacity must not
+    // wait for a final result that will never come. Release() is idempotent.
+    if (is_final || failed) {
       scope_->Release();
     }
   }

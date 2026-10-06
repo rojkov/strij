@@ -63,13 +63,20 @@ private:
 
 class RecordingReceiver final : public gateway::ResultReceiver {
 public:
-  explicit RecordingReceiver(std::shared_ptr<std::vector<std::string>> errors)
-      : errors_{std::move(errors)} {}
+  explicit RecordingReceiver(std::shared_ptr<std::vector<std::string>> errors,
+                             std::shared_ptr<std::vector<task::TaskStatus>> statuses = {})
+      : errors_{std::move(errors)}, statuses_{std::move(statuses)} {}
 
   void Deliver(std::span<const std::byte> /*value*/, bool /*is_final*/) override {}
-  void DeliverError(std::string_view reason) override { errors_->emplace_back(reason); }
+  void DeliverError(std::string_view reason, task::TaskStatus status) override {
+    errors_->emplace_back(reason);
+    if (statuses_ != nullptr) {
+      statuses_->push_back(status);
+    }
+  }
 
   std::shared_ptr<std::vector<std::string>> errors_;
+  std::shared_ptr<std::vector<task::TaskStatus>> statuses_;
 };
 
 auto MakeReceiver()
@@ -382,7 +389,8 @@ TEST_F(SchedulerRouterTest, InboundChildSubmissionErrorOnConstituentReject) {
   auto status = router->HandleFrame(frame, *conn);
   EXPECT_TRUE(status.ok());
   ASSERT_EQ(echo->held_receivers_.size(), 1U);
-  echo->held_receivers_[0]->DeliverError("capacity exhausted");
+  echo->held_receivers_[0]->DeliverError("capacity exhausted",
+                                                task::TASK_STATUS_CAPACITY_REFUSED);
 
   EXPECT_EQ(storage_.Get("child-1"), nullptr);
 

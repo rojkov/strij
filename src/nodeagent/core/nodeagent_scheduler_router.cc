@@ -51,8 +51,10 @@ void NodeagentSchedulerRouter::Schedule(const task::Task& task,
                                         gateway::ResultReceiverPtr receiver) {
   extensions::Scheduler* scheduler = findChildTaskScheduler(task);
   if (scheduler == nullptr) {
+    // No local scheduler claims the type: an unusable request for this node.
     receiver->DeliverError(absl::StrCat("no local scheduler claims task type '", task.type(),
-                                        "' and no local default is declared"));
+                                        "' and no local default is declared"),
+                           task::TASK_STATUS_MALFORMED_REQUEST);
     return;
   }
 

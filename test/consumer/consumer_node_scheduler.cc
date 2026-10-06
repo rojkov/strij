@@ -11,7 +11,8 @@ namespace strij_consumer {
 void ConsumerNodeScheduler::Schedule(const strij::task::Task& /*task*/,
                                      strij::gateway::ResultReceiverPtr receiver) {
   receiver->DeliverError("consumer_node_scheduler: node-side schedulers own inbound frames, "
-                         "not gateway scheduling; rejecting as unsupported");
+                         "not gateway scheduling; rejecting as unsupported",
+                         strij::task::TASK_STATUS_UNIMPLEMENTED);
 }
 
 auto ConsumerNodeScheduler::RequiredProtocol() const -> std::string_view { return "push"; }
