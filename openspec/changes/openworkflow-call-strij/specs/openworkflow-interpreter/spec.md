@@ -143,7 +143,7 @@ The system SHALL perform a validation pass over the document before executing it
 
 ### Requirement: Workflow success and failure are reported on the originating connection
 
-The system SHALL deliver exactly one final result to the connection that submitted the workflow, whether the workflow completes or fails. On success the final result SHALL carry the workflow's output value and SHALL be marked final. On failure the final result SHALL carry no result body and the failure SHALL be reported to the originating connection through the node's result-delivery path, with a message naming the step that failed.
+The system SHALL deliver exactly one final result to the connection that submitted the workflow, whether the workflow completes or fails. On success the final result SHALL carry the workflow's output value and SHALL be marked final. On failure the final result SHALL carry a non-OK `TaskResult.status`, SHALL carry in its body a message naming the step that failed, and SHALL rely on the node's result-delivery path to surface the status to the originating connection as a failure rather than a success.
 
 #### Scenario: Successful workflow delivers one final result
 
@@ -154,6 +154,16 @@ The system SHALL deliver exactly one final result to the connection that submitt
 
 - **WHEN** a step fails
 - **THEN** the originating connection is notified of the failure with a message naming the step, and no further steps execute
+
+#### Scenario: A failed workflow carries a non-OK status
+
+- **WHEN** a workflow fails
+- **THEN** its final result SHALL have a status that reads as failure, so a consumer applying the success predicate does not interpret the error message as an output value
+
+#### Scenario: The failure status distinguishes malformed, unsupported, and run failures
+
+- **WHEN** a workflow fails because its body did not parse or failed pre-execution validation, because it requested a recognized-but-unsupported call target, or because a step failed during execution
+- **THEN** each case SHALL carry the corresponding distinct status code rather than a single shared failure code
 
 #### Scenario: Failure after a suspension still reports once
 

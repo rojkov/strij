@@ -51,7 +51,7 @@
 - [ ] 7.4 Register the handler in `nodeagent_framework.cc`; verify `bazel build //...` succeeds and the nodeagent starts with the handler present
 - [ ] 7.5 Honor `RegisterOnClose` to stop the workflow when the originating connection tears down, abandoning outstanding children; verify a teardown mid-suspension delivers no further result and does not resume
 - [ ] 7.6 Delete the superseded `src/nodeagent/extensions/task_handlers/workflow/` handler and its tests, and remove `workflow` from any bundled nodeagent config; verify `bazel build //...` succeeds and no reference to the deleted task type remains
-- [ ] 7.7 Report workflow failure through `DeliverError(reason, code)` using the codes established by the `task-result-status` change, which lands first: a malformed document, a data-dependent run failure, and the unimplemented code for a recognized-but-unsupported call target; verify each classification is exercised by a test. If `task-result-status` has not landed, this task is blocked and the handler reports a bare reason
+- [ ] 7.7 Report workflow failure as a final `TaskResult` with a non-OK `status` and the failing step's message in `body`, sent through `ResultSender::Send`, using the codes established by the landed `task-result-status` change: `TASK_STATUS_MALFORMED_REQUEST` for an unparsable body or a failed pre-execution validation, `TASK_STATUS_UNIMPLEMENTED` for a recognized-but-unsupported call target, `TASK_STATUS_INTERNAL` when no more specific cause applies, and a failed child's code propagated as-is; verify each classification is exercised by a test, and that the handler never calls `DeliverError`, which is not on its `ResultSender` path
 
 ## 8. Integration and verification
 

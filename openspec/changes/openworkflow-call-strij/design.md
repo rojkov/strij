@@ -6,7 +6,7 @@ See `proposal.md` — Why. The constraints that shape the approach:
 
 **A child's result may arrive before or after the submission call returns.** `ChildTaskSubmitter::Submit` is fire-and-forget and takes receiver ownership. Locally, `DefaultLocalScheduler::Schedule` can run the child to completion *inside* `Submit` — `WorkflowChildReceiver`'s own comment in the existing reference handler says Deliver/DeliverError may run before `Submit()` returns. Forwarded children resolve later, over TLV, via the gateway. So `Submit` is not a barrier and the interpreter cannot use the call stack to hold per-step state.
 
-**`ResultReceiver` has two outcomes, not one.** `Deliver(span<byte>, is_final)` for success, `DeliverError(string_view)` for refusal. `TaskResult` (proto3) has no error field, so a child refusal has no representation in the success path at all.
+**A child reports its outcome through `ResultReceiver`'s two methods, and both are reachable.** `Deliver(span<byte>, is_final)` for a result, `DeliverError(string_view, task::TaskStatus)` for a failure. `TaskResult.status` now exists, but a child's failure still arrives as `DeliverError` at the receiver: both the local sender (`StorageResultSender::Send`) and the gateway's result handler inspect `status` and convert a non-OK result into `DeliverError` before it reaches the submitter's receiver. The interpreter therefore handles two outcomes at every step, not one.
 
 **The evaluator contract already separates compile from run.** `EvaluatorFactory::Compile(source, variable_names, deps) -> StatusOr<EvaluatorPtr>`; `Evaluator::Run(Jv input, span<Jv> args) -> StatusOr<vector<Jv>>`. Compile validates the program; only Run needs data. This is the lever behind the static/dynamic split.
 
@@ -119,13 +119,17 @@ The scan must recurse, so a syntax error inside a nested member is caught here r
 
 The compiled programs are *not* retained. Retaining them would require an expression cache keyed by source across runs, and the documents are small enough that re-compiling at run time is not the bottleneck. Revisit only if profiling says otherwise.
 
-### D8 — Workflow failure rides the `ResultSender`, and children are not orphaned silently
+### D8 — Workflow failure rides the `ResultSender` as a non-OK `TaskResult.status`
 
-On failure the handler sends no result body and reports the failing step's message via `DeliverError`, which today carries a bare reason and no code. A separate change (`task-result-status`) adds the `status` field and threads a code through `DeliverError`; the interpreter's structure does not change when that lands, only the argument it passes.
+The handler's only outbound path is `ResultSender::Send(task::TaskResult)`; it has no `DeliverError` to call. So a workflow failure is reported by building a `TaskResult` whose `status` is a non-OK `TaskStatus` and whose `body` is the message naming the failing step, then calling `Send`. The code travels inside the payload, the same route a successful result takes.
+
+The conversion to an error is the gateway's: the nodeagent serializes the result as a `kResult` frame (`ConnectionResultSender::Send`), and `GatewayTlvHandler::handleTaskResultFrame` sees a non-OK status via `utils::IsTaskResultOk`, calls `DeliverError(body, status)` on the client's receiver, and erases it. So the handler's contract is exactly "send a `TaskResult` with the right status," and the HTTP status follows from `utils::TaskStatusToHttpStatus` at the edge.
+
+Classification is therefore the handler's only new decision. It maps its own failures onto the codes established by the landed `task-result-status` change: a body that will not parse, or a document that fails the pre-submission validation pass, is `TASK_STATUS_MALFORMED_REQUEST`; a failure with no more specific cause is `TASK_STATUS_INTERNAL`; a recognized-but-unsupported call target is `TASK_STATUS_UNIMPLEMENTED`. A failed child's code is propagated as-is.
 
 `RegisterOnClose` is used: if the originating connection tears down mid-run, the interpreter marks itself cancelled and abandons outstanding children rather than resuming into a dead sender.
 
-**Known limitation:** a refused child produces `DeliverError(reason)` on the child's receiver, so the reason reaches the interpreter and can be reported — but a *partial* child result followed by a disconnect is not distinguishable from a refusal, and both are reported as a child failure without distinguishing which.
+**Known limitation:** a refused child arrives at the child receiver as `DeliverError(reason, status)`, so both the reason and the code reach the interpreter and can be reported — but a *partial* child result followed by a disconnect is not distinguishable from a refusal, and both are reported as a child failure without distinguishing which.
 
 ## Risks / Trade-offs
 
@@ -149,7 +153,6 @@ The existing `"workflow"` reference handler (112 lines, `src/nodeagent/extension
 
 ## Open Questions
 
-- **Where the workflow-level failure is surfaced.** Tracked by the separate `task-result-status` change, which adds a `status` field with codes mapping to HTTP. Resolved there, not here.
 - **Whether `with.body: json` is added later** to declare rather than sniff a JSON body. The sniffed model is complete without it; a declaration would only matter for a body that is valid JSON *and* meant to stay a string.
 - **A gateway-side pre-validation mode.** A document could be validated before a node is assigned, so a malformed workflow never occupies node capacity. The interpreter is nodeagent-side (D1), so this would mean a second consumer of the SDK's parser and validator — plausible given the static/dynamic split already isolates the data-independent half, but not worth building before the nodeagent path is proven.
 - **The `ParamsOnlyRequirementsResolver` truncation** stays a separate change; this design only records that the divergence exists.

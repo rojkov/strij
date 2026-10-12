@@ -21,6 +21,8 @@ This change builds the first working slice: a workflow task handler that execute
 - **Strict `uint64` coercion for requirements,** rejecting non-integers, negatives, and overflow with a positioned error — deliberately stricter than the gateway's `ParamsOnlyRequirementsResolver`, which truncates `100M` to `100` via `std::stoull`. That truncation is a pre-existing gateway bug, tracked separately and not fixed here.
 - **`Value` ⇄ JSON bridge.** `openworkflow::Value` has no JSON representation today; the change adds a bridge to the `Jv` boundary so expressions can run against DSL values and task results can be re-read by later steps. The chain is re-sniffed at every step boundary, so a child's non-JSON result downgrades the chain rather than corrupting it.
 
+- **Workflow failure reported through `TaskResult.status`.** The handler has no `DeliverError`; it sends a final `TaskResult` whose `status` is a non-OK code and whose `body` names the failing step. The gateway converts a non-OK status into `DeliverError` for the client, so the failure reaches HTTP as a real code via `TaskStatusToHttpStatus`. The handler's only new decision is which code to set.
+
 Out of scope: the reserved call targets, `use.functions` inlining, the other nine task kinds, `set`/`emit`/`switch`/`fork`/`try`, retries, timeouts, and event payloads.
 
 ## Capabilities
@@ -63,5 +65,4 @@ Out of scope: the reserved call targets, `use.functions` inlining, the other nin
 **Known interactions left open**
 
 - Whether an opaque workflow input may be declared explicitly (`with.body: json`) rather than sniffed, which is the last structural question in the `with` envelope.
-- Where a workflow-level failure is surfaced. This change reports it through `ResultReceiver::DeliverError`, which today takes a bare reason with no code. A separate change, `task-result-status`, adds a `status` field to `TaskResult` so failures carry a classification the gateway can map to an HTTP status; once that lands, the workflow handler switches from a bare reason to a code without changing the interpreter.
 - Whether the pre-existing `ParamsOnlyRequirementsResolver` truncation gets its own change.
