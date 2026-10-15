@@ -13,8 +13,8 @@ strij_cc_test_library(
 )
 
 strij_cc_test(
-    name = "data_chain_test",
-    srcs = ["data_chain_test.cc"],
+    name = "step_data_value_test",
+    srcs = ["step_data_value_test.cc"],
     deps = [
         "//src/nodeagent/extensions/task_handlers/openworkflow:openworkflow_task_handler_lib",
         "@googletest//:gtest_main",

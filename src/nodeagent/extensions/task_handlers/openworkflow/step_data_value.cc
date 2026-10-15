@@ -1,4 +1,4 @@
-#include "nodeagent/extensions/task_handlers/openworkflow/data_chain.hh"
+#include "nodeagent/extensions/task_handlers/openworkflow/step_data_value.hh"
 
 #include <optional>
 #include <string>
@@ -10,26 +10,26 @@
 
 namespace strij::nodeagent::task_handlers::openworkflow {
 
-DataChain::DataChain(std::optional<utils::Jv> json, std::string bytes)
+StepDataValue::StepDataValue(std::optional<utils::Jv> json, std::string bytes)
     : json_{std::move(json)}, bytes_{std::move(bytes)} {}
 
-DataChain::DataChain() : DataChain(utils::Jv::Parse("null").value(), "null") {}
+StepDataValue::StepDataValue() : StepDataValue(utils::Jv::Parse("null").value(), "null") {}
 
-auto DataChain::FromBytes(std::string bytes) -> DataChain {
+auto StepDataValue::FromBytes(std::string bytes) -> StepDataValue {
   auto parsed = utils::Jv::Parse(bytes);
   if (parsed.ok()) {
-    return DataChain(std::move(*parsed), std::move(bytes));
+    return StepDataValue(std::move(*parsed), std::move(bytes));
   }
-  return DataChain(std::nullopt, std::move(bytes));
+  return StepDataValue(std::nullopt, std::move(bytes));
 }
 
-auto DataChain::FromValue(::strij::openworkflow::Value value) -> DataChain {
+auto StepDataValue::FromValue(::strij::openworkflow::Value value) -> StepDataValue {
   utils::Jv json = ::strij::openworkflow::ValueToJv(value);
   std::string bytes = json.Dump();
-  return DataChain(std::move(json), std::move(bytes));
+  return StepDataValue(std::move(json), std::move(bytes));
 }
 
-auto DataChain::ToValue() const -> ::strij::openworkflow::Value {
+auto StepDataValue::ToValue() const -> ::strij::openworkflow::Value {
   if (json_.has_value()) {
     return ::strij::openworkflow::JvToValue(*json_);
   }

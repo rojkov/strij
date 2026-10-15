@@ -92,7 +92,7 @@ TEST(ExpressionEngineTest, EvaluatesMixedObjectBesideLiteral) {
   EXPECT_EQ(object.at("nested").AsArray()[1].AsString(), "plain");
 }
 
-TEST(ExpressionEngineTest, SubjectIsTheDataChainNotContext) {
+TEST(ExpressionEngineTest, SubjectIsNotContext) {
   ExpressionEngine engine(test::JqEvaluatorConfig());
   auto subject = utils::Jv::Parse(R"({"name":"widget"})");
   ASSERT_TRUE(subject.ok());

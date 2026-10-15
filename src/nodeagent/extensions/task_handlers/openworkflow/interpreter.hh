@@ -14,7 +14,7 @@
 #include "common/config/extensions.pb.h"
 #include "common/core/utils/jv.hh"
 #include "common/task/task.pb.h"
-#include "nodeagent/extensions/task_handlers/openworkflow/data_chain.hh"
+#include "nodeagent/extensions/task_handlers/openworkflow/step_data_value.hh"
 #include "nodeagent/extensions/task_handlers/openworkflow/errors.hh"
 #include "nodeagent/extensions/task_handlers/openworkflow/expression.hh"
 #include "openworkflow/document.hh"
@@ -118,7 +118,7 @@ private:
 
   std::optional<::strij::openworkflow::Document> document_;
   std::vector<const ::strij::openworkflow::NamedTask*> steps_ = {};
-  DataChain chain_;
+  StepDataValue data_;
   std::size_t step_index_ = 0;
   std::optional<std::string> waiting_child_id_;
   std::optional<Pending> pending_;

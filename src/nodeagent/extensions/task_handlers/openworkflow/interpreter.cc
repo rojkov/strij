@@ -180,9 +180,9 @@ void WorkflowInterpreter::Start(std::string document_text) {
       fail(task::TASK_STATUS_INTERNAL, "", seed.status().message());
       return;
     }
-    chain_ = DataChain::FromBytes(std::move(*seed));
+    data_ = StepDataValue::FromBytes(std::move(*seed));
   } else {
-    chain_ = DataChain();
+    data_ = StepDataValue();
   }
 
   step_index_ = 0;
@@ -251,7 +251,7 @@ void WorkflowInterpreter::executeStep(const ::strij::openworkflow::NamedTask& st
 
   // A step only needs a JSON subject when one of its expressions runs; a step
   // that merely passes opaque bytes through to its child is fine.
-  const utils::Jv* subject = chain_.IsJson() ? &chain_.Json() : nullptr;
+  const utils::Jv* subject = data_.IsJson() ? &data_.Json() : nullptr;
   auto projection = ProjectCall(call.with_, subject, engine_);
   if (!projection.ok()) {
     fail(task::TASK_STATUS_INTERNAL, step.name_, projection.status().message());
@@ -289,14 +289,14 @@ auto WorkflowInterpreter::applyOutcome(const std::string& child_id, ChildOutcome
     fail(status, currentStepName(), outcome.reason_);
     return false;
   }
-  chain_ = DataChain::FromBytes(std::move(outcome.body_));
+  data_ = StepDataValue::FromBytes(std::move(outcome.body_));
   return true;
 }
 
 auto WorkflowInterpreter::buildChildBody(const ::strij::openworkflow::Task& task,
                                          const utils::Jv* subject) -> absl::StatusOr<std::string> {
   if (!task.input_.has_value() || !task.input_->from_.has_value()) {
-    return chain_.Bytes();
+    return data_.Bytes();
   }
   return renderFrom(*task.input_->from_, subject);
 }
@@ -355,7 +355,7 @@ auto WorkflowInterpreter::renderFrom(
 void WorkflowInterpreter::succeed() {
   task::TaskResult result;
   result.set_id(parent_id_);
-  result.set_body(chain_.Bytes());
+  result.set_body(data_.Bytes());
   result.set_is_final(true);
   finished_ = true;
   if (on_complete_) {

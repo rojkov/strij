@@ -1,20 +1,20 @@
 load("//bazel:build_system.bzl", "strij_cc_library")
 
 # The Open Workflow interpreter handler: the `call: strij` projection, the
-# data-chain/expression engine, the resumable step loop, and the handler that
+# step-data/expression engine, the resumable step loop, and the handler that
 # adapts a submitted document to it.
 strij_cc_library(
     name = "openworkflow_task_handler_lib",
     srcs = [
         "call_strij.cc",
-        "data_chain.cc",
+        "step_data_value.cc",
         "expression.cc",
         "interpreter.cc",
         "openworkflow_task_handler.cc",
     ],
     hdrs = [
         "call_strij.hh",
-        "data_chain.hh",
+        "step_data_value.hh",
         "errors.hh",
         "expression.hh",
         "interpreter.hh",
