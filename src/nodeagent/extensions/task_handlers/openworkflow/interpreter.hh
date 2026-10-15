@@ -77,7 +77,7 @@ public:
 
   // Parses, validates, and runs the document. The completion callback fires
   // exactly once (success or failure) unless the run is cancelled first.
-  void Start(std::string document_text);
+  void Start(std::string_view document_text);
 
   // Delivers a terminal child outcome. Outcomes for an id other than the one
   // currently awaited are ignored.

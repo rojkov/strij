@@ -161,7 +161,7 @@ WorkflowInterpreter::WorkflowInterpreter(ChildTaskSubmitter& submitter,
     : submitter_{submitter}, engine_{std::move(evaluator)}, sink_{sink},
       parent_id_{std::move(parent_id)}, on_complete_{std::move(on_complete)} {}
 
-void WorkflowInterpreter::Start(std::string document_text) {
+void WorkflowInterpreter::Start(std::string_view document_text) {
   auto parsed = ::strij::openworkflow::Parse(document_text);
   if (!parsed.has_value()) {
     fail(task::TASK_STATUS_MALFORMED_REQUEST, "",
@@ -201,6 +201,7 @@ void WorkflowInterpreter::Start(std::string document_text) {
 
       return;
     }
+
     data_ = StepDataValue::FromBytes(std::move(*seed));
   } else {
     data_ = StepDataValue();
