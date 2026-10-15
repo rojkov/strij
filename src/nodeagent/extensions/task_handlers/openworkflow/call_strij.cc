@@ -27,6 +27,62 @@ auto findKey(const ::strij::openworkflow::Value::Object& object, std::string_vie
   return iter == object.end() ? nullptr : &iter->second;
 }
 
+// Renders one `parameters` value: a whole-value expression is evaluated against
+// the data chain; a literal scalar is rendered canonically; an object or array
+// is rejected.
+auto projectParameter(std::string_view key, const ::strij::openworkflow::Value& member,
+                      const utils::Jv* subject, ExpressionEngine& engine)
+    -> absl::StatusOr<std::string> {
+  if (member.IsString() && IsExpression(member.AsString())) {
+    if (subject == nullptr) {
+      return absl::InvalidArgumentError("the data subject is not JSON");
+    }
+
+    auto result = engine.Run(ExpressionProgram(member.AsString()), *subject);
+    if (!result.ok()) {
+      return result.status();
+    }
+
+    return RenderScalar(*result);
+  }
+
+  if (member.IsObject() || member.IsArray()) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("parameter '", key, "' must be a scalar, not an object or array"));
+  }
+
+  return RenderScalar(::strij::openworkflow::ValueToJv(member));
+}
+
+auto projectParameters(const ::strij::openworkflow::Value& parameters, const utils::Jv* subject,
+                       ExpressionEngine& engine, std::map<std::string, std::string>& out)
+    -> absl::Status {
+  for (const auto& [key, member] : parameters.AsObject()) {
+    auto rendered = projectParameter(key, member, subject, engine);
+    if (!rendered.ok()) {
+      return rendered.status();
+    }
+
+    out.emplace(key, std::move(*rendered));
+  }
+
+  return absl::OkStatus();
+}
+
+auto projectRequirements(const ::strij::openworkflow::Value& requirements,
+                         node::ResourceRequirements& out) -> absl::Status {
+  for (const auto& [key, member] : requirements.AsObject()) {
+    auto coerced = CoerceRequirement(key, member);
+    if (!coerced.ok()) {
+      return coerced.status();
+    }
+
+    (*out.mutable_resources())[key] = *coerced;
+  }
+
+  return absl::OkStatus();
+}
+
 } // namespace
 
 auto ClassifyCallTarget(std::string_view target, const ::strij::openworkflow::Document& document)
@@ -167,45 +223,17 @@ auto ProjectCall(const ::strij::openworkflow::Value& with, const utils::Jv* subj
 
   const ::strij::openworkflow::Value* parameters = findKey(object, kParametersKey);
   if (parameters != nullptr) {
-    for (const auto& [key, member] : parameters->AsObject()) {
-      if (member.IsString() && IsExpression(member.AsString())) {
-        if (subject == nullptr) {
-          return absl::InvalidArgumentError("the data subject is not JSON");
-        }
-
-        auto result = engine.Run(ExpressionProgram(member.AsString()), *subject);
-        if (!result.ok()) {
-          return result.status();
-        }
-
-        auto rendered = RenderScalar(*result);
-        if (!rendered.ok()) {
-          return rendered.status();
-        }
-
-        projection.parameters_.emplace(key, std::move(*rendered));
-      } else if (member.IsObject() || member.IsArray()) {
-        return absl::InvalidArgumentError(
-            absl::StrCat("parameter '", key, "' must be a scalar, not an object or array"));
-      } else {
-        auto rendered = RenderScalar(::strij::openworkflow::ValueToJv(member));
-        if (!rendered.ok()) {
-          return rendered.status();
-        }
-        projection.parameters_.emplace(key, std::move(*rendered));
-      }
+    auto status = projectParameters(*parameters, subject, engine, projection.parameters_);
+    if (!status.ok()) {
+      return status;
     }
   }
 
   const ::strij::openworkflow::Value* requirements = findKey(object, kRequirementsKey);
   if (requirements != nullptr) {
-    for (const auto& [key, member] : requirements->AsObject()) {
-      auto coerced = CoerceRequirement(key, member);
-      if (!coerced.ok()) {
-        return coerced.status();
-      }
-
-      (*projection.requirements_.mutable_resources())[key] = *coerced;
+    auto status = projectRequirements(*requirements, projection.requirements_);
+    if (!status.ok()) {
+      return status;
     }
   }
 
