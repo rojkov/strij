@@ -90,15 +90,10 @@ public:
   [[nodiscard]] auto Finished() const -> bool { return finished_ || cancelled_; }
 
 private:
-  struct Pending {
-    std::string child_id_;
-    ChildOutcome outcome_;
-  };
-
   auto validateMode() -> absl::Status;
   void run();
   void executeStep(const ::strij::openworkflow::NamedTask& step);
-  auto applyOutcome(const std::string& child_id, ChildOutcome outcome) -> bool;
+  auto applyOutcome(ChildOutcome outcome) -> bool;
   auto buildChildBody(const ::strij::openworkflow::Task& task, const utils::Jv* subject)
       -> absl::StatusOr<std::string>;
   auto renderFrom(const std::variant<std::string, ::strij::openworkflow::Value>& from,
@@ -118,7 +113,7 @@ private:
   StepDataValue data_;
   std::size_t step_index_ = 0;
   std::optional<std::string> waiting_child_id_;
-  std::optional<Pending> pending_;
+  std::optional<ChildOutcome> pending_;
   bool in_submit_ = false;
   bool finished_ = false;
   bool cancelled_ = false;

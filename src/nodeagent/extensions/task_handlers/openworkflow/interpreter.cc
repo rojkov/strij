@@ -221,15 +221,14 @@ void WorkflowInterpreter::OnChildOutcome(const std::string& child_id, ChildOutco
   }
 
   if (in_submit_) {
-    pending_ = Pending{child_id, std::move(outcome)};
+    pending_ = std::move(outcome);
 
     return;
   }
 
-  if (!applyOutcome(child_id, std::move(outcome))) {
+  if (!applyOutcome(std::move(outcome))) {
     return;
   }
-
   ++step_index_;
   run();
 }
@@ -270,9 +269,9 @@ void WorkflowInterpreter::run() {
       return;
     }
 
-    Pending pending = std::move(*pending_);
+    ChildOutcome pending = std::move(*pending_);
     pending_.reset();
-    if (!applyOutcome(pending.child_id_, std::move(pending.outcome_))) {
+    if (!applyOutcome(std::move(pending))) {
       return;
     }
 
@@ -320,7 +319,7 @@ void WorkflowInterpreter::executeStep(const ::strij::openworkflow::NamedTask& st
   in_submit_ = false;
 }
 
-auto WorkflowInterpreter::applyOutcome(const std::string& child_id, ChildOutcome outcome) -> bool {
+auto WorkflowInterpreter::applyOutcome(ChildOutcome outcome) -> bool {
   waiting_child_id_.reset();
   if (outcome.is_error_) {
     const task::TaskStatus status =
