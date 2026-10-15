@@ -329,8 +329,8 @@ auto WorkflowInterpreter::renderFrom(
   }
   const ::strij::openworkflow::Value& value = std::get<::strij::openworkflow::Value>(from);
   if (subject == nullptr) {
-    std::vector<std::string> programs;
-    if (!CollectExpressions(value, programs).ok() || !programs.empty()) {
+    auto programs = CollectExpressions(value);
+    if (!programs.ok() || !programs->empty()) {
       return absl::InvalidArgumentError("the data subject is not JSON");
     }
   }

@@ -44,17 +44,16 @@ TEST(ExpressionScanTest, FindsNestedExpressionsAndSkipsNonStrings) {
       {"null", Value{}},
       {"literal", Value{".z"}},
   }};
-  std::vector<std::string> programs;
-  ASSERT_TRUE(CollectExpressions(tree, programs).ok());
-  EXPECT_THAT(programs, UnorderedElementsAre(".x", ".y"));
+  auto programs = CollectExpressions(tree);
+  ASSERT_TRUE(programs.ok());
+  EXPECT_THAT(*programs, UnorderedElementsAre(".x", ".y"));
 }
 
 TEST(ExpressionScanTest, RejectsPartialWrapperAtDepth) {
   const Value tree{Value::Object{
       {"a", Value{Value::Array{Value{Value::Object{{"b", Value{"jobs/${ .id }"}}}}}}},
   }};
-  std::vector<std::string> programs;
-  EXPECT_FALSE(CollectExpressions(tree, programs).ok());
+  EXPECT_FALSE(CollectExpressions(tree).ok());
 }
 
 TEST(ExpressionEngineTest, CompilesValidAndRejectsMalformed) {

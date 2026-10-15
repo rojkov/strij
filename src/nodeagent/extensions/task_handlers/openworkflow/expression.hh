@@ -29,8 +29,8 @@ inline constexpr std::string_view kContextVariable = "context";
 // Recursively collects every expression program in `value`, descending into
 // object members and array elements. Returns an error naming the wrapper rule
 // when a partially-wrapped string is found at any depth.
-auto CollectExpressions(const ::strij::openworkflow::Value& value, std::vector<std::string>& programs)
-    -> absl::Status;
+auto CollectExpressions(const ::strij::openworkflow::Value& value)
+    -> absl::StatusOr<std::vector<std::string>>;
 
 // Compiles and runs the configured evaluator against a JSON subject. Owns the
 // evaluator selection (an `ExtensionConfig`) and re-resolves it through the

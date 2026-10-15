@@ -1,6 +1,7 @@
 #include "nodeagent/extensions/task_handlers/openworkflow/expression.hh"
 
 #include <cctype>
+#include <iterator>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -35,40 +36,54 @@ auto ExpressionProgram(std::string_view text) -> std::string {
   return std::string(inner);
 }
 
-auto CollectExpressions(const ::strij::openworkflow::Value& value, std::vector<std::string>& programs)
-    -> absl::Status {
+namespace {
+
+// Appends `nested`'s programs to `programs`.
+void appendPrograms(std::vector<std::string>& programs,
+                    const absl::StatusOr<std::vector<std::string>>& nested) {
+  programs.insert(programs.end(), std::make_move_iterator(nested->begin()),
+                  std::make_move_iterator(nested->end()));
+}
+
+} // namespace
+
+auto CollectExpressions(const ::strij::openworkflow::Value& value)
+    -> absl::StatusOr<std::vector<std::string>> {
   if (value.IsString()) {
     const std::string& text = value.AsString();
     if (IsExpression(text)) {
-      programs.push_back(ExpressionProgram(text));
-      return absl::OkStatus();
+      return std::vector<std::string>{ExpressionProgram(text)};
     }
     if (HasPartialWrapper(text)) {
       return absl::InvalidArgumentError(
           absl::StrCat("the ${ } wrapper must span the whole value, but '", text,
                        "' has text outside it"));
     }
-    return absl::OkStatus();
+    return std::vector<std::string>{};
   }
   if (value.IsArray()) {
+    std::vector<std::string> programs;
     for (const ::strij::openworkflow::Value& element : value.AsArray()) {
-      auto status = CollectExpressions(element, programs);
-      if (!status.ok()) {
-        return status;
+      auto nested = CollectExpressions(element);
+      if (!nested.ok()) {
+        return nested.status();
       }
+      appendPrograms(programs, nested);
     }
-    return absl::OkStatus();
+    return programs;
   }
   if (value.IsObject()) {
-    for (const auto& [key, member] : value.AsObject()) {
-      auto status = CollectExpressions(member, programs);
-      if (!status.ok()) {
-        return status;
+    std::vector<std::string> programs;
+    for (const auto& [_, member] : value.AsObject()) {
+      auto nested = CollectExpressions(member);
+      if (!nested.ok()) {
+        return nested.status();
       }
+      appendPrograms(programs, nested);
     }
-    return absl::OkStatus();
+    return programs;
   }
-  return absl::OkStatus();
+  return std::vector<std::string>{};
 }
 
 auto ExpressionEngine::Compile(std::string_view program) -> absl::Status {
@@ -112,12 +127,11 @@ auto ExpressionEngine::Run(std::string_view program, const utils::Jv& subject)
 }
 
 auto ExpressionEngine::Validate(const ::strij::openworkflow::Value& value) -> absl::Status {
-  std::vector<std::string> programs;
-  auto collected = CollectExpressions(value, programs);
-  if (!collected.ok()) {
-    return collected;
+  auto programs = CollectExpressions(value);
+  if (!programs.ok()) {
+    return programs.status();
   }
-  for (const std::string& program : programs) {
+  for (const std::string& program : *programs) {
     auto status = Compile(program);
     if (!status.ok()) {
       return status;
