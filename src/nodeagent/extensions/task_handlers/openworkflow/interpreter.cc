@@ -111,16 +111,23 @@ auto ValidateDocument(const ::strij::openworkflow::Document& document,
     case CallTargetKind::kStrij:
       break;
     case CallTargetKind::kReserved:
-      return Failure{
-          Phase::kValidation, task::TASK_STATUS_UNIMPLEMENTED, named->name_,
-          absl::StrCat("call target '", call.call_, "' is recognized but not yet supported")};
+      return Failure{.phase_ = Phase::kValidation,
+                     .status_ = task::TASK_STATUS_UNIMPLEMENTED,
+                     .step_ = named->name_,
+                     .message_ = absl::StrCat("call target '", call.call_,
+                                              "' is recognized but not yet supported")};
     case CallTargetKind::kDeclaredFunction:
-      return Failure{Phase::kValidation, task::TASK_STATUS_UNIMPLEMENTED, named->name_,
-                     absl::StrCat("call target '", call.call_,
-                                  "' names a declared function, which is not supported")};
+      return Failure{.phase_ = Phase::kValidation,
+                     .status_ = task::TASK_STATUS_UNIMPLEMENTED,
+                     .step_ = named->name_,
+                     .message_ =
+                         absl::StrCat("call target '", call.call_,
+                                      "' names a declared function, which is not supported")};
     case CallTargetKind::kUnknown:
-      return Failure{Phase::kValidation, task::TASK_STATUS_MALFORMED_REQUEST, named->name_,
-                     absl::StrCat("call target '", call.call_, "' is not recognized")};
+      return Failure{.phase_ = Phase::kValidation,
+                     .status_ = task::TASK_STATUS_MALFORMED_REQUEST,
+                     .step_ = named->name_,
+                     .message_ = absl::StrCat("call target '", call.call_, "' is not recognized")};
     }
 
     // Compile expressions before shape checks: a malformed program nested deep
@@ -128,14 +135,18 @@ auto ValidateDocument(const ::strij::openworkflow::Document& document,
     // enclosing value's shape.
     auto syntax = engine.Validate(call.with_);
     if (!syntax.ok()) {
-      return Failure{Phase::kValidation, task::TASK_STATUS_MALFORMED_REQUEST, named->name_,
-                     std::string(syntax.message())};
+      return Failure{.phase_ = Phase::kValidation,
+                     .status_ = task::TASK_STATUS_MALFORMED_REQUEST,
+                     .step_ = named->name_,
+                     .message_ = std::string(syntax.message())};
     }
 
     auto arguments = ValidateCallArguments(call.with_);
     if (!arguments.ok()) {
-      return Failure{Phase::kValidation, task::TASK_STATUS_MALFORMED_REQUEST, named->name_,
-                     std::string(arguments.message())};
+      return Failure{.phase_ = Phase::kValidation,
+                     .status_ = task::TASK_STATUS_MALFORMED_REQUEST,
+                     .step_ = named->name_,
+                     .message_ = std::string(arguments.message())};
     }
 
     if (task.input_.has_value() && task.input_->from_.has_value()) {
@@ -146,8 +157,10 @@ auto ValidateDocument(const ::strij::openworkflow::Document& document,
               : engine.Validate(std::get<::strij::openworkflow::Value>(from));
 
       if (!input_status.ok()) {
-        return Failure{Phase::kValidation, task::TASK_STATUS_MALFORMED_REQUEST, named->name_,
-                       std::string(input_status.message())};
+        return Failure{.phase_ = Phase::kValidation,
+                       .status_ = task::TASK_STATUS_MALFORMED_REQUEST,
+                       .step_ = named->name_,
+                       .message_ = std::string(input_status.message())};
       }
     }
   }
@@ -281,8 +294,7 @@ void WorkflowInterpreter::run() {
 
 void WorkflowInterpreter::executeStep(const ::strij::openworkflow::NamedTask& step) {
   const ::strij::openworkflow::Task& task = step.task_;
-  const ::strij::openworkflow::CallBody& call =
-      std::get<::strij::openworkflow::CallBody>(task.body_);
+  const auto& call = std::get<::strij::openworkflow::CallBody>(task.body_);
 
   // A step only needs a JSON subject when one of its expressions runs; a step
   // that merely passes opaque bytes through to its child is fine.
@@ -374,7 +386,7 @@ auto WorkflowInterpreter::renderFrom(
     return text;
   }
 
-  const ::strij::openworkflow::Value& value = std::get<::strij::openworkflow::Value>(from);
+  const auto& value = std::get<::strij::openworkflow::Value>(from);
   if (subject == nullptr) {
     auto programs = CollectExpressions(value);
     if (!programs.ok() || !programs->empty()) {
