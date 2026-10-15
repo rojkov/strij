@@ -34,6 +34,7 @@ auto ClassifyCallTarget(std::string_view target, const ::strij::openworkflow::Do
   if (target == "strij") {
     return CallTargetKind::kStrij;
   }
+
   static constexpr std::array<std::string_view, 5> kReserved = {"http", "openapi", "asyncapi",
                                                                 "grpc", "mcp"};
   for (std::string_view reserved : kReserved) {
@@ -41,10 +42,11 @@ auto ClassifyCallTarget(std::string_view target, const ::strij::openworkflow::Do
       return CallTargetKind::kReserved;
     }
   }
-  if (document.use_.has_value() &&
-      document.use_->functions_.contains(std::string(target))) {
+
+  if (document.use_.has_value() && document.use_->functions_.contains(std::string(target))) {
     return CallTargetKind::kDeclaredFunction;
   }
+
   return CallTargetKind::kUnknown;
 }
 
@@ -56,34 +58,42 @@ auto CoerceRequirement(std::string_view name, const ::strij::openworkflow::Value
       return absl::InvalidArgumentError(
           absl::StrCat("requirement '", name, "' does not admit expressions"));
     }
+
     return absl::InvalidArgumentError(
         absl::StrCat("requirement '", name, "' value '", text,
                      "' is not an integer; unit suffixes are not accepted"));
   }
+
   if (amount.IsInt()) {
     const std::int64_t value = amount.AsInt();
     if (value < 0) {
       return absl::InvalidArgumentError(
           absl::StrCat("requirement '", name, "' value ", value, " must be non-negative"));
     }
+
     return static_cast<std::uint64_t>(value);
   }
+
   if (amount.IsDouble()) {
     const double value = amount.AsDouble();
     if (!std::isfinite(value) || std::floor(value) != value) {
       return absl::InvalidArgumentError(
           absl::StrCat("requirement '", name, "' value ", value, " is not an integer"));
     }
+
     if (value < 0) {
       return absl::InvalidArgumentError(
           absl::StrCat("requirement '", name, "' value ", value, " must be non-negative"));
     }
+
     if (value > static_cast<double>(std::numeric_limits<std::uint64_t>::max())) {
       return absl::InvalidArgumentError(
           absl::StrCat("requirement '", name, "' value ", value, " is out of range"));
     }
+
     return static_cast<std::uint64_t>(value);
   }
+
   return absl::InvalidArgumentError(
       absl::StrCat("requirement '", name, "' value is not an integer"));
 }
@@ -92,6 +102,7 @@ auto ValidateCallArguments(const ::strij::openworkflow::Value& with) -> absl::St
   if (!with.IsObject()) {
     return absl::InvalidArgumentError("call arguments ('with') must be an object");
   }
+
   const ::strij::openworkflow::Value::Object& object = with.AsObject();
   for (const auto& [key, member] : object) {
     const std::string_view key_view{key};
@@ -108,9 +119,11 @@ auto ValidateCallArguments(const ::strij::openworkflow::Value& with) -> absl::St
   if (type == nullptr) {
     return absl::InvalidArgumentError("call: strij requires 'type'");
   }
+
   if (type->IsString() && IsExpression(type->AsString())) {
     return absl::InvalidArgumentError("'type' does not admit expressions");
   }
+
   if (!type->IsString()) {
     return absl::InvalidArgumentError("'type' must be a string");
   }
@@ -120,6 +133,7 @@ auto ValidateCallArguments(const ::strij::openworkflow::Value& with) -> absl::St
     if (!parameters->IsObject()) {
       return absl::InvalidArgumentError("'parameters' must be an object");
     }
+
     for (const auto& [key, member] : parameters->AsObject()) {
       if (member.IsObject() || member.IsArray()) {
         return absl::InvalidArgumentError(
@@ -133,6 +147,7 @@ auto ValidateCallArguments(const ::strij::openworkflow::Value& with) -> absl::St
     if (!requirements->IsObject()) {
       return absl::InvalidArgumentError("'requirements' must be an object");
     }
+
     for (const auto& [key, member] : requirements->AsObject()) {
       auto coerced = CoerceRequirement(key, member);
       if (!coerced.ok()) {
@@ -157,14 +172,17 @@ auto ProjectCall(const ::strij::openworkflow::Value& with, const utils::Jv* subj
         if (subject == nullptr) {
           return absl::InvalidArgumentError("the data subject is not JSON");
         }
+
         auto result = engine.Run(ExpressionProgram(member.AsString()), *subject);
         if (!result.ok()) {
           return result.status();
         }
+
         auto rendered = RenderScalar(*result);
         if (!rendered.ok()) {
           return rendered.status();
         }
+
         projection.parameters_.emplace(key, std::move(*rendered));
       } else if (member.IsObject() || member.IsArray()) {
         return absl::InvalidArgumentError(
@@ -186,6 +204,7 @@ auto ProjectCall(const ::strij::openworkflow::Value& with, const utils::Jv* subj
       if (!coerced.ok()) {
         return coerced.status();
       }
+
       (*projection.requirements_.mutable_resources())[key] = *coerced;
     }
   }
