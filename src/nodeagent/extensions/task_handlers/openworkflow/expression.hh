@@ -43,7 +43,7 @@ public:
   // Validation: compiles `program`, discarding the result.
   auto Compile(std::string_view program) -> absl::Status;
 
-  // Runs `program` against `subject` (subject = data chain, `$context` = `{}`)
+  // Runs `program` against `subject` (subject = step data value, `$context` = `{}`)
   // and returns the single output value.
   auto Run(std::string_view program, const utils::Jv& subject) -> absl::StatusOr<utils::Jv>;
 
