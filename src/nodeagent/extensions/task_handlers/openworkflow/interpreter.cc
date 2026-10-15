@@ -35,7 +35,9 @@ public:
     if (delivered_) {
       return;
     }
-    body_.append(reinterpret_cast<const char*>(value.data()), value.size());
+
+    body_.append(std::bit_cast<const char*>(value.data()), value.size());
+
     if (is_final) {
       finish(false, {}, task::TASK_STATUS_OK);
     }
@@ -45,18 +47,21 @@ public:
     if (delivered_) {
       return;
     }
+
     finish(true, std::string(reason), status);
   }
 
 private:
   void finish(bool is_error, std::string reason, task::TaskStatus status) {
     delivered_ = true;
+
     ChildOutcome outcome;
     outcome.is_error_ = is_error;
     outcome.body_ = std::move(body_);
     outcome.reason_ = std::move(reason);
     outcome.status_ = status;
     sink_.OnChildOutcome(parent_id_, child_id_, std::move(outcome));
+
     sink_.Reap();
   }
 
@@ -95,21 +100,22 @@ auto ValidateDocument(const ::strij::openworkflow::Document& document,
       return Failure{Phase::kValidation, task::TASK_STATUS_UNIMPLEMENTED, named->name_,
                      "this task kind is not supported in the current workflow slice"};
     }
-    const ::strij::openworkflow::CallBody& call = std::get<::strij::openworkflow::CallBody>(task.body_);
+    const ::strij::openworkflow::CallBody& call =
+        std::get<::strij::openworkflow::CallBody>(task.body_);
     switch (ClassifyCallTarget(call.call_, document)) {
-      case CallTargetKind::kStrij:
-        break;
-      case CallTargetKind::kReserved:
-        return Failure{Phase::kValidation, task::TASK_STATUS_UNIMPLEMENTED, named->name_,
-                       absl::StrCat("call target '", call.call_,
-                                    "' is recognized but not yet supported")};
-      case CallTargetKind::kDeclaredFunction:
-        return Failure{Phase::kValidation, task::TASK_STATUS_UNIMPLEMENTED, named->name_,
-                       absl::StrCat("call target '", call.call_,
-                                    "' names a declared function, which is not supported")};
-      case CallTargetKind::kUnknown:
-        return Failure{Phase::kValidation, task::TASK_STATUS_MALFORMED_REQUEST, named->name_,
-                       absl::StrCat("call target '", call.call_, "' is not recognized")};
+    case CallTargetKind::kStrij:
+      break;
+    case CallTargetKind::kReserved:
+      return Failure{
+          Phase::kValidation, task::TASK_STATUS_UNIMPLEMENTED, named->name_,
+          absl::StrCat("call target '", call.call_, "' is recognized but not yet supported")};
+    case CallTargetKind::kDeclaredFunction:
+      return Failure{Phase::kValidation, task::TASK_STATUS_UNIMPLEMENTED, named->name_,
+                     absl::StrCat("call target '", call.call_,
+                                  "' names a declared function, which is not supported")};
+    case CallTargetKind::kUnknown:
+      return Failure{Phase::kValidation, task::TASK_STATUS_MALFORMED_REQUEST, named->name_,
+                     absl::StrCat("call target '", call.call_, "' is not recognized")};
     }
 
     // Compile expressions before shape checks: a malformed program nested deep
@@ -128,10 +134,10 @@ auto ValidateDocument(const ::strij::openworkflow::Document& document,
 
     if (task.input_.has_value() && task.input_->from_.has_value()) {
       const auto& from = *task.input_->from_;
-      const absl::Status input_status = std::holds_alternative<std::string>(from)
-                                            ? engine.Validate(::strij::openworkflow::Value{
-                                                  std::get<std::string>(from)})
-                                            : engine.Validate(std::get<::strij::openworkflow::Value>(from));
+      const absl::Status input_status =
+          std::holds_alternative<std::string>(from)
+              ? engine.Validate(::strij::openworkflow::Value{std::get<std::string>(from)})
+              : engine.Validate(std::get<::strij::openworkflow::Value>(from));
       if (!input_status.ok()) {
         return Failure{Phase::kValidation, task::TASK_STATUS_MALFORMED_REQUEST, named->name_,
                        std::string(input_status.message())};
@@ -247,7 +253,8 @@ void WorkflowInterpreter::run() {
 
 void WorkflowInterpreter::executeStep(const ::strij::openworkflow::NamedTask& step) {
   const ::strij::openworkflow::Task& task = step.task_;
-  const ::strij::openworkflow::CallBody& call = std::get<::strij::openworkflow::CallBody>(task.body_);
+  const ::strij::openworkflow::CallBody& call =
+      std::get<::strij::openworkflow::CallBody>(task.body_);
 
   // A step only needs a JSON subject when one of its expressions runs; a step
   // that merely passes opaque bytes through to its child is fine.
@@ -275,17 +282,15 @@ void WorkflowInterpreter::executeStep(const ::strij::openworkflow::NamedTask& st
 
   waiting_child_id_ = child_id;
   in_submit_ = true;
-  submitter_.Submit(std::move(child),
-                    std::make_unique<ChildReceiver>(sink_, parent_id_, child_id));
+  submitter_.Submit(std::move(child), std::make_unique<ChildReceiver>(sink_, parent_id_, child_id));
   in_submit_ = false;
 }
 
 auto WorkflowInterpreter::applyOutcome(const std::string& child_id, ChildOutcome outcome) -> bool {
   waiting_child_id_.reset();
   if (outcome.is_error_) {
-    const task::TaskStatus status = outcome.status_ == task::TASK_STATUS_OK
-                                        ? task::TASK_STATUS_INTERNAL
-                                        : outcome.status_;
+    const task::TaskStatus status =
+        outcome.status_ == task::TASK_STATUS_OK ? task::TASK_STATUS_INTERNAL : outcome.status_;
     fail(status, currentStepName(), outcome.reason_);
     return false;
   }
@@ -321,9 +326,8 @@ auto WorkflowInterpreter::renderFrom(
       return result->Dump();
     }
     if (HasPartialWrapper(text)) {
-      return absl::InvalidArgumentError(
-          absl::StrCat("the ${ } wrapper must span the whole value, but '", text,
-                       "' has text outside it"));
+      return absl::InvalidArgumentError(absl::StrCat(
+          "the ${ } wrapper must span the whole value, but '", text, "' has text outside it"));
     }
     return text;
   }

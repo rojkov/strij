@@ -22,10 +22,10 @@ namespace strij::nodeagent::task_handlers::openworkflow {
 
 // The terminal outcome of one child task, as observed by the interpreter.
 struct ChildOutcome {
-  bool is_error_ = false;
+  bool is_error_{false};
   std::string body_;
   std::string reason_;
-  task::TaskStatus status_ = task::TASK_STATUS_INTERNAL;
+  task::TaskStatus status_{task::TASK_STATUS_INTERNAL};
 };
 
 // The handler side of the child-result seam. A child receiver calls back into
@@ -51,7 +51,7 @@ public:
 auto CollectSteps(const ::strij::openworkflow::Document& document)
     -> std::vector<const ::strij::openworkflow::NamedTask*>;
 
-// The data-independent validation pass (design D7): call targets, the `with`
+// The data-independent validation pass: call targets, the `with`
 // key set, requirement coercion, and compiling every strict-mode expression.
 // Returns the first failure, or nullopt when the document passes. Exposed so
 // the split from execution-time failures can be exercised directly.
