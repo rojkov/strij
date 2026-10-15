@@ -28,7 +28,7 @@ enum class CallTargetKind : std::uint8_t {
   kUnknown = 3,
 };
 
-auto ClassifyCallTarget(std::string_view target, const ::strij::openworkflow::Document& document)
+auto ClassifyCallTarget(std::string_view target, const strij::openworkflow::Document& document)
     -> CallTargetKind;
 
 // A `call: strij` projection ready to become a child `task::Task`.

@@ -22,7 +22,7 @@ public:
   // the opaque arm (empty input is opaque).
   static auto FromBytes(std::string bytes) -> StepDataValue;
 
-  static auto FromValue(::strij::openworkflow::Value value) -> StepDataValue;
+  static auto FromValue(const ::strij::openworkflow::Value& value) -> StepDataValue;
 
   [[nodiscard]] auto IsJson() const -> bool { return json_.has_value(); }
   // Precondition: IsJson(). The parsed value, used as the expression subject.
