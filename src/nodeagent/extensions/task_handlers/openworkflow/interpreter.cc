@@ -55,11 +55,10 @@ private:
   void finish(bool is_error, std::string reason, task::TaskStatus status) {
     delivered_ = true;
 
-    ChildOutcome outcome;
-    outcome.is_error_ = is_error;
-    outcome.body_ = std::move(body_);
-    outcome.reason_ = std::move(reason);
-    outcome.status_ = status;
+    ChildOutcome outcome{.is_error_ = is_error,
+                         .body_ = std::move(body_),
+                         .reason_ = std::move(reason),
+                         .status_ = status};
     sink_.OnChildOutcome(parent_id_, child_id_, std::move(outcome));
 
     sink_.Reap();
