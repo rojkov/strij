@@ -1,0 +1,14 @@
+syntax = "proto3";
+
+package strij.extensions.task_handlers.openworkflow;
+
+import "common/config/extensions.proto";
+import "common/node/capabilities.proto";
+
+// Configures the Open Workflow interpreter handler. The evaluator is selected
+// by name through the shared evaluator loader (the jq evaluator is the bundled
+// one); the capacity is the operator-declared concurrency limit.
+message OpenWorkflowTaskHandlerConfig {
+  strij.node.HandlerCapacity capacity = 1;
+  strij.config.ExtensionConfig evaluator = 2;
+}

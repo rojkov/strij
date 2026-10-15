@@ -51,7 +51,7 @@ The system SHALL admit runtime expressions only in the argument positions that p
 
 #### Scenario: A partially-wrapped parameters value is rejected
 
-- **WHEN** a `parameters` value has literal text outside the `${ }` wrapper, such as `"jobs/\(.id)"`
+- **WHEN** a `parameters` value has literal text outside the `${ }` wrapper, such as `"jobs/${ .id }"`
 - **THEN** the workflow fails with an error stating the wrapper must span the whole value
 
 #### Scenario: An expression producing a non-scalar is rejected

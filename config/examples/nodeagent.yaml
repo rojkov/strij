@@ -42,6 +42,12 @@ task_handlers:
     typed_config:
       "@type": "type.googleapis.com/strij.extensions.task_handlers.piped_executable.PipedExecutableTaskHandlerConfig"
 
+  - name: "openworkflow"
+    typed_config:
+      "@type": "type.googleapis.com/strij.extensions.task_handlers.openworkflow.OpenWorkflowTaskHandlerConfig"
+      evaluator:
+        name: "jq"
+
 heartbeat_interval:
   seconds: 5
 

@@ -79,12 +79,15 @@ The gateway's `ParamsOnlyRequirementsResolver` parses flat `map<string,string>` 
 The workflow path takes `Value::Object` → `ResourceRequirements` directly:
 
 ```
-IsInt()                → ok  (AsInt() >= 0)
-IsString()             → error "unit suffixes are not accepted"
-IsDouble() / other     → error "not an integer"
-negative int64         → error "must be non-negative"
-int64 > uint64 max     → error "out of range"  (unreachable in practice,
-                          checked anyway so the invariant is not implicit)
+IsInt()                  → ok  (AsInt() >= 0)
+IsString()               → error "unit suffixes are not accepted"
+IsDouble(), fractional   → error "not an integer"
+IsDouble(), integral     → ok  (its integer value; a `2.0` is a non-negative
+                           integer amount, matching the spec's wording)
+other (bool/null/…)      → error "not an integer"
+negative int64           → error "must be non-negative"
+int64 > uint64 max       → error "out of range"  (unreachable in practice,
+                            checked anyway so the invariant is not implicit)
 ```
 
 Being *stricter than the gateway* is intentional and is recorded as such. Matching the gateway's lenient behavior would mean two meanings for one pool name depending on how the task arrived, and documents containing `100M` would be unfixable once written.
@@ -99,7 +102,7 @@ The rule is uniform at every string position: a string is an expression iff it i
 
 The important consequence: **`input.from`'s string arm is NOT automatically a program.** Under strict mode `from: .petId` is the literal text `.petId`. Every `input.from` in the reference corpus is `${ }`-wrapped (`from: ${ .message }`), so the corpus never distinguishes the two readings — which is why an earlier draft of this design got it wrong by treating the string arm as a program.
 
-**Whole-value only, not template interpolation.** `${ }` must span the entire string. `${ "a\(.)b" }` is a single jq program whose result is the whole value, using jq's own interpolation. `"jobs/\(.id)"` is not supported and is rejected with an error saying the wrapper must span the whole value. This is why `with.parameters` is the slot that permits expressions, and why a partially-wrapped parameter is an error rather than a silent literal.
+**Whole-value only, not template interpolation.** `${ }` must span the entire string. `${ "a\(.)b" }` is a single jq program whose result is the whole value, using jq's own interpolation. `"jobs/${ .id }"` is not supported and is rejected with an error saying the wrapper must span the whole value. This is why `with.parameters` is the slot that permits expressions, and why a partially-wrapped parameter is an error rather than a silent literal.
 
 **Alternative rejected:** treating every string in a value tree as a candidate program, falling back to literal on compile failure. That is the `loose` mode, and adopting it as the default would make `from: { path: "/a/b" }` a compile error — a document that reads as a plain literal would fail. It is deferred to the `loose` implementation, where compile-failure-as-literal is the correct fallback *because the author asked for it*.
 
