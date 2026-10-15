@@ -44,8 +44,8 @@ private:
     bool finished_ = false;
   };
 
-  void send(const std::string& id, task::TaskResult result);
-  void onClose(const std::string& id);
+  void send(const std::string& task_id, task::TaskResult result);
+  void onClose(const std::string& task_id);
 
   ChildTaskSubmitter& submitter_;
   config::ExtensionConfig evaluator_;

@@ -1,6 +1,5 @@
 #include "nodeagent/extensions/task_handlers/openworkflow/openworkflow_task_handler.hh"
 
-#include <cstddef>
 #include <memory>
 #include <optional>
 #include <string>
@@ -19,26 +18,26 @@ OpenWorkflowTaskHandler::OpenWorkflowTaskHandler(ChildTaskSubmitter& submitter,
     : submitter_{submitter}, evaluator_{std::move(evaluator)} {}
 
 void OpenWorkflowTaskHandler::HandleTask(const task::Task& task, ResultSenderPtr sender) {
-  const std::string id = task.id();
+  const std::string& task_id = task.id();
   // Defensive: a duplicate id supersedes any prior run for that id.
-  runs_.erase(id);
+  runs_.erase(task_id);
 
   auto interpreter = std::make_unique<WorkflowInterpreter>(
-      submitter_, evaluator_, *this, id,
-      [this, id](task::TaskResult result) { send(id, std::move(result)); });
+      submitter_, evaluator_, *this, task_id,
+      [this, task_id](task::TaskResult result) { send(task_id, std::move(result)); });
 
   Run run;
   run.sender_ = std::move(sender);
   run.interpreter_ = std::move(interpreter);
-  auto inserted = runs_.insert_or_assign(id, std::move(run));
+  auto inserted = runs_.insert_or_assign(task_id, std::move(run));
 
   // Register after the run is installed: an already-closed mailbox fires the
   // callback immediately, which erases the run (and returns below).
   ResultSender* sender_ptr = inserted.first->second.sender_.get();
   inserted.first->second.close_token_ =
-      sender_ptr->RegisterOnClose([this, id] { onClose(id); });
+      sender_ptr->RegisterOnClose([this, task_id] { onClose(task_id); });
 
-  auto iter = runs_.find(id);
+  auto iter = runs_.find(task_id);
   if (iter == runs_.end()) {
     return;
   }
@@ -47,8 +46,7 @@ void OpenWorkflowTaskHandler::HandleTask(const task::Task& task, ResultSenderPtr
 }
 
 void OpenWorkflowTaskHandler::OnChildOutcome(const std::string& parent_id,
-                                             const std::string& child_id,
-                                             ChildOutcome outcome) {
+                                             const std::string& child_id, ChildOutcome outcome) {
   auto iter = runs_.find(parent_id);
   if (iter == runs_.end()) {
     return;
@@ -59,8 +57,8 @@ void OpenWorkflowTaskHandler::OnChildOutcome(const std::string& parent_id,
 void OpenWorkflowTaskHandler::Reap() {
   for (auto iter = runs_.begin(); iter != runs_.end();) {
     Run& run = iter->second;
-    const bool finished = run.finished_ || (run.interpreter_ != nullptr &&
-                                            run.interpreter_->Finished());
+    const bool finished =
+        run.finished_ || (run.interpreter_ != nullptr && run.interpreter_->Finished());
     if (!finished) {
       ++iter;
       continue;
@@ -72,8 +70,8 @@ void OpenWorkflowTaskHandler::Reap() {
   }
 }
 
-void OpenWorkflowTaskHandler::send(const std::string& id, task::TaskResult result) {
-  auto iter = runs_.find(id);
+void OpenWorkflowTaskHandler::send(const std::string& task_id, task::TaskResult result) {
+  auto iter = runs_.find(task_id);
   if (iter == runs_.end()) {
     return;
   }
@@ -87,8 +85,8 @@ void OpenWorkflowTaskHandler::send(const std::string& id, task::TaskResult resul
   iter->second.finished_ = true;
 }
 
-void OpenWorkflowTaskHandler::onClose(const std::string& id) {
-  auto iter = runs_.find(id);
+void OpenWorkflowTaskHandler::onClose(const std::string& task_id) {
+  auto iter = runs_.find(task_id);
   if (iter == runs_.end()) {
     return;
   }
@@ -102,8 +100,7 @@ void OpenWorkflowTaskHandler::onClose(const std::string& id) {
 auto OpenWorkflowTaskHandlerFactory::Name() const -> std::string { return "openworkflow"; }
 
 auto OpenWorkflowTaskHandlerFactory::CreateEmptyConfigProto() -> MessagePtr {
-  return std::make_unique<
-      extensions::task_handlers::openworkflow::OpenWorkflowTaskHandlerConfig>();
+  return std::make_unique<extensions::task_handlers::openworkflow::OpenWorkflowTaskHandlerConfig>();
 }
 
 auto OpenWorkflowTaskHandlerFactory::Create(const ::google::protobuf::Message& config,
