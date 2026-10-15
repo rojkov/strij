@@ -1,12 +1,9 @@
 #pragma once
 
-#include <cstdint>
 #include <functional>
-#include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
-#include <utility>
 #include <vector>
 
 #include "absl/status/status.h"
@@ -14,9 +11,9 @@
 #include "common/config/extensions.pb.h"
 #include "common/core/utils/jv.hh"
 #include "common/task/task.pb.h"
-#include "nodeagent/extensions/task_handlers/openworkflow/step_data_value.hh"
 #include "nodeagent/extensions/task_handlers/openworkflow/errors.hh"
 #include "nodeagent/extensions/task_handlers/openworkflow/expression.hh"
+#include "nodeagent/extensions/task_handlers/openworkflow/step_data_value.hh"
 #include "openworkflow/document.hh"
 #include "openworkflow/task.hh"
 #include "strij/nodeagent/child_task_submitter.hh"
@@ -117,7 +114,7 @@ private:
   Completion on_complete_;
 
   std::optional<::strij::openworkflow::Document> document_;
-  std::vector<const ::strij::openworkflow::NamedTask*> steps_ = {};
+  std::vector<const ::strij::openworkflow::NamedTask*> steps_;
   StepDataValue data_;
   std::size_t step_index_ = 0;
   std::optional<std::string> waiting_child_id_;
