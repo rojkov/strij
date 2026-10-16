@@ -22,13 +22,13 @@
 namespace strij::nodeagent::task_handlers::openworkflow {
 namespace {
 
-// The child receiver. It accumulates result chunks and, only on a terminal
+// The child result receiver. It accumulates result chunks and, only on a terminal
 // outcome (final Deliver or DeliverError), reports it to the interpreter.
 // Partial chunks never transition the step. It holds only a weak reference, so
 // a late outcome after the run is gone (cancelled or completed) is dropped.
-class ChildReceiver final : public gateway::ResultReceiver {
+class ChildResultReceiver final : public gateway::ResultReceiver {
 public:
-  ChildReceiver(std::weak_ptr<WorkflowInterpreter> interpreter, std::string child_id)
+  ChildResultReceiver(std::weak_ptr<WorkflowInterpreter> interpreter, std::string child_id)
       : interpreter_{std::move(interpreter)}, child_id_{std::move(child_id)} {}
 
   void Deliver(std::span<const std::byte> value, bool is_final) override {
@@ -326,7 +326,7 @@ void WorkflowInterpreter::executeStep(const ::strij::openworkflow::NamedTask& st
 
   waiting_child_id_ = child_id;
   in_submit_ = true;
-  submitter_.Submit(std::move(child), std::make_unique<ChildReceiver>(weak_from_this(), child_id));
+  submitter_.Submit(std::move(child), std::make_unique<ChildResultReceiver>(weak_from_this(), child_id));
   in_submit_ = false;
 }
 
