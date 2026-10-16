@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Defines how a workflow task handler on a node submits child tasks: the shared `ChildTaskSubmitter` service, the unchanged `TaskHandler` interface, the node-side per-type child scheduler router with an explicit local default, the single local-authority scheduler that implements the child execution policy, the sender-backed `RunTask` overload, and the reference workflow handler.
+Defines how a workflow task handler on a node submits child tasks: the shared `ChildTaskSubmitter` service, the unchanged `TaskHandler` interface, the node-side per-type child scheduler router with an explicit local default, the single local-authority scheduler that implements the child execution policy, the sender-backed `RunTask` overload, and the reference `openworkflow` handler.
 
 ## Requirements
 
@@ -40,7 +40,7 @@ The nodeagent SHALL route child-task submissions by `task.type()` through a chil
 
 #### Scenario: Type-claimed child routes to the declaring scheduler
 
-- **WHEN** a scheduler entry declares `task_type = "workflow"` and a child of type `"workflow"` is submitted
+- **WHEN** a scheduler entry declares `task_type = "openworkflow"` and a child of type `"openworkflow"` is submitted
 - **THEN** the `Schedule` call SHALL reach that scheduler
 
 #### Scenario: Unclaimed child routes to the explicit local default
@@ -95,18 +95,3 @@ The node's child-task policy *run locally if capacity allows, else forward* SHAL
 
 - **WHEN** the preallocated `RunTask` variant runs a child whose handler emits its final result
 - **THEN** the supplied admission scope SHALL be released exactly once
-
-### Requirement: Workflow task handler example
-
-The change SHALL include an example workflow task handler (e.g. `"workflow"`) whose factory retrieves the `ChildTaskSubmitter` at construction, and which, for each parent task, submits a configurable number of child tasks (unique ids via the existing `GenerateTaskId()`), registers a parent receiver per child, and aggregates the children's final bodies into the parent's result. It SHALL serve as the reference pattern and validation vehicle for the submission seam.
-
-#### Scenario: Workflow handler fans out and aggregates
-
-- **WHEN** a parent task of the workflow type runs and its config declares children
-- **THEN** the handler SHALL submit one child per declared child with a distinct generated id
-- **AND** upon delivery of every child's final result SHALL emit the aggregated parent result as the parent's final result
-
-#### Scenario: A child error aborts the workflow
-
-- **WHEN** any child of a workflow resolves to an error
-- **THEN** the handler SHALL emit a parent error result identifying the failed child and SHALL not wait for outstanding children
