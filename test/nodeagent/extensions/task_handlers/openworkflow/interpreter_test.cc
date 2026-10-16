@@ -211,28 +211,16 @@ do:
         type: echo
 )YAML";
 
-class TestSink final : public ChildOutcomeSink {
-public:
-  void OnChildOutcome(const std::string& /*parent_id*/, const std::string& child_id,
-                      ChildOutcome outcome) override {
-    interpreter_->OnChildOutcome(child_id, std::move(outcome));
-  }
-
-  WorkflowInterpreter* interpreter_ = nullptr;
-};
-
 struct Harness {
   Harness() {
-    interpreter_ = std::make_unique<WorkflowInterpreter>(
-        submitter_, test::JqEvaluatorConfig(), sink_, "parent",
+    interpreter_ = std::make_shared<WorkflowInterpreter>(
+        submitter_, test::JqEvaluatorConfig(), "parent",
         [this](task::TaskResult result) { results_.push_back(std::move(result)); });
-    sink_.interpreter_ = interpreter_.get();
   }
 
   test::FakeChildTaskSubmitter submitter_;
-  TestSink sink_;
   std::vector<task::TaskResult> results_;
-  std::unique_ptr<WorkflowInterpreter> interpreter_;
+  std::shared_ptr<WorkflowInterpreter> interpreter_;
 };
 
 TEST(InterpreterTest, RunsThreeStepsInDeclarationOrder) {

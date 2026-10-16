@@ -17,10 +17,10 @@ namespace strij::nodeagent::task_handlers::openworkflow {
 
 // The `openworkflow` task handler. It is a thin adapter over the interpreter:
 // `HandleTask` parses the task body, hands it to a per-task interpreter, and
-// retains the `ResultSender` for async delivery. It also owns the child-result
-// seam so a child completing (synchronously or later) is routed to the right
-// interpreter without the interpreter ever holding a freed pointer.
-class OpenWorkflowTaskHandler final : public TaskHandler, public ChildOutcomeSink {
+// retains the `ResultSender` for async delivery. Each interpreter is owned by a
+// `shared_ptr` and the child receivers hold a `weak_ptr` back to it, so a late
+// child outcome is dropped rather than routed to a freed interpreter.
+class OpenWorkflowTaskHandler final : public TaskHandler {
 public:
   OpenWorkflowTaskHandler(ChildTaskSubmitter& submitter, config::ExtensionConfig evaluator);
   ~OpenWorkflowTaskHandler() override = default;
@@ -32,17 +32,12 @@ public:
 
   void HandleTask(const task::Task& task, ResultSenderPtr sender) override;
 
-  void OnChildOutcome(const std::string& parent_id, const std::string& child_id,
-                      ChildOutcome outcome) override;
-
 private:
-  // Erases runs whose interpreter has completed or been cancelled. Called
-  // after an entry point returns, so a run is never destroyed while an
-  // interpreter method is still on the stack.
+  // Erases runs whose interpreter has completed or been cancelled.
   void reap();
 
   struct Run {
-    std::unique_ptr<WorkflowInterpreter> interpreter_;
+    std::shared_ptr<WorkflowInterpreter> interpreter_;
     ResultSenderPtr sender_;
     std::optional<std::size_t> close_token_;
     bool finished_ = false;

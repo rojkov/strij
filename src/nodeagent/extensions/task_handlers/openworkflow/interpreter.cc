@@ -23,13 +23,13 @@ namespace strij::nodeagent::task_handlers::openworkflow {
 namespace {
 
 // The child receiver. It accumulates result chunks and, only on a terminal
-// outcome (final Deliver or DeliverError), reports to the handler through the
-// sink. Partial chunks never transition the step. It holds no interpreter
-// pointer, so a late outcome after cancellation is dropped by the handler.
+// outcome (final Deliver or DeliverError), reports it to the interpreter.
+// Partial chunks never transition the step. It holds only a weak reference, so
+// a late outcome after the run is gone (cancelled or completed) is dropped.
 class ChildReceiver final : public gateway::ResultReceiver {
 public:
-  ChildReceiver(ChildOutcomeSink& sink, std::string parent_id, std::string child_id)
-      : sink_{sink}, parent_id_{std::move(parent_id)}, child_id_{std::move(child_id)} {}
+  ChildReceiver(std::weak_ptr<WorkflowInterpreter> interpreter, std::string child_id)
+      : interpreter_{std::move(interpreter)}, child_id_{std::move(child_id)} {}
 
   void Deliver(std::span<const std::byte> value, bool is_final) override {
     if (delivered_) {
@@ -55,15 +55,16 @@ private:
   void finish(bool is_error, std::string reason, task::TaskStatus status) {
     delivered_ = true;
 
-    sink_.OnChildOutcome(parent_id_, child_id_,
-                         {.is_error_ = is_error,
-                          .body_ = std::move(body_),
-                          .reason_ = std::move(reason),
-                          .status_ = status});
+    if (auto interpreter = interpreter_.lock()) {
+      interpreter->OnChildOutcome(child_id_,
+                                  {.is_error_ = is_error,
+                                   .body_ = std::move(body_),
+                                   .reason_ = std::move(reason),
+                                   .status_ = status});
+    }
   }
 
-  ChildOutcomeSink& sink_;
-  std::string parent_id_;
+  std::weak_ptr<WorkflowInterpreter> interpreter_;
   std::string child_id_;
   std::string body_;
   bool delivered_{false};
@@ -167,10 +168,10 @@ auto ValidateDocument(const ::strij::openworkflow::Document& document,
 }
 
 WorkflowInterpreter::WorkflowInterpreter(ChildTaskSubmitter& submitter,
-                                         config::ExtensionConfig evaluator, ChildOutcomeSink& sink,
-                                         std::string parent_id, Completion on_complete)
-    : submitter_{submitter}, engine_{std::move(evaluator)}, sink_{sink},
-      parent_id_{std::move(parent_id)}, on_complete_{std::move(on_complete)} {}
+                                         config::ExtensionConfig evaluator, std::string parent_id,
+                                         Completion on_complete)
+    : submitter_{submitter}, engine_{std::move(evaluator)}, parent_id_{std::move(parent_id)},
+      on_complete_{std::move(on_complete)} {}
 
 void WorkflowInterpreter::Start(std::string_view document_text) {
   auto parsed = ::strij::openworkflow::Parse(document_text);
@@ -325,7 +326,7 @@ void WorkflowInterpreter::executeStep(const ::strij::openworkflow::NamedTask& st
 
   waiting_child_id_ = child_id;
   in_submit_ = true;
-  submitter_.Submit(std::move(child), std::make_unique<ChildReceiver>(sink_, parent_id_, child_id));
+  submitter_.Submit(std::move(child), std::make_unique<ChildReceiver>(weak_from_this(), child_id));
   in_submit_ = false;
 }
 

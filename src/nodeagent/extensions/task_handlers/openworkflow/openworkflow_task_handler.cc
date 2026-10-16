@@ -22,13 +22,15 @@ void OpenWorkflowTaskHandler::HandleTask(const task::Task& task, ResultSenderPtr
   // Defensive: a duplicate id supersedes any prior run for that id.
   runs_.erase(task_id);
 
-  auto interpreter = std::make_unique<WorkflowInterpreter>(
-      submitter_, evaluator_, *this, task_id,
+  // The local owner keeps the interpreter alive through Start even if a
+  // synchronous completion sends the result and reaps its own run.
+  auto interpreter = std::make_shared<WorkflowInterpreter>(
+      submitter_, evaluator_, task_id,
       [this, task_id](task::TaskResult result) { send(task_id, std::move(result)); });
 
   Run run;
   run.sender_ = std::move(sender);
-  run.interpreter_ = std::move(interpreter);
+  run.interpreter_ = interpreter;
   auto inserted = runs_.insert_or_assign(task_id, std::move(run));
 
   // Register after the run is installed: an already-closed mailbox fires the
@@ -37,25 +39,18 @@ void OpenWorkflowTaskHandler::HandleTask(const task::Task& task, ResultSenderPtr
   inserted.first->second.close_token_ =
       sender_ptr->RegisterOnClose([this, task_id] { onClose(task_id); });
 
-  auto iter = runs_.find(task_id);
-  if (iter == runs_.end()) {
+  if (!runs_.contains(task_id)) {
     return;
   }
-  iter->second.interpreter_->Start(task.body());
-  reap();
-}
 
-void OpenWorkflowTaskHandler::OnChildOutcome(const std::string& parent_id,
-                                             const std::string& child_id, ChildOutcome outcome) {
-  auto iter = runs_.find(parent_id);
-  if (iter == runs_.end()) {
-    return;
-  }
-  iter->second.interpreter_->OnChildOutcome(child_id, std::move(outcome));
+  interpreter->Start(task.body());
   reap();
 }
 
 void OpenWorkflowTaskHandler::reap() {
+  // Erases runs whose interpreter has completed or been cancelled. Safe to call
+  // from within a completion callback: the interpreter is additionally owned by
+  // the caller (a HandleTask local or a receiver's locked weak_ptr).
   for (auto iter = runs_.begin(); iter != runs_.end();) {
     Run& run = iter->second;
     const bool finished =
@@ -84,6 +79,10 @@ void OpenWorkflowTaskHandler::send(const std::string& task_id, task::TaskResult 
     iter->second.close_token_.reset();
   }
   iter->second.finished_ = true;
+  // The completion callback runs while its caller still owns the interpreter
+  // (the HandleTask local, or the receiver's locked shared_ptr), so erasing the
+  // finished run here does not free it mid-callback.
+  reap();
 }
 
 void OpenWorkflowTaskHandler::onClose(const std::string& task_id) {

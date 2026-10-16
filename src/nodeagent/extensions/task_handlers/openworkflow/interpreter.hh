@@ -1,6 +1,7 @@
 #pragma once
 
 #include <functional>
+#include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -28,23 +29,6 @@ struct ChildOutcome {
   task::TaskStatus status_{task::TASK_STATUS_INTERNAL};
 };
 
-// The handler side of the child-result seam. A child receiver calls back into
-// this object (never into the interpreter directly), so a result arriving after
-// the interpreter is gone is dropped rather than dereferencing freed state.
-class ChildOutcomeSink {
-public:
-  ChildOutcomeSink() = default;
-  virtual ~ChildOutcomeSink() = default;
-
-  ChildOutcomeSink(const ChildOutcomeSink&) = delete;
-  auto operator=(const ChildOutcomeSink&) -> ChildOutcomeSink& = delete;
-  ChildOutcomeSink(ChildOutcomeSink&&) noexcept = delete;
-  auto operator=(ChildOutcomeSink&&) noexcept -> ChildOutcomeSink& = delete;
-
-  virtual void OnChildOutcome(const std::string& parent_id, const std::string& child_id,
-                              ChildOutcome outcome) = 0;
-};
-
 // Flattens a document's `do` body (recursing through nested `do` containers)
 // into the ordered steps the interpreter runs.
 auto CollectSteps(const ::strij::openworkflow::Document& document)
@@ -61,12 +45,16 @@ auto ValidateDocument(const ::strij::openworkflow::Document& document,
 // The per-task resumable state machine (design D2). It advances one step at a
 // time; a step that submits a child suspends until that child's terminal
 // outcome arrives, possibly before `Submit` even returns.
-class WorkflowInterpreter {
+//
+// Owned by a `shared_ptr` (the handler): the per-child receivers hold a
+// `weak_ptr` back to it, so a child outcome that arrives after the run is gone
+// is dropped rather than touching freed state.
+class WorkflowInterpreter : public std::enable_shared_from_this<WorkflowInterpreter> {
 public:
   using Completion = std::move_only_function<void(task::TaskResult)>;
 
   WorkflowInterpreter(ChildTaskSubmitter& submitter, config::ExtensionConfig evaluator,
-                      ChildOutcomeSink& sink, std::string parent_id, Completion on_complete);
+                      std::string parent_id, Completion on_complete);
   ~WorkflowInterpreter() = default;
 
   WorkflowInterpreter(const WorkflowInterpreter&) = delete;
@@ -103,7 +91,6 @@ private:
 
   ChildTaskSubmitter& submitter_;
   ExpressionEngine engine_;
-  ChildOutcomeSink& sink_;
   std::string parent_id_;
   Completion on_complete_;
 
