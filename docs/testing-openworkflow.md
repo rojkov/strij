@@ -1,0 +1,241 @@
+# Testing the Open Workflow task handler
+
+The `openworkflow` task handler runs an Open Workflow DSL document on a
+nodeagent. A `call: strij` step dispatches a child `task::Task`; to run an
+executable, the step uses the bundled `piped_executable` handler, whose
+`function` parameter names the program to run. The handler pipes the workflow's
+current data value (the "data chain") to that program's **stdin** and takes its
+**stdout** as the child's result, which becomes the data value for the next
+step.
+
+This document covers two ways to test it: the automated test suite (fast, no
+external dependencies) and a manual gateway + nodeagent run.
+
+## 1. Automated tests
+
+These are the primary, hermetic tests — they need no `io_uring` and no running
+servers:
+
+```bash
+bazel test //test/nodeagent/extensions/task_handlers/openworkflow:all
+bazel test //test/openworkflow:value_jv_test
+```
+
+What each target covers:
+
+| Target | Covers |
+|--------|--------|
+| `//test/openworkflow:value_jv_test` | The `Value` ⇄ JSON bridge (`ValueToJv`/`JvToValue`), including `int64` extremes and `1` vs `1.0`. |
+| `step_data_value_test` | Data-value sniffing: JSON text, non-JSON text, empty input. |
+| `expression_test` | Strict-mode `${ }` recognition, the expression engine, data-chain subject vs `$context`, scalar rendering. |
+| `call_strij_test` | The `with` key set, parameter projection, requirement coercion (incl. rejecting `100M`), reserved call targets. |
+| `interpreter_test` | The resumable step loop, reentrancy, stale results, and the validation/execution split. |
+| `openworkflow_task_handler_test` | The handler/factory, failure-status classification, and connection teardown. |
+| `openworkflow_e2e_test` | The full path through the **real** `piped_executable` handler, driving the child process with a mock dispatcher. |
+
+`openworkflow_e2e_test` includes `ScriptedTwoStepWorkflowChainsChildOutputs`,
+which runs the exact two-step workflow in section 3 through `piped_executable`
+and asserts `{"echo":{"echo":{"name":"world"}}}`. That test is the verified
+reference for the manual procedure below.
+
+## 2. The test function
+
+`piped_executable` resolves its `function` parameter through the node's
+`LocalFunctionResolver`, which returns the value **verbatim** — so the workflow
+must name an executable path (absolute, or relative to the nodeagent's working
+directory). To get a deterministic result without a real payload function, the
+repo ships:
+
+`scripts/openworkflow_echo.sh`
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+input="$(cat)"
+if [ -z "${input}" ]; then
+  input=null
+fi
+printf '{"echo":%s}' "${input}"
+```
+
+It reads the child body (the data chain) from stdin and wraps it back into a
+JSON object, so every step's output is itself JSON the next step can read:
+
+```bash
+$ printf '{"name":"world"}' | scripts/openworkflow_echo.sh
+{"echo":{"name":"world"}}
+$ printf '{"echo":{"name":"world"}}' | scripts/openworkflow_echo.sh
+{"echo":{"echo":{"name":"world"}}}
+```
+
+The input is embedded as raw JSON, so it must already be valid JSON. (The data
+chain is JSON unless a previous step produced opaque bytes.)
+
+## 3. Manual end-to-end: gateway + nodeagent + curl
+
+> **Prerequisite:** a Linux host where `io_uring` is available. The gateway and
+> nodeagent event loops are `io_uring`-based; on a host/sandbox that blocks
+> `io_uring_setup` (e.g. `EPERM`) both crash at startup. Run this on a normal
+> Linux host, or use section 1 otherwise.
+
+Build both binaries:
+
+```bash
+make build          # or: bazel build //src/gateway/exe:gateway //src/nodeagent/exe:nodeagent
+```
+
+The example nodeagent config already enables the handler with the `jq`
+evaluator (`config/examples/nodeagent.yaml`), and the example gateway config
+connects to a node at `127.0.0.1:9090` (`config/examples/gateway.yaml`). Start
+them in two terminals, from the repo root:
+
+```bash
+# terminal 1
+./bazel-bin/src/nodeagent/exe/nodeagent --config_file=config/examples/nodeagent.yaml
+
+# terminal 2
+./bazel-bin/src/gateway/exe/gateway --config_file=config/examples/gateway.yaml
+```
+
+Write a two-step workflow. The `function` is `scripts/openworkflow_echo.sh`,
+relative to the nodeagent's working directory (the repo root, since you started
+it from there). The quoted heredoc (`<<'EOF'`) keeps the DSL's `${ }`
+expressions from being expanded by the shell:
+
+```bash
+cat > /tmp/openworkflow-echo.yaml <<'EOF'
+document:
+  dsl: '1.0.3'
+  namespace: docs
+  name: openworkflow-echo
+  version: '0.1.0'
+input:
+  from: '${ {"name":"world"} }'
+do:
+  - first:
+      call: strij
+      input:
+        from: ${ . }
+      with:
+        type: piped_executable
+        parameters:
+          function: scripts/openworkflow_echo.sh
+        requirements:
+          cpu: 1
+  - second:
+      call: strij
+      with:
+        type: piped_executable
+        parameters:
+          function: scripts/openworkflow_echo.sh
+        requirements:
+          cpu: 1
+EOF
+```
+
+Submit it to the nodeagent through the gateway's HTTP listener:
+
+```bash
+curl -sS -X POST http://127.0.0.1:8081/tasks/openworkflow \
+  -H 'content-type: application/yaml' \
+  --data-binary @/tmp/openworkflow-echo.yaml
+```
+
+Expected response body:
+
+```json
+{"echo":{"echo":{"name":"world"}}}
+```
+
+How the result is produced, step by step:
+
+1. The document's top-level `input.from` (`${ {"name":"world"} }`) seeds the
+   data chain with the JSON object `{"name":"world"}`.
+2. **`first`** copies the chain into the child's body via `input.from: ${ . }`,
+   so `openworkflow_echo.sh` receives `{"name":"world"}` on stdin and prints
+   `{"echo":{"name":"world"}}`. That becomes the new data chain.
+3. **`second`** has no `input.from`, so the current chain is passed through as
+   the child body; the script prints
+   `{"echo":{"echo":{"name":"world"}}}`.
+4. The workflow completes and its final result is that last value.
+
+### Simpler smoke test (no script)
+
+To check the end-to-end plumbing without the helper script, call the bundled
+`piped_executable` handler with `/bin/cat`, which echoes the child body:
+
+```yaml
+do:
+  - only:
+      call: strij
+      input:
+        from: '${ {"hello":"world"} }'
+      with:
+        type: piped_executable
+        parameters:
+          function: /bin/cat
+        requirements:
+          cpu: 1
+```
+
+This returns `{"hello":"world"}`.
+
+> Note: use `piped_executable` (not `echo`) as the child here. The example
+> nodeagent config declares `push` as the local authority for `echo`, and
+> `push`'s local `Schedule` is unimplemented — so a locally-submitted `echo`
+> child would be refused. `piped_executable` is unclaimed and falls through to
+> the `default` local scheduler, which runs it.
+
+## 4. Failure responses
+
+Workflow failures ride the final `TaskResult.status`, and the gateway maps it to
+an HTTP status:
+
+| Workflow failure | HTTP status |
+|------------------|-------------|
+| Unparsable document, or a pre-execution validation error | `400` |
+| Unknown `call:` target | `400` |
+| Reserved-but-unsupported target (`http`, `openapi`, `asyncapi`, `grpc`, `mcp`) | `501` |
+| Data-dependent run failure (e.g. an expression over a non-JSON chain) | `500` |
+| Child refused (no node capacity / no forward path) | `429` |
+
+For example, a document that calls a reserved target:
+
+```bash
+curl -sS -o /dev/null -w '%{http_code}\n' -X POST http://127.0.0.1:8081/tasks/openworkflow \
+  --data-binary $'document:\n  dsl: \'1.0.3\'\n  namespace: docs\n  name: bad\n  version: \'0.1.0\'\ndo:\n  - only:\n      call: http\n      with:\n        method: get\n'
+# 501
+```
+
+## 5. Notes and troubleshooting
+
+- **Function path resolution.** The nodeagent spawns the `function` value
+  verbatim. Use a path relative to the nodeagent's working directory (as in the
+  example, where both are the repo root) or an absolute path.
+- **The data chain must be JSON for expressions.** A step that reads `.field`
+  requires a JSON subject. If a child returns non-JSON, the chain downgrades
+  and the next expression fails with `the data subject is not JSON` (HTTP 500)
+  rather than reading an empty value.
+- **Strict-mode `${ }`.** A string is an expression only when the whole value is
+  wrapped in `${ }`; `jobs/${ .id }` is rejected, not interpolated.
+- **Handler config.** The handler is enabled in
+  `config/examples/nodeagent.yaml` as:
+
+  ```yaml
+  - name: "openworkflow"
+    typed_config:
+      "@type": "type.googleapis.com/strij.extensions.task_handlers.openworkflow.OpenWorkflowTaskHandlerConfig"
+      evaluator:
+        name: "jq"
+  ```
+
+  Without the `evaluator` entry the factory defaults to the `jq` evaluator.
+
+- **The evaluator must be linked into the binary.** `evaluator.name` selects a
+  factory from the evaluator registry, which is populated by the evaluator
+  libraries linked into the executable. The bundled `//src/nodeagent/exe:nodeagent`
+  links the `jq` evaluator (via its `extensions` list); if you build a custom
+  nodeagent, add `//src/common/extensions/evaluators/jq:jq_evaluator_lib` to its
+  extensions. Otherwise every step fails with
+  `Evaluator 'jq' is not registered. Registered: ` (HTTP 400).
