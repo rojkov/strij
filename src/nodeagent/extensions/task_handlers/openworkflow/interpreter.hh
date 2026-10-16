@@ -43,7 +43,6 @@ public:
 
   virtual void OnChildOutcome(const std::string& parent_id, const std::string& child_id,
                               ChildOutcome outcome) = 0;
-  virtual void Reap() = 0;
 };
 
 // Flattens a document's `do` body (recursing through nested `do` containers)

@@ -217,7 +217,6 @@ public:
                       ChildOutcome outcome) override {
     interpreter_->OnChildOutcome(child_id, std::move(outcome));
   }
-  void Reap() override {}
 
   WorkflowInterpreter* interpreter_ = nullptr;
 };

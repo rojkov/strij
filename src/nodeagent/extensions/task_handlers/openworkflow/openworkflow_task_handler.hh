@@ -34,9 +34,13 @@ public:
 
   void OnChildOutcome(const std::string& parent_id, const std::string& child_id,
                       ChildOutcome outcome) override;
-  void Reap() override;
 
 private:
+  // Erases runs whose interpreter has completed or been cancelled. Called
+  // after an entry point returns, so a run is never destroyed while an
+  // interpreter method is still on the stack.
+  void reap();
+
   struct Run {
     std::unique_ptr<WorkflowInterpreter> interpreter_;
     ResultSenderPtr sender_;

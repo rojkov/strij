@@ -60,8 +60,6 @@ private:
                           .body_ = std::move(body_),
                           .reason_ = std::move(reason),
                           .status_ = status});
-
-    sink_.Reap();
   }
 
   ChildOutcomeSink& sink_;

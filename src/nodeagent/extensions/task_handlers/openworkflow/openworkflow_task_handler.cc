@@ -42,7 +42,7 @@ void OpenWorkflowTaskHandler::HandleTask(const task::Task& task, ResultSenderPtr
     return;
   }
   iter->second.interpreter_->Start(task.body());
-  Reap();
+  reap();
 }
 
 void OpenWorkflowTaskHandler::OnChildOutcome(const std::string& parent_id,
@@ -52,9 +52,10 @@ void OpenWorkflowTaskHandler::OnChildOutcome(const std::string& parent_id,
     return;
   }
   iter->second.interpreter_->OnChildOutcome(child_id, std::move(outcome));
+  reap();
 }
 
-void OpenWorkflowTaskHandler::Reap() {
+void OpenWorkflowTaskHandler::reap() {
   for (auto iter = runs_.begin(); iter != runs_.end();) {
     Run& run = iter->second;
     const bool finished =
