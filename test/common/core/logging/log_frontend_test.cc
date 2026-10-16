@@ -79,6 +79,22 @@ inline void init_log_entry(LogEntry& entry, const char* fmt_str, Args&&... args)
   (pack_arg(ptr, args), ...);
 }
 
+TEST(LogFrontendTest, packed_args_size_matches_packing) {
+  const std::string text{"abcd"};
+  const std::string_view view{"xy"};
+  EXPECT_EQ(packed_args_size(uint32_t{1}, text, view),
+            sizeof(uint32_t) + sizeof(size_t) + text.size() + sizeof(size_t) + view.size());
+  EXPECT_EQ(packed_args_size(), 0U);
+}
+
+TEST(LogFrontendTest, packed_args_size_flags_oversized_entry) {
+  const std::string big(kLogArgsDataSize, 'x');
+  EXPECT_GT(packed_args_size(big), kLogArgsDataSize);
+
+  const std::string small{"fits"};
+  EXPECT_LE(packed_args_size(small), kLogArgsDataSize);
+}
+
 TEST(LogFrontendTest, unpack) {
   LogEntry entry{};
   {

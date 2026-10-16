@@ -43,9 +43,13 @@ strij_cc_library(
     alwayslink = True,
 )
 
-strij_nodeagent_binary(
-    name = "nodeagent",
-    extensions = [
+# The bundled extensions the nodeagent links. Kept in one place so a test can
+# assert their factories actually self-register: a missing entry otherwise only
+# surfaces at runtime (e.g. "Evaluator 'jq' is not registered").
+strij_cc_library(
+    name = "bundled_extensions",
+    deps = [
+        "//src/common/extensions/evaluators/jq:jq_evaluator_lib",
         "//src/nodeagent/extensions/schedulers/default:default_local_scheduler_lib",
         "//src/nodeagent/extensions/schedulers/probe:probe_local_scheduler_lib",
         "//src/nodeagent/extensions/schedulers/push:push_local_scheduler_lib",
@@ -53,4 +57,9 @@ strij_nodeagent_binary(
         "//src/nodeagent/extensions/task_handlers/openworkflow:openworkflow_task_handler_lib",
         "//src/nodeagent/extensions/task_handlers/piped_executable:piped_executable_task_handler_lib",
     ],
+)
+
+strij_nodeagent_binary(
+    name = "nodeagent",
+    extensions = [":bundled_extensions"],
 )

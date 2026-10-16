@@ -64,10 +64,12 @@ def strij_cc_test_library(
 def strij_cc_test(
         name,
         srcs = [],
-        deps = []):
+        deps = [],
+        data = []):
     cc_test(
         name = name,
         srcs = srcs,
+        data = data,
         deps = ["@googletest//:gtest"] + deps,
         visibility = ["//visibility:private"],
     )

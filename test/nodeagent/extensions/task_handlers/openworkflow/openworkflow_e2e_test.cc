@@ -3,12 +3,16 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
+#include <filesystem>
 #include <memory>
 #include <string>
 #include <string_view>
+#include <system_error>
 #include <utility>
 #include <vector>
 
+#include "absl/strings/str_cat.h"
 #include "common/core/utils/task_status.hh"
 #include "common/node/capabilities.pb.h"
 #include "common/task/task.pb.h"
@@ -87,6 +91,23 @@ auto WaitForExit(int pidfd) -> bool {
   return ::poll(&pfd, 1, 5000) > 0;
 }
 
+// Locates `scripts/openworkflow_echo.sh` in the test's runfiles (declared as a
+// `data` dependency of this test target).
+auto FindEchoScript() -> std::string {
+  const char* srcdir = std::getenv("TEST_SRCDIR");
+  if (srcdir == nullptr) {
+    return {};
+  }
+  std::error_code error;
+  for (std::filesystem::recursive_directory_iterator iter(srcdir, error), end;
+       iter != end && !error; iter.increment(error)) {
+    if (iter->is_regular_file() && iter->path().filename() == "openworkflow_echo.sh") {
+      return iter->path().string();
+    }
+  }
+  return {};
+}
+
 class OpenWorkflowE2ETest : public ::testing::Test {
 protected:
   void SetUp() override {
@@ -163,6 +184,111 @@ TEST_F(OpenWorkflowE2ETest, ChildOutputBecomesWorkflowFinalResult) {
   auto* piped = dynamic_cast<PipedExecutableTaskHandler*>(manager_->GetHandler("piped_executable"));
   ASSERT_NE(piped, nullptr);
   piped->ProcessCommand(deferred);
+}
+
+// The documented manual scenario, exercised through the real piped_executable
+// handler: a two-step `call: strij` workflow whose steps run
+// scripts/openworkflow_echo.sh, with each child's output (the data chain)
+// feeding the next. Drives two sequential child processes.
+TEST_F(OpenWorkflowE2ETest, ScriptedTwoStepWorkflowChainsChildOutputs) {
+  const std::string script = FindEchoScript();
+  ASSERT_FALSE(script.empty()) << "scripts/openworkflow_echo.sh not found in runfiles";
+
+  const std::string document =
+      absl::StrCat("document:\n"
+                   "  dsl: '1.0.3'\n"
+                   "  namespace: test\n"
+                   "  name: e2e-script\n"
+                   "  version: '0.1.0'\n"
+                   "input:\n"
+                   "  from: '${ {\"name\":\"world\"} }'\n"
+                   "do:\n"
+                   "  - first:\n"
+                   "      call: strij\n"
+                   "      input:\n"
+                   "        from: ${ . }\n"
+                   "      with:\n"
+                   "        type: piped_executable\n"
+                   "        parameters:\n"
+                   "          function: ",
+                   script,
+                   "\n"
+                   "        requirements:\n"
+                   "          cpu: 1\n"
+                   "  - second:\n"
+                   "      call: strij\n"
+                   "      with:\n"
+                   "        type: piped_executable\n"
+                   "        parameters:\n"
+                   "          function: ",
+                   script,
+                   "\n"
+                   "        requirements:\n"
+                   "          cpu: 1\n");
+
+  OpenWorkflowTaskHandler handler(*router_, test::JqEvaluatorConfig());
+  auto state = std::make_shared<test::TestSender::State>();
+
+  int stdin_w1 = -1;
+  int stdin_w2 = -1;
+  int pidfd1 = -1;
+  int pidfd2 = -1;
+  event::Completable* child1_raw = nullptr;
+  event::Completable* child2_raw = nullptr;
+  EXPECT_CALL(*dispatcher_, PrepareWrite(_, kStdinWrite, _, _, -1))
+      .WillOnce(DoAll(SaveArg<2>(&stdin_w1), Return()))
+      .WillOnce(DoAll(SaveArg<2>(&stdin_w2), Return()));
+  EXPECT_CALL(*dispatcher_, PreparePoll(_, kExitPoll, _, POLLIN))
+      .WillOnce(DoAll(SaveArg<0>(&child1_raw), SaveArg<2>(&pidfd1), Return()))
+      .WillOnce(DoAll(SaveArg<0>(&child2_raw), SaveArg<2>(&pidfd2), Return()));
+  event::Command deferred1{};
+  event::Command deferred2{};
+  EXPECT_CALL(*dispatcher_, SubmitCommand(_))
+      .WillOnce(SaveArg<0>(&deferred1))
+      .WillOnce(SaveArg<0>(&deferred2));
+
+  handler.HandleTask(MakeParent("wf", document), std::make_unique<test::TestSender>(state));
+
+  // Step one: its input is the seeded data chain.
+  const std::string body1 = R"({"name":"world"})";
+  ASSERT_NE(child1_raw, nullptr);
+  ASSERT_GE(stdin_w1, 0);
+  auto* child1 = static_cast<ChildProcess*>(child1_raw);
+  ASSERT_EQ(::write(stdin_w1, body1.data(), body1.size()),
+            static_cast<ssize_t>(body1.size()));
+  child1->HandleCompletion(kStdinWrite, static_cast<int>(body1.size()), 0);
+  ASSERT_TRUE(WaitForExit(pidfd1));
+
+  // Completing step one resumes the workflow, which spawns the second child.
+  child1->HandleCompletion(kExitPoll, POLLIN, 0);
+  child1->HandleCompletion(kStdoutRead, 0, 0);
+  child1->HandleCompletion(kStderrRead, 0, 0);
+  EXPECT_TRUE(state->sent_.empty());
+
+  // Step two: its input is step one's output, read back as the data chain.
+  const std::string body2 = R"({"echo":{"name":"world"}})";
+  ASSERT_NE(child2_raw, nullptr);
+  ASSERT_GE(stdin_w2, 0);
+  auto* child2 = static_cast<ChildProcess*>(child2_raw);
+  ASSERT_EQ(::write(stdin_w2, body2.data(), body2.size()),
+            static_cast<ssize_t>(body2.size()));
+  child2->HandleCompletion(kStdinWrite, static_cast<int>(body2.size()), 0);
+  ASSERT_TRUE(WaitForExit(pidfd2));
+
+  child2->HandleCompletion(kExitPoll, POLLIN, 0);
+  child2->HandleCompletion(kStdoutRead, 0, 0);
+  child2->HandleCompletion(kStderrRead, 0, 0);
+
+  ASSERT_EQ(state->sent_.size(), 1U);
+  EXPECT_EQ(state->sent_[0].id(), "wf");
+  EXPECT_EQ(state->sent_[0].body(), R"({"echo":{"echo":{"name":"world"}}})");
+  EXPECT_TRUE(state->sent_[0].is_final());
+  EXPECT_TRUE(utils::IsTaskResultOk(state->sent_[0]));
+
+  auto* piped = dynamic_cast<PipedExecutableTaskHandler*>(manager_->GetHandler("piped_executable"));
+  ASSERT_NE(piped, nullptr);
+  piped->ProcessCommand(deferred1);
+  piped->ProcessCommand(deferred2);
 }
 
 TEST_F(OpenWorkflowE2ETest, RefusedChildSurfacesAsWorkflowFailureNamingStep) {

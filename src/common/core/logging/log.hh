@@ -31,6 +31,15 @@ template <typename... Args>
 inline void log_impl(LogEntry::severity severity, std::source_location&& location,
                      const char* fmt_str, Args&&... args) {
   if (strij::logging::Logger::local_context_ != nullptr) {
+    // The async logger packs args into a fixed-size buffer. An oversized value
+    // (e.g. a large payload logged at debug level) must be dropped rather than
+    // overflowed into the ring entry.
+    if (packed_args_size(args...) > strij::logging::kLogArgsDataSize) {
+      strij::logging::write_stderr_fallback(severity, location,
+                                            "log entry dropped: args exceed {} bytes: {}",
+                                            strij::logging::kLogArgsDataSize, fmt_str);
+      return;
+    }
     strij::logging::LogEntry entry;
     entry.severity_ = severity;
     entry.timestamp_ = std::chrono::system_clock::now();
