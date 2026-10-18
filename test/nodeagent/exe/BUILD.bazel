@@ -1,0 +1,14 @@
+load("//bazel:build_system.bzl", "strij_cc_test")
+
+strij_cc_test(
+    name = "bundled_extensions_test",
+    srcs = ["bundled_extensions_test.cc"],
+    deps = [
+        "//include/strij/extensions:extension_registry_lib",
+        "//include/strij/extensions:scheduler_interface",
+        "//include/strij/nodeagent:task_handlers_interface",
+        "//src/common/extensions/evaluators:evaluator_interface",
+        "//src/nodeagent/exe:bundled_extensions",
+        "@googletest//:gtest_main",
+    ],
+)

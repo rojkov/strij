@@ -93,6 +93,21 @@ template <typename T> void pack_arg(std::byte*& ptr, const T& value) {
 void pack_arg(std::byte*& ptr, std::string_view sw);
 void pack_arg(std::byte*& ptr, const std::string& value);
 
+// The bytes `pack_arg` will consume for one argument (excluding alignment).
+// Mirrors the packing above, so a caller can refuse an entry that would not fit
+// the fixed-size `args_data_` before writing anything.
+template <typename T> auto packed_arg_size(const T& /*value*/) -> std::size_t { return sizeof(T); }
+inline auto packed_arg_size(std::string_view value) -> std::size_t {
+  return sizeof(std::size_t) + value.size();
+}
+inline auto packed_arg_size(const std::string& value) -> std::size_t {
+  return sizeof(std::size_t) + value.size();
+}
+
+template <typename... Args> auto packed_args_size(const Args&... args) -> std::size_t {
+  return (packed_arg_size(args) + ... + std::size_t{0});
+}
+
 class LogFrontend : public event::Completable {
 public:
   explicit LogFrontend(event::DispatcherSharedPtr dispatcher);

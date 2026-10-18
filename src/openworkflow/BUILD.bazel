@@ -12,3 +12,18 @@ strij_cc_library(
     ],
     visibility = ["//visibility:public"],
 )
+
+# The Value <-> Jv bridge. Deliberately not public: it exists for the nodeagent
+# interpreter, and its header pulls in the src-internal libjq boundary, so an
+# external-module consumer (test/consumer) must not reach it.
+strij_cc_library(
+    name = "value_jv_lib",
+    srcs = ["value_jv.cc"],
+    hdrs = ["value_jv.hh"],
+    visibility = ["//src/nodeagent/extensions/task_handlers/openworkflow:__pkg__"],
+    deps = [
+        ":openworkflow_model_lib",
+        "//:libjq",
+        "//src/common/core/utils:jv_lib",
+    ],
+)

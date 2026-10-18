@@ -8,3 +8,14 @@ strij_cc_test(
         "@googletest//:gtest_main",
     ],
 )
+
+strij_cc_test(
+    name = "value_jv_test",
+    srcs = ["value_jv_test.cc"],
+    deps = [
+        "//src/common/core/utils:jv_lib",
+        "//src/openworkflow:openworkflow_model_lib",
+        "//src/openworkflow:value_jv_lib",
+        "@googletest//:gtest_main",
+    ],
+)

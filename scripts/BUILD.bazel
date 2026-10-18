@@ -1,0 +1,3 @@
+# Helper scripts used by docs and tests. `openworkflow_echo.sh` is the test
+# function invoked by the `piped_executable` task handler.
+exports_files(["openworkflow_echo.sh"])
