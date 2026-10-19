@@ -30,14 +30,17 @@ What each target covers:
 | `step_data_value_test` | Data-value sniffing: JSON text, non-JSON text, empty input. |
 | `expression_test` | Strict-mode `${ }` recognition, the expression engine, data-chain subject vs `$context`, scalar rendering. |
 | `call_strij_test` | The `with` key set, parameter projection, requirement coercion (incl. rejecting `100M`), reserved call targets. |
-| `interpreter_test` | The resumable step loop, reentrancy, stale results, the validation/execution split, and seeding from the invocation body. |
+| `interpreter_test` | The frame tree, resumable step loop, reentrancy, stale results, the validation/execution split, fork entry/join (join-all, compete, nested), fail-fast branch failures, and seeding from the invocation body. |
 | `openworkflow_task_handler_test` | The handler/factory, function reference resolution and artifact loading, failure-status classification, and connection teardown. |
-| `openworkflow_e2e_test` | The full path through the **real** `piped_executable` handler, driving the child process with a mock dispatcher, with the document loaded from a file and input supplied in the body. |
+| `openworkflow_e2e_test` | The full path through the **real** `piped_executable` handler, driving the child process with a mock dispatcher, with the document loaded from a file and input supplied in the body. Includes join-all and competing fork scenarios. |
 
 `openworkflow_e2e_test` includes `ScriptedTwoStepWorkflowChainsChildOutputs`,
 which runs the exact two-step workflow in section 3 through `piped_executable`
-and asserts `{"echo":{"echo":{"name":"world"}}}`. That test is the verified
-reference for the manual procedure below.
+and asserts `{"echo":{"echo":{"name":"world"}}}`; it also includes
+`ForkJoinAllRunsBranchesAndJoinsInDeclarationOrder` and
+`ForkCompeteResolvesOnFirstBranchAndIgnoresTheLoser`, which mirror the manual
+fork procedures in section 4. The two-step test is the verified reference for
+the manual procedure below.
 
 ## 2. The test function
 
@@ -207,7 +210,193 @@ This returns `{"hello":"world"}`.
 > child would be refused. `piped_executable` is unclaimed and falls through to
 > the `default` local scheduler, which runs it.
 
-## 4. Failure responses
+## 4. Manual fork workflows
+
+Start the gateway and nodeagent as in section 3, then save and submit the
+documents below. Every fork branch starts with a **copy** of the data value
+current at the fork step, so branches do not share a chain. The sequence
+containing the fork stays suspended until the join resolves.
+
+### 4.1 Join-all (`compete` absent or `false`)
+
+Save this as `/tmp/openworkflow-fork-all.yaml`:
+
+```bash
+cat > /tmp/openworkflow-fork-all.yaml <<'EOF'
+document:
+  dsl: '1.0.3'
+  namespace: docs
+  name: openworkflow-fork-all
+  version: '0.1.0'
+do:
+  - fan:
+      fork:
+        branches:
+          - first:
+              call: strij
+              input:
+                from: '${ {"branch":"first"} }'
+              with:
+                type: piped_executable
+                parameters:
+                  function: scripts/openworkflow_echo.sh
+                requirements:
+                  cpu: 1
+          - second:
+              call: strij
+              input:
+                from: '${ {"branch":"second"} }'
+              with:
+                type: piped_executable
+                parameters:
+                  function: scripts/openworkflow_echo.sh
+                requirements:
+                  cpu: 1
+  - after:
+      call: strij
+      with:
+        type: piped_executable
+        parameters:
+          function: scripts/openworkflow_echo.sh
+        requirements:
+          cpu: 1
+EOF
+```
+
+Submit it (the invocation body is unused because both branches override their
+input):
+
+```bash
+curl -sS -X POST http://127.0.0.1:8081/tasks/openworkflow \
+  -H 'x-strij-function: /tmp/openworkflow-fork-all.yaml' \
+  --data-binary ''
+```
+
+Expected response:
+
+```json
+{"echo":[{"echo":{"branch":"first"}},{"echo":{"branch":"second"}}]}
+```
+
+Both children are submitted before the fork resolves, and the join value is a
+JSON array in **declaration order**, regardless of which child finishes first.
+The `after` step receives that array as its data chain; it has no `input.from`,
+so the array itself is passed to the echo script.
+
+To prove the following step's expression subject really is the joined array,
+replace `after` with a step that reads an element:
+
+```yaml
+  - after:
+      call: strij
+      input:
+        from: '${ {"winner": .[1].echo.branch} }'
+      with:
+        type: piped_executable
+        parameters:
+          function: scripts/openworkflow_echo.sh
+        requirements:
+          cpu: 1
+```
+
+The response becomes `{"echo":{"winner":"second"}}`.
+
+### 4.2 Competing (`compete: true`)
+
+To make the winner deterministic, give one branch a small delay. Create a slow
+variant of the echo script:
+
+```bash
+cat > /tmp/openworkflow_slow_echo.sh <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+sleep 1
+input="$(cat)"
+if [ -z "${input}" ]; then
+  input=null
+fi
+printf '{"slow":%s}' "${input}"
+EOF
+chmod +x /tmp/openworkflow_slow_echo.sh
+```
+
+Save this as `/tmp/openworkflow-fork-compete.yaml`:
+
+```bash
+cat > /tmp/openworkflow-fork-compete.yaml <<'EOF'
+document:
+  dsl: '1.0.3'
+  namespace: docs
+  name: openworkflow-fork-compete
+  version: '0.1.0'
+do:
+  - race:
+      fork:
+        compete: true
+        branches:
+          - fast:
+              call: strij
+              input:
+                from: '${ {"branch":"fast"} }'
+              with:
+                type: piped_executable
+                parameters:
+                  function: scripts/openworkflow_echo.sh
+                requirements:
+                  cpu: 1
+          - slow:
+              call: strij
+              input:
+                from: '${ {"branch":"slow"} }'
+              with:
+                type: piped_executable
+                parameters:
+                  function: /tmp/openworkflow_slow_echo.sh
+                requirements:
+                  cpu: 1
+  - after:
+      call: strij
+      with:
+        type: piped_executable
+        parameters:
+          function: scripts/openworkflow_echo.sh
+        requirements:
+          cpu: 1
+EOF
+```
+
+Submit it:
+
+```bash
+curl -sS -X POST http://127.0.0.1:8081/tasks/openworkflow \
+  -H 'x-strij-function: /tmp/openworkflow-fork-compete.yaml' \
+  --data-binary ''
+```
+
+Expected response:
+
+```json
+{"echo":{"echo":{"branch":"fast"}}}
+```
+
+The `fast` branch resolves the fork, so its result becomes the data chain and
+the `after` step echoes it. The `slow` branch is abandoned: its later outcome is
+ignored, so `{"slow":...}` never appears. If both branches finish at
+approximately the same time, the winner is whichever terminal outcome reaches
+the interpreter first, so the response may vary.
+
+### 4.3 Failure and edge cases
+
+- **Fail fast.** Change one branch's `type` to an unregistered handler such as
+  `ghost`. The workflow fails as soon as that branch is refused, without waiting
+  for siblings. The response is HTTP `429` and the body names the branch, e.g.
+  `branch 'fast': ...`.
+- **Empty join-all.** A fork with `branches: []` and no `compete` joins to `[]`,
+  and the workflow succeeds.
+- **Empty competing fork.** A fork with `compete: true` and `branches: []` is
+  rejected by validation before any child is submitted (HTTP `400`).
+
+## 5. Failure responses
 
 Workflow failures ride the final `TaskResult.status`, and the gateway maps it to
 an HTTP status:
@@ -246,7 +435,7 @@ curl -sS -o /dev/null -w '%{http_code}\n' -X POST http://127.0.0.1:8081/tasks/op
 # 501
 ```
 
-## 5. Notes and troubleshooting
+## 6. Notes and troubleshooting
 
 - **The definition is a function artifact.** The nodeagent loads the workflow
   document from the path named by the task's `function` parameter (populated

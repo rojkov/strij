@@ -31,6 +31,15 @@ auto StepDataValue::FromValue(const ::strij::openworkflow::Value& value) -> Step
   return {std::move(json), std::move(bytes)};
 }
 
+auto StepDataValue::Copy() const -> StepDataValue {
+  std::optional<utils::Jv> json;
+  if (json_.has_value()) {
+    json.emplace(json_->Copy());
+  }
+
+  return {std::move(json), bytes_};
+}
+
 auto StepDataValue::ToValue() const -> ::strij::openworkflow::Value {
   if (json_.has_value()) {
     return ::strij::openworkflow::JvToValue(*json_);

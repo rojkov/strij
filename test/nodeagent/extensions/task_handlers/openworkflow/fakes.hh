@@ -37,8 +37,15 @@ public:
   }
 
   auto last() -> Submission* { return submissions_.empty() ? nullptr : &submissions_.back(); }
+  auto at(std::size_t index) -> Submission* {
+    return index >= submissions_.size() ? nullptr : &submissions_[index];
+  }
   auto receiver() -> gateway::ResultReceiver* {
     Submission* submission = last();
+    return submission == nullptr ? nullptr : submission->receiver_.get();
+  }
+  auto receiver(std::size_t index) -> gateway::ResultReceiver* {
+    Submission* submission = at(index);
     return submission == nullptr ? nullptr : submission->receiver_.get();
   }
   auto size() const -> std::size_t { return submissions_.size(); }
@@ -82,9 +89,21 @@ inline void CompleteSuccess(FakeChildTaskSubmitter& submitter, std::string_view 
   receiver->Deliver(data, is_final);
 }
 
+inline void CompleteSuccessAt(FakeChildTaskSubmitter& submitter, std::size_t index,
+                              std::string_view body, bool is_final = true) {
+  auto* receiver = submitter.receiver(index);
+  const auto data = std::as_bytes(std::span(body.data(), body.size()));
+  receiver->Deliver(data, is_final);
+}
+
 inline void CompleteError(FakeChildTaskSubmitter& submitter, std::string_view reason,
                           task::TaskStatus status) {
   submitter.receiver()->DeliverError(reason, status);
+}
+
+inline void CompleteErrorAt(FakeChildTaskSubmitter& submitter, std::size_t index,
+                            std::string_view reason, task::TaskStatus status) {
+  submitter.receiver(index)->DeliverError(reason, status);
 }
 
 // The bundled jq evaluator selection used by the tests.

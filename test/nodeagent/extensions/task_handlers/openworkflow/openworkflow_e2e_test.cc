@@ -313,6 +313,216 @@ TEST_F(OpenWorkflowE2ETest, ScriptedTwoStepWorkflowChainsChildOutputs) {
   piped->ProcessCommand(deferred2);
 }
 
+TEST_F(OpenWorkflowE2ETest, ForkJoinAllRunsBranchesAndJoinsInDeclarationOrder) {
+  const std::string script = FindEchoScript();
+  ASSERT_FALSE(script.empty()) << "scripts/openworkflow_echo.sh not found in runfiles";
+
+  const std::string document_text = absl::StrCat("document:\n"
+                                                 "  dsl: '1.0.3'\n"
+                                                 "  namespace: test\n"
+                                                 "  name: e2e-fork-all\n"
+                                                 "  version: '0.1.0'\n"
+                                                 "do:\n"
+                                                 "  - both:\n"
+                                                 "      fork:\n"
+                                                 "        branches:\n"
+                                                 "          - first:\n"
+                                                 "              call: strij\n"
+                                                 "              input:\n"
+                                                 "                from: ${ {\"branch\":1} }\n"
+                                                 "              with:\n"
+                                                 "                type: piped_executable\n"
+                                                 "                parameters:\n"
+                                                 "                  function: ",
+                                                 script,
+                                                 "\n"
+                                                 "                requirements:\n"
+                                                 "                  cpu: 1\n"
+                                                 "          - second:\n"
+                                                 "              call: strij\n"
+                                                 "              input:\n"
+                                                 "                from: ${ {\"branch\":2} }\n"
+                                                 "              with:\n"
+                                                 "                type: piped_executable\n"
+                                                 "                parameters:\n"
+                                                 "                  function: ",
+                                                 script,
+                                                 "\n"
+                                                 "                requirements:\n"
+                                                 "                  cpu: 1\n"
+                                                 "  - after:\n"
+                                                 "      call: strij\n"
+                                                 "      input:\n"
+                                                 "        from: ${ . }\n"
+                                                 "      with:\n"
+                                                 "        type: piped_executable\n"
+                                                 "        parameters:\n"
+                                                 "          function: ",
+                                                 script,
+                                                 "\n"
+                                                 "        requirements:\n"
+                                                 "          cpu: 1\n");
+
+  OpenWorkflowTaskHandler handler(*router_, resolver_, test::JqEvaluatorConfig());
+  auto state = std::make_shared<test::TestSender::State>();
+
+  int stdin1 = -1;
+  int stdin2 = -1;
+  int stdin3 = -1;
+  int pidfd1 = -1;
+  int pidfd2 = -1;
+  int pidfd3 = -1;
+  event::Completable* child1_raw = nullptr;
+  event::Completable* child2_raw = nullptr;
+  event::Completable* child3_raw = nullptr;
+  EXPECT_CALL(*dispatcher_, PrepareWrite(_, kStdinWrite, _, _, -1))
+      .WillOnce(DoAll(SaveArg<2>(&stdin1), Return()))
+      .WillOnce(DoAll(SaveArg<2>(&stdin2), Return()))
+      .WillOnce(DoAll(SaveArg<2>(&stdin3), Return()));
+  EXPECT_CALL(*dispatcher_, PreparePoll(_, kExitPoll, _, POLLIN))
+      .WillOnce(DoAll(SaveArg<0>(&child1_raw), SaveArg<2>(&pidfd1), Return()))
+      .WillOnce(DoAll(SaveArg<0>(&child2_raw), SaveArg<2>(&pidfd2), Return()))
+      .WillOnce(DoAll(SaveArg<0>(&child3_raw), SaveArg<2>(&pidfd3), Return()));
+
+  const std::string document = WriteDocument("fork-all.yaml", document_text);
+  handler.HandleTask(MakeParent("wf", document, ""), std::make_unique<test::TestSender>(state));
+
+  auto complete = [](event::Completable* raw, int stdin_fd, int pidfd, std::string_view body) {
+    ASSERT_NE(raw, nullptr);
+    ASSERT_GE(stdin_fd, 0);
+    ASSERT_EQ(::write(stdin_fd, body.data(), body.size()), static_cast<ssize_t>(body.size()));
+    auto* child = static_cast<ChildProcess*>(raw);
+    child->HandleCompletion(kStdinWrite, static_cast<int>(body.size()), 0);
+    ASSERT_TRUE(WaitForExit(pidfd));
+    child->HandleCompletion(kExitPoll, POLLIN, 0);
+    child->HandleCompletion(kStdoutRead, 0, 0);
+    child->HandleCompletion(kStderrRead, 0, 0);
+  };
+
+  complete(child1_raw, stdin1, pidfd1, R"({"branch":1})");
+  EXPECT_TRUE(state->sent_.empty());
+  ASSERT_NE(child2_raw, nullptr);
+
+  complete(child2_raw, stdin2, pidfd2, R"({"branch":2})");
+  EXPECT_TRUE(state->sent_.empty());
+
+  // Both branches have joined; the next step's input is the ordered array.
+  ASSERT_NE(child3_raw, nullptr);
+  const std::string joined = R"([{"echo":{"branch":1}},{"echo":{"branch":2}}])";
+  complete(child3_raw, stdin3, pidfd3, joined);
+
+  ASSERT_EQ(state->sent_.size(), 1U);
+  EXPECT_EQ(state->sent_[0].id(), "wf");
+  EXPECT_EQ(state->sent_[0].body(), R"({"echo":[{"echo":{"branch":1}},{"echo":{"branch":2}}]})");
+  EXPECT_TRUE(state->sent_[0].is_final());
+  EXPECT_TRUE(utils::IsTaskResultOk(state->sent_[0]));
+}
+
+TEST_F(OpenWorkflowE2ETest, ForkCompeteResolvesOnFirstBranchAndIgnoresTheLoser) {
+  const std::string script = FindEchoScript();
+  ASSERT_FALSE(script.empty()) << "scripts/openworkflow_echo.sh not found in runfiles";
+
+  const std::string document_text = absl::StrCat("document:\n"
+                                                 "  dsl: '1.0.3'\n"
+                                                 "  namespace: test\n"
+                                                 "  name: e2e-fork-compete\n"
+                                                 "  version: '0.1.0'\n"
+                                                 "do:\n"
+                                                 "  - race:\n"
+                                                 "      fork:\n"
+                                                 "        compete: true\n"
+                                                 "        branches:\n"
+                                                 "          - first:\n"
+                                                 "              call: strij\n"
+                                                 "              input:\n"
+                                                 "                from: ${ {\"branch\":1} }\n"
+                                                 "              with:\n"
+                                                 "                type: piped_executable\n"
+                                                 "                parameters:\n"
+                                                 "                  function: ",
+                                                 script,
+                                                 "\n"
+                                                 "                requirements:\n"
+                                                 "                  cpu: 1\n"
+                                                 "          - second:\n"
+                                                 "              call: strij\n"
+                                                 "              input:\n"
+                                                 "                from: ${ {\"branch\":2} }\n"
+                                                 "              with:\n"
+                                                 "                type: piped_executable\n"
+                                                 "                parameters:\n"
+                                                 "                  function: ",
+                                                 script,
+                                                 "\n"
+                                                 "                requirements:\n"
+                                                 "                  cpu: 1\n"
+                                                 "  - after:\n"
+                                                 "      call: strij\n"
+                                                 "      input:\n"
+                                                 "        from: ${ . }\n"
+                                                 "      with:\n"
+                                                 "        type: piped_executable\n"
+                                                 "        parameters:\n"
+                                                 "          function: ",
+                                                 script,
+                                                 "\n"
+                                                 "        requirements:\n"
+                                                 "          cpu: 1\n");
+
+  OpenWorkflowTaskHandler handler(*router_, resolver_, test::JqEvaluatorConfig());
+  auto state = std::make_shared<test::TestSender::State>();
+
+  int stdin1 = -1;
+  int stdin2 = -1;
+  int stdin3 = -1;
+  int pidfd1 = -1;
+  int pidfd2 = -1;
+  int pidfd3 = -1;
+  event::Completable* child1_raw = nullptr;
+  event::Completable* child2_raw = nullptr;
+  event::Completable* child3_raw = nullptr;
+  EXPECT_CALL(*dispatcher_, PrepareWrite(_, kStdinWrite, _, _, -1))
+      .WillOnce(DoAll(SaveArg<2>(&stdin1), Return()))
+      .WillOnce(DoAll(SaveArg<2>(&stdin2), Return()))
+      .WillOnce(DoAll(SaveArg<2>(&stdin3), Return()));
+  EXPECT_CALL(*dispatcher_, PreparePoll(_, kExitPoll, _, POLLIN))
+      .WillOnce(DoAll(SaveArg<0>(&child1_raw), SaveArg<2>(&pidfd1), Return()))
+      .WillOnce(DoAll(SaveArg<0>(&child2_raw), SaveArg<2>(&pidfd2), Return()))
+      .WillOnce(DoAll(SaveArg<0>(&child3_raw), SaveArg<2>(&pidfd3), Return()));
+
+  const std::string document = WriteDocument("fork-compete.yaml", document_text);
+  handler.HandleTask(MakeParent("wf", document, ""), std::make_unique<test::TestSender>(state));
+
+  auto complete = [](event::Completable* raw, int stdin_fd, int pidfd, std::string_view body) {
+    ASSERT_NE(raw, nullptr);
+    ASSERT_GE(stdin_fd, 0);
+    ASSERT_EQ(::write(stdin_fd, body.data(), body.size()), static_cast<ssize_t>(body.size()));
+    auto* child = static_cast<ChildProcess*>(raw);
+    child->HandleCompletion(kStdinWrite, static_cast<int>(body.size()), 0);
+    ASSERT_TRUE(WaitForExit(pidfd));
+    child->HandleCompletion(kExitPoll, POLLIN, 0);
+    child->HandleCompletion(kStdoutRead, 0, 0);
+    child->HandleCompletion(kStderrRead, 0, 0);
+  };
+
+  // The second branch wins the race; the fork resolves without waiting for
+  // the first.
+  complete(child2_raw, stdin2, pidfd2, R"({"branch":2})");
+  EXPECT_TRUE(state->sent_.empty());
+  ASSERT_NE(child3_raw, nullptr);
+
+  // The loser completes afterwards; its outcome is ignored.
+  complete(child1_raw, stdin1, pidfd1, R"({"branch":1})");
+  EXPECT_TRUE(state->sent_.empty());
+
+  // The step after the fork received the winner's result.
+  complete(child3_raw, stdin3, pidfd3, R"({"echo":{"branch":2}})");
+
+  ASSERT_EQ(state->sent_.size(), 1U);
+  EXPECT_EQ(state->sent_[0].body(), R"({"echo":{"echo":{"branch":2}}})");
+  EXPECT_TRUE(utils::IsTaskResultOk(state->sent_[0]));
+}
+
 TEST_F(OpenWorkflowE2ETest, RefusedChildSurfacesAsWorkflowFailureNamingStep) {
   OpenWorkflowTaskHandler handler(*router_, resolver_, test::JqEvaluatorConfig());
   auto state = std::make_shared<test::TestSender::State>();

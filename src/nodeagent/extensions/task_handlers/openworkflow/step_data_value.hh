@@ -24,6 +24,10 @@ public:
 
   static auto FromValue(const ::strij::openworkflow::Value& value) -> StepDataValue;
 
+  // A deep copy. Used when a fork seeds each branch with the value current at
+  // the fork step (the branches must not share mutable state).
+  [[nodiscard]] auto Copy() const -> StepDataValue;
+
   [[nodiscard]] auto IsJson() const -> bool { return json_.has_value(); }
   // Precondition: IsJson(). The parsed value, used as the expression subject.
   [[nodiscard]] auto Json() const -> const utils::Jv& { return *json_; }
