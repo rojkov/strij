@@ -467,6 +467,45 @@ do:
                 type: echo
 )YAML";
 
+constexpr std::string_view kForkNestedDoFailure = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: fork-nested-do-failure
+  version: '0.1.0'
+do:
+  - fan:
+      fork:
+        branches:
+          - chained:
+              do:
+                - inner:
+                    call: strij
+                    with:
+                      type: echo
+          - plain:
+              call: strij
+              with:
+                type: echo
+)YAML";
+
+constexpr std::string_view kForkNestedJoinFailure = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: fork-nested-join-failure
+  version: '0.1.0'
+do:
+  - fan:
+      fork:
+        branches:
+          - outer:
+              fork:
+                branches:
+                  - leaf:
+                      call: strij
+                      with:
+                        type: echo
+)YAML";
+
 constexpr std::string_view kBranchUnknownTarget = R"YAML(document:
   dsl: '1.0.3'
   namespace: test
@@ -757,76 +796,6 @@ TEST(ValidateDocumentTest, DataDependentDocumentPassesValidation) {
   EXPECT_FALSE(ValidateDocument(document, engine).has_value());
 }
 
-TEST(FrameTreeTest, FlatDocumentBuildsRootSequenceAtCursorZero) {
-  auto parsed = ::strij::openworkflow::Parse(kThreeSteps);
-  ASSERT_TRUE(parsed.has_value());
-  auto root = BuildFrames(*parsed);
-
-  ASSERT_EQ(root->Steps().size(), 3U);
-  EXPECT_EQ(root->Cursor(), 0U);
-  EXPECT_TRUE(root->IsPending());
-  ASSERT_EQ(root->Children().size(), 3U);
-  for (const auto& child : root->Children()) {
-    EXPECT_EQ(child, nullptr);
-  }
-  EXPECT_EQ(root->Steps()[0]->name_, "one");
-  EXPECT_EQ(root->Steps()[1]->name_, "two");
-  EXPECT_EQ(root->Steps()[2]->name_, "three");
-}
-
-TEST(FrameTreeTest, NestedDoBuildsChildSequenceAtItsCursorPosition) {
-  auto parsed = ::strij::openworkflow::Parse(kNestedDo);
-  ASSERT_TRUE(parsed.has_value());
-  auto root = BuildFrames(*parsed);
-
-  ASSERT_EQ(root->Steps().size(), 2U);
-  auto* nested = dynamic_cast<SequenceFrame*>(root->Children()[0].get());
-  ASSERT_NE(nested, nullptr);
-  EXPECT_EQ(nested->ParentSequence(), root.get());
-  EXPECT_EQ(nested->Cursor(), 0U);
-  EXPECT_TRUE(nested->IsPending());
-  ASSERT_EQ(nested->Steps().size(), 2U);
-  EXPECT_EQ(nested->Steps()[0]->name_, "a");
-  EXPECT_EQ(nested->Steps()[1]->name_, "b");
-  EXPECT_EQ(root->Children()[1], nullptr);
-}
-
-TEST(FrameTreeTest, ForkBuildsBranchSequencesWithTheirIndices) {
-  auto parsed = ::strij::openworkflow::Parse(kForkThreeBranches);
-  ASSERT_TRUE(parsed.has_value());
-  auto root = BuildFrames(*parsed);
-
-  auto* fork = dynamic_cast<ForkFrame*>(root->Children()[0].get());
-  ASSERT_NE(fork, nullptr);
-  EXPECT_EQ(fork->ParentSequence(), root.get());
-  EXPECT_TRUE(fork->IsPending());
-  EXPECT_FALSE(fork->IsCompeting());
-  ASSERT_EQ(fork->Branches().size(), 3U);
-  EXPECT_EQ(fork->BranchResults().size(), 3U);
-
-  const std::vector<std::string> names = {"a", "b", "c"};
-  for (std::size_t index = 0; index < fork->Branches().size(); ++index) {
-    const SequenceFrame& branch = *fork->Branches()[index];
-    EXPECT_EQ(branch.BranchIndex(), index);
-    EXPECT_EQ(branch.BranchName(), names[index]);
-    EXPECT_EQ(branch.OwnerFork(), fork);
-    EXPECT_EQ(branch.Cursor(), 0U);
-    EXPECT_TRUE(branch.IsPending());
-    ASSERT_EQ(branch.Steps().size(), 1U);
-    EXPECT_EQ(branch.Steps()[0]->name_, names[index]);
-  }
-}
-
-TEST(FrameTreeTest, CompetingForkCarriesTheFlag) {
-  auto parsed = ::strij::openworkflow::Parse(kForkCompete);
-  ASSERT_TRUE(parsed.has_value());
-  auto root = BuildFrames(*parsed);
-
-  auto* fork = dynamic_cast<ForkFrame*>(root->Children()[0].get());
-  ASSERT_NE(fork, nullptr);
-  EXPECT_TRUE(fork->IsCompeting());
-}
-
 TEST(InterpreterValidationTest, MalformedCallInsideForkBranchFailsBeforeAnySubmission) {
   Harness harness;
   harness.interpreter_->Start(std::string(kBranchUnknownTarget));
@@ -915,6 +884,33 @@ TEST(ForkInterpreterTest, JoinAllFailsOnAnOpaqueBranchResult) {
   EXPECT_EQ(harness.results_[0].status(), task::TASK_STATUS_INTERNAL);
   EXPECT_NE(harness.results_[0].body().find("branch 'a'"), std::string::npos);
   EXPECT_NE(harness.results_[0].body().find("not a JSON value"), std::string::npos);
+}
+
+TEST(ForkInterpreterTest, NestedDoFailureInsideABranchNamesTheInnerStep) {
+  Harness harness;
+  harness.interpreter_->Start(std::string(kForkNestedDoFailure));
+  ASSERT_EQ(harness.submitter_.size(), 2U);
+
+  test::CompleteErrorAt(harness.submitter_, 0, "boom", task::TASK_STATUS_CAPACITY_REFUSED);
+
+  ASSERT_EQ(harness.results_.size(), 1U);
+  EXPECT_EQ(harness.results_[0].status(), task::TASK_STATUS_CAPACITY_REFUSED);
+  EXPECT_EQ(harness.results_[0].body(), "branch 'chained': step 'inner': boom");
+
+  test::CompleteSuccessAt(harness.submitter_, 1, "2");
+  EXPECT_EQ(harness.results_.size(), 1U);
+}
+
+TEST(ForkInterpreterTest, NestedJoinFailureIsNamedByTheInnerBranchOnly) {
+  Harness harness;
+  harness.interpreter_->Start(std::string(kForkNestedJoinFailure));
+  ASSERT_EQ(harness.submitter_.size(), 1U);
+
+  test::CompleteSuccessAt(harness.submitter_, 0, "not json");
+
+  ASSERT_EQ(harness.results_.size(), 1U);
+  EXPECT_EQ(harness.results_[0].status(), task::TASK_STATUS_INTERNAL);
+  EXPECT_EQ(harness.results_[0].body(), "branch 'leaf': the branch result is not a JSON value");
 }
 
 TEST(ForkInterpreterTest, CompeteResolvesWithTheFirstTerminalResult) {

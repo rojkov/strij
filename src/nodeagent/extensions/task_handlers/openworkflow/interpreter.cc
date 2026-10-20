@@ -90,14 +90,6 @@ private:
   bool delivered_{false};
 };
 
-auto currentStepName(const SequenceFrame& sequence) -> std::string {
-  if (sequence.Cursor() < sequence.Steps().size()) {
-    return sequence.Steps()[sequence.Cursor()]->name_;
-  }
-
-  return {};
-}
-
 auto validateInputFrom(const Task& task, ExpressionEngine& engine) -> std::optional<Failure> {
   if (!task.input_.has_value() || !task.input_->from_.has_value()) {
     return std::nullopt;
@@ -222,126 +214,6 @@ auto validateTasks(const Tasks& tasks, const Document& document, ExpressionEngin
 
 } // namespace
 
-SequenceFrame::SequenceFrame(SequenceFrame* parent_sequence, ForkFrame* owner_fork,
-                             std::size_t branch_index, std::string branch_name)
-    : Frame(FrameKind::kSequence, parent_sequence), owner_fork_{owner_fork},
-      branch_index_{branch_index}, branch_name_{std::move(branch_name)} {}
-
-// A finished sequence can no longer advance: it either ran to completion or
-// was abandoned.
-auto SequenceFrame::IsFinished() const -> bool {
-  return state_ == State::kCompleted || state_ == State::kAbandoned;
-}
-
-auto SequenceFrame::WaitingChildId() const -> const std::string& {
-  assert(IsWaiting());
-
-  return *waiting_child_id_;
-}
-
-void SequenceFrame::setState(State new_state, std::optional<std::string> child_id) {
-  switch (new_state) {
-  case State::kReady:
-    // Entered from pending, or released after a child outcome.
-    assert(state_ == State::kPending || state_ == State::kWaiting);
-    assert(!child_id.has_value());
-    waiting_child_id_.reset();
-    break;
-  case State::kWaiting:
-    assert(state_ == State::kReady);
-    assert(child_id.has_value());
-    waiting_child_id_ = std::move(child_id);
-    break;
-  case State::kCompleted:
-    assert(state_ == State::kReady);
-    assert(!child_id.has_value());
-    waiting_child_id_.reset();
-    break;
-  case State::kAbandoned:
-    assert(!child_id.has_value());
-    if (state_ == State::kCompleted || state_ == State::kAbandoned) {
-      return;
-    }
-    assert(state_ == State::kPending || state_ == State::kReady || state_ == State::kWaiting);
-    waiting_child_id_.reset();
-    break;
-  case State::kPending:
-    assert(false);
-    return;
-  }
-  state_ = new_state;
-}
-
-// The frame tree is built only here; the frames keep their data private.
-class FrameBuilder final {
-public:
-  static auto build(const Document& document) -> std::unique_ptr<SequenceFrame>;
-
-private:
-  static auto buildSequence(const Tasks& tasks, SequenceFrame* parent_sequence,
-                            ForkFrame* owner_fork, std::size_t branch_index,
-                            std::string branch_name) -> std::unique_ptr<SequenceFrame>;
-  static auto buildFork(const ForkBody& fork, SequenceFrame& parent) -> std::unique_ptr<ForkFrame>;
-  static auto buildChildFor(SequenceFrame& sequence, std::size_t index) -> std::unique_ptr<Frame>;
-};
-
-auto BuildFrames(const Document& document) -> std::unique_ptr<SequenceFrame> {
-  return FrameBuilder::build(document);
-}
-
-auto FrameBuilder::build(const Document& document) -> std::unique_ptr<SequenceFrame> {
-  return buildSequence(document.do_, nullptr, nullptr, 0, std::string{});
-}
-
-auto FrameBuilder::buildFork(const ForkBody& fork, SequenceFrame& parent)
-    -> std::unique_ptr<ForkFrame> {
-  auto frame = std::make_unique<ForkFrame>(&parent, fork.compete_);
-  frame->branch_results_.resize(fork.branches_.size());
-
-  for (std::size_t index = 0; index < fork.branches_.size(); ++index) {
-    const NamedTask& named = fork.branches_[index];
-    auto branch = std::make_unique<SequenceFrame>(nullptr, frame.get(), index, named.name_);
-    branch->steps_.push_back(&named);
-    branch->children_.push_back(buildChildFor(*branch, 0));
-    frame->branches_.push_back(std::move(branch));
-  }
-
-  return frame;
-}
-
-auto FrameBuilder::buildChildFor(SequenceFrame& sequence, std::size_t index)
-    -> std::unique_ptr<Frame> {
-  const Task& task = sequence.steps_[index]->task_;
-
-  if (const auto* do_body = std::get_if<DoBody>(&task.body_)) {
-    return buildSequence(do_body->do_, &sequence, nullptr, 0, std::string{});
-  }
-
-  if (const auto* fork_body = std::get_if<ForkBody>(&task.body_)) {
-    return buildFork(*fork_body, sequence);
-  }
-
-  return nullptr;
-}
-
-auto FrameBuilder::buildSequence(const Tasks& tasks, SequenceFrame* parent_sequence,
-                                 ForkFrame* owner_fork, std::size_t branch_index,
-                                 std::string branch_name) -> std::unique_ptr<SequenceFrame> {
-  auto sequence = std::make_unique<SequenceFrame>(parent_sequence, owner_fork, branch_index,
-                                                  std::move(branch_name));
-  size_t task_count = tasks.size();
-  sequence->steps_.reserve(task_count);
-  for (const NamedTask& named : tasks) {
-    sequence->steps_.push_back(&named);
-  }
-  sequence->children_.resize(task_count);
-  for (std::size_t index = 0; index < task_count; ++index) {
-    sequence->children_[index] = buildChildFor(*sequence, index);
-  }
-
-  return sequence;
-}
-
 auto ValidateDocument(const Document& document, ExpressionEngine& engine)
     -> std::optional<Failure> {
   return validateTasks(document.do_, document, engine);
@@ -430,9 +302,8 @@ void WorkflowInterpreter::Start(std::string_view document_text, std::string_view
     seed = std::move(invocation_data_value);
   }
 
-  root_ = BuildFrames(*document_);
-  root_->data_ = std::move(seed);
-  root_->setState(SequenceFrame::State::kReady);
+  root_ = CreateRootFrame(*document_);
+  root_->Enter(std::move(seed));
   setState(State::kReady);
 
   drive();
@@ -455,7 +326,9 @@ void WorkflowInterpreter::OnChildOutcome(const std::string& child_id, ChildOutco
     return;
   }
 
-  applyOutcome(*owner->second, child_id, std::move(outcome));
+  SequenceFrame* frame = owner->second;
+  owner_by_child_.erase(owner);
+  frame->ApplyOutcome(std::move(outcome));
   drive();
 }
 
@@ -477,13 +350,26 @@ auto WorkflowInterpreter::validateMode() -> absl::Status {
   return absl::OkStatus();
 }
 
+void WorkflowInterpreter::terminalize(FrameResult result) {
+  if (auto* completed = std::get_if<Completed>(&result); completed != nullptr) {
+    succeed(std::move(completed->value_));
+
+    return;
+  }
+
+  if (auto* failed = std::get_if<Failed>(&result); failed != nullptr) {
+    const ExecutionFailure& failure = failed->failure_;
+    fail(failure.status_, failure.composed_ ? std::string_view{} : failure.step_, failure.message_);
+  }
+}
+
 void WorkflowInterpreter::drive() {
   if (state_ != State::kReady) {
     return;
   }
 
   setState(State::kAdvancing);
-  advanceSequence(*root_);
+  terminalize(root_->Advance(*this));
 
   // Outcomes that arrived while some frame was inside `Submit` for another
   // child are drained here, after the advancement that recorded them. Unknown
@@ -492,8 +378,10 @@ void WorkflowInterpreter::drive() {
     auto node = pending_.extract(pending_.begin());
     auto owner = owner_by_child_.find(node.key());
     if (owner != owner_by_child_.end()) {
-      applyOutcome(*owner->second, node.key(), std::move(node.mapped()));
-      advanceSequence(*root_);
+      SequenceFrame* frame = owner->second;
+      owner_by_child_.erase(owner);
+      frame->ApplyOutcome(std::move(node.mapped()));
+      terminalize(root_->Advance(*this));
     }
   }
 
@@ -502,224 +390,25 @@ void WorkflowInterpreter::drive() {
   }
 }
 
-void WorkflowInterpreter::advanceSequence(SequenceFrame& sequence) {
-  while (!IsTerminalState(state_) && !sequence.IsFinished()) {
-    if (sequence.IsWaiting()) {
-      return;
-    }
-
-    if (sequence.cursor_ >= sequence.steps_.size()) {
-      completeSequence(sequence);
-
-      return;
-    }
-
-    if (!advanceStep(sequence, *sequence.steps_[sequence.cursor_])) {
-      return;
-    }
-  }
+void WorkflowInterpreter::ForgetChild(std::string_view child_id) {
+  owner_by_child_.erase(std::string(child_id));
 }
 
-auto WorkflowInterpreter::advanceStep(SequenceFrame& sequence, const NamedTask& step) -> bool {
-  const Task& task = step.task_;
-
-  if (std::holds_alternative<CallBody>(task.body_)) {
-    executeCall(sequence, step);
-
-    return true;
-  }
-
-  if (std::holds_alternative<DoBody>(task.body_)) {
-    auto* child = dynamic_cast<SequenceFrame*>(sequence.children_[sequence.cursor_].get());
-    if (child == nullptr) {
-      fail(task::TASK_STATUS_INTERNAL, step.name_, "the nested sequence frame is missing");
-
-      return false;
-    }
-
-    if (child->IsPending()) {
-      child->data_ = std::move(sequence.data_);
-      child->setState(SequenceFrame::State::kReady);
-    }
-
-    advanceSequence(*child);
-
-    return child->IsCompleted();
-  }
-
-  if (std::holds_alternative<ForkBody>(task.body_)) {
-    auto* fork = dynamic_cast<ForkFrame*>(sequence.children_[sequence.cursor_].get());
-    if (fork == nullptr) {
-      fail(task::TASK_STATUS_INTERNAL, step.name_, "the fork frame is missing");
-
-      return false;
-    }
-
-    if (fork->IsPending()) {
-      fork->setState(ForkFrame::State::kRunning);
-      for (auto& branch : fork->branches_) {
-        branch->data_ = sequence.data_.Copy();
-        branch->setState(SequenceFrame::State::kReady);
-      }
-    }
-
-    advanceFork(*fork);
-
-    return fork->IsResolved();
-  }
-
-  fail(task::TASK_STATUS_UNIMPLEMENTED, step.name_,
-       "this task kind is not supported in the current workflow slice");
-
-  return false;
-}
-
-void WorkflowInterpreter::advanceFork(ForkFrame& fork) {
-  // An empty join-all fork is well defined: it joins to the empty array. An
-  // empty competing fork is rejected during validation.
-  if (!fork.IsResolved() && fork.branches_.empty()) {
-    resolveFork(fork, StepDataValue::FromBytes("[]"));
-
-    return;
-  }
-
-  for (auto& branch : fork.branches_) {
-    if (IsTerminalState(state_) || fork.IsResolved()) {
-      return;
-    }
-
-    if (branch->IsFinished()) {
-      continue;
-    }
-
-    advanceSequence(*branch);
-  }
-}
-
-void WorkflowInterpreter::completeSequence(SequenceFrame& sequence) {
-  if (sequence.IsFinished()) {
-    return;
-  }
-
-  sequence.setState(SequenceFrame::State::kCompleted);
-
-  if (sequence.owner_fork_ != nullptr) {
-    onBranchComplete(*sequence.owner_fork_, sequence);
-
-    return;
-  }
-
-  if (SequenceFrame* parent = sequence.ParentSequence(); parent != nullptr) {
-    parent->data_ = std::move(sequence.data_);
-    ++parent->cursor_;
-
-    return;
-  }
-
-  succeed();
-}
-
-void WorkflowInterpreter::onBranchComplete(ForkFrame& fork, SequenceFrame& branch) {
-  if (fork.IsResolved()) {
-    return;
-  }
-
-  fork.branch_results_[branch.branch_index_] = std::move(branch.data_);
-  ++fork.completed_count_;
-
-  if (fork.compete_) {
-    resolveFork(fork, std::move(*fork.branch_results_[branch.branch_index_]));
-
-    return;
-  }
-
-  if (fork.completed_count_ < fork.branches_.size()) {
-    return;
-  }
-
-  std::string array = "[";
-  for (std::size_t index = 0; index < fork.branches_.size(); ++index) {
-    const StepDataValue& result = *fork.branch_results_[index];
-    if (!result.IsJson()) {
-      fail(task::TASK_STATUS_INTERNAL, "",
-           absl::StrCat("branch '", fork.branches_[index]->branch_name_,
-                        "': the branch result is not a JSON value"));
-
-      return;
-    }
-
-    if (index > 0) {
-      array.push_back(',');
-    }
-    array.append(result.Bytes());
-  }
-  array.push_back(']');
-
-  resolveFork(fork, StepDataValue::FromBytes(std::move(array)));
-}
-
-void WorkflowInterpreter::resolveFork(ForkFrame& fork, StepDataValue value) {
-  fork.setState(ForkFrame::State::kResolved);
-
-  // Abandon the remaining branches: their children keep running, but their
-  // outcomes no longer match an owner and are dropped. The walk descends into
-  // nested sequences and forks so an abandoned branch's grandchildren are
-  // abandoned too.
-  for (auto& branch : fork.branches_) {
-    abandonFrame(*branch);
-  }
-
-  SequenceFrame* parent = fork.ParentSequence();
-  parent->data_ = std::move(value);
-  ++parent->cursor_;
-}
-
-void WorkflowInterpreter::abandonFrame(Frame& frame) {
-  if (auto* sequence = dynamic_cast<SequenceFrame*>(&frame); sequence != nullptr) {
-    if (sequence->IsWaiting()) {
-      owner_by_child_.erase(sequence->WaitingChildId());
-    }
-    sequence->setState(SequenceFrame::State::kAbandoned);
-
-    for (auto& child : sequence->children_) {
-      if (child != nullptr) {
-        abandonFrame(*child);
-      }
-    }
-
-    return;
-  }
-
-  auto* fork = dynamic_cast<ForkFrame*>(&frame);
-  if (fork == nullptr) {
-    return;
-  }
-
-  fork->setState(ForkFrame::State::kAbandoned);
-  for (auto& branch : fork->branches_) {
-    abandonFrame(*branch);
-  }
-}
-
-void WorkflowInterpreter::executeCall(SequenceFrame& sequence, const NamedTask& step) {
+auto WorkflowInterpreter::ExecuteCall(SequenceFrame& owner, const NamedTask& step) -> absl::Status {
   const Task& task = step.task_;
   const auto& call = std::get<CallBody>(task.body_);
 
   // A step only needs a JSON subject when one of its expressions runs; a step
   // that merely passes opaque bytes through to its child is fine.
-  const utils::Jv* subject = sequence.data_.IsJson() ? &sequence.data_.Json() : nullptr;
+  const utils::Jv* subject = owner.Data().IsJson() ? &owner.Data().Json() : nullptr;
   auto projection = ProjectCall(call.with_, subject, engine_);
   if (!projection.ok()) {
-    failSequence(sequence, task::TASK_STATUS_INTERNAL, projection.status().message());
-
-    return;
+    return projection.status();
   }
 
-  auto body = buildChildBody(task, sequence.data_, subject);
+  auto body = buildChildBody(task, owner.Data(), subject);
   if (!body.ok()) {
-    failSequence(sequence, task::TASK_STATUS_INTERNAL, body.status().message());
-
-    return;
+    return body.status();
   }
 
   const std::string child_id = utils::GenerateTaskId();
@@ -734,8 +423,8 @@ void WorkflowInterpreter::executeCall(SequenceFrame& sequence, const NamedTask& 
   *child.mutable_requirements() = projection->requirements_;
   child.set_body(*body);
 
-  sequence.setState(SequenceFrame::State::kWaiting, child_id);
-  owner_by_child_.insert_or_assign(child_id, &sequence);
+  owner.Suspend(child_id);
+  owner_by_child_.insert_or_assign(child_id, &owner);
 
   submitter_.Submit(std::move(child),
                     std::make_unique<ChildResultReceiver>(weak_from_this(), child_id));
@@ -747,27 +436,11 @@ void WorkflowInterpreter::executeCall(SequenceFrame& sequence, const NamedTask& 
   if (pending != pending_.end()) {
     ChildOutcome outcome = std::move(pending->second);
     pending_.erase(pending);
-    applyOutcome(sequence, child_id, std::move(outcome));
-  }
-}
-
-auto WorkflowInterpreter::applyOutcome(SequenceFrame& sequence, const std::string& child_id,
-                                       ChildOutcome outcome) -> bool {
-  owner_by_child_.erase(child_id);
-  if (sequence.IsWaiting() && sequence.WaitingChildId() == child_id) {
-    sequence.setState(SequenceFrame::State::kReady);
+    owner_by_child_.erase(child_id);
+    owner.ApplyOutcome(std::move(outcome));
   }
 
-  if (outcome.IsError()) {
-    failSequence(sequence, outcome.status_, outcome.reason_);
-
-    return false;
-  }
-
-  sequence.data_ = StepDataValue::FromBytes(std::move(outcome.body_));
-  ++sequence.cursor_;
-
-  return true;
+  return absl::OkStatus();
 }
 
 auto WorkflowInterpreter::buildChildBody(const Task& task, const StepDataValue& data,
@@ -840,10 +513,10 @@ auto WorkflowInterpreter::renderFrom(
   return ::strij::openworkflow::ValueToJv(*evaluated).Dump();
 }
 
-void WorkflowInterpreter::succeed() {
+void WorkflowInterpreter::succeed(StepDataValue value) {
   task::TaskResult result;
   result.set_id(parent_id_);
-  result.set_body(root_->data_.Bytes());
+  result.set_body(value.Bytes());
   result.set_is_final(true);
   setState(State::kSucceeded);
 
@@ -863,29 +536,6 @@ void WorkflowInterpreter::fail(task::TaskStatus status, std::string_view step,
   if (on_complete_) {
     on_complete_(std::move(result));
   }
-}
-
-void WorkflowInterpreter::failSequence(SequenceFrame& sequence, task::TaskStatus status,
-                                       std::string_view message) {
-  const SequenceFrame* branch = &sequence;
-  while (branch->owner_fork_ == nullptr && branch->ParentSequence() != nullptr) {
-    branch = branch->ParentSequence();
-  }
-
-  if (branch->owner_fork_ == nullptr) {
-    fail(status, currentStepName(sequence), message);
-
-    return;
-  }
-
-  std::string body = absl::StrCat("branch '", branch->branch_name_, "': ");
-  const std::string step = currentStepName(sequence);
-  if (branch != &sequence && !step.empty()) {
-    absl::StrAppend(&body, "step '", step, "': ");
-  }
-  absl::StrAppend(&body, message);
-
-  fail(status, "", body);
 }
 
 } // namespace strij::nodeagent::task_handlers::openworkflow

@@ -71,6 +71,19 @@ strij_cc_test(
 )
 
 strij_cc_test(
+    name = "frame_test",
+    srcs = ["frame_test.cc"],
+    deps = [
+        "//api/common/task:task_cc_proto",
+        "//src/nodeagent/extensions/task_handlers/openworkflow:openworkflow_task_handler_lib",
+        "//src/openworkflow:openworkflow_model_lib",
+        "//src/openworkflow/parser:openworkflow_parser_lib",
+        "@abseil-cpp//absl/status",
+        "@googletest//:gtest_main",
+    ],
+)
+
+strij_cc_test(
     name = "openworkflow_task_handler_test",
     srcs = ["openworkflow_task_handler_test.cc"],
     deps = [
