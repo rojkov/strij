@@ -1017,6 +1017,380 @@ do:
         type: echo
 )YAML";
 
+constexpr std::string_view kDocumentInputObservesEmptyContext = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: initial-context
+  version: '0.1.0'
+input:
+  from: '${ {context: $context} }'
+do:
+  - one:
+      call: strij
+      with:
+        type: echo
+)YAML";
+
+constexpr std::string_view kNoExportLeavesContextEmpty = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: empty-context
+  version: '0.1.0'
+output:
+  as: '${ $context }'
+do:
+  - one:
+      call: strij
+      with:
+        type: echo
+)YAML";
+
+constexpr std::string_view kConditionAndParameterReadContext = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: live-context
+  version: '0.1.0'
+do:
+  - seed:
+      call: strij
+      export:
+        as: '${ {token: "abc", enabled: true} }'
+      with:
+        type: echo
+  - gated:
+      if: '${ $context.enabled }'
+      call: strij
+      with:
+        type: echo
+        parameters:
+          p: '${ $context.token }'
+)YAML";
+
+constexpr std::string_view kExportMerge = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: export-merge
+  version: '0.1.0'
+output:
+  as: '${ $context }'
+do:
+  - seed:
+      call: strij
+      export:
+        as: '${ {a: 1} }'
+      with:
+        type: echo
+  - merge:
+      call: strij
+      export:
+        as: '${ $context + {b: 2} }'
+      with:
+        type: echo
+)YAML";
+
+constexpr std::string_view kExportReplace = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: export-replace
+  version: '0.1.0'
+output:
+  as: '${ $context }'
+do:
+  - seed:
+      call: strij
+      export:
+        as: '${ {a: 1} }'
+      with:
+        type: echo
+  - replace:
+      call: strij
+      export:
+        as: '${ . }'
+      with:
+        type: echo
+)YAML";
+
+constexpr std::string_view kExportUsesInputAndOutput = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: export-vars
+  version: '0.1.0'
+output:
+  as: '${ $context }'
+do:
+  - one:
+      call: strij
+      input:
+        from: '${ {seed: .seed} }'
+      output:
+        as: '${ {after: .name} }'
+      export:
+        as: '${ {before: $input, after: $output} }'
+      with:
+        type: echo
+)YAML";
+
+constexpr std::string_view kExportAfterNoExportTask = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: export-then-plain
+  version: '0.1.0'
+output:
+  as: '${ $context }'
+do:
+  - seed:
+      call: strij
+      export:
+        as: '${ {a: 1} }'
+      with:
+        type: echo
+  - plain:
+      call: strij
+      with:
+        type: echo
+)YAML";
+
+constexpr std::string_view kExplicitEmptyExport = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: empty-export
+  version: '0.1.0'
+output:
+  as: '${ $context }'
+do:
+  - seed:
+      call: strij
+      export:
+        as: '${ {a: 1} }'
+      with:
+        type: echo
+  - noop:
+      call: strij
+      export: {}
+      with:
+        type: echo
+)YAML";
+
+constexpr std::string_view kExportSkippedTask = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: export-skipped
+  version: '0.1.0'
+output:
+  as: '${ $context }'
+do:
+  - seed:
+      call: strij
+      export:
+        as: '${ {a: 1} }'
+      with:
+        type: echo
+  - skipped:
+      if: '${ false }'
+      call: strij
+      export:
+        as: '${ {b: 2} }'
+      with:
+        type: echo
+)YAML";
+
+constexpr std::string_view kExportFailedChild = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: export-failed
+  version: '0.1.0'
+do:
+  - one:
+      call: strij
+      export:
+        as: '${ {a: 1} }'
+      with:
+        type: echo
+)YAML";
+
+constexpr std::string_view kDoExport = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: do-export
+  version: '0.1.0'
+output:
+  as: '${ $context }'
+do:
+  - outer:
+      output:
+        as: '${ {id: .id} }'
+      export:
+        as: '${ {context: $output} }'
+      do:
+        - inner:
+            call: strij
+            with:
+              type: echo
+)YAML";
+
+constexpr std::string_view kForkExport = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: fork-export
+  version: '0.1.0'
+output:
+  as: '${ $context }'
+do:
+  - fan:
+      output:
+        as: '${ .[0].id }'
+      export:
+        as: '${ {joined: $output} }'
+      fork:
+        branches:
+          - a:
+              call: strij
+              with:
+                type: echo
+)YAML";
+
+constexpr std::string_view kExportOpaqueOutput = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: export-opaque-output
+  version: '0.1.0'
+do:
+  - one:
+      call: strij
+      export:
+        as: '${ {a: 1} }'
+      with:
+        type: echo
+)YAML";
+
+constexpr std::string_view kExportOpaqueInput = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: export-opaque-input
+  version: '0.1.0'
+do:
+  - one:
+      call: strij
+      export:
+        as: '${ {a: 1} }'
+      with:
+        type: echo
+)YAML";
+
+constexpr std::string_view kExportNonObject = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: export-non-object
+  version: '0.1.0'
+do:
+  - one:
+      call: strij
+      export:
+        as: '${ .value }'
+      with:
+        type: echo
+)YAML";
+
+constexpr std::string_view kExportInlineExactlyOnce = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: export-inline
+  version: '0.1.0'
+output:
+  as: '${ $context }'
+do:
+  - one:
+      call: strij
+      export:
+        as: '${ {count: (($context.count // 0) + 1)} }'
+      with:
+        type: echo
+)YAML";
+
+constexpr std::string_view kBareExportAs = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: bare-export
+  version: '0.1.0'
+do:
+  - one:
+      call: strij
+      export:
+        as: .result
+      with:
+        type: echo
+)YAML";
+
+constexpr std::string_view kMalformedExportAs = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: malformed-export
+  version: '0.1.0'
+do:
+  - one:
+      call: strij
+      export:
+        as: '${ .result( }'
+      with:
+        type: echo
+)YAML";
+
+constexpr std::string_view kExportInsideForkBranch = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: branch-export
+  version: '0.1.0'
+do:
+  - fan:
+      fork:
+        branches:
+          - a:
+              call: strij
+              export:
+                as: '${ {a: 1} }'
+              with:
+                type: echo
+)YAML";
+
+constexpr std::string_view kExportInsideNestedDoInBranch = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: branch-nested-export
+  version: '0.1.0'
+do:
+  - fan:
+      fork:
+        branches:
+          - a:
+              do:
+                - inner:
+                    call: strij
+                    export:
+                      as: '${ {a: 1} }'
+                    with:
+                      type: echo
+)YAML";
+
+constexpr std::string_view kExportInsideNestedForkInBranch = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: branch-nested-fork-export
+  version: '0.1.0'
+do:
+  - fan:
+      fork:
+        branches:
+          - a:
+              fork:
+                branches:
+                  - leaf:
+                      call: strij
+                      export:
+                        as: '${ {a: 1} }'
+                      with:
+                        type: echo
+)YAML";
+
 struct Harness {
   Harness() {
     interpreter_ = std::make_shared<WorkflowInterpreter>(
@@ -1811,6 +2185,222 @@ TEST(InterpreterDocumentOutputTest, OpaqueFinalValueFailsTheRun) {
   ASSERT_EQ(harness.results_.size(), 1U);
   EXPECT_EQ(harness.results_[0].status(), task::TASK_STATUS_INTERNAL);
   EXPECT_NE(harness.results_[0].body().find("not JSON"), std::string::npos);
+}
+
+TEST(InterpreterContextTest, DocumentInputObservesTheEmptySeed) {
+  Harness harness;
+  harness.interpreter_->Start(std::string(kDocumentInputObservesEmptyContext), R"({"id":1})");
+  ASSERT_EQ(harness.submitter_.size(), 1U);
+  EXPECT_EQ(harness.submitter_.last()->task_.body(), R"({"context":{}})");
+}
+
+TEST(InterpreterContextTest, AWorkflowWithoutExportObservesAnEmptyObject) {
+  Harness harness;
+  harness.interpreter_->Start(std::string(kNoExportLeavesContextEmpty));
+  ASSERT_EQ(harness.submitter_.size(), 1U);
+
+  test::CompleteSuccessAt(harness.submitter_, 0, "1");
+
+  ASSERT_EQ(harness.results_.size(), 1U);
+  EXPECT_EQ(harness.results_[0].body(), "{}");
+}
+
+TEST(InterpreterContextTest, ConditionsAndCallParametersObserveTheLiveContext) {
+  Harness harness;
+  harness.interpreter_->Start(std::string(kConditionAndParameterReadContext));
+  ASSERT_EQ(harness.submitter_.size(), 1U);
+
+  test::CompleteSuccessAt(harness.submitter_, 0, R"({"ignored":true})");
+
+  ASSERT_EQ(harness.submitter_.size(), 2U);
+  EXPECT_EQ(harness.submitter_.at(1)->task_.parameters().at("p"), "abc");
+}
+
+TEST(InterpreterExportTest, MergeCombinesTheCurrentContext) {
+  Harness harness;
+  harness.interpreter_->Start(std::string(kExportMerge));
+  ASSERT_EQ(harness.submitter_.size(), 1U);
+
+  test::CompleteSuccessAt(harness.submitter_, 0, R"({"ignored":true})");
+  ASSERT_EQ(harness.submitter_.size(), 2U);
+  test::CompleteSuccessAt(harness.submitter_, 1, R"({"ignored":true})");
+
+  ASSERT_EQ(harness.results_.size(), 1U);
+  EXPECT_EQ(harness.results_[0].body(), R"({"a":1,"b":2})");
+}
+
+TEST(InterpreterExportTest, ExportReplacesTheCurrentContext) {
+  Harness harness;
+  harness.interpreter_->Start(std::string(kExportReplace));
+  ASSERT_EQ(harness.submitter_.size(), 1U);
+
+  test::CompleteSuccessAt(harness.submitter_, 0, R"({"ignored":true})");
+  ASSERT_EQ(harness.submitter_.size(), 2U);
+  test::CompleteSuccessAt(harness.submitter_, 1, R"({"b":2})");
+
+  ASSERT_EQ(harness.results_.size(), 1U);
+  EXPECT_EQ(harness.results_[0].body(), R"({"b":2})");
+}
+
+TEST(InterpreterExportTest, ExportBindsInputAndShapedOutput) {
+  Harness harness;
+  harness.interpreter_->Start(std::string(kExportUsesInputAndOutput), R"({"seed":1})");
+  ASSERT_EQ(harness.submitter_.size(), 1U);
+
+  test::CompleteSuccessAt(harness.submitter_, 0, R"({"name":"pet"})");
+
+  ASSERT_EQ(harness.results_.size(), 1U);
+  EXPECT_EQ(harness.results_[0].body(), R"({"after":{"after":"pet"},"before":{"seed":1}})");
+}
+
+TEST(InterpreterExportTest, ATaskWithoutExportLeavesTheContextUnchanged) {
+  Harness harness;
+  harness.interpreter_->Start(std::string(kExportAfterNoExportTask));
+  ASSERT_EQ(harness.submitter_.size(), 1U);
+
+  test::CompleteSuccessAt(harness.submitter_, 0, R"({"ignored":true})");
+  ASSERT_EQ(harness.submitter_.size(), 2U);
+  test::CompleteSuccessAt(harness.submitter_, 1, R"({"b":2})");
+
+  ASSERT_EQ(harness.results_.size(), 1U);
+  EXPECT_EQ(harness.results_[0].body(), R"({"a":1})");
+}
+
+TEST(InterpreterExportTest, AnExportWithoutAsLeavesTheContextUnchanged) {
+  Harness harness;
+  harness.interpreter_->Start(std::string(kExplicitEmptyExport));
+  ASSERT_EQ(harness.submitter_.size(), 1U);
+
+  test::CompleteSuccessAt(harness.submitter_, 0, R"({"ignored":true})");
+  ASSERT_EQ(harness.submitter_.size(), 2U);
+  test::CompleteSuccessAt(harness.submitter_, 1, R"({"b":2})");
+
+  ASSERT_EQ(harness.results_.size(), 1U);
+  EXPECT_EQ(harness.results_[0].body(), R"({"a":1})");
+}
+
+TEST(InterpreterExportTest, ASkippedTaskDoesNotExport) {
+  Harness harness;
+  harness.interpreter_->Start(std::string(kExportSkippedTask));
+  ASSERT_EQ(harness.submitter_.size(), 1U);
+
+  test::CompleteSuccessAt(harness.submitter_, 0, R"({"ignored":true})");
+
+  ASSERT_EQ(harness.submitter_.size(), 1U);
+  ASSERT_EQ(harness.results_.size(), 1U);
+  EXPECT_EQ(harness.results_[0].body(), R"({"a":1})");
+}
+
+TEST(InterpreterExportTest, AFailedChildDoesNotExport) {
+  Harness harness;
+  harness.interpreter_->Start(std::string(kExportFailedChild));
+  ASSERT_EQ(harness.submitter_.size(), 1U);
+
+  test::CompleteError(harness.submitter_, "boom", task::TASK_STATUS_CAPACITY_REFUSED);
+
+  ASSERT_EQ(harness.results_.size(), 1U);
+  EXPECT_EQ(harness.results_[0].status(), task::TASK_STATUS_CAPACITY_REFUSED);
+  EXPECT_NE(harness.results_[0].body().find("one"), std::string::npos);
+}
+
+TEST(InterpreterExportTest, ACompositeDoExportsItsShapedOutput) {
+  Harness harness;
+  harness.interpreter_->Start(std::string(kDoExport));
+  ASSERT_EQ(harness.submitter_.size(), 1U);
+
+  test::CompleteSuccessAt(harness.submitter_, 0, R"({"id":7})");
+
+  ASSERT_EQ(harness.results_.size(), 1U);
+  EXPECT_EQ(harness.results_[0].body(), R"({"context":{"id":7}})");
+}
+
+TEST(InterpreterExportTest, AForkExportsItsShapedJoinValue) {
+  Harness harness;
+  harness.interpreter_->Start(std::string(kForkExport));
+  ASSERT_EQ(harness.submitter_.size(), 1U);
+
+  test::CompleteSuccessAt(harness.submitter_, 0, R"({"id":7})");
+
+  ASSERT_EQ(harness.results_.size(), 1U);
+  EXPECT_EQ(harness.results_[0].body(), R"({"joined":7})");
+}
+
+TEST(InterpreterExportTest, OpaqueTransformedOutputFailsTheStep) {
+  Harness harness;
+  harness.interpreter_->Start(std::string(kExportOpaqueOutput), R"({"id":1})");
+  ASSERT_EQ(harness.submitter_.size(), 1U);
+
+  test::CompleteSuccessAt(harness.submitter_, 0, "not json");
+
+  ASSERT_EQ(harness.results_.size(), 1U);
+  EXPECT_EQ(harness.results_[0].status(), task::TASK_STATUS_INTERNAL);
+  EXPECT_NE(harness.results_[0].body().find("one"), std::string::npos);
+  EXPECT_NE(harness.results_[0].body().find("not JSON"), std::string::npos);
+}
+
+TEST(InterpreterExportTest, OpaqueTransformedInputFailsTheStep) {
+  Harness harness;
+  harness.interpreter_->Start(std::string(kExportOpaqueInput), "not json");
+  ASSERT_EQ(harness.submitter_.size(), 1U);
+
+  test::CompleteSuccessAt(harness.submitter_, 0, R"({"id":1})");
+
+  ASSERT_EQ(harness.results_.size(), 1U);
+  EXPECT_EQ(harness.results_[0].status(), task::TASK_STATUS_INTERNAL);
+  EXPECT_NE(harness.results_[0].body().find("one"), std::string::npos);
+  EXPECT_NE(harness.results_[0].body().find("input"), std::string::npos);
+  EXPECT_NE(harness.results_[0].body().find("not JSON"), std::string::npos);
+}
+
+TEST(InterpreterExportTest, ANonObjectExportResultFailsTheStep) {
+  Harness harness;
+  harness.interpreter_->Start(std::string(kExportNonObject), R"({"value":7})");
+  ASSERT_EQ(harness.submitter_.size(), 1U);
+
+  test::CompleteSuccessAt(harness.submitter_, 0, R"({"value":7})");
+
+  ASSERT_EQ(harness.results_.size(), 1U);
+  EXPECT_EQ(harness.results_[0].status(), task::TASK_STATUS_INTERNAL);
+  EXPECT_NE(harness.results_[0].body().find("one"), std::string::npos);
+  EXPECT_NE(harness.results_[0].body().find("must be an object"), std::string::npos);
+}
+
+TEST(InterpreterExportTest, ALocalChildCompletingInsideSubmitExportsExactlyOnce) {
+  Harness harness;
+  harness.submitter_.SetOnSubmit([](const task::Task& /*task*/, gateway::ResultReceiver& receiver) {
+    const std::string body = R"("done")";
+    const auto data = std::as_bytes(std::span(body.data(), body.size()));
+    receiver.Deliver(data, true);
+  });
+
+  harness.interpreter_->Start(std::string(kExportInlineExactlyOnce));
+
+  ASSERT_EQ(harness.results_.size(), 1U);
+  EXPECT_EQ(harness.results_[0].body(), R"({"count":1})");
+}
+
+TEST(InterpreterValidationTest, BareAndMalformedExportAsFailBeforeSubmission) {
+  for (std::string_view document : {kBareExportAs, kMalformedExportAs}) {
+    Harness harness;
+    harness.interpreter_->Start(std::string(document));
+
+    ASSERT_EQ(harness.results_.size(), 1U);
+    EXPECT_EQ(harness.results_[0].status(), task::TASK_STATUS_MALFORMED_REQUEST);
+    EXPECT_EQ(harness.submitter_.size(), 0U);
+  }
+}
+
+TEST(InterpreterValidationTest, ExportInsideAForkBranchIsUnimplemented) {
+  for (std::string_view document :
+       {kExportInsideForkBranch, kExportInsideNestedDoInBranch, kExportInsideNestedForkInBranch}) {
+    Harness harness;
+    harness.interpreter_->Start(std::string(document));
+
+    ASSERT_EQ(harness.results_.size(), 1U);
+    EXPECT_EQ(harness.results_[0].status(), task::TASK_STATUS_UNIMPLEMENTED);
+    EXPECT_NE(harness.results_[0].body().find("fork branch"), std::string::npos);
+    EXPECT_EQ(harness.submitter_.size(), 0U);
+  }
 }
 
 // NOLINTEND(modernize-use-trailing-return-type)

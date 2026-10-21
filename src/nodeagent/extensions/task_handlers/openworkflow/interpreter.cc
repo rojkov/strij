@@ -136,15 +136,31 @@ auto validateTaskSlots(const Task& task, ExpressionEngine& engine) -> std::optio
     }
   }
 
+  if (task.export_.has_value() && task.export_->as_.has_value()) {
+    if (auto failure = validateSlot(*task.export_->as_, TypedSlot::kTaskExport, engine);
+        failure.has_value()) {
+      return failure;
+    }
+  }
+
   return std::nullopt;
 }
 
-auto validateTasks(const Tasks& tasks, const Document& document, ExpressionEngine& engine)
-    -> std::optional<Failure>;
+auto validateTasks(const Tasks& tasks, const Document& document, ExpressionEngine& engine,
+                   bool inside_fork_branch) -> std::optional<Failure>;
 
-auto validateTask(const NamedTask& named, const Document& document, ExpressionEngine& engine)
-    -> std::optional<Failure> {
+auto validateTask(const NamedTask& named, const Document& document, ExpressionEngine& engine,
+                  bool inside_fork_branch) -> std::optional<Failure> {
   const Task& task = named.task_;
+
+  // Fork branches run concurrently, so there is no defined way to combine
+  // simultaneous context writes. Reject export there before executing anything.
+  if (inside_fork_branch && task.export_.has_value()) {
+    return Failure{.phase_ = Phase::kValidation,
+                   .status_ = task::TASK_STATUS_UNIMPLEMENTED,
+                   .step_ = named.name_,
+                   .message_ = "export inside a fork branch is not supported"};
+  }
 
   if (auto failure = validateTaskSlots(task, engine); failure.has_value()) {
     failure->step_ = named.name_;
@@ -152,7 +168,7 @@ auto validateTask(const NamedTask& named, const Document& document, ExpressionEn
   }
 
   if (const auto* do_body = std::get_if<DoBody>(&task.body_)) {
-    return validateTasks(do_body->do_, document, engine);
+    return validateTasks(do_body->do_, document, engine, inside_fork_branch);
   }
 
   if (const auto* fork_body = std::get_if<ForkBody>(&task.body_)) {
@@ -163,7 +179,7 @@ auto validateTask(const NamedTask& named, const Document& document, ExpressionEn
                      .message_ = "a competing fork must declare at least one branch"};
     }
 
-    return validateTasks(fork_body->branches_, document, engine);
+    return validateTasks(fork_body->branches_, document, engine, true);
   }
 
   if (!std::holds_alternative<CallBody>(task.body_)) {
@@ -219,10 +235,11 @@ auto validateTask(const NamedTask& named, const Document& document, ExpressionEn
   return std::nullopt;
 }
 
-auto validateTasks(const Tasks& tasks, const Document& document, ExpressionEngine& engine)
-    -> std::optional<Failure> {
+auto validateTasks(const Tasks& tasks, const Document& document, ExpressionEngine& engine,
+                   bool inside_fork_branch) -> std::optional<Failure> {
   for (const NamedTask& named : tasks) {
-    if (auto failure = validateTask(named, document, engine); failure.has_value()) {
+    if (auto failure = validateTask(named, document, engine, inside_fork_branch);
+        failure.has_value()) {
       return failure;
     }
   }
@@ -248,7 +265,7 @@ auto ValidateDocument(const Document& document, ExpressionEngine& engine)
     }
   }
 
-  return validateTasks(document.do_, document, engine);
+  return validateTasks(document.do_, document, engine, false);
 }
 
 WorkflowInterpreter::WorkflowInterpreter(ChildTaskSubmitter& submitter,
@@ -309,6 +326,14 @@ void WorkflowInterpreter::Start(std::string_view document_text, std::string_view
 
     return;
   }
+
+  auto context = utils::Jv::Parse("{}");
+  if (!context.ok()) {
+    fail(task::TASK_STATUS_INTERNAL, "", context.status().message());
+
+    return;
+  }
+  context_ = std::move(*context);
 
   // The invocation input seeds the chain. An empty body is the same as no
   // input: JSON null, which is also the subject a document-level `input.from`
@@ -391,8 +416,9 @@ void WorkflowInterpreter::terminalize(FrameResult result) {
         return;
       }
 
-      auto transformed = engine_.EvaluateTypedSlot(slotValue(*document_->output_->as_),
-                                                   TypedSlot::kDocumentOutput, value.Json());
+      auto transformed =
+          engine_.EvaluateTypedSlot(slotValue(*document_->output_->as_), TypedSlot::kDocumentOutput,
+                                    value.Json(), ExpressionArguments{.context = &context_});
       if (!transformed.ok()) {
         fail(task::TASK_STATUS_INTERNAL, "", transformed.status().message());
 
@@ -456,7 +482,7 @@ auto WorkflowInterpreter::EvaluateCondition(const NamedTask& step, const StepDat
   }
 
   auto result = engine_.EvaluateTypedSlot(::strij::openworkflow::Value{*task.if_}, TypedSlot::kIf,
-                                          raw.Json());
+                                          raw.Json(), ExpressionArguments{.context = &context_});
   if (!result.ok()) {
     return result.status();
   }
@@ -516,7 +542,8 @@ auto WorkflowInterpreter::transformInput(
     subject = &null_subject;
   }
 
-  auto result = engine_.EvaluateTypedSlot(slot, TypedSlot::kInputFrom, *subject);
+  auto result = engine_.EvaluateTypedSlot(slot, TypedSlot::kInputFrom, *subject,
+                                          ExpressionArguments{.context = &context_});
   if (!result.ok()) {
     return result.status();
   }
@@ -535,13 +562,48 @@ auto WorkflowInterpreter::transformOutput(
     return absl::InvalidArgumentError("the output subject is not JSON");
   }
 
-  auto result = engine_.EvaluateTypedSlot(slotValue(as_value), TypedSlot::kTaskOutput,
-                                          raw_output.Json(), &input.Json(), &raw_output.Json());
+  auto result = engine_.EvaluateTypedSlot(
+      slotValue(as_value), TypedSlot::kTaskOutput, raw_output.Json(),
+      ExpressionArguments{
+          .context = &context_, .input = &input.Json(), .output = &raw_output.Json()});
   if (!result.ok()) {
     return result.status();
   }
 
   return StepDataValue::FromBytes(result->Dump());
+}
+
+auto WorkflowInterpreter::ExportTaskResult(const NamedTask& step, const StepDataValue& input,
+                                           const StepDataValue& transformed_output)
+    -> absl::Status {
+  const Task& task = step.task_;
+  if (!task.export_.has_value() || !task.export_->as_.has_value()) {
+    return absl::OkStatus();
+  }
+
+  if (!input.IsJson()) {
+    return absl::InvalidArgumentError("the task input is not JSON");
+  }
+
+  if (!transformed_output.IsJson()) {
+    return absl::InvalidArgumentError("the task output is not JSON");
+  }
+
+  auto result = engine_.EvaluateTypedSlot(
+      slotValue(*task.export_->as_), TypedSlot::kTaskExport, transformed_output.Json(),
+      ExpressionArguments{
+          .context = &context_, .input = &input.Json(), .output = &transformed_output.Json()});
+  if (!result.ok()) {
+    return result.status();
+  }
+
+  if (!::strij::openworkflow::JvToValue(*result).IsObject()) {
+    return absl::InvalidArgumentError("the exported context must be an object");
+  }
+
+  context_ = std::move(*result);
+
+  return absl::OkStatus();
 }
 
 auto WorkflowInterpreter::ExecuteCall(SequenceFrame& owner, const NamedTask& step,
@@ -553,7 +615,7 @@ auto WorkflowInterpreter::ExecuteCall(SequenceFrame& owner, const NamedTask& ste
   // source of the child body. A step that merely passes opaque bytes through
   // to its child does not need a JSON subject.
   const utils::Jv* subject = input.IsJson() ? &input.Json() : nullptr;
-  auto projection = ProjectCall(call.with_, subject, engine_);
+  auto projection = ProjectCall(call.with_, subject, &context_, engine_);
   if (!projection.ok()) {
     return projection.status();
   }

@@ -31,14 +31,15 @@ auto findKey(const ::strij::openworkflow::Value::Object& object, std::string_vie
 // the data chain; a literal scalar is rendered canonically; an object or array
 // is rejected.
 auto projectParameter(std::string_view key, const ::strij::openworkflow::Value& member,
-                      const utils::Jv* subject, ExpressionEngine& engine)
+                      const utils::Jv* subject, const utils::Jv* context, ExpressionEngine& engine)
     -> absl::StatusOr<std::string> {
   if (member.IsString() && IsExpression(member.AsString())) {
     if (subject == nullptr) {
       return absl::InvalidArgumentError("the data subject is not JSON");
     }
 
-    auto result = engine.Run(ExpressionProgram(member.AsString()), *subject);
+    auto result = engine.Run(ExpressionProgram(member.AsString()), *subject,
+                             ExpressionArguments{.context = context});
     if (!result.ok()) {
       return result.status();
     }
@@ -55,10 +56,10 @@ auto projectParameter(std::string_view key, const ::strij::openworkflow::Value& 
 }
 
 auto projectParameters(const ::strij::openworkflow::Value& parameters, const utils::Jv* subject,
-                       ExpressionEngine& engine, std::map<std::string, std::string>& out)
-    -> absl::Status {
+                       const utils::Jv* context, ExpressionEngine& engine,
+                       std::map<std::string, std::string>& out) -> absl::Status {
   for (const auto& [key, member] : parameters.AsObject()) {
-    auto rendered = projectParameter(key, member, subject, engine);
+    auto rendered = projectParameter(key, member, subject, context, engine);
     if (!rendered.ok()) {
       return rendered.status();
     }
@@ -216,14 +217,15 @@ auto ValidateCallArguments(const ::strij::openworkflow::Value& with) -> absl::St
 }
 
 auto ProjectCall(const ::strij::openworkflow::Value& with, const utils::Jv* subject,
-                 ExpressionEngine& engine) -> absl::StatusOr<CallProjection> {
+                 const utils::Jv* context, ExpressionEngine& engine)
+    -> absl::StatusOr<CallProjection> {
   const ::strij::openworkflow::Value::Object& object = with.AsObject();
   CallProjection projection;
   projection.type_ = findKey(object, kTypeKey)->AsString();
 
   const ::strij::openworkflow::Value* parameters = findKey(object, kParametersKey);
   if (parameters != nullptr) {
-    auto status = projectParameters(*parameters, subject, engine, projection.parameters_);
+    auto status = projectParameters(*parameters, subject, context, engine, projection.parameters_);
     if (!status.ok()) {
       return status;
     }

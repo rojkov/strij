@@ -1,13 +1,13 @@
-#include "nodeagent/extensions/task_handlers/openworkflow/call_strij.hh"
-
 #include <cstdint>
 #include <string>
 
+#include "test/nodeagent/extensions/task_handlers/openworkflow/fakes.hh"
+
 #include "common/core/utils/jv.hh"
 #include "gtest/gtest.h"
+#include "nodeagent/extensions/task_handlers/openworkflow/call_strij.hh"
 #include "openworkflow/document.hh"
 #include "openworkflow/use.hh"
-#include "test/nodeagent/extensions/task_handlers/openworkflow/fakes.hh"
 
 namespace strij::nodeagent::task_handlers::openworkflow {
 namespace {
@@ -143,7 +143,7 @@ TEST(ProjectCallTest, ProjectsTypeParametersAndRequirements) {
       {"parameters", Value{Value::Object{{"function", Value{"/bin/cat"}}}}},
       {"requirements", Value{Value::Object{{"cpu", Value{std::int64_t{2}}}}}},
   });
-  auto projection = ProjectCall(with, &*subject, engine);
+  auto projection = ProjectCall(with, &*subject, nullptr, engine);
   ASSERT_TRUE(projection.ok()) << projection.status().message();
   EXPECT_EQ(projection->type_, "piped_executable");
   EXPECT_EQ(projection->parameters_.at("function"), "/bin/cat");
@@ -159,9 +159,25 @@ TEST(ProjectCallTest, EvaluatesParameterExpressionUnquoted) {
       {"type", Value{"echo"}},
       {"parameters", Value{Value::Object{{"p", Value{"${ .name }"}}}}},
   });
-  auto projection = ProjectCall(with, &*subject, engine);
+  auto projection = ProjectCall(with, &*subject, nullptr, engine);
   ASSERT_TRUE(projection.ok()) << projection.status().message();
   EXPECT_EQ(projection->parameters_.at("p"), "widget");
+}
+
+TEST(ProjectCallTest, ParameterExpressionObservesTheLiveContext) {
+  ExpressionEngine engine(test::JqEvaluatorConfig());
+  auto subject = utils::Jv::Parse(R"({"name":"widget"})");
+  ASSERT_TRUE(subject.ok());
+  auto context = utils::Jv::Parse(R"({"token":"abc"})");
+  ASSERT_TRUE(context.ok());
+
+  const Value with = With({
+      {"type", Value{"echo"}},
+      {"parameters", Value{Value::Object{{"p", Value{"${ $context.token }"}}}}},
+  });
+  auto projection = ProjectCall(with, &*subject, &*context, engine);
+  ASSERT_TRUE(projection.ok()) << projection.status().message();
+  EXPECT_EQ(projection->parameters_.at("p"), "abc");
 }
 
 TEST(ProjectCallTest, RendersNumericParameterCanonically) {
@@ -173,7 +189,7 @@ TEST(ProjectCallTest, RendersNumericParameterCanonically) {
       {"type", Value{"echo"}},
       {"parameters", Value{Value::Object{{"p", Value{"${ .n + 1 }"}}}}},
   });
-  auto projection = ProjectCall(with, &*subject, engine);
+  auto projection = ProjectCall(with, &*subject, nullptr, engine);
   ASSERT_TRUE(projection.ok()) << projection.status().message();
   EXPECT_EQ(projection->parameters_.at("p"), "42");
 }
@@ -187,7 +203,7 @@ TEST(ProjectCallTest, RejectsNullParameterExpression) {
       {"type", Value{"echo"}},
       {"parameters", Value{Value::Object{{"p", Value{"${ .missing }"}}}}},
   });
-  EXPECT_FALSE(ProjectCall(with, &*subject, engine).ok());
+  EXPECT_FALSE(ProjectCall(with, &*subject, nullptr, engine).ok());
 }
 
 TEST(ProjectCallTest, RejectsNonScalarParameterExpression) {
@@ -199,7 +215,7 @@ TEST(ProjectCallTest, RejectsNonScalarParameterExpression) {
       {"type", Value{"echo"}},
       {"parameters", Value{Value::Object{{"p", Value{"${ . }"}}}}},
   });
-  EXPECT_FALSE(ProjectCall(with, &*subject, engine).ok());
+  EXPECT_FALSE(ProjectCall(with, &*subject, nullptr, engine).ok());
 }
 
 // NOLINTEND(modernize-use-trailing-return-type)

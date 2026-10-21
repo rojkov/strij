@@ -152,6 +152,14 @@ void SequenceFrame::ApplyOutcome(ChildOutcome outcome, FrameContext& context) {
     return;
   }
 
+  const absl::Status exported = context.ExportTaskResult(step, *step_input_, *transformed);
+  if (!exported.ok()) {
+    (void)failStep(task::TASK_STATUS_INTERNAL, step, std::string(exported.message()));
+    step_input_.reset();
+
+    return;
+  }
+
   data_ = std::move(*transformed);
   step_input_.reset();
   ++cursor_;
@@ -216,6 +224,14 @@ auto SequenceFrame::advanceContainer(FrameContext& context) -> std::optional<Fra
     step_input_.reset();
 
     return failStep(task::TASK_STATUS_INTERNAL, step, std::string(transformed.status().message()));
+  }
+
+  const absl::Status exported = context.ExportTaskResult(step, *step_input_, *transformed);
+  if (!exported.ok()) {
+    child_.reset();
+    step_input_.reset();
+
+    return failStep(task::TASK_STATUS_INTERNAL, step, std::string(exported.message()));
   }
 
   data_ = std::move(*transformed);

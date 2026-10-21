@@ -12,6 +12,7 @@
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "common/config/extensions.pb.h"
+#include "common/core/utils/jv.hh"
 #include "common/task/task.pb.h"
 #include "nodeagent/extensions/task_handlers/openworkflow/errors.hh"
 #include "nodeagent/extensions/task_handlers/openworkflow/expression.hh"
@@ -102,6 +103,8 @@ private:
   auto TransformTaskOutput(const ::strij::openworkflow::NamedTask& step, const StepDataValue& input,
                            const StepDataValue& raw_output)
       -> absl::StatusOr<StepDataValue> override;
+  auto ExportTaskResult(const ::strij::openworkflow::NamedTask& step, const StepDataValue& input,
+                        const StepDataValue& transformed_output) -> absl::Status override;
   auto ExecuteCall(SequenceFrame& owner, const ::strij::openworkflow::NamedTask& step,
                    const StepDataValue& input) -> absl::Status override;
   void ForgetChild(std::string_view child_id) override;
@@ -116,6 +119,9 @@ private:
 
   ChildTaskSubmitter& submitter_;
   ExpressionEngine engine_;
+  // The workflow-scope `$context`, seeded as `{}` at start and replaced only by
+  // a task's `export.as`.
+  utils::Jv context_;
   std::string parent_id_;
   Completion on_complete_;
 

@@ -81,6 +81,13 @@ public:
                                    const StepDataValue& input, const StepDataValue& raw_output)
       -> absl::StatusOr<StepDataValue> PURE;
 
+  // Applies a task's `export.as` against the shaped task output. Absent
+  // `export`/`as` leaves the context unchanged. A returned error is the step's
+  // own (local) failure.
+  virtual auto ExportTaskResult(const ::strij::openworkflow::NamedTask& step,
+                                const StepDataValue& input, const StepDataValue& transformed_output)
+      -> absl::Status PURE;
+
   // Runs one `call: strij` step for `owner`, projecting its arguments from the
   // transformed input, building the child body, submitting it, and applying an
   // inline outcome. A returned error is the step's own (local) failure.

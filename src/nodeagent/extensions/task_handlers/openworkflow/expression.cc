@@ -108,6 +108,8 @@ auto TypedSlotName(TypedSlot slot) -> std::string_view {
     return "input.from";
   case TypedSlot::kTaskOutput:
     return "output.as";
+  case TypedSlot::kTaskExport:
+    return "export.as";
   case TypedSlot::kDocumentOutput:
     return "the document's output.as";
   }
@@ -120,7 +122,7 @@ namespace {
 auto typedSlotVariables(TypedSlot slot) -> std::vector<std::string> {
   std::vector<std::string> variables{std::string(kContextVariable)};
 
-  if (slot == TypedSlot::kTaskOutput) {
+  if (slot == TypedSlot::kTaskOutput || slot == TypedSlot::kTaskExport) {
     variables.emplace_back(kInputVariable);
     variables.emplace_back(kOutputVariable);
   }
@@ -187,15 +189,22 @@ auto ExpressionEngine::compile(std::string_view program,
   return absl::OkStatus();
 }
 
-auto ExpressionEngine::Run(std::string_view program, const utils::Jv& subject)
-    -> absl::StatusOr<utils::Jv> {
-  auto context = utils::Jv::Parse("{}");
-  if (!context.ok()) {
-    return context.status();
+auto ExpressionEngine::Run(std::string_view program, const utils::Jv& subject,
+                           const ExpressionArguments& arguments) -> absl::StatusOr<utils::Jv> {
+  utils::Jv empty_context;
+  const utils::Jv* context = arguments.context;
+  if (context == nullptr) {
+    auto parsed = utils::Jv::Parse("{}");
+    if (!parsed.ok()) {
+      return parsed.status();
+    }
+
+    empty_context = std::move(*parsed);
+    context = &empty_context;
   }
 
   std::vector<utils::Jv> args;
-  args.push_back(std::move(*context));
+  args.push_back(context->Copy());
 
   return run(program, subject, {std::string(kContextVariable)}, args);
 }
@@ -244,13 +253,14 @@ auto ExpressionEngine::Validate(const ::strij::openworkflow::Value& value) -> ab
   return absl::OkStatus();
 }
 
-auto ExpressionEngine::Evaluate(const ::strij::openworkflow::Value& value, const utils::Jv& subject)
+auto ExpressionEngine::Evaluate(const ::strij::openworkflow::Value& value, const utils::Jv& subject,
+                                const ExpressionArguments& arguments)
     -> absl::StatusOr<::strij::openworkflow::Value> {
   if (value.IsString()) {
     const std::string& text = value.AsString();
 
     if (IsExpression(text)) {
-      auto result = Run(ExpressionProgram(text), subject);
+      auto result = Run(ExpressionProgram(text), subject, arguments);
       if (!result.ok()) {
         return result.status();
       }
@@ -271,7 +281,7 @@ auto ExpressionEngine::Evaluate(const ::strij::openworkflow::Value& value, const
     array.reserve(value.AsArray().size());
 
     for (const ::strij::openworkflow::Value& element : value.AsArray()) {
-      auto evaluated = Evaluate(element, subject);
+      auto evaluated = Evaluate(element, subject, arguments);
       if (!evaluated.ok()) {
         return evaluated.status();
       }
@@ -285,7 +295,7 @@ auto ExpressionEngine::Evaluate(const ::strij::openworkflow::Value& value, const
   if (value.IsObject()) {
     ::strij::openworkflow::Value::Object object;
     for (const auto& [key, member] : value.AsObject()) {
-      auto evaluated = Evaluate(member, subject);
+      auto evaluated = Evaluate(member, subject, arguments);
       if (!evaluated.ok()) {
         return evaluated.status();
       }
@@ -299,8 +309,8 @@ auto ExpressionEngine::Evaluate(const ::strij::openworkflow::Value& value, const
   return value;
 }
 
-auto ExpressionEngine::ValidateTypedSlot(const ::strij::openworkflow::Value& value, TypedSlot slot)
-    -> absl::Status {
+auto ExpressionEngine::ValidateTypedSlot(const ::strij::openworkflow::Value& value, TypedSlot slot,
+                                         const ExpressionArguments& /*arguments*/) -> absl::Status {
   std::vector<std::string> programs;
   auto status = collectTypedPrograms(value, TypedSlotName(slot), programs);
   if (!status.ok()) {
@@ -319,28 +329,36 @@ auto ExpressionEngine::ValidateTypedSlot(const ::strij::openworkflow::Value& val
 }
 
 auto ExpressionEngine::EvaluateTypedSlot(const ::strij::openworkflow::Value& value, TypedSlot slot,
-                                         const utils::Jv& subject, const utils::Jv* input,
-                                         const utils::Jv* output) -> absl::StatusOr<utils::Jv> {
+                                         const utils::Jv& subject,
+                                         const ExpressionArguments& arguments)
+    -> absl::StatusOr<utils::Jv> {
   const std::vector<std::string> variable_names = typedSlotVariables(slot);
 
-  auto context = utils::Jv::Parse("{}");
-  if (!context.ok()) {
-    return context.status();
+  utils::Jv empty_context;
+  const utils::Jv* context = arguments.context;
+  if (context == nullptr) {
+    auto parsed = utils::Jv::Parse("{}");
+    if (!parsed.ok()) {
+      return parsed.status();
+    }
+
+    empty_context = std::move(*parsed);
+    context = &empty_context;
   }
 
   std::vector<utils::Jv> args;
-  args.push_back(std::move(*context));
+  args.push_back(context->Copy());
 
-  if (slot == TypedSlot::kTaskOutput) {
-    if (input == nullptr) {
+  if (slot == TypedSlot::kTaskOutput || slot == TypedSlot::kTaskExport) {
+    if (arguments.input == nullptr) {
       return absl::InvalidArgumentError("the task input is not JSON");
     }
-    if (output == nullptr) {
+    if (arguments.output == nullptr) {
       return absl::InvalidArgumentError("the task output is not JSON");
     }
 
-    args.push_back(input->Copy());
-    args.push_back(output->Copy());
+    args.push_back(arguments.input->Copy());
+    args.push_back(arguments.output->Copy());
   }
 
   std::function<absl::StatusOr<::strij::openworkflow::Value>(const ::strij::openworkflow::Value&)>

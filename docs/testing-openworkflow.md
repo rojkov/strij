@@ -28,11 +28,11 @@ What each target covers:
 | `//test/openworkflow:value_jv_test` | The `Value` ⇄ JSON bridge (`ValueToJv`/`JvToValue`), including `int64` extremes and `1` vs `1.0`. |
 | `artifact_loader_test` | Loading the workflow document from a local artifact: regular/empty files, missing paths, non-regular files (including a FIFO), and the size cap. |
 | `step_data_value_test` | Data-value sniffing: JSON text, non-JSON text, empty input. |
-| `expression_test` | Strict-mode `${ }` recognition, typed-slot validation (wrapped-only), JSON-faithful evaluation, data-chain subject vs `$context`, `$input`/`$output`, scalar rendering. |
-| `call_strij_test` | The `with` key set, parameter projection, requirement coercion (incl. rejecting `100M`), reserved call targets. |
-| `interpreter_test` | The frame tree, resumable step loop, reentrancy, stale results, the validation/execution split, fork entry/join (join-all, compete, nested), fail-fast branch failures, seeding from the invocation body, `if` short-circuiting, the `input.from` pipeline, and task/document `output.as`. |
+| `expression_test` | Strict-mode `${ }` recognition, typed-slot validation (wrapped-only), JSON-faithful evaluation, data-chain subject vs a live `$context`, `$input`/`$output` (including their absence from slots that do not bind them), and scalar rendering. |
+| `call_strij_test` | The `with` key set, parameter projection (including `$context`), requirement coercion (incl. rejecting `100M`), reserved call targets. |
+| `interpreter_test` | The frame tree, resumable step loop, reentrancy, stale results, the validation/execution split, fork entry/join (join-all, compete, nested), fail-fast branch failures, seeding from the invocation body, `if` short-circuiting, the `input.from` pipeline, task/document `output.as`, and `export.as` context updates (merge/replace, skipped/failed steps, composite tasks, opaque/non-object failures, and the fork-branch rejection). |
 | `openworkflow_task_handler_test` | The handler/factory, function reference resolution and artifact loading, failure-status classification, and connection teardown. |
-| `openworkflow_e2e_test` | The full path through the **real** `piped_executable` handler, driving the child process with a mock dispatcher, with the document loaded from a file and input supplied in the body. Includes join-all, competing fork, and `input.from` + `if` + `output.as` pipeline scenarios. |
+| `openworkflow_e2e_test` | The full path through the **real** `piped_executable` handler, driving the child process with a mock dispatcher, with the document loaded from a file and input supplied in the body. Includes join-all, competing fork, `input.from` + `if` + `output.as` pipeline scenarios, and an `export.as` value read by a later `if` and the document output. |
 
 `openworkflow_e2e_test` includes `ScriptedTwoStepWorkflowChainsChildOutputs`,
 which runs the exact two-step workflow in section 3 through `piped_executable`
@@ -173,11 +173,11 @@ How the result is produced, step by step:
 
 ### Conditions, input.from, and output.as
 
-The expression-typed slots — a task's `if`, `input.from`, and `output.as`, and
-the document's `input.from` and `output.as` — accept only a whole-value `${ }`
-expression. Bare text in one of these slots (for example `if: .enabled`) is a
-malformed document, not a literal value. Literal-capable slots such as a call's
-`with` values keep their literal-text rule.
+The expression-typed slots — a task's `if`, `input.from`, `output.as`, and
+`export.as`, and the document's `input.from` and `output.as` — accept only a
+whole-value `${ }` expression. Bare text in one of these slots (for example
+`if: .enabled`) is a malformed document, not a literal value. Literal-capable
+slots such as a call's `with` values keep their literal-text rule.
 
 This document (the same shape as
 `InputTransformConditionAndOutputShapeCompose`) skips its first step, transforms
@@ -223,6 +223,66 @@ if a step declares `input.from: '${ .name }'` and the body is
 `{"name":"world"}`, the child receives `"world"` (with quotes), not `world`.
 The same rule applies to the document's `input.from`: a string-valued seed
 keeps its quotes in the data chain.
+
+### Exporting workflow context
+
+A task's `export.as` updates the workflow-scope `$context` after the step's
+`output.as` transformation completes. It is evaluated against the transformed
+task output and binds `$input` (the transformed task input), `$output` (the
+transformed task output), and `$context` (the current context). The result must
+be a JSON object and replaces the context; a non-object result fails the step.
+A task with no `export`, or a skipped or failed step, leaves the context
+unchanged. This is the same shape as
+`ExportFlowsIntoAConditionAndTheDocumentOutput`:
+
+```yaml
+document:
+  dsl: '1.0.3'
+  namespace: docs
+  name: export
+  version: '0.1.0'
+input:
+  from: '${ {"token":"abc"} }'
+output:
+  as: '${ {token: $context.token, result: .} }'
+do:
+  - first:
+      call: strij
+      export:
+        as: '${ {token: .echo.token} }'
+      with:
+        type: piped_executable
+        parameters:
+          function: scripts/openworkflow_echo.sh
+        requirements:
+          cpu: 1
+  - gated:
+      if: '${ $context.token == "abc" }'
+      call: strij
+      with:
+        type: piped_executable
+        parameters:
+          function: scripts/openworkflow_echo.sh
+        requirements:
+          cpu: 1
+```
+
+`first` echoes `{"token":"abc"}`, exports `{"token":"abc"}`, and the `gated`
+condition then succeeds. With an empty invocation body, the final result is
+`{"result":{"echo":{"echo":{"token":"abc"}}},"token":"abc"}`. The context is
+not the data chain: `first` exports only the token, and `gated` still receives
+`first`'s full output as its body.
+
+`export.as` is a wrapped-only expression slot, so it is validated before any
+child is submitted, and the exported value must be an object. Use
+`$context + .` to merge and `.` to replace.
+
+**Fork branches cannot export.** Branches run concurrently and the DSL defines
+no way to combine simultaneous context writes, so a task that declares `export`
+inside a fork branch — directly or under a nested `do`/`fork` — is rejected
+during validation with `TASK_STATUS_UNIMPLEMENTED` before any child is
+submitted. A `fork` task's own `export` is supported: it runs after the join
+resolves, against the fork's shaped output.
 
 ### Simpler smoke test (no script)
 
@@ -508,9 +568,12 @@ curl -sS -o /dev/null -w '%{http_code}\n' -X POST http://127.0.0.1:8081/tasks/op
   that is not JSON: it seeds an opaque chain.
 - **Strict-mode `${ }` and wrapped-only typed slots.** A string is an
   expression only when the whole value is wrapped in `${ }`; `jobs/${ .id }` is
-  rejected, not interpolated. In `if`, `input.from`, task `output.as`, and
-  document `output.as`, a bare string is rejected as a malformed document rather
-  than treated as literal text.
+  rejected, not interpolated. In `if`, `input.from`, task `output.as`,
+  task `export.as`, and document `output.as`, a bare string is rejected as a
+  malformed document rather than treated as literal text.
+- **`export` is sequential-only.** A task inside a fork branch may not declare
+  `export`; the document is rejected as unimplemented before submission. Put
+  the export on the fork task itself, or after the join.
 - **String transformations are JSON-quoted.** A string-valued `input.from`
   result reaches the child body as a JSON string (`"world"`), and a
   string-valued document seed stays a JSON string. A child that wants the raw

@@ -55,7 +55,9 @@ auto ValidateCallArguments(const ::strij::openworkflow::Value& with) -> absl::St
 // parameter expressions against `subject` and rendering the results as strings.
 // `subject` is null when the data chain is not JSON; a step with no expression
 // parameters does not need it, but an expression parameter then fails.
+// `context` is the live workflow context bound to `$context`.
 auto ProjectCall(const ::strij::openworkflow::Value& with, const utils::Jv* subject,
-                 ExpressionEngine& engine) -> absl::StatusOr<CallProjection>;
+                 const utils::Jv* context, ExpressionEngine& engine)
+    -> absl::StatusOr<CallProjection>;
 
 } // namespace strij::nodeagent::task_handlers::openworkflow

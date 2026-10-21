@@ -104,14 +104,54 @@ TEST(ExpressionEngineTest, SubjectIsNotContext) {
   EXPECT_EQ(from_context->Dump(), "null");
 }
 
+TEST(ExpressionEngineTest, RunAndEvaluateObserveTheSuppliedContext) {
+  ExpressionEngine engine(test::JqEvaluatorConfig());
+  auto subject = utils::Jv::Parse(R"({"name":"widget"})");
+  ASSERT_TRUE(subject.ok());
+  auto context = utils::Jv::Parse(R"({"token":"abc"})");
+  ASSERT_TRUE(context.ok());
+
+  const ExpressionArguments arguments{.context = &*context};
+  auto run = engine.Run("$context.token", *subject, arguments);
+  ASSERT_TRUE(run.ok()) << run.status().message();
+  EXPECT_EQ(run->Dump(), R"("abc")");
+
+  auto evaluated = engine.Evaluate(Value{Value::Object{{"token", Value{"${ $context.token }"}}}},
+                                   *subject, arguments);
+  ASSERT_TRUE(evaluated.ok()) << evaluated.status().message();
+  EXPECT_EQ(evaluated->AsObject().at("token").AsString(), "abc");
+
+  auto typed =
+      engine.EvaluateTypedSlot(Value{"${ $context.token }"}, TypedSlot::kIf, *subject, arguments);
+  ASSERT_TRUE(typed.ok()) << typed.status().message();
+  EXPECT_EQ(typed->Dump(), R"("abc")");
+}
+
+TEST(ExpressionEngineTest, InputAndOutputAreAbsentFromSlotsThatDoNotBindThem) {
+  ExpressionEngine engine(test::JqEvaluatorConfig());
+  auto context = utils::Jv::Parse(R"({"token":"abc"})");
+  ASSERT_TRUE(context.ok());
+
+  const ExpressionArguments arguments{.context = &*context};
+  for (TypedSlot slot : {TypedSlot::kIf, TypedSlot::kInputFrom, TypedSlot::kDocumentOutput}) {
+    EXPECT_FALSE(engine.ValidateTypedSlot(Value{"${ $input }"}, slot, arguments).ok());
+    EXPECT_FALSE(engine.ValidateTypedSlot(Value{"${ $output }"}, slot, arguments).ok());
+  }
+
+  EXPECT_TRUE(engine.ValidateTypedSlot(Value{"${ $input }"}, TypedSlot::kTaskExport).ok());
+  EXPECT_TRUE(engine.ValidateTypedSlot(Value{"${ $output }"}, TypedSlot::kTaskExport).ok());
+}
+
 TEST(ExpressionEngineTest, TypedSlotsRequireWholeValueWrappers) {
   ExpressionEngine engine(test::JqEvaluatorConfig());
 
   EXPECT_FALSE(engine.ValidateTypedSlot(Value{".enabled"}, TypedSlot::kIf).ok());
   EXPECT_FALSE(engine.ValidateTypedSlot(Value{".payload"}, TypedSlot::kInputFrom).ok());
   EXPECT_FALSE(engine.ValidateTypedSlot(Value{".result"}, TypedSlot::kTaskOutput).ok());
+  EXPECT_FALSE(engine.ValidateTypedSlot(Value{".result"}, TypedSlot::kTaskExport).ok());
   EXPECT_FALSE(engine.ValidateTypedSlot(Value{"${ .x } tail"}, TypedSlot::kIf).ok());
   EXPECT_FALSE(engine.ValidateTypedSlot(Value{"${ .x("}, TypedSlot::kInputFrom).ok());
+  EXPECT_FALSE(engine.ValidateTypedSlot(Value{"${ .x("}, TypedSlot::kTaskExport).ok());
 
   const Value nested{Value::Object{{"id", Value{".payload.id"}}}};
   EXPECT_FALSE(engine.ValidateTypedSlot(nested, TypedSlot::kInputFrom).ok());
@@ -119,6 +159,8 @@ TEST(ExpressionEngineTest, TypedSlotsRequireWholeValueWrappers) {
   EXPECT_TRUE(engine.ValidateTypedSlot(Value{"${ .enabled }"}, TypedSlot::kIf).ok());
   EXPECT_TRUE(engine.ValidateTypedSlot(Value{"${ .payload }"}, TypedSlot::kInputFrom).ok());
   EXPECT_TRUE(engine.ValidateTypedSlot(Value{"${ .result }"}, TypedSlot::kTaskOutput).ok());
+  EXPECT_TRUE(
+      engine.ValidateTypedSlot(Value{"${ { token: .token } }"}, TypedSlot::kTaskExport).ok());
   EXPECT_TRUE(engine
                   .ValidateTypedSlot(Value{Value::Object{{"id", Value{"${ .payload.id }"}}}},
                                      TypedSlot::kInputFrom)
@@ -138,11 +180,28 @@ TEST(ExpressionEngineTest, TaskOutputSlotBindsInputAndOutput) {
   ExpressionEngine engine(test::JqEvaluatorConfig());
   const auto input = *utils::Jv::Parse(R"({"id":7})");
   const auto output = *utils::Jv::Parse(R"({"name":"pet"})");
+  const auto context = *utils::Jv::Parse(R"({"token":"abc"})");
 
-  auto result = engine.EvaluateTypedSlot(Value{"${ { before: $input, after: $output } }"},
-                                         TypedSlot::kTaskOutput, output, &input, &output);
+  auto result = engine.EvaluateTypedSlot(
+      Value{"${ { before: $input, after: $output, token: $context.token } }"},
+      TypedSlot::kTaskOutput, output,
+      ExpressionArguments{.context = &context, .input = &input, .output = &output});
   ASSERT_TRUE(result.ok()) << result.status().message();
-  EXPECT_EQ(result->Dump(), R"({"after":{"name":"pet"},"before":{"id":7}})");
+  EXPECT_EQ(result->Dump(), R"({"after":{"name":"pet"},"before":{"id":7},"token":"abc"})");
+}
+
+TEST(ExpressionEngineTest, TaskExportSlotRunsAgainstShapedOutput) {
+  ExpressionEngine engine(test::JqEvaluatorConfig());
+  const auto input = *utils::Jv::Parse(R"({"id":7})");
+  const auto output = *utils::Jv::Parse(R"({"token":"abc"})");
+  const auto context = *utils::Jv::Parse(R"({"previous":true})");
+
+  auto result = engine.EvaluateTypedSlot(
+      Value{"${ $context + { token: .token, before: $input.id, after: $output.token } }"},
+      TypedSlot::kTaskExport, output,
+      ExpressionArguments{.context = &context, .input = &input, .output = &output});
+  ASSERT_TRUE(result.ok()) << result.status().message();
+  EXPECT_EQ(result->Dump(), R"({"after":"abc","before":7,"previous":true,"token":"abc"})");
 }
 
 TEST(ExpressionEngineTest, UndeclaredDescriptorArgumentIsRejected) {

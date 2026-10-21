@@ -15,12 +15,20 @@
 namespace strij::nodeagent::task_handlers::openworkflow {
 
 // The jq variable the interpreter binds to the DSL's workflow-scope `$context`.
-// It is seeded empty and this slice never writes it, so it is always `{}`.
+// It is seeded as an empty object and replaced only by a task's `export.as`.
 inline constexpr std::string_view kContextVariable = "context";
-// The jq variables bound only for task `output.as`: the shaped task input and
-// the raw task output.
+// The jq variables bound only for task `output.as` and `export.as`: the shaped
+// task input and the transformed task output.
 inline constexpr std::string_view kInputVariable = "input";
 inline constexpr std::string_view kOutputVariable = "output";
+
+// The values an expression may reference by name. Slots that do not bind a
+// value leave its pointer null; `Run` and `Evaluate` bind only `context`.
+struct ExpressionArguments {
+  const utils::Jv* context{nullptr};
+  const utils::Jv* input{nullptr};
+  const utils::Jv* output{nullptr};
+};
 
 // An expression-typed DSL slot. Unlike literal-capable value slots, every
 // string in these trees must be a whole `${ }` expression.
@@ -28,7 +36,8 @@ enum class TypedSlot : std::uint8_t {
   kIf = 0,
   kInputFrom = 1,
   kTaskOutput = 2,
-  kDocumentOutput = 3,
+  kTaskExport = 3,
+  kDocumentOutput = 4,
 };
 
 [[nodiscard]] auto TypedSlotName(TypedSlot slot) -> std::string_view;
@@ -60,29 +69,33 @@ public:
   // Validation: compiles `program`, discarding the result.
   auto Compile(std::string_view program) -> absl::Status;
 
-  // Runs `program` against `subject` (subject = step data value, `$context` = `{}`)
-  // and returns the single output value.
-  auto Run(std::string_view program, const utils::Jv& subject) -> absl::StatusOr<utils::Jv>;
+  // Runs `program` against `subject` and returns the single output value.
+  // `arguments.context` is bound to `$context`; `$input`/`$output` are never
+  // bound on this literal-capable path.
+  auto Run(std::string_view program, const utils::Jv& subject,
+           const ExpressionArguments& arguments = {}) -> absl::StatusOr<utils::Jv>;
 
   // Validation over a value tree: compiles every expression it contains.
   auto Validate(const ::strij::openworkflow::Value& value) -> absl::Status;
 
   // Evaluates every expression in `value` against `subject`, preserving
-  // literals and the surrounding structure.
-  auto Evaluate(const ::strij::openworkflow::Value& value, const utils::Jv& subject)
+  // literals and the surrounding structure. Only `$context` is bound.
+  auto Evaluate(const ::strij::openworkflow::Value& value, const utils::Jv& subject,
+                const ExpressionArguments& arguments = {})
       -> absl::StatusOr<::strij::openworkflow::Value>;
 
   // Typed-slot validation: every string in `value` must be a whole `${ }`
   // expression, and every discovered program is compiled with the slot's
   // expression arguments.
-  auto ValidateTypedSlot(const ::strij::openworkflow::Value& value, TypedSlot slot) -> absl::Status;
+  auto ValidateTypedSlot(const ::strij::openworkflow::Value& value, TypedSlot slot,
+                         const ExpressionArguments& arguments = {}) -> absl::Status;
 
   // JSON-faithful typed-slot evaluation. `subject` is the expression subject;
-  // the task-output slot additionally requires `input` and `output` (the
-  // transformed task input and the raw task output).
+  // the task-output and task-export slots additionally require `input` and
+  // `output` (the transformed task input and the transformed task output).
   auto EvaluateTypedSlot(const ::strij::openworkflow::Value& value, TypedSlot slot,
-                         const utils::Jv& subject, const utils::Jv* input = nullptr,
-                         const utils::Jv* output = nullptr) -> absl::StatusOr<utils::Jv>;
+                         const utils::Jv& subject, const ExpressionArguments& arguments = {})
+      -> absl::StatusOr<utils::Jv>;
 
 private:
   auto compile(std::string_view program, const std::vector<std::string>& variable_names)

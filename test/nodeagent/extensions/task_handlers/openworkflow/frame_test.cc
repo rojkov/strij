@@ -219,6 +219,12 @@ public:
     std::string message_;
   };
 
+  struct ExportRecord {
+    std::string step_;
+    std::string input_;
+    std::string output_;
+  };
+
   void Script(Effect effect) { effects_.push_back(std::move(effect)); }
 
   void ScriptSuspend(std::string child_id) {
@@ -243,6 +249,13 @@ public:
                            const StepDataValue& raw_output)
       -> absl::StatusOr<StepDataValue> override {
     return raw_output.Copy();
+  }
+
+  auto ExportTaskResult(const NamedTask& step, const StepDataValue& input,
+                        const StepDataValue& transformed_output) -> absl::Status override {
+    exports_.push_back(ExportRecord{
+        .step_ = step.name_, .input_ = input.Bytes(), .output_ = transformed_output.Bytes()});
+    return absl::OkStatus();
   }
 
   auto ExecuteCall(SequenceFrame& owner, const NamedTask& step, const StepDataValue& /*input*/)
@@ -288,6 +301,7 @@ public:
 
   [[nodiscard]] auto Calls() const -> const std::vector<std::string>& { return calls_; }
   [[nodiscard]] auto Forgotten() const -> const std::vector<std::string>& { return forgotten_; }
+  [[nodiscard]] auto Exports() const -> const std::vector<ExportRecord>& { return exports_; }
 
   [[nodiscard]] static auto Success(std::string body) -> ChildOutcome {
     return ChildOutcome{.body_ = std::move(body), .reason_ = {}, .status_ = task::TASK_STATUS_OK};
@@ -301,6 +315,7 @@ private:
   std::deque<Effect> effects_;
   std::vector<std::string> calls_;
   std::vector<std::string> forgotten_;
+  std::vector<ExportRecord> exports_;
   std::map<std::string, SequenceFrame*> waiting_;
 };
 

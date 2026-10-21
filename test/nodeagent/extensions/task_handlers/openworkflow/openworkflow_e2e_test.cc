@@ -397,6 +397,108 @@ TEST_F(OpenWorkflowE2ETest, ScriptedTwoStepWorkflowChainsChildOutputs) {
   piped->ProcessCommand(deferred2);
 }
 
+TEST_F(OpenWorkflowE2ETest, ExportFlowsIntoAConditionAndTheDocumentOutput) {
+  const std::string script = FindEchoScript();
+  ASSERT_FALSE(script.empty()) << "scripts/openworkflow_echo.sh not found in runfiles";
+
+  const std::string document_text = absl::StrCat("document:\n"
+                                                 "  dsl: '1.0.3'\n"
+                                                 "  namespace: test\n"
+                                                 "  name: e2e-export\n"
+                                                 "  version: '0.1.0'\n"
+                                                 "input:\n"
+                                                 "  from: '${ {\"token\":\"abc\"} }'\n"
+                                                 "output:\n"
+                                                 "  as: '${ {token: $context.token, result: .} }'\n"
+                                                 "do:\n"
+                                                 "  - first:\n"
+                                                 "      call: strij\n"
+                                                 "      export:\n"
+                                                 "        as: '${ {token: .echo.token} }'\n"
+                                                 "      with:\n"
+                                                 "        type: piped_executable\n"
+                                                 "        parameters:\n"
+                                                 "          function: ",
+                                                 script,
+                                                 "\n"
+                                                 "        requirements:\n"
+                                                 "          cpu: 1\n"
+                                                 "  - gated:\n"
+                                                 "      if: '${ $context.token == \"abc\" }'\n"
+                                                 "      call: strij\n"
+                                                 "      with:\n"
+                                                 "        type: piped_executable\n"
+                                                 "        parameters:\n"
+                                                 "          function: ",
+                                                 script,
+                                                 "\n"
+                                                 "        requirements:\n"
+                                                 "          cpu: 1\n");
+
+  OpenWorkflowTaskHandler handler(*router_, resolver_, test::JqEvaluatorConfig());
+  auto state = std::make_shared<test::TestSender::State>();
+
+  int stdin_w1 = -1;
+  int stdin_w2 = -1;
+  int pidfd1 = -1;
+  int pidfd2 = -1;
+  event::Completable* child1_raw = nullptr;
+  event::Completable* child2_raw = nullptr;
+  EXPECT_CALL(*dispatcher_, PrepareWrite(_, kStdinWrite, _, _, -1))
+      .WillOnce(DoAll(SaveArg<2>(&stdin_w1), Return()))
+      .WillOnce(DoAll(SaveArg<2>(&stdin_w2), Return()));
+  EXPECT_CALL(*dispatcher_, PreparePoll(_, kExitPoll, _, POLLIN))
+      .WillOnce(DoAll(SaveArg<0>(&child1_raw), SaveArg<2>(&pidfd1), Return()))
+      .WillOnce(DoAll(SaveArg<0>(&child2_raw), SaveArg<2>(&pidfd2), Return()));
+  event::Command deferred1{};
+  event::Command deferred2{};
+  EXPECT_CALL(*dispatcher_, SubmitCommand(_))
+      .WillOnce(SaveArg<0>(&deferred1))
+      .WillOnce(SaveArg<0>(&deferred2));
+
+  const std::string document = WriteDocument("export.yaml", document_text);
+  handler.HandleTask(MakeParent("wf", document, ""), std::make_unique<test::TestSender>(state));
+
+  // Step one receives the seeded data chain and exports part of its output.
+  const std::string body1 = R"({"token":"abc"})";
+  ASSERT_NE(child1_raw, nullptr);
+  ASSERT_GE(stdin_w1, 0);
+  auto* child1 = static_cast<ChildProcess*>(child1_raw);
+  ASSERT_EQ(::write(stdin_w1, body1.data(), body1.size()), static_cast<ssize_t>(body1.size()));
+  child1->HandleCompletion(kStdinWrite, static_cast<int>(body1.size()), 0);
+  ASSERT_TRUE(WaitForExit(pidfd1));
+
+  // The export makes the condition true; the gated step is submitted.
+  child1->HandleCompletion(kExitPoll, POLLIN, 0);
+  child1->HandleCompletion(kStdoutRead, 0, 0);
+  child1->HandleCompletion(kStderrRead, 0, 0);
+  EXPECT_TRUE(state->sent_.empty());
+
+  const std::string body2 = R"({"echo":{"token":"abc"}})";
+  ASSERT_NE(child2_raw, nullptr);
+  ASSERT_GE(stdin_w2, 0);
+  auto* child2 = static_cast<ChildProcess*>(child2_raw);
+  ASSERT_EQ(::write(stdin_w2, body2.data(), body2.size()), static_cast<ssize_t>(body2.size()));
+  child2->HandleCompletion(kStdinWrite, static_cast<int>(body2.size()), 0);
+  ASSERT_TRUE(WaitForExit(pidfd2));
+
+  child2->HandleCompletion(kExitPoll, POLLIN, 0);
+  child2->HandleCompletion(kStdoutRead, 0, 0);
+  child2->HandleCompletion(kStderrRead, 0, 0);
+
+  ASSERT_EQ(state->sent_.size(), 1U);
+  EXPECT_EQ(state->sent_[0].id(), "wf");
+  EXPECT_EQ(state->sent_[0].body(),
+            R"({"result":{"echo":{"echo":{"token":"abc"}}},"token":"abc"})");
+  EXPECT_TRUE(state->sent_[0].is_final());
+  EXPECT_TRUE(utils::IsTaskResultOk(state->sent_[0]));
+
+  auto* piped = dynamic_cast<PipedExecutableTaskHandler*>(manager_->GetHandler("piped_executable"));
+  ASSERT_NE(piped, nullptr);
+  piped->ProcessCommand(deferred1);
+  piped->ProcessCommand(deferred2);
+}
+
 TEST_F(OpenWorkflowE2ETest, ForkJoinAllRunsBranchesAndJoinsInDeclarationOrder) {
   const std::string script = FindEchoScript();
   ASSERT_FALSE(script.empty()) << "scripts/openworkflow_echo.sh not found in runfiles";
