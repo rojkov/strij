@@ -229,7 +229,24 @@ public:
     Script(Effect{.kind_ = EffectKind::kInline, .body_ = std::move(body)});
   }
 
-  auto ExecuteCall(SequenceFrame& owner, const NamedTask& step) -> absl::Status override {
+  auto EvaluateCondition(const NamedTask& /*step*/, const StepDataValue& /*raw*/)
+      -> absl::StatusOr<bool> override {
+    return true;
+  }
+
+  auto TransformTaskInput(const NamedTask& /*step*/, const StepDataValue& raw)
+      -> absl::StatusOr<StepDataValue> override {
+    return raw.Copy();
+  }
+
+  auto TransformTaskOutput(const NamedTask& /*step*/, const StepDataValue& /*input*/,
+                           const StepDataValue& raw_output)
+      -> absl::StatusOr<StepDataValue> override {
+    return raw_output.Copy();
+  }
+
+  auto ExecuteCall(SequenceFrame& owner, const NamedTask& step, const StepDataValue& /*input*/)
+      -> absl::Status override {
     calls_.push_back(step.name_);
 
     Effect effect;
@@ -247,7 +264,7 @@ public:
       return absl::OkStatus();
     case EffectKind::kInline:
       owner.Suspend("inline-child");
-      owner.ApplyOutcome(Success(std::move(effect.body_)));
+      owner.ApplyOutcome(Success(std::move(effect.body_)), *this);
       return absl::OkStatus();
     }
 
@@ -265,7 +282,7 @@ public:
       return;
     }
 
-    waiting->second->ApplyOutcome(std::move(outcome));
+    waiting->second->ApplyOutcome(std::move(outcome), *this);
     waiting_.erase(waiting);
   }
 

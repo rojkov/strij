@@ -12,7 +12,6 @@
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "common/config/extensions.pb.h"
-#include "common/core/utils/jv.hh"
 #include "common/task/task.pb.h"
 #include "nodeagent/extensions/task_handlers/openworkflow/errors.hh"
 #include "nodeagent/extensions/task_handlers/openworkflow/expression.hh"
@@ -96,14 +95,22 @@ private:
   void drive();
   void terminalize(FrameResult result);
 
-  auto ExecuteCall(SequenceFrame& owner, const ::strij::openworkflow::NamedTask& step)
-      -> absl::Status override;
+  auto EvaluateCondition(const ::strij::openworkflow::NamedTask& step, const StepDataValue& raw)
+      -> absl::StatusOr<bool> override;
+  auto TransformTaskInput(const ::strij::openworkflow::NamedTask& step, const StepDataValue& raw)
+      -> absl::StatusOr<StepDataValue> override;
+  auto TransformTaskOutput(const ::strij::openworkflow::NamedTask& step, const StepDataValue& input,
+                           const StepDataValue& raw_output)
+      -> absl::StatusOr<StepDataValue> override;
+  auto ExecuteCall(SequenceFrame& owner, const ::strij::openworkflow::NamedTask& step,
+                   const StepDataValue& input) -> absl::Status override;
   void ForgetChild(std::string_view child_id) override;
 
-  auto buildChildBody(const ::strij::openworkflow::Task& task, const StepDataValue& data,
-                      const utils::Jv* subject) -> absl::StatusOr<std::string>;
-  auto renderFrom(const std::variant<std::string, ::strij::openworkflow::Value>& from,
-                  const utils::Jv* subject) -> absl::StatusOr<std::string>;
+  auto transformInput(const std::variant<std::string, ::strij::openworkflow::Value>& from_value,
+                      const StepDataValue& raw) -> absl::StatusOr<StepDataValue>;
+  auto transformOutput(const std::variant<std::string, ::strij::openworkflow::Value>& as_value,
+                       const StepDataValue& input, const StepDataValue& raw_output)
+      -> absl::StatusOr<StepDataValue>;
   void succeed(StepDataValue value);
   void fail(task::TaskStatus status, std::string_view step, std::string_view message);
 

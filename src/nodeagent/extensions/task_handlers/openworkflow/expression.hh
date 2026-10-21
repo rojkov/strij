@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cstdint>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -15,6 +17,21 @@ namespace strij::nodeagent::task_handlers::openworkflow {
 // The jq variable the interpreter binds to the DSL's workflow-scope `$context`.
 // It is seeded empty and this slice never writes it, so it is always `{}`.
 inline constexpr std::string_view kContextVariable = "context";
+// The jq variables bound only for task `output.as`: the shaped task input and
+// the raw task output.
+inline constexpr std::string_view kInputVariable = "input";
+inline constexpr std::string_view kOutputVariable = "output";
+
+// An expression-typed DSL slot. Unlike literal-capable value slots, every
+// string in these trees must be a whole `${ }` expression.
+enum class TypedSlot : std::uint8_t {
+  kIf = 0,
+  kInputFrom = 1,
+  kTaskOutput = 2,
+  kDocumentOutput = 3,
+};
+
+[[nodiscard]] auto TypedSlotName(TypedSlot slot) -> std::string_view;
 
 // Strict-mode recognition (design D5): a string is an expression if and only if
 // it is entirely wrapped in `${ }`.
@@ -55,7 +72,25 @@ public:
   auto Evaluate(const ::strij::openworkflow::Value& value, const utils::Jv& subject)
       -> absl::StatusOr<::strij::openworkflow::Value>;
 
+  // Typed-slot validation: every string in `value` must be a whole `${ }`
+  // expression, and every discovered program is compiled with the slot's
+  // expression arguments.
+  auto ValidateTypedSlot(const ::strij::openworkflow::Value& value, TypedSlot slot) -> absl::Status;
+
+  // JSON-faithful typed-slot evaluation. `subject` is the expression subject;
+  // the task-output slot additionally requires `input` and `output` (the
+  // transformed task input and the raw task output).
+  auto EvaluateTypedSlot(const ::strij::openworkflow::Value& value, TypedSlot slot,
+                         const utils::Jv& subject, const utils::Jv* input = nullptr,
+                         const utils::Jv* output = nullptr) -> absl::StatusOr<utils::Jv>;
+
 private:
+  auto compile(std::string_view program, const std::vector<std::string>& variable_names)
+      -> absl::Status;
+  auto run(std::string_view program, const utils::Jv& subject,
+           const std::vector<std::string>& variable_names, std::span<const utils::Jv> args)
+      -> absl::StatusOr<utils::Jv>;
+
   config::ExtensionConfig evaluator_;
 };
 

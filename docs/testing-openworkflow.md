@@ -28,19 +28,21 @@ What each target covers:
 | `//test/openworkflow:value_jv_test` | The `Value` ⇄ JSON bridge (`ValueToJv`/`JvToValue`), including `int64` extremes and `1` vs `1.0`. |
 | `artifact_loader_test` | Loading the workflow document from a local artifact: regular/empty files, missing paths, non-regular files (including a FIFO), and the size cap. |
 | `step_data_value_test` | Data-value sniffing: JSON text, non-JSON text, empty input. |
-| `expression_test` | Strict-mode `${ }` recognition, the expression engine, data-chain subject vs `$context`, scalar rendering. |
+| `expression_test` | Strict-mode `${ }` recognition, typed-slot validation (wrapped-only), JSON-faithful evaluation, data-chain subject vs `$context`, `$input`/`$output`, scalar rendering. |
 | `call_strij_test` | The `with` key set, parameter projection, requirement coercion (incl. rejecting `100M`), reserved call targets. |
-| `interpreter_test` | The frame tree, resumable step loop, reentrancy, stale results, the validation/execution split, fork entry/join (join-all, compete, nested), fail-fast branch failures, and seeding from the invocation body. |
+| `interpreter_test` | The frame tree, resumable step loop, reentrancy, stale results, the validation/execution split, fork entry/join (join-all, compete, nested), fail-fast branch failures, seeding from the invocation body, `if` short-circuiting, the `input.from` pipeline, and task/document `output.as`. |
 | `openworkflow_task_handler_test` | The handler/factory, function reference resolution and artifact loading, failure-status classification, and connection teardown. |
-| `openworkflow_e2e_test` | The full path through the **real** `piped_executable` handler, driving the child process with a mock dispatcher, with the document loaded from a file and input supplied in the body. Includes join-all and competing fork scenarios. |
+| `openworkflow_e2e_test` | The full path through the **real** `piped_executable` handler, driving the child process with a mock dispatcher, with the document loaded from a file and input supplied in the body. Includes join-all, competing fork, and `input.from` + `if` + `output.as` pipeline scenarios. |
 
 `openworkflow_e2e_test` includes `ScriptedTwoStepWorkflowChainsChildOutputs`,
 which runs the exact two-step workflow in section 3 through `piped_executable`
-and asserts `{"echo":{"echo":{"name":"world"}}}`; it also includes
+and asserts `{"echo":{"echo":{"name":"world"}}}`. It also includes
 `ForkJoinAllRunsBranchesAndJoinsInDeclarationOrder` and
 `ForkCompeteResolvesOnFirstBranchAndIgnoresTheLoser`, which mirror the manual
-fork procedures in section 4. The two-step test is the verified reference for
-the manual procedure below.
+fork procedures in section 4, and
+`InputTransformConditionAndOutputShapeCompose`, which combines `input.from`,
+an `if` skip, and `output.as` over the real child process. The two-step test is
+the verified reference for the manual procedure below.
 
 ## 2. The test function
 
@@ -168,6 +170,59 @@ How the result is produced, step by step:
    the child body; the script prints
    `{"echo":{"echo":{"name":"world"}}}`.
 4. The workflow completes and its final result is that last value.
+
+### Conditions, input.from, and output.as
+
+The expression-typed slots — a task's `if`, `input.from`, and `output.as`, and
+the document's `input.from` and `output.as` — accept only a whole-value `${ }`
+expression. Bare text in one of these slots (for example `if: .enabled`) is a
+malformed document, not a literal value. Literal-capable slots such as a call's
+`with` values keep their literal-text rule.
+
+This document (the same shape as
+`InputTransformConditionAndOutputShapeCompose`) skips its first step, transforms
+the input for the second, and shapes that step's output:
+
+```yaml
+document:
+  dsl: '1.0.3'
+  namespace: docs
+  name: pipeline
+  version: '0.1.0'
+input:
+  from: '${ {enabled: .run, payload: {id: .id}} }'
+do:
+  - skipped:
+      if: '${ .enabled }'
+      call: strij
+      with:
+        type: piped_executable
+        parameters:
+          function: scripts/openworkflow_echo.sh
+        requirements:
+          cpu: 1
+  - shaped:
+      call: strij
+      input:
+        from: '${ .payload }'
+      output:
+        as: '${ {petId: .echo.id} }'
+      with:
+        type: piped_executable
+        parameters:
+          function: scripts/openworkflow_echo.sh
+        requirements:
+          cpu: 1
+```
+
+With the invocation body `{"run":false,"id":7}`, `skipped` is not submitted,
+`shaped` receives `{"id":7}`, and the final result body is `{"petId":7}`.
+
+`input.from` results are JSON-faithful. A string result is a JSON string, so
+if a step declares `input.from: '${ .name }'` and the body is
+`{"name":"world"}`, the child receives `"world"` (with quotes), not `world`.
+The same rule applies to the document's `input.from`: a string-valued seed
+keeps its quotes in the data chain.
 
 ### Simpler smoke test (no script)
 
@@ -451,8 +506,15 @@ curl -sS -o /dev/null -w '%{http_code}\n' -X POST http://127.0.0.1:8081/tasks/op
   and the next expression fails with `the data subject is not JSON` (HTTP 500)
   rather than reading an empty value. The same applies to an invocation body
   that is not JSON: it seeds an opaque chain.
-- **Strict-mode `${ }`.** A string is an expression only when the whole value is
-  wrapped in `${ }`; `jobs/${ .id }` is rejected, not interpolated.
+- **Strict-mode `${ }` and wrapped-only typed slots.** A string is an
+  expression only when the whole value is wrapped in `${ }`; `jobs/${ .id }` is
+  rejected, not interpolated. In `if`, `input.from`, task `output.as`, and
+  document `output.as`, a bare string is rejected as a malformed document rather
+  than treated as literal text.
+- **String transformations are JSON-quoted.** A string-valued `input.from`
+  result reaches the child body as a JSON string (`"world"`), and a
+  string-valued document seed stays a JSON string. A child that wants the raw
+  text must read the JSON string (or the workflow can call a shaping child).
 - **Handler config.** The handler is enabled in
   `config/examples/nodeagent.yaml` as:
 

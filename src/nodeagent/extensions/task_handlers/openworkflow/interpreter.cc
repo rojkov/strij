@@ -90,21 +90,50 @@ private:
   bool delivered_{false};
 };
 
-auto validateInputFrom(const Task& task, ExpressionEngine& engine) -> std::optional<Failure> {
-  if (!task.input_.has_value() || !task.input_->from_.has_value()) {
-    return std::nullopt;
+auto slotValue(const std::variant<std::string, ::strij::openworkflow::Value>& slot)
+    -> ::strij::openworkflow::Value {
+  if (std::holds_alternative<std::string>(slot)) {
+    return ::strij::openworkflow::Value{std::get<std::string>(slot)};
   }
 
-  const auto& from = *task.input_->from_;
-  const absl::Status status =
-      std::holds_alternative<std::string>(from)
-          ? engine.Validate(::strij::openworkflow::Value{std::get<std::string>(from)})
-          : engine.Validate(std::get<::strij::openworkflow::Value>(from));
+  return std::get<::strij::openworkflow::Value>(slot);
+}
 
+auto validateSlot(const std::variant<std::string, ::strij::openworkflow::Value>& slot,
+                  TypedSlot kind, ExpressionEngine& engine) -> std::optional<Failure> {
+  const absl::Status status = engine.ValidateTypedSlot(slotValue(slot), kind);
   if (!status.ok()) {
     return Failure{.phase_ = Phase::kValidation,
                    .status_ = task::TASK_STATUS_MALFORMED_REQUEST,
                    .message_ = std::string(status.message())};
+  }
+
+  return std::nullopt;
+}
+
+auto validateTaskSlots(const Task& task, ExpressionEngine& engine) -> std::optional<Failure> {
+  if (task.if_.has_value()) {
+    const absl::Status status =
+        engine.ValidateTypedSlot(::strij::openworkflow::Value{*task.if_}, TypedSlot::kIf);
+    if (!status.ok()) {
+      return Failure{.phase_ = Phase::kValidation,
+                     .status_ = task::TASK_STATUS_MALFORMED_REQUEST,
+                     .message_ = std::string(status.message())};
+    }
+  }
+
+  if (task.input_.has_value() && task.input_->from_.has_value()) {
+    if (auto failure = validateSlot(*task.input_->from_, TypedSlot::kInputFrom, engine);
+        failure.has_value()) {
+      return failure;
+    }
+  }
+
+  if (task.output_.has_value() && task.output_->as_.has_value()) {
+    if (auto failure = validateSlot(*task.output_->as_, TypedSlot::kTaskOutput, engine);
+        failure.has_value()) {
+      return failure;
+    }
   }
 
   return std::nullopt;
@@ -117,12 +146,12 @@ auto validateTask(const NamedTask& named, const Document& document, ExpressionEn
     -> std::optional<Failure> {
   const Task& task = named.task_;
 
-  if (const auto* do_body = std::get_if<DoBody>(&task.body_)) {
-    if (auto failure = validateInputFrom(task, engine); failure.has_value()) {
-      failure->step_ = named.name_;
-      return failure;
-    }
+  if (auto failure = validateTaskSlots(task, engine); failure.has_value()) {
+    failure->step_ = named.name_;
+    return failure;
+  }
 
+  if (const auto* do_body = std::get_if<DoBody>(&task.body_)) {
     return validateTasks(do_body->do_, document, engine);
   }
 
@@ -132,11 +161,6 @@ auto validateTask(const NamedTask& named, const Document& document, ExpressionEn
                      .status_ = task::TASK_STATUS_MALFORMED_REQUEST,
                      .step_ = named.name_,
                      .message_ = "a competing fork must declare at least one branch"};
-    }
-
-    if (auto failure = validateInputFrom(task, engine); failure.has_value()) {
-      failure->step_ = named.name_;
-      return failure;
     }
 
     return validateTasks(fork_body->branches_, document, engine);
@@ -192,12 +216,6 @@ auto validateTask(const NamedTask& named, const Document& document, ExpressionEn
                    .message_ = std::string(arguments.message())};
   }
 
-  if (auto failure = validateInputFrom(task, engine); failure.has_value()) {
-    failure->step_ = named.name_;
-
-    return failure;
-  }
-
   return std::nullopt;
 }
 
@@ -216,6 +234,20 @@ auto validateTasks(const Tasks& tasks, const Document& document, ExpressionEngin
 
 auto ValidateDocument(const Document& document, ExpressionEngine& engine)
     -> std::optional<Failure> {
+  if (document.input_.has_value() && document.input_->from_.has_value()) {
+    if (auto failure = validateSlot(*document.input_->from_, TypedSlot::kInputFrom, engine);
+        failure.has_value()) {
+      return failure;
+    }
+  }
+
+  if (document.output_.has_value() && document.output_->as_.has_value()) {
+    if (auto failure = validateSlot(*document.output_->as_, TypedSlot::kDocumentOutput, engine);
+        failure.has_value()) {
+      return failure;
+    }
+  }
+
   return validateTasks(document.do_, document, engine);
 }
 
@@ -288,16 +320,14 @@ void WorkflowInterpreter::Start(std::string_view document_text, std::string_view
 
   StepDataValue seed;
   if (document_->input_.has_value() && document_->input_->from_.has_value()) {
-    const utils::Jv* subject =
-        invocation_data_value.IsJson() ? &invocation_data_value.Json() : nullptr;
-    auto rendered = renderFrom(*document_->input_->from_, subject);
-    if (!rendered.ok()) {
-      fail(task::TASK_STATUS_INTERNAL, "", rendered.status().message());
+    auto transformed = transformInput(*document_->input_->from_, invocation_data_value);
+    if (!transformed.ok()) {
+      fail(task::TASK_STATUS_INTERNAL, "", transformed.status().message());
 
       return;
     }
 
-    seed = StepDataValue::FromBytes(std::move(*rendered));
+    seed = std::move(*transformed);
   } else {
     seed = std::move(invocation_data_value);
   }
@@ -328,7 +358,7 @@ void WorkflowInterpreter::OnChildOutcome(const std::string& child_id, ChildOutco
 
   SequenceFrame* frame = owner->second;
   owner_by_child_.erase(owner);
-  frame->ApplyOutcome(std::move(outcome));
+  frame->ApplyOutcome(std::move(outcome), *this);
   drive();
 }
 
@@ -352,7 +382,27 @@ auto WorkflowInterpreter::validateMode() -> absl::Status {
 
 void WorkflowInterpreter::terminalize(FrameResult result) {
   if (auto* completed = std::get_if<Completed>(&result); completed != nullptr) {
-    succeed(std::move(completed->value_));
+    StepDataValue value = std::move(completed->value_);
+
+    if (document_->output_.has_value() && document_->output_->as_.has_value()) {
+      if (!value.IsJson()) {
+        fail(task::TASK_STATUS_INTERNAL, "", "the document output subject is not JSON");
+
+        return;
+      }
+
+      auto transformed = engine_.EvaluateTypedSlot(slotValue(*document_->output_->as_),
+                                                   TypedSlot::kDocumentOutput, value.Json());
+      if (!transformed.ok()) {
+        fail(task::TASK_STATUS_INTERNAL, "", transformed.status().message());
+
+        return;
+      }
+
+      value = StepDataValue::FromBytes(transformed->Dump());
+    }
+
+    succeed(std::move(value));
 
     return;
   }
@@ -380,7 +430,7 @@ void WorkflowInterpreter::drive() {
     if (owner != owner_by_child_.end()) {
       SequenceFrame* frame = owner->second;
       owner_by_child_.erase(owner);
-      frame->ApplyOutcome(std::move(node.mapped()));
+      frame->ApplyOutcome(std::move(node.mapped()), *this);
       terminalize(root_->Advance(*this));
     }
   }
@@ -394,21 +444,118 @@ void WorkflowInterpreter::ForgetChild(std::string_view child_id) {
   owner_by_child_.erase(std::string(child_id));
 }
 
-auto WorkflowInterpreter::ExecuteCall(SequenceFrame& owner, const NamedTask& step) -> absl::Status {
+auto WorkflowInterpreter::EvaluateCondition(const NamedTask& step, const StepDataValue& raw)
+    -> absl::StatusOr<bool> {
+  const Task& task = step.task_;
+  if (!task.if_.has_value()) {
+    return true;
+  }
+
+  if (!raw.IsJson()) {
+    return absl::InvalidArgumentError("the condition subject is not JSON");
+  }
+
+  auto result = engine_.EvaluateTypedSlot(::strij::openworkflow::Value{*task.if_}, TypedSlot::kIf,
+                                          raw.Json());
+  if (!result.ok()) {
+    return result.status();
+  }
+
+  const ::strij::openworkflow::Value value = ::strij::openworkflow::JvToValue(*result);
+  if (!value.IsBool()) {
+    return absl::InvalidArgumentError("the condition result is not a boolean");
+  }
+
+  return value.AsBool();
+}
+
+auto WorkflowInterpreter::TransformTaskInput(const NamedTask& step, const StepDataValue& raw)
+    -> absl::StatusOr<StepDataValue> {
+  const Task& task = step.task_;
+  if (!task.input_.has_value() || !task.input_->from_.has_value()) {
+    return raw.Copy();
+  }
+
+  return transformInput(*task.input_->from_, raw);
+}
+
+auto WorkflowInterpreter::TransformTaskOutput(const NamedTask& step, const StepDataValue& input,
+                                              const StepDataValue& raw_output)
+    -> absl::StatusOr<StepDataValue> {
+  const Task& task = step.task_;
+  if (!task.output_.has_value() || !task.output_->as_.has_value()) {
+    return raw_output.Copy();
+  }
+
+  return transformOutput(*task.output_->as_, input, raw_output);
+}
+
+auto WorkflowInterpreter::transformInput(
+    const std::variant<std::string, ::strij::openworkflow::Value>& from_value,
+    const StepDataValue& raw) -> absl::StatusOr<StepDataValue> {
+  const ::strij::openworkflow::Value slot = slotValue(from_value);
+  const utils::Jv* subject = raw.IsJson() ? &raw.Json() : nullptr;
+
+  if (subject == nullptr) {
+    // A literal-only transformation does not need a subject; any expression
+    // over an opaque value must fail rather than read an empty value.
+    auto programs = CollectExpressions(slot);
+    if (!programs.ok() || !programs->empty()) {
+      return absl::InvalidArgumentError("the data subject is not JSON");
+    }
+  }
+
+  utils::Jv null_subject;
+  if (subject == nullptr) {
+    auto parsed = utils::Jv::Parse("null");
+    if (!parsed.ok()) {
+      return parsed.status();
+    }
+
+    null_subject = std::move(*parsed);
+    subject = &null_subject;
+  }
+
+  auto result = engine_.EvaluateTypedSlot(slot, TypedSlot::kInputFrom, *subject);
+  if (!result.ok()) {
+    return result.status();
+  }
+
+  return StepDataValue::FromBytes(result->Dump());
+}
+
+auto WorkflowInterpreter::transformOutput(
+    const std::variant<std::string, ::strij::openworkflow::Value>& as_value,
+    const StepDataValue& input, const StepDataValue& raw_output) -> absl::StatusOr<StepDataValue> {
+  if (!input.IsJson()) {
+    return absl::InvalidArgumentError("the task input is not JSON");
+  }
+
+  if (!raw_output.IsJson()) {
+    return absl::InvalidArgumentError("the output subject is not JSON");
+  }
+
+  auto result = engine_.EvaluateTypedSlot(slotValue(as_value), TypedSlot::kTaskOutput,
+                                          raw_output.Json(), &input.Json(), &raw_output.Json());
+  if (!result.ok()) {
+    return result.status();
+  }
+
+  return StepDataValue::FromBytes(result->Dump());
+}
+
+auto WorkflowInterpreter::ExecuteCall(SequenceFrame& owner, const NamedTask& step,
+                                      const StepDataValue& input) -> absl::Status {
   const Task& task = step.task_;
   const auto& call = std::get<CallBody>(task.body_);
 
-  // A step only needs a JSON subject when one of its expressions runs; a step
-  // that merely passes opaque bytes through to its child is fine.
-  const utils::Jv* subject = owner.Data().IsJson() ? &owner.Data().Json() : nullptr;
+  // The transformed input is the subject for the call's expressions and the
+  // source of the child body. A step that merely passes opaque bytes through
+  // to its child does not need a JSON subject.
+  const utils::Jv* subject = input.IsJson() ? &input.Json() : nullptr;
   auto projection = ProjectCall(call.with_, subject, engine_);
   if (!projection.ok()) {
     return projection.status();
-  }
-
-  auto body = buildChildBody(task, owner.Data(), subject);
-  if (!body.ok()) {
-    return body.status();
   }
 
   const std::string child_id = utils::GenerateTaskId();
@@ -421,7 +568,7 @@ auto WorkflowInterpreter::ExecuteCall(SequenceFrame& owner, const NamedTask& ste
   }
 
   *child.mutable_requirements() = projection->requirements_;
-  child.set_body(*body);
+  child.set_body(input.Bytes());
 
   owner.Suspend(child_id);
   owner_by_child_.insert_or_assign(child_id, &owner);
@@ -437,80 +584,10 @@ auto WorkflowInterpreter::ExecuteCall(SequenceFrame& owner, const NamedTask& ste
     ChildOutcome outcome = std::move(pending->second);
     pending_.erase(pending);
     owner_by_child_.erase(child_id);
-    owner.ApplyOutcome(std::move(outcome));
+    owner.ApplyOutcome(std::move(outcome), *this);
   }
 
   return absl::OkStatus();
-}
-
-auto WorkflowInterpreter::buildChildBody(const Task& task, const StepDataValue& data,
-                                         const utils::Jv* subject) -> absl::StatusOr<std::string> {
-  if (!task.input_.has_value() || !task.input_->from_.has_value()) {
-    return data.Bytes();
-  }
-
-  return renderFrom(*task.input_->from_, subject);
-}
-
-auto WorkflowInterpreter::renderFrom(
-    const std::variant<std::string, ::strij::openworkflow::Value>& from, const utils::Jv* subject)
-    -> absl::StatusOr<std::string> {
-  if (std::holds_alternative<std::string>(from)) {
-    const auto& text = std::get<std::string>(from);
-    if (IsExpression(text)) {
-      if (subject == nullptr) {
-        return absl::InvalidArgumentError("the data subject is not JSON");
-      }
-
-      auto result = engine_.Run(ExpressionProgram(text), *subject);
-      if (!result.ok()) {
-        return result.status();
-      }
-
-      const ::strij::openworkflow::Value value = ::strij::openworkflow::JvToValue(*result);
-      if (value.IsString()) {
-        return value.AsString();
-      }
-
-      return result->Dump();
-    }
-
-    if (HasPartialWrapper(text)) {
-      return absl::InvalidArgumentError(absl::StrCat(
-          "the ${ } wrapper must span the whole value, but '", text, "' has text outside it"));
-    }
-
-    return text;
-  }
-
-  const auto& value = std::get<::strij::openworkflow::Value>(from);
-  if (subject == nullptr) {
-    auto programs = CollectExpressions(value);
-    if (!programs.ok() || !programs->empty()) {
-      return absl::InvalidArgumentError("the data subject is not JSON");
-    }
-  }
-
-  if (subject != nullptr) {
-    auto evaluated = engine_.Evaluate(value, *subject);
-    if (!evaluated.ok()) {
-      return evaluated.status();
-    }
-
-    return ::strij::openworkflow::ValueToJv(*evaluated).Dump();
-  }
-
-  auto null_subject = utils::Jv::Parse("null");
-  if (!null_subject.ok()) {
-    return null_subject.status();
-  }
-
-  auto evaluated = engine_.Evaluate(value, *null_subject);
-  if (!evaluated.ok()) {
-    return evaluated.status();
-  }
-
-  return ::strij::openworkflow::ValueToJv(*evaluated).Dump();
 }
 
 void WorkflowInterpreter::succeed(StepDataValue value) {

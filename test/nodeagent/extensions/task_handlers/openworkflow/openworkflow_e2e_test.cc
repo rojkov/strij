@@ -189,8 +189,9 @@ TEST_F(OpenWorkflowE2ETest, ChildOutputBecomesWorkflowFinalResult) {
   EXPECT_TRUE(state->sent_.empty());
 
   auto* child = static_cast<ChildProcess*>(child_raw);
-  ASSERT_EQ(::write(stdin_w, "hello", 5), 5);
-  child->HandleCompletion(kStdinWrite, 5, 0);
+  const std::string body = R"("hello")";
+  ASSERT_EQ(::write(stdin_w, body.data(), body.size()), static_cast<ssize_t>(body.size()));
+  child->HandleCompletion(kStdinWrite, static_cast<int>(body.size()), 0);
   ASSERT_TRUE(WaitForExit(pidfd));
 
   event::Command deferred{};
@@ -202,7 +203,7 @@ TEST_F(OpenWorkflowE2ETest, ChildOutputBecomesWorkflowFinalResult) {
 
   ASSERT_EQ(state->sent_.size(), 1U);
   EXPECT_EQ(state->sent_[0].id(), "wf");
-  EXPECT_EQ(state->sent_[0].body(), "hello");
+  EXPECT_EQ(state->sent_[0].body(), R"("hello")");
   EXPECT_TRUE(state->sent_[0].is_final());
   EXPECT_TRUE(utils::IsTaskResultOk(state->sent_[0]));
 
@@ -215,6 +216,89 @@ TEST_F(OpenWorkflowE2ETest, ChildOutputBecomesWorkflowFinalResult) {
 // handler: a two-step `call: strij` workflow whose steps run
 // scripts/openworkflow_echo.sh, with each child's output (the data chain)
 // feeding the next. Drives two sequential child processes.
+TEST_F(OpenWorkflowE2ETest, InputTransformConditionAndOutputShapeCompose) {
+  const std::string script = FindEchoScript();
+  ASSERT_FALSE(script.empty()) << "scripts/openworkflow_echo.sh not found in runfiles";
+
+  const std::string document_text =
+      absl::StrCat("document:\n"
+                   "  dsl: '1.0.3'\n"
+                   "  namespace: test\n"
+                   "  name: e2e-pipeline\n"
+                   "  version: '0.1.0'\n"
+                   "input:\n"
+                   "  from: '${ {enabled: .run, payload: {id: .id}} }'\n"
+                   "do:\n"
+                   "  - skipped:\n"
+                   "      if: '${ .enabled }'\n"
+                   "      call: strij\n"
+                   "      with:\n"
+                   "        type: piped_executable\n"
+                   "        parameters:\n"
+                   "          function: ",
+                   script,
+                   "\n"
+                   "        requirements:\n"
+                   "          cpu: 1\n"
+                   "  - shaped:\n"
+                   "      call: strij\n"
+                   "      input:\n"
+                   "        from: '${ .payload }'\n"
+                   "      output:\n"
+                   "        as: '${ {petId: .echo.id} }'\n"
+                   "      with:\n"
+                   "        type: piped_executable\n"
+                   "        parameters:\n"
+                   "          function: ",
+                   script,
+                   "\n"
+                   "        requirements:\n"
+                   "          cpu: 1\n");
+
+  OpenWorkflowTaskHandler handler(*router_, resolver_, test::JqEvaluatorConfig());
+  auto state = std::make_shared<test::TestSender::State>();
+
+  int stdin_w = -1;
+  int pidfd = -1;
+  event::Completable* child_raw = nullptr;
+  EXPECT_CALL(*dispatcher_, PrepareWrite(_, kStdinWrite, _, _, -1))
+      .WillOnce(DoAll(SaveArg<2>(&stdin_w), Return()));
+  EXPECT_CALL(*dispatcher_, PreparePoll(_, kExitPoll, _, POLLIN))
+      .WillOnce(DoAll(SaveArg<0>(&child_raw), SaveArg<2>(&pidfd), Return()));
+
+  const std::string document = WriteDocument("pipeline.yaml", document_text);
+  handler.HandleTask(MakeParent("wf", document, R"({"run":false,"id":7})"),
+                     std::make_unique<test::TestSender>(state));
+
+  // The false condition skipped the first step; only the shaped step submitted.
+  ASSERT_NE(child_raw, nullptr);
+  ASSERT_GE(stdin_w, 0);
+  EXPECT_TRUE(state->sent_.empty());
+
+  const std::string body = R"({"id":7})";
+  auto* child = static_cast<ChildProcess*>(child_raw);
+  ASSERT_EQ(::write(stdin_w, body.data(), body.size()), static_cast<ssize_t>(body.size()));
+  child->HandleCompletion(kStdinWrite, static_cast<int>(body.size()), 0);
+  ASSERT_TRUE(WaitForExit(pidfd));
+
+  event::Command deferred{};
+  EXPECT_CALL(*dispatcher_, SubmitCommand(_)).WillOnce(SaveArg<0>(&deferred));
+
+  child->HandleCompletion(kExitPoll, POLLIN, 0);
+  child->HandleCompletion(kStdoutRead, 0, 0);
+  child->HandleCompletion(kStderrRead, 0, 0);
+
+  ASSERT_EQ(state->sent_.size(), 1U);
+  EXPECT_EQ(state->sent_[0].id(), "wf");
+  EXPECT_EQ(state->sent_[0].body(), R"({"petId":7})");
+  EXPECT_TRUE(state->sent_[0].is_final());
+  EXPECT_TRUE(utils::IsTaskResultOk(state->sent_[0]));
+
+  auto* piped = dynamic_cast<PipedExecutableTaskHandler*>(manager_->GetHandler("piped_executable"));
+  ASSERT_NE(piped, nullptr);
+  piped->ProcessCommand(deferred);
+}
+
 TEST_F(OpenWorkflowE2ETest, ScriptedTwoStepWorkflowChainsChildOutputs) {
   const std::string script = FindEchoScript();
   ASSERT_FALSE(script.empty()) << "scripts/openworkflow_echo.sh not found in runfiles";

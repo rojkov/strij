@@ -1,12 +1,12 @@
-#include "nodeagent/extensions/task_handlers/openworkflow/expression.hh"
-
 #include <string>
 #include <vector>
+
+#include "test/nodeagent/extensions/task_handlers/openworkflow/fakes.hh"
 
 #include "common/core/utils/jv.hh"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
-#include "test/nodeagent/extensions/task_handlers/openworkflow/fakes.hh"
+#include "nodeagent/extensions/task_handlers/openworkflow/expression.hh"
 
 namespace strij::nodeagent::task_handlers::openworkflow {
 namespace {
@@ -67,8 +67,7 @@ TEST(ExpressionEngineTest, ValidatesEveryNestedExpression) {
   const Value good{Value::Object{{"a", Value{"${ .x }"}}}};
   EXPECT_TRUE(engine.Validate(good).ok());
 
-  const Value malformed{Value::Object{
-      {"a", Value{Value::Object{{"b", Value{"${ .x( }"}}}}}}};
+  const Value malformed{Value::Object{{"a", Value{Value::Object{{"b", Value{"${ .x( }"}}}}}}};
   EXPECT_FALSE(engine.Validate(malformed).ok());
 }
 
@@ -103,6 +102,57 @@ TEST(ExpressionEngineTest, SubjectIsNotContext) {
   auto from_context = engine.Run("$context.name", *subject);
   ASSERT_TRUE(from_context.ok()) << from_context.status().message();
   EXPECT_EQ(from_context->Dump(), "null");
+}
+
+TEST(ExpressionEngineTest, TypedSlotsRequireWholeValueWrappers) {
+  ExpressionEngine engine(test::JqEvaluatorConfig());
+
+  EXPECT_FALSE(engine.ValidateTypedSlot(Value{".enabled"}, TypedSlot::kIf).ok());
+  EXPECT_FALSE(engine.ValidateTypedSlot(Value{".payload"}, TypedSlot::kInputFrom).ok());
+  EXPECT_FALSE(engine.ValidateTypedSlot(Value{".result"}, TypedSlot::kTaskOutput).ok());
+  EXPECT_FALSE(engine.ValidateTypedSlot(Value{"${ .x } tail"}, TypedSlot::kIf).ok());
+  EXPECT_FALSE(engine.ValidateTypedSlot(Value{"${ .x("}, TypedSlot::kInputFrom).ok());
+
+  const Value nested{Value::Object{{"id", Value{".payload.id"}}}};
+  EXPECT_FALSE(engine.ValidateTypedSlot(nested, TypedSlot::kInputFrom).ok());
+
+  EXPECT_TRUE(engine.ValidateTypedSlot(Value{"${ .enabled }"}, TypedSlot::kIf).ok());
+  EXPECT_TRUE(engine.ValidateTypedSlot(Value{"${ .payload }"}, TypedSlot::kInputFrom).ok());
+  EXPECT_TRUE(engine.ValidateTypedSlot(Value{"${ .result }"}, TypedSlot::kTaskOutput).ok());
+  EXPECT_TRUE(engine
+                  .ValidateTypedSlot(Value{Value::Object{{"id", Value{"${ .payload.id }"}}}},
+                                     TypedSlot::kInputFrom)
+                  .ok());
+}
+
+TEST(ExpressionEngineTest, TypedSlotEvaluationIsJsonFaithful) {
+  ExpressionEngine engine(test::JqEvaluatorConfig());
+  const auto subject = *utils::Jv::Parse(R"({"name":"world"})");
+
+  auto result = engine.EvaluateTypedSlot(Value{"${ .name }"}, TypedSlot::kInputFrom, subject);
+  ASSERT_TRUE(result.ok()) << result.status().message();
+  EXPECT_EQ(result->Dump(), R"("world")");
+}
+
+TEST(ExpressionEngineTest, TaskOutputSlotBindsInputAndOutput) {
+  ExpressionEngine engine(test::JqEvaluatorConfig());
+  const auto input = *utils::Jv::Parse(R"({"id":7})");
+  const auto output = *utils::Jv::Parse(R"({"name":"pet"})");
+
+  auto result = engine.EvaluateTypedSlot(Value{"${ { before: $input, after: $output } }"},
+                                         TypedSlot::kTaskOutput, output, &input, &output);
+  ASSERT_TRUE(result.ok()) << result.status().message();
+  EXPECT_EQ(result->Dump(), R"({"after":{"name":"pet"},"before":{"id":7}})");
+}
+
+TEST(ExpressionEngineTest, UndeclaredDescriptorArgumentIsRejected) {
+  ExpressionEngine engine(test::JqEvaluatorConfig());
+  auto subject = utils::Jv::Parse("null");
+  ASSERT_TRUE(subject.ok());
+
+  EXPECT_FALSE(engine.ValidateTypedSlot(Value{"${ $task }"}, TypedSlot::kIf).ok());
+  EXPECT_FALSE(
+      engine.EvaluateTypedSlot(Value{"${ $runtime }"}, TypedSlot::kInputFrom, *subject).ok());
 }
 
 TEST(RenderScalarTest, RendersStringUnquotedAndNumberCanonically) {

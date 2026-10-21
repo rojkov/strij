@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "common/task/task.pb.h"
 #include "nodeagent/extensions/task_handlers/openworkflow/step_data_value.hh"
 #include "openworkflow/document.hh"
@@ -65,11 +66,26 @@ public:
   FrameContext(FrameContext&&) noexcept = delete;
   auto operator=(FrameContext&&) noexcept -> FrameContext& = delete;
 
-  // Runs one `call: strij` step for `owner`, projecting its arguments, building
-  // the child body, submitting it, and applying an inline outcome. A returned
-  // error is the step's own (local) failure.
-  virtual auto ExecuteCall(SequenceFrame& owner, const ::strij::openworkflow::NamedTask& step)
-      -> absl::Status PURE;
+  // Evaluates a task's `if` against the raw task input. Absent `if` is true.
+  virtual auto EvaluateCondition(const ::strij::openworkflow::NamedTask& step,
+                                 const StepDataValue& raw) -> absl::StatusOr<bool> PURE;
+
+  // Evaluates a task's `input.from` against the raw task input. Absent
+  // `input.from` is the identity.
+  virtual auto TransformTaskInput(const ::strij::openworkflow::NamedTask& step,
+                                  const StepDataValue& raw) -> absl::StatusOr<StepDataValue> PURE;
+
+  // Evaluates a task's `output.as` against the raw output, with the transformed
+  // input available as `$input`. Absent `output.as` is the identity.
+  virtual auto TransformTaskOutput(const ::strij::openworkflow::NamedTask& step,
+                                   const StepDataValue& input, const StepDataValue& raw_output)
+      -> absl::StatusOr<StepDataValue> PURE;
+
+  // Runs one `call: strij` step for `owner`, projecting its arguments from the
+  // transformed input, building the child body, submitting it, and applying an
+  // inline outcome. A returned error is the step's own (local) failure.
+  virtual auto ExecuteCall(SequenceFrame& owner, const ::strij::openworkflow::NamedTask& step,
+                           const StepDataValue& input) -> absl::Status PURE;
 
   // Drops a child id from the outcome-routing map. Called only when a waiting
   // frame is abandoned.
@@ -171,8 +187,9 @@ public:
   void Suspend(std::string child_id);
 
   // Applies a terminal child outcome: clears the wait, then either advances the
-  // data chain and cursor, or stores the failure and marks this frame failed.
-  void ApplyOutcome(ChildOutcome outcome);
+  // data chain and cursor (applying `output.as`), or stores the failure and
+  // marks this frame failed.
+  void ApplyOutcome(ChildOutcome outcome, FrameContext& context);
 
   [[nodiscard]] auto Steps() const -> std::span<const ::strij::openworkflow::NamedTask> {
     return steps_;
@@ -198,6 +215,10 @@ private:
   std::span<const ::strij::openworkflow::NamedTask> steps_;
   std::size_t cursor_{0};
   StepDataValue data_;
+  // The current step's transformed input, set at step entry and cleared when
+  // the step completes. It remains set while the step waits on a child so a
+  // resumed outcome can apply `output.as` with the right `$input`.
+  std::optional<StepDataValue> step_input_;
   std::unique_ptr<Frame> child_;
   std::optional<std::string> waiting_child_id_;
   std::optional<Branch> branch_;

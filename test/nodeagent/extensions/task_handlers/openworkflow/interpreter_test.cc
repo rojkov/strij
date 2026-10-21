@@ -548,6 +548,475 @@ do:
         branches: []
 )YAML";
 
+constexpr std::string_view kDocumentInputString = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: input-string
+  version: '0.1.0'
+input:
+  from: '${ .name }'
+do:
+  - one:
+      call: strij
+      with:
+        type: echo
+)YAML";
+
+constexpr std::string_view kPlainStep = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: plain
+  version: '0.1.0'
+do:
+  - one:
+      call: strij
+      with:
+        type: echo
+)YAML";
+
+constexpr std::string_view kCallInputFromWithExpression = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: call-input
+  version: '0.1.0'
+do:
+  - one:
+      call: strij
+      input:
+        from: '${ .payload }'
+      with:
+        type: echo
+        parameters:
+          p: '${ .id }'
+)YAML";
+
+constexpr std::string_view kCallInputFromString = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: call-input-string
+  version: '0.1.0'
+do:
+  - one:
+      call: strij
+      input:
+        from: '${ .name }'
+      with:
+        type: echo
+)YAML";
+
+constexpr std::string_view kNestedDoInputFrom = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: nested-input
+  version: '0.1.0'
+do:
+  - outer:
+      input:
+        from: '${ .payload }'
+      do:
+        - a:
+            call: strij
+            with:
+              type: echo
+              parameters:
+                p: '${ .id }'
+  - after:
+      call: strij
+      with:
+        type: echo
+)YAML";
+
+constexpr std::string_view kForkInputFrom = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: fork-input
+  version: '0.1.0'
+do:
+  - fan:
+      input:
+        from: '${ .payload }'
+      fork:
+        branches:
+          - a:
+              call: strij
+              with:
+                type: echo
+                parameters:
+                  p: '${ .id }'
+          - b:
+              call: strij
+              with:
+                type: echo
+                parameters:
+                  p: '${ .id }'
+)YAML";
+
+constexpr std::string_view kConditionFalseSkip = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: condition-false
+  version: '0.1.0'
+do:
+  - maybe:
+      if: '${ .enabled }'
+      then: exit
+      output:
+        as: '${ 1 }'
+      call: strij
+      with:
+        type: echo
+        parameters:
+          p: '${ .id }'
+  - next:
+      call: strij
+      with:
+        type: echo
+        parameters:
+          p: '${ .id }'
+)YAML";
+
+constexpr std::string_view kConditionTrue = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: condition-true
+  version: '0.1.0'
+do:
+  - one:
+      if: '${ .enabled }'
+      call: strij
+      with:
+        type: echo
+)YAML";
+
+constexpr std::string_view kConditionNestedDoSkip = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: condition-nested
+  version: '0.1.0'
+do:
+  - outer:
+      do:
+        - a:
+            if: '${ .enabled }'
+            call: strij
+            with:
+              type: echo
+        - b:
+            call: strij
+            with:
+              type: echo
+)YAML";
+
+constexpr std::string_view kConditionForkBranchSkip = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: condition-fork
+  version: '0.1.0'
+do:
+  - fan:
+      fork:
+        branches:
+          - a:
+              if: '${ .enabled }'
+              call: strij
+              with:
+                type: echo
+          - b:
+              call: strij
+              with:
+                type: echo
+)YAML";
+
+constexpr std::string_view kConditionNonBoolean = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: condition-number
+  version: '0.1.0'
+do:
+  - one:
+      if: '${ .count }'
+      call: strij
+      with:
+        type: echo
+)YAML";
+
+constexpr std::string_view kConditionOpaqueSubject = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: condition-opaque
+  version: '0.1.0'
+do:
+  - one:
+      if: '${ .enabled }'
+      call: strij
+      with:
+        type: echo
+)YAML";
+
+constexpr std::string_view kBareIf = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: bare-if
+  version: '0.1.0'
+do:
+  - one:
+      if: .enabled
+      call: strij
+      with:
+        type: echo
+)YAML";
+
+constexpr std::string_view kMalformedIf = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: malformed-if
+  version: '0.1.0'
+do:
+  - one:
+      if: '${ .enabled( }'
+      call: strij
+      with:
+        type: echo
+)YAML";
+
+constexpr std::string_view kBareInputFrom = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: bare-input
+  version: '0.1.0'
+do:
+  - one:
+      call: strij
+      input:
+        from: .payload
+      with:
+        type: echo
+)YAML";
+
+constexpr std::string_view kMalformedInputFrom = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: malformed-input
+  version: '0.1.0'
+do:
+  - one:
+      call: strij
+      input:
+        from: '${ .payload( }'
+      with:
+        type: echo
+)YAML";
+
+constexpr std::string_view kNestedBareInputFrom = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: nested-bare-input
+  version: '0.1.0'
+do:
+  - one:
+      call: strij
+      input:
+        from:
+          id: .payload.id
+      with:
+        type: echo
+)YAML";
+
+constexpr std::string_view kBareOutputAs = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: bare-output
+  version: '0.1.0'
+do:
+  - one:
+      call: strij
+      output:
+        as: .result
+      with:
+        type: echo
+)YAML";
+
+constexpr std::string_view kMalformedOutputAs = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: malformed-output
+  version: '0.1.0'
+do:
+  - one:
+      call: strij
+      output:
+        as: '${ .result( }'
+      with:
+        type: echo
+)YAML";
+
+constexpr std::string_view kBareDocumentOutput = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: bare-document-output
+  version: '0.1.0'
+output:
+  as: .result
+do:
+  - one:
+      call: strij
+      with:
+        type: echo
+)YAML";
+
+constexpr std::string_view kMalformedDocumentOutput = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: malformed-document-output
+  version: '0.1.0'
+output:
+  as: '${ .result( }'
+do:
+  - one:
+      call: strij
+      with:
+        type: echo
+)YAML";
+
+constexpr std::string_view kCallOutputAs = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: call-output
+  version: '0.1.0'
+do:
+  - one:
+      call: strij
+      output:
+        as: '${ .id }'
+      with:
+        type: echo
+  - two:
+      call: strij
+      with:
+        type: echo
+)YAML";
+
+constexpr std::string_view kDoOutputAs = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: do-output
+  version: '0.1.0'
+do:
+  - outer:
+      output:
+        as: '${ .id }'
+      do:
+        - inner:
+            call: strij
+            with:
+              type: echo
+  - after:
+      call: strij
+      with:
+        type: echo
+)YAML";
+
+constexpr std::string_view kForkOutputAs = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: fork-output
+  version: '0.1.0'
+do:
+  - fan:
+      output:
+        as: '${ .[0].id }'
+      fork:
+        branches:
+          - a:
+              call: strij
+              with:
+                type: echo
+  - after:
+      call: strij
+      with:
+        type: echo
+)YAML";
+
+constexpr std::string_view kOutputAsUsesInputAndOutput = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: output-vars
+  version: '0.1.0'
+do:
+  - one:
+      call: strij
+      input:
+        from: '${ {seed: .seed} }'
+      output:
+        as: '${ {before: $input, after: $output} }'
+      with:
+        type: echo
+  - two:
+      call: strij
+      with:
+        type: echo
+)YAML";
+
+constexpr std::string_view kOutputAsOpaqueOutput = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: opaque-output
+  version: '0.1.0'
+do:
+  - one:
+      call: strij
+      output:
+        as: '${ . }'
+      with:
+        type: echo
+)YAML";
+
+constexpr std::string_view kOutputAsOpaqueInput = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: opaque-input
+  version: '0.1.0'
+do:
+  - one:
+      call: strij
+      with:
+        type: echo
+  - two:
+      call: strij
+      output:
+        as: '${ . }'
+      with:
+        type: echo
+)YAML";
+
+constexpr std::string_view kDocumentOutputAs = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: document-output
+  version: '0.1.0'
+output:
+  as: '${ {petId: .id} }'
+do:
+  - one:
+      call: strij
+      with:
+        type: echo
+)YAML";
+
+constexpr std::string_view kDocumentOutputOpaque = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: document-output-opaque
+  version: '0.1.0'
+output:
+  as: '${ .id }'
+do:
+  - one:
+      call: strij
+      with:
+        type: echo
+)YAML";
+
 struct Harness {
   Harness() {
     interpreter_ = std::make_shared<WorkflowInterpreter>(
@@ -1070,6 +1539,278 @@ TEST(ForkInterpreterTest, NestedForkJoinBecomesTheBranchResult) {
   test::CompleteSuccessAt(harness.submitter_, 2, "30");
   ASSERT_EQ(harness.results_.size(), 1U);
   EXPECT_EQ(harness.results_[0].body(), "[10,30]");
+}
+
+TEST(InterpreterTest, DocumentInputPreservesAJsonString) {
+  Harness harness;
+  harness.interpreter_->Start(std::string(kDocumentInputString), R"({"name":"world"})");
+  ASSERT_EQ(harness.submitter_.size(), 1U);
+  EXPECT_EQ(harness.submitter_.last()->task_.body(), R"("world")");
+}
+
+TEST(InterpreterTest, OpaqueInputPassesThroughWhenNoTransformationIsDeclared) {
+  Harness harness;
+  harness.interpreter_->Start(std::string(kPlainStep), "not json");
+  ASSERT_EQ(harness.submitter_.size(), 1U);
+  EXPECT_EQ(harness.submitter_.last()->task_.body(), "not json");
+}
+
+TEST(InterpreterInputFromTest, TransformedInputIsTheCallArgumentSubjectAndBody) {
+  Harness harness;
+  harness.interpreter_->Start(std::string(kCallInputFromWithExpression),
+                              R"({"payload":{"id":7},"id":99})");
+  ASSERT_EQ(harness.submitter_.size(), 1U);
+  EXPECT_EQ(harness.submitter_.last()->task_.body(), R"({"id":7})");
+  EXPECT_EQ(harness.submitter_.last()->task_.parameters().at("p"), "7");
+}
+
+TEST(InterpreterInputFromTest, TransformedInputPreservesAJsonString) {
+  Harness harness;
+  harness.interpreter_->Start(std::string(kCallInputFromString), R"({"name":"world"})");
+  ASSERT_EQ(harness.submitter_.size(), 1U);
+  EXPECT_EQ(harness.submitter_.last()->task_.body(), R"("world")");
+}
+
+TEST(InterpreterInputFromTest, TransformedInputSeedsANestedDo) {
+  Harness harness;
+  harness.interpreter_->Start(std::string(kNestedDoInputFrom), R"({"payload":{"id":5},"id":1})");
+  ASSERT_EQ(harness.submitter_.size(), 1U);
+  EXPECT_EQ(harness.submitter_.last()->task_.body(), R"({"id":5})");
+  EXPECT_EQ(harness.submitter_.last()->task_.parameters().at("p"), "5");
+
+  test::CompleteSuccessAt(harness.submitter_, 0, R"({"id":6})");
+  ASSERT_EQ(harness.submitter_.size(), 2U);
+  EXPECT_EQ(harness.submitter_.at(1)->task_.body(), R"({"id":6})");
+}
+
+TEST(InterpreterInputFromTest, TransformedInputSeedsEveryForkBranch) {
+  Harness harness;
+  harness.interpreter_->Start(std::string(kForkInputFrom), R"({"payload":{"id":5},"id":1})");
+  ASSERT_EQ(harness.submitter_.size(), 2U);
+  EXPECT_EQ(harness.submitter_.at(0)->task_.body(), R"({"id":5})");
+  EXPECT_EQ(harness.submitter_.at(1)->task_.body(), R"({"id":5})");
+  EXPECT_EQ(harness.submitter_.at(0)->task_.parameters().at("p"), "5");
+  EXPECT_EQ(harness.submitter_.at(1)->task_.parameters().at("p"), "5");
+}
+
+TEST(InterpreterConditionTest, TrueConditionRunsTheTask) {
+  Harness harness;
+  harness.interpreter_->Start(std::string(kConditionTrue), R"({"enabled":true})");
+  EXPECT_EQ(harness.submitter_.size(), 1U);
+}
+
+TEST(InterpreterConditionTest, FalseConditionSkipsTheWholePipeline) {
+  Harness harness;
+  harness.interpreter_->Start(std::string(kConditionFalseSkip), R"({"enabled":false,"id":5})");
+
+  ASSERT_EQ(harness.submitter_.size(), 1U);
+  EXPECT_EQ(harness.submitter_.last()->task_.body(), R"({"enabled":false,"id":5})");
+  EXPECT_EQ(harness.submitter_.last()->task_.parameters().at("p"), "5");
+}
+
+TEST(InterpreterConditionTest, FalseConditionSkipsANestedStep) {
+  Harness harness;
+  harness.interpreter_->Start(std::string(kConditionNestedDoSkip), R"({"enabled":false})");
+
+  ASSERT_EQ(harness.submitter_.size(), 1U);
+  EXPECT_EQ(harness.submitter_.last()->task_.body(), R"({"enabled":false})");
+}
+
+TEST(InterpreterConditionTest, FalseConditionSkipsAForkBranch) {
+  Harness harness;
+  harness.interpreter_->Start(std::string(kConditionForkBranchSkip), R"({"enabled":false})");
+  ASSERT_EQ(harness.submitter_.size(), 1U);
+
+  test::CompleteSuccessAt(harness.submitter_, 0, R"({"b":2})");
+
+  ASSERT_EQ(harness.results_.size(), 1U);
+  EXPECT_EQ(harness.results_[0].body(), R"([{"enabled":false},{"b":2}])");
+}
+
+TEST(InterpreterConditionTest, NonBooleanConditionFailsTheStep) {
+  Harness harness;
+  harness.interpreter_->Start(std::string(kConditionNonBoolean), R"({"count":3})");
+
+  ASSERT_EQ(harness.results_.size(), 1U);
+  EXPECT_EQ(harness.results_[0].status(), task::TASK_STATUS_INTERNAL);
+  EXPECT_NE(harness.results_[0].body().find("one"), std::string::npos);
+  EXPECT_NE(harness.results_[0].body().find("boolean"), std::string::npos);
+  EXPECT_EQ(harness.submitter_.size(), 0U);
+}
+
+TEST(InterpreterConditionTest, ConditionOverOpaqueInputFailsTheStep) {
+  Harness harness;
+  harness.interpreter_->Start(std::string(kConditionOpaqueSubject), "not json");
+
+  ASSERT_EQ(harness.results_.size(), 1U);
+  EXPECT_EQ(harness.results_[0].status(), task::TASK_STATUS_INTERNAL);
+  EXPECT_NE(harness.results_[0].body().find("one"), std::string::npos);
+  EXPECT_NE(harness.results_[0].body().find("not JSON"), std::string::npos);
+  EXPECT_EQ(harness.submitter_.size(), 0U);
+}
+
+TEST(InterpreterValidationTest, BareAndMalformedConditionsFailBeforeSubmission) {
+  for (std::string_view document : {kBareIf, kMalformedIf}) {
+    Harness harness;
+    harness.interpreter_->Start(std::string(document));
+
+    ASSERT_EQ(harness.results_.size(), 1U);
+    EXPECT_EQ(harness.results_[0].status(), task::TASK_STATUS_MALFORMED_REQUEST);
+    EXPECT_EQ(harness.submitter_.size(), 0U);
+  }
+}
+
+TEST(InterpreterValidationTest, BareAndMalformedInputFromFailBeforeSubmission) {
+  for (std::string_view document : {kBareInputFrom, kMalformedInputFrom, kNestedBareInputFrom}) {
+    Harness harness;
+    harness.interpreter_->Start(std::string(document));
+
+    ASSERT_EQ(harness.results_.size(), 1U);
+    EXPECT_EQ(harness.results_[0].status(), task::TASK_STATUS_MALFORMED_REQUEST);
+    EXPECT_EQ(harness.submitter_.size(), 0U);
+  }
+}
+
+TEST(InterpreterValidationTest, BareAndMalformedOutputAsFailBeforeSubmission) {
+  for (std::string_view document : {kBareOutputAs, kMalformedOutputAs}) {
+    Harness harness;
+    harness.interpreter_->Start(std::string(document));
+
+    ASSERT_EQ(harness.results_.size(), 1U);
+    EXPECT_EQ(harness.results_[0].status(), task::TASK_STATUS_MALFORMED_REQUEST);
+    EXPECT_EQ(harness.submitter_.size(), 0U);
+  }
+}
+
+TEST(InterpreterValidationTest, BareAndMalformedDocumentOutputFailBeforeSubmission) {
+  for (std::string_view document : {kBareDocumentOutput, kMalformedDocumentOutput}) {
+    Harness harness;
+    harness.interpreter_->Start(std::string(document));
+
+    ASSERT_EQ(harness.results_.size(), 1U);
+    EXPECT_EQ(harness.results_[0].status(), task::TASK_STATUS_MALFORMED_REQUEST);
+    EXPECT_EQ(harness.submitter_.size(), 0U);
+  }
+}
+
+TEST(InterpreterOutputAsTest, ResumedCallOutputIsShapedOnceForTheFollowingStep) {
+  Harness harness;
+  harness.interpreter_->Start(std::string(kCallOutputAs));
+  ASSERT_EQ(harness.submitter_.size(), 1U);
+
+  test::CompleteSuccessAt(harness.submitter_, 0, R"({"id":7})");
+
+  ASSERT_EQ(harness.submitter_.size(), 2U);
+  EXPECT_EQ(harness.submitter_.at(1)->task_.body(), "7");
+}
+
+TEST(InterpreterOutputAsTest, InlineCallOutputIsShapedExactlyOnce) {
+  Harness harness;
+  auto inline_count = std::make_shared<int>(0);
+  harness.submitter_.SetOnSubmit(
+      [inline_count](const task::Task& /*task*/, gateway::ResultReceiver& receiver) {
+        if (++*inline_count != 1) {
+          return;
+        }
+
+        const std::string body = R"({"id":7})";
+        const auto data = std::as_bytes(std::span(body.data(), body.size()));
+        receiver.Deliver(data, true);
+      });
+
+  harness.interpreter_->Start(std::string(kCallOutputAs));
+
+  ASSERT_EQ(harness.submitter_.size(), 2U);
+  EXPECT_EQ(harness.submitter_.at(1)->task_.body(), "7");
+}
+
+TEST(InterpreterOutputAsTest, NestedSequenceOutputIsShaped) {
+  Harness harness;
+  harness.interpreter_->Start(std::string(kDoOutputAs));
+  ASSERT_EQ(harness.submitter_.size(), 1U);
+
+  test::CompleteSuccessAt(harness.submitter_, 0, R"({"id":7})");
+
+  ASSERT_EQ(harness.submitter_.size(), 2U);
+  EXPECT_EQ(harness.submitter_.at(1)->task_.body(), "7");
+}
+
+TEST(InterpreterOutputAsTest, ForkJoinOutputIsShaped) {
+  Harness harness;
+  harness.interpreter_->Start(std::string(kForkOutputAs));
+  ASSERT_EQ(harness.submitter_.size(), 1U);
+
+  test::CompleteSuccessAt(harness.submitter_, 0, R"({"id":7})");
+
+  ASSERT_EQ(harness.submitter_.size(), 2U);
+  EXPECT_EQ(harness.submitter_.at(1)->task_.body(), "7");
+}
+
+TEST(InterpreterOutputAsTest, OutputExpressionBindsInputAndOutput) {
+  Harness harness;
+  harness.interpreter_->Start(std::string(kOutputAsUsesInputAndOutput), R"({"seed":1})");
+  ASSERT_EQ(harness.submitter_.size(), 1U);
+  EXPECT_EQ(harness.submitter_.last()->task_.body(), R"({"seed":1})");
+
+  test::CompleteSuccessAt(harness.submitter_, 0, R"({"name":"pet"})");
+
+  ASSERT_EQ(harness.submitter_.size(), 2U);
+  EXPECT_EQ(harness.submitter_.at(1)->task_.body(),
+            R"({"after":{"name":"pet"},"before":{"seed":1}})");
+}
+
+TEST(InterpreterOutputAsTest, OpaqueRawOutputFailsTheStep) {
+  Harness harness;
+  harness.interpreter_->Start(std::string(kOutputAsOpaqueOutput), R"({"id":1})");
+  ASSERT_EQ(harness.submitter_.size(), 1U);
+
+  test::CompleteSuccessAt(harness.submitter_, 0, "not json");
+
+  ASSERT_EQ(harness.results_.size(), 1U);
+  EXPECT_EQ(harness.results_[0].status(), task::TASK_STATUS_INTERNAL);
+  EXPECT_NE(harness.results_[0].body().find("one"), std::string::npos);
+  EXPECT_NE(harness.results_[0].body().find("not JSON"), std::string::npos);
+}
+
+TEST(InterpreterOutputAsTest, OpaqueTransformedInputFailsTheStep) {
+  Harness harness;
+  harness.interpreter_->Start(std::string(kOutputAsOpaqueInput));
+  ASSERT_EQ(harness.submitter_.size(), 1U);
+
+  test::CompleteSuccessAt(harness.submitter_, 0, "not json");
+  ASSERT_EQ(harness.submitter_.size(), 2U);
+
+  test::CompleteSuccessAt(harness.submitter_, 1, R"({"id":7})");
+
+  ASSERT_EQ(harness.results_.size(), 1U);
+  EXPECT_EQ(harness.results_[0].status(), task::TASK_STATUS_INTERNAL);
+  EXPECT_NE(harness.results_[0].body().find("two"), std::string::npos);
+  EXPECT_NE(harness.results_[0].body().find("input"), std::string::npos);
+  EXPECT_NE(harness.results_[0].body().find("not JSON"), std::string::npos);
+}
+
+TEST(InterpreterDocumentOutputTest, ShapesTheFinalResultExactlyOnce) {
+  Harness harness;
+  harness.interpreter_->Start(std::string(kDocumentOutputAs));
+  ASSERT_EQ(harness.submitter_.size(), 1U);
+
+  test::CompleteSuccessAt(harness.submitter_, 0, R"({"id":7})");
+
+  ASSERT_EQ(harness.results_.size(), 1U);
+  EXPECT_EQ(harness.results_[0].body(), R"({"petId":7})");
+  EXPECT_TRUE(harness.results_[0].is_final());
+}
+
+TEST(InterpreterDocumentOutputTest, OpaqueFinalValueFailsTheRun) {
+  Harness harness;
+  harness.interpreter_->Start(std::string(kDocumentOutputOpaque));
+  ASSERT_EQ(harness.submitter_.size(), 1U);
+
+  test::CompleteSuccessAt(harness.submitter_, 0, "not json");
+
+  ASSERT_EQ(harness.results_.size(), 1U);
+  EXPECT_EQ(harness.results_[0].status(), task::TASK_STATUS_INTERNAL);
+  EXPECT_NE(harness.results_[0].body().find("not JSON"), std::string::npos);
 }
 
 // NOLINTEND(modernize-use-trailing-return-type)

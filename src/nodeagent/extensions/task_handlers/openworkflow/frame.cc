@@ -111,7 +111,10 @@ void SequenceFrame::materializeChild() {
     return;
   }
 
-  child_->Enter(std::move(data_));
+  assert(step_input_.has_value());
+  // Keep the transformed input for `output.as`; give the child its own copy so
+  // the two values cannot share mutable state.
+  child_->Enter(step_input_->Copy());
 }
 
 void SequenceFrame::Suspend(std::string child_id) {
@@ -120,9 +123,10 @@ void SequenceFrame::Suspend(std::string child_id) {
   waiting_child_id_ = std::move(child_id);
 }
 
-void SequenceFrame::ApplyOutcome(ChildOutcome outcome) {
+void SequenceFrame::ApplyOutcome(ChildOutcome outcome, FrameContext& context) {
   assert(IsActive());
   assert(waiting_child_id_.has_value());
+  assert(step_input_.has_value());
   waiting_child_id_.reset();
 
   if (outcome.IsError()) {
@@ -138,7 +142,18 @@ void SequenceFrame::ApplyOutcome(ChildOutcome outcome) {
     return;
   }
 
-  data_ = StepDataValue::FromBytes(std::move(outcome.body_));
+  const NamedTask& step = steps_[cursor_];
+  StepDataValue raw_output = StepDataValue::FromBytes(std::move(outcome.body_));
+  auto transformed = context.TransformTaskOutput(step, *step_input_, raw_output);
+  if (!transformed.ok()) {
+    (void)failStep(task::TASK_STATUS_INTERNAL, step, std::string(transformed.status().message()));
+    step_input_.reset();
+
+    return;
+  }
+
+  data_ = std::move(*transformed);
+  step_input_.reset();
   ++cursor_;
 }
 
@@ -156,7 +171,8 @@ auto SequenceFrame::terminalResult() -> std::optional<FrameResult> {
 
 auto SequenceFrame::advanceCall(const NamedTask& step, FrameContext& context)
     -> std::optional<FrameResult> {
-  const absl::Status status = context.ExecuteCall(*this, step);
+  assert(step_input_.has_value());
+  const absl::Status status = context.ExecuteCall(*this, step, *step_input_);
   if (!status.ok()) {
     return failStep(task::TASK_STATUS_INTERNAL, step, std::string(status.message()));
   }
@@ -191,7 +207,19 @@ auto SequenceFrame::advanceContainer(FrameContext& context) -> std::optional<Fra
     return Suspended{};
   }
 
-  data_ = std::move(std::get<Completed>(result).value_);
+  assert(step_input_.has_value());
+  const NamedTask& step = steps_[cursor_];
+  auto transformed =
+      context.TransformTaskOutput(step, *step_input_, std::get<Completed>(result).value_);
+  if (!transformed.ok()) {
+    child_.reset();
+    step_input_.reset();
+
+    return failStep(task::TASK_STATUS_INTERNAL, step, std::string(transformed.status().message()));
+  }
+
+  data_ = std::move(*transformed);
+  step_input_.reset();
   ++cursor_;
   child_.reset();
 
@@ -238,6 +266,25 @@ auto SequenceFrame::Advance(FrameContext& context) -> FrameResult {
 
     const NamedTask& step = steps_[cursor_];
     const Task& task = step.task_;
+
+    auto condition = context.EvaluateCondition(step, data_);
+    if (!condition.ok()) {
+      return failStep(task::TASK_STATUS_INTERNAL, step, std::string(condition.status().message()));
+    }
+
+    if (!*condition) {
+      // Full short-circuit: no `input.from`, body, `then`, `output.as`, or
+      // `export`; the data value is unchanged.
+      ++cursor_;
+      continue;
+    }
+
+    auto input = context.TransformTaskInput(step, data_);
+    if (!input.ok()) {
+      return failStep(task::TASK_STATUS_INTERNAL, step, std::string(input.status().message()));
+    }
+
+    step_input_ = std::move(*input);
 
     std::optional<FrameResult> step_result;
     if (std::holds_alternative<CallBody>(task.body_)) {
