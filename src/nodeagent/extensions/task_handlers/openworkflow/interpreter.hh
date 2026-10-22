@@ -105,6 +105,11 @@ private:
       -> absl::StatusOr<StepDataValue> override;
   auto ExportTaskResult(const ::strij::openworkflow::NamedTask& step, const StepDataValue& input,
                         const StepDataValue& transformed_output) -> absl::Status override;
+  auto EvaluateSet(const ::strij::openworkflow::NamedTask& step, const StepDataValue& input)
+      -> absl::StatusOr<StepDataValue> override;
+  auto SelectSwitchDirective(const ::strij::openworkflow::NamedTask& step,
+                             const StepDataValue& input)
+      -> absl::StatusOr<std::optional<std::string>> override;
   auto ExecuteCall(SequenceFrame& owner, const ::strij::openworkflow::NamedTask& step,
                    const StepDataValue& input) -> absl::Status override;
   void ForgetChild(std::string_view child_id) override;

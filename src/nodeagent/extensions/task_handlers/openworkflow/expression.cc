@@ -112,6 +112,8 @@ auto TypedSlotName(TypedSlot slot) -> std::string_view {
     return "export.as";
   case TypedSlot::kDocumentOutput:
     return "the document's output.as";
+  case TypedSlot::kSwitchWhen:
+    return "a switch case's when";
   }
 
   return "expression";

@@ -167,6 +167,31 @@ TEST(ExpressionEngineTest, TypedSlotsRequireWholeValueWrappers) {
                   .ok());
 }
 
+TEST(ExpressionEngineTest, SwitchWhenRequiresAWholeValueExpression) {
+  ExpressionEngine engine(test::JqEvaluatorConfig());
+
+  EXPECT_FALSE(
+      engine.ValidateTypedSlot(Value{".orderType == \"electronic\""}, TypedSlot::kSwitchWhen).ok());
+  EXPECT_FALSE(engine.ValidateTypedSlot(Value{"${ .orderType( }"}, TypedSlot::kSwitchWhen).ok());
+  EXPECT_TRUE(
+      engine.ValidateTypedSlot(Value{"${ .orderType == \"electronic\" }"}, TypedSlot::kSwitchWhen)
+          .ok());
+}
+
+TEST(ExpressionEngineTest, SwitchWhenBindsOnlyTheContext) {
+  ExpressionEngine engine(test::JqEvaluatorConfig());
+  const auto subject = *utils::Jv::Parse(R"({"enabled":true})");
+  const auto context = *utils::Jv::Parse(R"({"token":"abc"})");
+  const ExpressionArguments arguments{.context = &context};
+
+  auto result = engine.EvaluateTypedSlot(Value{"${ $context.token }"}, TypedSlot::kSwitchWhen,
+                                         subject, arguments);
+  ASSERT_TRUE(result.ok()) << result.status().message();
+  EXPECT_EQ(result->Dump(), R"("abc")");
+
+  EXPECT_FALSE(engine.ValidateTypedSlot(Value{"${ $input }"}, TypedSlot::kSwitchWhen).ok());
+}
+
 TEST(ExpressionEngineTest, TypedSlotEvaluationIsJsonFaithful) {
   ExpressionEngine engine(test::JqEvaluatorConfig());
   const auto subject = *utils::Jv::Parse(R"({"name":"world"})");

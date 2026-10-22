@@ -22,6 +22,8 @@ using ::strij::openworkflow::CallBody;
 using ::strij::openworkflow::DoBody;
 using ::strij::openworkflow::ForkBody;
 using ::strij::openworkflow::NamedTask;
+using ::strij::openworkflow::SetBody;
+using ::strij::openworkflow::SwitchBody;
 using ::strij::openworkflow::Task;
 
 namespace {
@@ -53,7 +55,46 @@ auto joinAllForkResult(const std::vector<std::unique_ptr<SequenceFrame>>& branch
   return StepDataValue::FromBytes(std::move(array));
 }
 
+// A task's flow directive, defaulting to `continue`. Returned as a view into the
+// task so callers never bind a view to a temporary string.
+auto stepThen(const NamedTask& step) -> std::string_view {
+  return step.task_.then_.has_value() ? std::string_view(*step.task_.then_)
+                                      : std::string_view("continue");
+}
+
 } // namespace
+
+auto ResolveFlowDirective(std::span<const NamedTask> scope, std::string_view then)
+    -> absl::StatusOr<FlowDirective> {
+  if (then.empty() || then == "continue") {
+    return FlowDirective{.kind_ = FlowKind::kContinue};
+  }
+  if (then == "exit") {
+    return FlowDirective{.kind_ = FlowKind::kExit};
+  }
+  if (then == "end") {
+    return FlowDirective{.kind_ = FlowKind::kEnd};
+  }
+
+  std::optional<std::size_t> target;
+  for (std::size_t index = 0; index < scope.size(); ++index) {
+    if (scope[index].name_ == then) {
+      if (target.has_value()) {
+        return absl::InvalidArgumentError(
+            absl::StrCat("flow directive '", then, "' is ambiguous in its sequence"));
+      }
+
+      target = index;
+    }
+  }
+
+  if (!target.has_value()) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("flow directive '", then, "' does not name a task in the same sequence"));
+  }
+
+  return FlowDirective{.kind_ = FlowKind::kJump, .target_ = *target};
+}
 
 void Frame::markActive() {
   assert(IsPending());
@@ -144,25 +185,58 @@ void SequenceFrame::ApplyOutcome(ChildOutcome outcome, FrameContext& context) {
 
   const NamedTask& step = steps_[cursor_];
   StepDataValue raw_output = StepDataValue::FromBytes(std::move(outcome.body_));
+  (void)applyCompletedStep(step, std::move(raw_output), context, stepThen(step));
+}
+
+auto SequenceFrame::applyCompletedStep(const NamedTask& step, StepDataValue raw_output,
+                                       FrameContext& context, std::string_view then)
+    -> std::optional<FrameResult> {
+  assert(step_input_.has_value());
   auto transformed = context.TransformTaskOutput(step, *step_input_, raw_output);
   if (!transformed.ok()) {
-    (void)failStep(task::TASK_STATUS_INTERNAL, step, std::string(transformed.status().message()));
     step_input_.reset();
 
-    return;
+    return failStep(task::TASK_STATUS_INTERNAL, step, std::string(transformed.status().message()));
   }
 
   const absl::Status exported = context.ExportTaskResult(step, *step_input_, *transformed);
   if (!exported.ok()) {
-    (void)failStep(task::TASK_STATUS_INTERNAL, step, std::string(exported.message()));
     step_input_.reset();
 
-    return;
+    return failStep(task::TASK_STATUS_INTERNAL, step, std::string(exported.message()));
   }
 
   data_ = std::move(*transformed);
   step_input_.reset();
-  ++cursor_;
+
+  return applyFlowDirective(step, then);
+}
+
+auto SequenceFrame::applyFlowDirective(const NamedTask& step, std::string_view then)
+    -> std::optional<FrameResult> {
+  auto directive = ResolveFlowDirective(steps_, then);
+  if (!directive.ok()) {
+    return failStep(task::TASK_STATUS_INTERNAL, step, std::string(directive.status().message()));
+  }
+
+  switch (directive->kind_) {
+  case FlowKind::kContinue:
+    ++cursor_;
+    return std::nullopt;
+  case FlowKind::kJump:
+    cursor_ = directive->target_;
+    return std::nullopt;
+  case FlowKind::kExit:
+    pending_result_ = Completed{.value_ = data_.Copy()};
+    markCompleted();
+    return std::nullopt;
+  case FlowKind::kEnd:
+    pending_result_ = Ended{.value_ = data_.Copy()};
+    markCompleted();
+    return std::nullopt;
+  }
+
+  return std::nullopt;
 }
 
 auto SequenceFrame::terminalResult() -> std::optional<FrameResult> {
@@ -172,6 +246,9 @@ auto SequenceFrame::terminalResult() -> std::optional<FrameResult> {
   }
   if (IsAbandoned()) {
     return Suspended{};
+  }
+  if (IsCompleted()) {
+    return Completed{.value_ = data_.Copy()};
   }
 
   return std::nullopt;
@@ -214,32 +291,18 @@ auto SequenceFrame::advanceContainer(FrameContext& context) -> std::optional<Fra
   if (std::holds_alternative<Suspended>(result)) {
     return Suspended{};
   }
+  if (auto* ended = std::get_if<Ended>(&result); ended != nullptr) {
+    // `end` skips this container's own `output.as` and `export.as`; the parent
+    // sequence propagates it unchanged.
+    return Ended{.value_ = std::move(ended->value_)};
+  }
 
   assert(step_input_.has_value());
   const NamedTask& step = steps_[cursor_];
-  auto transformed =
-      context.TransformTaskOutput(step, *step_input_, std::get<Completed>(result).value_);
-  if (!transformed.ok()) {
-    child_.reset();
-    step_input_.reset();
-
-    return failStep(task::TASK_STATUS_INTERNAL, step, std::string(transformed.status().message()));
-  }
-
-  const absl::Status exported = context.ExportTaskResult(step, *step_input_, *transformed);
-  if (!exported.ok()) {
-    child_.reset();
-    step_input_.reset();
-
-    return failStep(task::TASK_STATUS_INTERNAL, step, std::string(exported.message()));
-  }
-
-  data_ = std::move(*transformed);
-  step_input_.reset();
-  ++cursor_;
+  StepDataValue raw_output = std::move(std::get<Completed>(result).value_);
   child_.reset();
 
-  return std::nullopt;
+  return applyCompletedStep(step, std::move(raw_output), context, stepThen(step));
 }
 
 auto SequenceFrame::failStep(task::TaskStatus status, const NamedTask& step, std::string message)
@@ -266,13 +329,30 @@ auto SequenceFrame::storedFailureResult() -> FrameResult {
 }
 
 auto SequenceFrame::Advance(FrameContext& context) -> FrameResult {
+  if (pending_result_.has_value()) {
+    FrameResult result = std::move(*pending_result_);
+    pending_result_.reset();
+
+    return result;
+  }
+
   if (auto terminal = terminalResult(); terminal.has_value()) {
     return std::move(*terminal);
   }
 
   assert(IsActive());
 
+  // A synchronous stretch begins fresh on every resume. A loop that awaits a
+  // child therefore never accumulates against this budget.
+  transitions_ = 0;
+
   while (cursor_ < steps_.size()) {
+    if (pending_result_.has_value()) {
+      FrameResult result = std::move(*pending_result_);
+      pending_result_.reset();
+
+      return result;
+    }
     if (waiting_child_id_.has_value()) {
       return Suspended{};
     }
@@ -282,6 +362,12 @@ auto SequenceFrame::Advance(FrameContext& context) -> FrameResult {
 
     const NamedTask& step = steps_[cursor_];
     const Task& task = step.task_;
+
+    if (++transitions_ > transition_budget_) {
+      return failStep(task::TASK_STATUS_INTERNAL, step,
+                      absl::StrCat("the sequence exceeded its synchronous step budget at step '",
+                                   step.name_, "'"));
+    }
 
     auto condition = context.EvaluateCondition(step, data_);
     if (!condition.ok()) {
@@ -308,6 +394,27 @@ auto SequenceFrame::Advance(FrameContext& context) -> FrameResult {
     } else if (std::holds_alternative<DoBody>(task.body_) ||
                std::holds_alternative<ForkBody>(task.body_)) {
       step_result = advanceContainer(context);
+    } else if (std::holds_alternative<SetBody>(task.body_)) {
+      auto set_value = context.EvaluateSet(step, *step_input_);
+      if (!set_value.ok()) {
+        step_result =
+            failStep(task::TASK_STATUS_INTERNAL, step, std::string(set_value.status().message()));
+      } else {
+        step_result = applyCompletedStep(step, std::move(*set_value), context, stepThen(step));
+      }
+    } else if (std::holds_alternative<SwitchBody>(task.body_)) {
+      auto selected = context.SelectSwitchDirective(step, *step_input_);
+      if (!selected.ok()) {
+        step_result =
+            failStep(task::TASK_STATUS_INTERNAL, step, std::string(selected.status().message()));
+      } else {
+        std::string_view then = stepThen(step);
+        if (selected->has_value()) {
+          then = **selected;
+        }
+
+        step_result = applyCompletedStep(step, step_input_->Copy(), context, then);
+      }
     } else {
       step_result = failStep(task::TASK_STATUS_UNIMPLEMENTED, step,
                              "this task kind is not supported in the current workflow slice");
@@ -396,6 +503,14 @@ auto ForkFrame::Advance(FrameContext& context) -> FrameResult {
     FrameResult result = branches_[index]->Advance(context);
     if (std::holds_alternative<Suspended>(result)) {
       continue;
+    }
+    if (auto* ended = std::get_if<Ended>(&result); ended != nullptr) {
+      // `end` concludes the workflow from any branch; the other branches are
+      // abandoned and the fork's own step pipeline is skipped.
+      markCompleted();
+      abandonBranches(context);
+
+      return Ended{.value_ = std::move(ended->value_)};
     }
     if (auto* completed = std::get_if<Completed>(&result); completed != nullptr) {
       if (compete_) {

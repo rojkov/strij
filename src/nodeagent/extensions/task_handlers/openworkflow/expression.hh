@@ -38,6 +38,7 @@ enum class TypedSlot : std::uint8_t {
   kTaskOutput = 2,
   kTaskExport = 3,
   kDocumentOutput = 4,
+  kSwitchWhen = 5,
 };
 
 [[nodiscard]] auto TypedSlotName(TypedSlot slot) -> std::string_view;

@@ -284,6 +284,170 @@ during validation with `TASK_STATUS_UNIMPLEMENTED` before any child is
 submitted. A `fork` task's own `export` is supported: it runs after the join
 resolves, against the fork's shaped output.
 
+### Set, switch, and flow directives
+
+A `set` task replaces the data chain without submitting a child. Its `set` value
+is literal-capable: object members and scalar strings are expressions only when
+wholly wrapped in `${ }`, and a bare string stays literal text. The result is
+always JSON and flows through `output.as`, `export.as`, and `then` like any
+other step. A `set` task never writes `$context`; only `export.as` does.
+
+A task's `then` directive names what runs next: `continue` (the default),
+`exit` (finish the current sequence), `end` (conclude the workflow), or another
+task in the same sequence, forward or backward. It runs after `output.as` and
+`export.as`, and never for a step skipped by `if` or a step that failed.
+
+This document is the same shape as `SetTargetAndEndConcludeTheWorkflow`. The
+`set` step jumps forward to `finish`, skipping `bypassed`; `finish` then ends
+the workflow, so `after` never runs:
+
+```yaml
+document:
+  dsl: '1.0.3'
+  namespace: docs
+  name: set-and-end
+  version: '0.1.0'
+input:
+  from: '${ {"name":"world"} }'
+do:
+  - configure:
+      set: '${ {message: (.name + "!")} }'
+      then: finish
+  - bypassed:
+      call: strij
+      with:
+        type: piped_executable
+        parameters:
+          function: scripts/openworkflow_echo.sh
+        requirements:
+          cpu: 1
+  - finish:
+      call: strij
+      with:
+        type: piped_executable
+        parameters:
+          function: scripts/openworkflow_echo.sh
+        requirements:
+          cpu: 1
+      then: end
+  - after:
+      call: strij
+      with:
+        type: piped_executable
+        parameters:
+          function: scripts/openworkflow_echo.sh
+        requirements:
+          cpu: 1
+```
+
+Submitting it with an empty body returns `{"echo":{"message":"world!"}}`,
+because `configure` seeds `{"message":"world!"}` and `finish` echoes it. `end`
+concludes the workflow from the top-level sequence and still applies the
+document's `output.as` when one is declared.
+
+A `switch` task evaluates its cases against the transformed task input and
+selects the first matching case's `then`. A case without `when` is a fallback
+considered only after every conditional case; the switch task's own `then` is
+the fallback when no case matches, and `continue` applies when that is absent.
+A `switch.when` is a wrapped-only expression slot that must yield a boolean.
+The switch's raw output is its transformed input.
+
+This document is the same shape as `SwitchMatchSelectsTheMatchingCase` and
+uses an explicit default case (one without `when`):
+
+```yaml
+document:
+  dsl: '1.0.3'
+  namespace: docs
+  name: switch
+  version: '0.1.0'
+input:
+  from: '${ {"orderType":"electronic","id":7} }'
+do:
+  - route:
+      switch:
+        - electronic:
+            when: '${ .orderType == "electronic" }'
+            then: electronic
+        - fallback:
+            then: physical
+  - electronic:
+      call: strij
+      with:
+        type: piped_executable
+        parameters:
+          function: scripts/openworkflow_echo.sh
+        requirements:
+          cpu: 1
+      then: end
+  - physical:
+      call: strij
+      with:
+        type: piped_executable
+        parameters:
+          function: scripts/openworkflow_echo.sh
+        requirements:
+          cpu: 1
+      then: end
+```
+
+With body `{"orderType":"electronic","id":7}` the result is
+`{"echo":{"orderType":"electronic","id":7}}`. Sending
+`{"orderType":"physical","id":3}` selects the fallback case instead. To use the
+switch's own `then` as the implicit default, omit the fallback case and declare
+`then: physical` on the `route` task (see
+`SwitchImplicitDefaultUsesTheSwitchThen`). A case condition over opaque input
+fails during execution; a switch with only a default case needs no JSON subject.
+
+`exit` completes the current sequence while letting its enclosing step continue.
+This document is the same shape as `ThenExitSkipsTheRestOfANestedDo`: `first`
+exits its `do` body, so `skipped` never runs, and the outer sequence continues
+with `after`:
+
+```yaml
+document:
+  dsl: '1.0.3'
+  namespace: docs
+  name: exit
+  version: '0.1.0'
+do:
+  - outer:
+      do:
+        - first:
+            call: strij
+            with:
+              type: piped_executable
+              parameters:
+                function: scripts/openworkflow_echo.sh
+              requirements:
+                cpu: 1
+            then: exit
+        - skipped:
+            call: strij
+            with:
+              type: piped_executable
+              parameters:
+                function: scripts/openworkflow_echo.sh
+              requirements:
+                cpu: 1
+  - after:
+      call: strij
+      with:
+        type: piped_executable
+        parameters:
+          function: scripts/openworkflow_echo.sh
+        requirements:
+          cpu: 1
+```
+
+Validation resolves every `then` before any child is submitted. Unknown or
+cross-scope targets, duplicate task names in one sequence, a switch case without
+`then`, more than one case without `when`, and malformed `when`/`set`
+expressions are all malformed documents. Because backward jumps are legal, a
+sequence bounds how many steps it advances in one synchronous stretch; a loop
+that never awaits a child fails with `TASK_STATUS_INTERNAL`, while a loop that
+suspends on a child resets the budget.
+
 ### Simpler smoke test (no script)
 
 To check the end-to-end plumbing without the helper script, call the bundled

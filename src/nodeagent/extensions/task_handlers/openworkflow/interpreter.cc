@@ -8,6 +8,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <unordered_set>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -38,6 +39,8 @@ using ::strij::openworkflow::DoBody;
 using ::strij::openworkflow::Document;
 using ::strij::openworkflow::ForkBody;
 using ::strij::openworkflow::NamedTask;
+using ::strij::openworkflow::SetBody;
+using ::strij::openworkflow::SwitchBody;
 using ::strij::openworkflow::Task;
 using ::strij::openworkflow::Tasks;
 
@@ -146,11 +149,77 @@ auto validateTaskSlots(const Task& task, ExpressionEngine& engine) -> std::optio
   return std::nullopt;
 }
 
-auto validateTasks(const Tasks& tasks, const Document& document, ExpressionEngine& engine,
-                   bool inside_fork_branch) -> std::optional<Failure>;
+using Scope = std::span<const NamedTask>;
 
-auto validateTask(const NamedTask& named, const Document& document, ExpressionEngine& engine,
-                  bool inside_fork_branch) -> std::optional<Failure> {
+auto validateSequence(Scope scope, const Document& document, ExpressionEngine& engine,
+                      bool inside_fork_branch) -> std::optional<Failure>;
+
+auto malformedFlowDirective(Scope scope, std::string_view then, const NamedTask& named)
+    -> std::optional<Failure> {
+  auto directive = ResolveFlowDirective(scope, then);
+  if (directive.ok()) {
+    return std::nullopt;
+  }
+
+  return Failure{.phase_ = Phase::kValidation,
+                 .status_ = task::TASK_STATUS_MALFORMED_REQUEST,
+                 .step_ = named.name_,
+                 .message_ = std::string(directive.status().message())};
+}
+
+auto validateSwitchBody(const NamedTask& named, const SwitchBody& switch_body,
+                        ExpressionEngine& engine, Scope scope) -> std::optional<Failure> {
+  // Compile every `when` before the shape checks, mirroring the call-argument
+  // path so a malformed program is reported as a syntax error.
+  for (const auto& switch_case : switch_body.cases_) {
+    if (!switch_case.when_.has_value()) {
+      continue;
+    }
+
+    if (auto failure = validateSlot(::strij::openworkflow::Value{*switch_case.when_},
+                                    TypedSlot::kSwitchWhen, engine);
+        failure.has_value()) {
+      failure->step_ = named.name_;
+      failure->message_ =
+          absl::StrCat("switch case '", switch_case.name_, "': ", failure->message_);
+      return failure;
+    }
+  }
+
+  std::size_t default_count = 0;
+  for (const auto& switch_case : switch_body.cases_) {
+    if (!switch_case.then_.has_value() || switch_case.then_->empty()) {
+      return Failure{.phase_ = Phase::kValidation,
+                     .status_ = task::TASK_STATUS_MALFORMED_REQUEST,
+                     .step_ = named.name_,
+                     .message_ = absl::StrCat("switch case '", switch_case.name_,
+                                              "' must declare a then directive")};
+    }
+
+    if (!switch_case.when_.has_value()) {
+      ++default_count;
+    }
+  }
+
+  if (default_count > 1) {
+    return Failure{.phase_ = Phase::kValidation,
+                   .status_ = task::TASK_STATUS_MALFORMED_REQUEST,
+                   .step_ = named.name_,
+                   .message_ = "a switch may declare at most one case without when"};
+  }
+
+  for (const auto& switch_case : switch_body.cases_) {
+    if (auto failure = malformedFlowDirective(scope, *switch_case.then_, named);
+        failure.has_value()) {
+      return failure;
+    }
+  }
+
+  return std::nullopt;
+}
+
+auto validateTask(const NamedTask& named, Scope scope, const Document& document,
+                  ExpressionEngine& engine, bool inside_fork_branch) -> std::optional<Failure> {
   const Task& task = named.task_;
 
   // Fork branches run concurrently, so there is no defined way to combine
@@ -167,8 +236,14 @@ auto validateTask(const NamedTask& named, const Document& document, ExpressionEn
     return failure;
   }
 
+  if (task.then_.has_value()) {
+    if (auto failure = malformedFlowDirective(scope, *task.then_, named); failure.has_value()) {
+      return failure;
+    }
+  }
+
   if (const auto* do_body = std::get_if<DoBody>(&task.body_)) {
-    return validateTasks(do_body->do_, document, engine, inside_fork_branch);
+    return validateSequence(do_body->do_, document, engine, inside_fork_branch);
   }
 
   if (const auto* fork_body = std::get_if<ForkBody>(&task.body_)) {
@@ -179,7 +254,39 @@ auto validateTask(const NamedTask& named, const Document& document, ExpressionEn
                      .message_ = "a competing fork must declare at least one branch"};
     }
 
-    return validateTasks(fork_body->branches_, document, engine, true);
+    // Each branch is a one-task sequence at runtime, so it is its own scope.
+    for (const NamedTask& branch : fork_body->branches_) {
+      if (auto failure = validateSequence(Scope(&branch, 1), document, engine, true);
+          failure.has_value()) {
+        return failure;
+      }
+    }
+
+    return std::nullopt;
+  }
+
+  if (const auto* set_body = std::get_if<SetBody>(&task.body_)) {
+    const ::strij::openworkflow::Value data = slotValue(set_body->set_);
+    const absl::Status status = engine.Validate(data);
+    if (!status.ok()) {
+      return Failure{.phase_ = Phase::kValidation,
+                     .status_ = task::TASK_STATUS_MALFORMED_REQUEST,
+                     .step_ = named.name_,
+                     .message_ = std::string(status.message())};
+    }
+
+    if (data.IsArray()) {
+      return Failure{.phase_ = Phase::kValidation,
+                     .status_ = task::TASK_STATUS_MALFORMED_REQUEST,
+                     .step_ = named.name_,
+                     .message_ = "a set value must be an object or a single scalar"};
+    }
+
+    return std::nullopt;
+  }
+
+  if (const auto* switch_body = std::get_if<SwitchBody>(&task.body_)) {
+    return validateSwitchBody(named, *switch_body, engine, scope);
   }
 
   if (!std::holds_alternative<CallBody>(task.body_)) {
@@ -235,10 +342,21 @@ auto validateTask(const NamedTask& named, const Document& document, ExpressionEn
   return std::nullopt;
 }
 
-auto validateTasks(const Tasks& tasks, const Document& document, ExpressionEngine& engine,
-                   bool inside_fork_branch) -> std::optional<Failure> {
-  for (const NamedTask& named : tasks) {
-    if (auto failure = validateTask(named, document, engine, inside_fork_branch);
+auto validateSequence(Scope scope, const Document& document, ExpressionEngine& engine,
+                      bool inside_fork_branch) -> std::optional<Failure> {
+  std::unordered_set<std::string> names;
+  for (const NamedTask& named : scope) {
+    if (!names.insert(named.name_).second) {
+      return Failure{.phase_ = Phase::kValidation,
+                     .status_ = task::TASK_STATUS_MALFORMED_REQUEST,
+                     .step_ = named.name_,
+                     .message_ =
+                         absl::StrCat("duplicate task name '", named.name_, "' in one sequence")};
+    }
+  }
+
+  for (const NamedTask& named : scope) {
+    if (auto failure = validateTask(named, scope, document, engine, inside_fork_branch);
         failure.has_value()) {
       return failure;
     }
@@ -265,7 +383,7 @@ auto ValidateDocument(const Document& document, ExpressionEngine& engine)
     }
   }
 
-  return validateTasks(document.do_, document, engine, false);
+  return validateSequence(document.do_, document, engine, false);
 }
 
 WorkflowInterpreter::WorkflowInterpreter(ChildTaskSubmitter& submitter,
@@ -406,8 +524,17 @@ auto WorkflowInterpreter::validateMode() -> absl::Status {
 }
 
 void WorkflowInterpreter::terminalize(FrameResult result) {
+  StepDataValue* final_value = nullptr;
   if (auto* completed = std::get_if<Completed>(&result); completed != nullptr) {
-    StepDataValue value = std::move(completed->value_);
+    final_value = &completed->value_;
+  } else if (auto* ended = std::get_if<Ended>(&result); ended != nullptr) {
+    // `end` concludes the workflow but the document's own `output.as` still
+    // shapes the final value.
+    final_value = &ended->value_;
+  }
+
+  if (final_value != nullptr) {
+    StepDataValue value = std::move(*final_value);
 
     if (document_->output_.has_value() && document_->output_->as_.has_value()) {
       if (!value.IsJson()) {
@@ -604,6 +731,90 @@ auto WorkflowInterpreter::ExportTaskResult(const NamedTask& step, const StepData
   context_ = std::move(*result);
 
   return absl::OkStatus();
+}
+
+auto WorkflowInterpreter::EvaluateSet(const NamedTask& step, const StepDataValue& input)
+    -> absl::StatusOr<StepDataValue> {
+  const auto& set_body = std::get<SetBody>(step.task_.body_);
+  const ::strij::openworkflow::Value value = slotValue(set_body.set_);
+  const utils::Jv* subject = input.IsJson() ? &input.Json() : nullptr;
+
+  utils::Jv null_subject;
+  if (subject == nullptr) {
+    // Literal-only sets need no subject; any expression over an opaque value
+    // must fail rather than read an empty value.
+    auto programs = CollectExpressions(value);
+    if (!programs.ok() || !programs->empty()) {
+      return absl::InvalidArgumentError("the data subject is not JSON");
+    }
+
+    auto parsed = utils::Jv::Parse("null");
+    if (!parsed.ok()) {
+      return parsed.status();
+    }
+
+    null_subject = std::move(*parsed);
+    subject = &null_subject;
+  }
+
+  auto result = engine_.Evaluate(value, *subject, ExpressionArguments{.context = &context_});
+  if (!result.ok()) {
+    return result.status();
+  }
+
+  return StepDataValue::FromValue(*result);
+}
+
+auto WorkflowInterpreter::SelectSwitchDirective(const NamedTask& step, const StepDataValue& input)
+    -> absl::StatusOr<std::optional<std::string>> {
+  const auto& switch_body = std::get<SwitchBody>(step.task_.body_);
+  const ::strij::openworkflow::NamedCase* fallback = nullptr;
+  bool has_conditional = false;
+
+  for (const auto& switch_case : switch_body.cases_) {
+    if (switch_case.when_.has_value()) {
+      has_conditional = true;
+    } else if (fallback == nullptr) {
+      fallback = &switch_case;
+    }
+  }
+
+  if (!has_conditional) {
+    return fallback == nullptr ? std::nullopt : std::optional<std::string>{fallback->then_};
+  }
+
+  if (!input.IsJson()) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("switch '", step.name_, "': the condition subject is not JSON"));
+  }
+
+  for (const auto& switch_case : switch_body.cases_) {
+    if (!switch_case.when_.has_value()) {
+      continue;
+    }
+
+    auto result = engine_.EvaluateTypedSlot(::strij::openworkflow::Value{*switch_case.when_},
+                                            TypedSlot::kSwitchWhen, input.Json(),
+                                            ExpressionArguments{.context = &context_});
+    if (!result.ok()) {
+      return absl::InvalidArgumentError(absl::StrCat("switch '", step.name_, "': case '",
+                                                     switch_case.name_,
+                                                     "': ", result.status().message()));
+    }
+
+    const ::strij::openworkflow::Value value = ::strij::openworkflow::JvToValue(*result);
+    if (!value.IsBool()) {
+      return absl::InvalidArgumentError(absl::StrCat("switch '", step.name_, "': case '",
+                                                     switch_case.name_,
+                                                     "': the when result is not a boolean"));
+    }
+
+    if (value.AsBool()) {
+      return switch_case.then_;
+    }
+  }
+
+  return fallback == nullptr ? std::nullopt : std::optional<std::string>{fallback->then_};
 }
 
 auto WorkflowInterpreter::ExecuteCall(SequenceFrame& owner, const NamedTask& step,

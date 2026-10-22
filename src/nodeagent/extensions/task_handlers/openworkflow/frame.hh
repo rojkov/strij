@@ -49,11 +49,44 @@ struct Completed {
   StepDataValue value_;
 };
 
+// The workflow must stop from any depth. Unlike `Completed`, an enclosing
+// `do`/`fork` does not apply its own `output.as` or `export.as`.
+struct Ended {
+  StepDataValue value_;
+};
+
 struct Failed {
   ExecutionFailure failure_;
 };
 
-using FrameResult = std::variant<Suspended, Completed, Failed>;
+using FrameResult = std::variant<Suspended, Completed, Ended, Failed>;
+
+// What a task's `then` directive does next. `kJump` names an index into the
+// task's own sequence; the other kinds carry no target.
+enum class FlowKind : std::uint8_t {
+  kContinue = 0,
+  kJump = 1,
+  kExit = 2,
+  kEnd = 3,
+};
+
+struct FlowDirective {
+  FlowKind kind_{FlowKind::kContinue};
+  std::size_t target_{0};
+};
+
+// Resolves a `then` value against the tasks of one sequence. `continue` (and an
+// empty value) advances to the next task, `exit` completes the sequence, `end`
+// concludes the workflow, and any other value must name exactly one task in
+// `scope`. Shared by validation and execution so a validated document cannot
+// fail runtime resolution.
+auto ResolveFlowDirective(std::span<const ::strij::openworkflow::NamedTask> scope,
+                          std::string_view then) -> absl::StatusOr<FlowDirective>;
+
+// The number of steps one sequence may advance in a single synchronous stretch.
+// Generous so ordinary workflows are unaffected; a backward jump that never
+// suspends trips it instead of wedging the event loop.
+inline constexpr std::size_t kDefaultSynchronousTransitionBudget = 100000;
 
 // The effects a frame needs from its owner. The interpreter is the only
 // implementation; frame tests supply a fake.
@@ -87,6 +120,18 @@ public:
   virtual auto ExportTaskResult(const ::strij::openworkflow::NamedTask& step,
                                 const StepDataValue& input, const StepDataValue& transformed_output)
       -> absl::Status PURE;
+
+  // Evaluates a `set` task's data against the transformed task input, using the
+  // same subject rules as `input.from`.
+  virtual auto EvaluateSet(const ::strij::openworkflow::NamedTask& step, const StepDataValue& input)
+      -> absl::StatusOr<StepDataValue> PURE;
+
+  // Selects the `then` of a `switch` case against the transformed task input.
+  // Returns nullopt when no case matches, letting the sequence fall back to the
+  // switch task's own `then`.
+  virtual auto SelectSwitchDirective(const ::strij::openworkflow::NamedTask& step,
+                                     const StepDataValue& input)
+      -> absl::StatusOr<std::optional<std::string>> PURE;
 
   // Runs one `call: strij` step for `owner`, projecting its arguments from the
   // transformed input, building the child body, submitting it, and applying an
@@ -175,8 +220,9 @@ public:
   };
 
   explicit SequenceFrame(std::span<const ::strij::openworkflow::NamedTask> steps,
-                         std::optional<Branch> branch = std::nullopt)
-      : steps_{steps}, branch_{branch} {}
+                         std::optional<Branch> branch = std::nullopt,
+                         std::size_t transition_budget = kDefaultSynchronousTransitionBudget)
+      : steps_{steps}, branch_{branch}, transition_budget_{transition_budget} {}
 
   ~SequenceFrame() override = default;
 
@@ -215,6 +261,14 @@ private:
   [[nodiscard]] auto advanceCall(const ::strij::openworkflow::NamedTask& step,
                                  FrameContext& context) -> std::optional<FrameResult>;
   [[nodiscard]] auto advanceContainer(FrameContext& context) -> std::optional<FrameResult>;
+  // Applies `output.as` and `export.as` to a completed step's raw output, then
+  // the step's flow directive. A returned value is a failure; an `exit`/`end`
+  // directive is stored in `pending_result_` for the next `Advance` to return.
+  [[nodiscard]] auto applyCompletedStep(const ::strij::openworkflow::NamedTask& step,
+                                        StepDataValue raw_output, FrameContext& context,
+                                        std::string_view then) -> std::optional<FrameResult>;
+  [[nodiscard]] auto applyFlowDirective(const ::strij::openworkflow::NamedTask& step,
+                                        std::string_view then) -> std::optional<FrameResult>;
   [[nodiscard]] auto failStep(task::TaskStatus status, const ::strij::openworkflow::NamedTask& step,
                               std::string message) -> FrameResult;
   [[nodiscard]] auto storedFailureResult() -> FrameResult;
@@ -230,6 +284,11 @@ private:
   std::optional<std::string> waiting_child_id_;
   std::optional<Branch> branch_;
   std::optional<ExecutionFailure> failure_;
+  // Set by an `exit`/`end` directive while a completion sink is on the stack;
+  // consumed by the next `Advance`.
+  std::optional<FrameResult> pending_result_;
+  std::size_t transitions_{0};
+  std::size_t transition_budget_{kDefaultSynchronousTransitionBudget};
 };
 
 // Concurrent branch sequences plus the join policy. All branches are created

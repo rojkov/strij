@@ -2403,6 +2403,740 @@ TEST(InterpreterValidationTest, ExportInsideAForkBranchIsUnimplemented) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// `set`, `switch`, and flow directives
+// ---------------------------------------------------------------------------
+
+constexpr std::string_view kSetObjectMixed = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: set-object
+  version: '0.1.0'
+input:
+  from: '${ {"configuration":{"color":"red"},"id":7} }'
+do:
+  - configure:
+      set:
+        color: '${ .configuration.color }'
+        id: '${ .id }'
+        label: literal
+)YAML";
+
+constexpr std::string_view kSetScalarExpression = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: set-scalar-expression
+  version: '0.1.0'
+do:
+  - color:
+      set: '${ .configuration.color }'
+)YAML";
+
+constexpr std::string_view kSetBareScalar = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: set-bare-scalar
+  version: '0.1.0'
+do:
+  - text:
+      set: /bin/task.sh
+)YAML";
+
+constexpr std::string_view kSetOutputAs = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: set-output
+  version: '0.1.0'
+do:
+  - shaped:
+      set: '${ {name: .name} }'
+      output:
+        as: '${ .name }'
+)YAML";
+
+constexpr std::string_view kSetExportAs = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: set-export
+  version: '0.1.0'
+output:
+  as: '${ $context }'
+do:
+  - configure:
+      set: '${ {token: .token} }'
+      export:
+        as: '${ {token: $output.token} }'
+)YAML";
+
+constexpr std::string_view kSetDoesNotModifyContext = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: set-no-export
+  version: '0.1.0'
+output:
+  as: '${ $context }'
+do:
+  - configure:
+      set: '${ {token: .token} }'
+)YAML";
+
+constexpr std::string_view kSetOpaqueLiteral = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: set-opaque-literal
+  version: '0.1.0'
+do:
+  - text:
+      set: fixed
+)YAML";
+
+constexpr std::string_view kSetOpaqueExpression = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: set-opaque-expression
+  version: '0.1.0'
+do:
+  - expr:
+      set: '${ .name }'
+)YAML";
+
+constexpr std::string_view kSwitchFirstMatch = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: switch-first
+  version: '0.1.0'
+do:
+  - choose:
+      switch:
+        - alpha:
+            when: '${ .kind == "a" }'
+            then: toAlpha
+        - beta:
+            when: '${ true }'
+            then: toBeta
+  - toAlpha:
+      set: A
+      then: end
+  - toBeta:
+      set: B
+      then: end
+)YAML";
+
+constexpr std::string_view kSwitchFallback = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: switch-fallback
+  version: '0.1.0'
+do:
+  - choose:
+      switch:
+        - matched:
+            when: '${ .kind == "a" }'
+            then: toAlpha
+        - fallback:
+            then: toFallback
+  - toAlpha:
+      set: A
+      then: end
+  - toFallback:
+      set: F
+      then: end
+)YAML";
+
+constexpr std::string_view kSwitchFallbackDeclaredFirst = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: switch-fallback-first
+  version: '0.1.0'
+do:
+  - choose:
+      switch:
+        - fallback:
+            then: toFallback
+        - matched:
+            when: '${ .kind == "a" }'
+            then: toAlpha
+  - toAlpha:
+      set: A
+      then: end
+  - toFallback:
+      set: F
+      then: end
+)YAML";
+
+constexpr std::string_view kSwitchOwnThen = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: switch-own-then
+  version: '0.1.0'
+do:
+  - choose:
+      switch:
+        - missed:
+            when: '${ false }'
+            then: toAlpha
+      then: toOwn
+  - toOwn:
+      set: O
+      then: end
+  - toAlpha:
+      set: A
+      then: end
+)YAML";
+
+constexpr std::string_view kSwitchNoMatchContinues = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: switch-no-match
+  version: '0.1.0'
+do:
+  - choose:
+      switch:
+        - missed:
+            when: '${ false }'
+            then: toAlpha
+  - next:
+      set: N
+      then: end
+  - toAlpha:
+      set: A
+      then: end
+)YAML";
+
+constexpr std::string_view kSwitchNonBoolean = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: switch-non-boolean
+  version: '0.1.0'
+do:
+  - choose:
+      switch:
+        - flagged:
+            when: '${ .value }'
+            then: toAlpha
+  - toAlpha:
+      set: A
+      then: end
+)YAML";
+
+constexpr std::string_view kSwitchOpaqueConditional = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: switch-opaque
+  version: '0.1.0'
+do:
+  - choose:
+      switch:
+        - always:
+            when: '${ true }'
+            then: toAlpha
+  - toAlpha:
+      set: A
+      then: end
+)YAML";
+
+constexpr std::string_view kSwitchDefaultOnlyOpaque = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: switch-default-opaque
+  version: '0.1.0'
+do:
+  - choose:
+      switch:
+        - fallback:
+            then: toFallback
+  - toFallback:
+      set: F
+      then: end
+)YAML";
+
+constexpr std::string_view kSwitchInputOutputExport = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: switch-pipeline
+  version: '0.1.0'
+output:
+  as: '${ {ctx: $context, data: .} }'
+do:
+  - choose:
+      input:
+        from: '${ .payload }'
+      output:
+        as: '${ {chosen: .kind} }'
+      export:
+        as: '${ {seen: $output.chosen} }'
+      switch:
+        - matched:
+            when: '${ .kind == "a" }'
+            then: continue
+)YAML";
+
+constexpr std::string_view kSwitchSkipped = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: switch-skipped
+  version: '0.1.0'
+do:
+  - choose:
+      if: '${ false }'
+      switch:
+        - matched:
+            when: '${ true }'
+            then: toAlpha
+  - next:
+      set: N
+      then: end
+  - toAlpha:
+      set: A
+      then: end
+)YAML";
+
+constexpr std::string_view kSwitchInsideDoBranch = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: switch-do-branch
+  version: '0.1.0'
+do:
+  - fan:
+      fork:
+        branches:
+          - branch:
+              do:
+                - choose:
+                    switch:
+                      - matched:
+                          when: '${ .kind == "a" }'
+                          then: chosen
+                - skipped:
+                    set: S
+                - chosen:
+                    set: C
+)YAML";
+
+constexpr std::string_view kSwitchDirectBranchEnd = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: switch-direct-branch
+  version: '0.1.0'
+do:
+  - fan:
+      fork:
+        branches:
+          - direct:
+              switch:
+                - done:
+                    when: '${ true }'
+                    then: end
+          - loser:
+              set: L
+)YAML";
+
+constexpr std::string_view kSetArray = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: set-array
+  version: '0.1.0'
+do:
+  - configure:
+      set:
+        - one
+        - two
+)YAML";
+
+constexpr std::string_view kRootEndAppliesDocumentOutput = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: root-end
+  version: '0.1.0'
+output:
+  as: '${ {final: .} }'
+do:
+  - one:
+      call: strij
+      with:
+        type: echo
+      then: end
+  - two:
+      call: strij
+      with:
+        type: echo
+)YAML";
+
+constexpr std::string_view kValidForwardBackwardTargets = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: valid-jumps
+  version: '0.1.0'
+do:
+  - a:
+      set: '1'
+      then: b
+  - b:
+      set: '2'
+      then: a
+)YAML";
+
+constexpr std::string_view kUnknownThenTarget = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: unknown-then
+  version: '0.1.0'
+do:
+  - a:
+      set: '1'
+      then: missing
+)YAML";
+
+constexpr std::string_view kCrossScopeThenTarget = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: cross-scope-then
+  version: '0.1.0'
+do:
+  - outer:
+      do:
+        - inner:
+            set: '1'
+            then: sibling
+  - sibling:
+      set: '2'
+)YAML";
+
+constexpr std::string_view kDuplicateTaskNames = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: duplicate-names
+  version: '0.1.0'
+do:
+  - dup:
+      set: '1'
+  - dup:
+      set: '2'
+)YAML";
+
+constexpr std::string_view kBranchSiblingTarget = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: branch-sibling
+  version: '0.1.0'
+do:
+  - fan:
+      fork:
+        branches:
+          - a:
+              set: '1'
+              then: b
+          - b:
+              set: '2'
+)YAML";
+
+constexpr std::string_view kBranchDoOwnBodyTarget = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: branch-do-body
+  version: '0.1.0'
+do:
+  - fan:
+      fork:
+        branches:
+          - branch:
+              do:
+                - x:
+                    set: '1'
+                    then: y
+                - y:
+                    set: '2'
+)YAML";
+
+constexpr std::string_view kSwitchInvalidWhen = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: switch-invalid-when
+  version: '0.1.0'
+do:
+  - choose:
+      switch:
+        - bad:
+            when: '${ .x( }'
+            then: toAlpha
+  - toAlpha:
+      set: A
+)YAML";
+
+constexpr std::string_view kSwitchMissingThen = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: switch-missing-then
+  version: '0.1.0'
+do:
+  - choose:
+      switch:
+        - fallback:
+            when: '${ true }'
+  - toAlpha:
+      set: A
+)YAML";
+
+constexpr std::string_view kSwitchTwoDefaults = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: switch-two-defaults
+  version: '0.1.0'
+do:
+  - choose:
+      switch:
+        - one:
+            then: toAlpha
+        - two:
+            then: toAlpha
+  - toAlpha:
+      set: A
+)YAML";
+
+constexpr std::string_view kSetPartialWrapper = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: set-partial
+  version: '0.1.0'
+do:
+  - configure:
+      set: 'jobs/${ .id }'
+)YAML";
+
+constexpr std::string_view kSetInvalidProgram = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: set-invalid
+  version: '0.1.0'
+do:
+  - configure:
+      set: '${ .x( }'
+)YAML";
+
+TEST(InterpreterSetTest, ObjectMembersMixExpressionsAndLiterals) {
+  Harness harness;
+  harness.interpreter_->Start(std::string(kSetObjectMixed));
+
+  ASSERT_EQ(harness.results_.size(), 1U);
+  EXPECT_EQ(harness.results_[0].body(), R"({"color":"red","id":7,"label":"literal"})");
+  EXPECT_EQ(harness.submitter_.size(), 0U);
+}
+
+TEST(InterpreterSetTest, ScalarExpressionReplacesTheDataChain) {
+  Harness harness;
+  harness.interpreter_->Start(std::string(kSetScalarExpression),
+                              R"({"configuration":{"color":"blue"}})");
+
+  ASSERT_EQ(harness.results_.size(), 1U);
+  EXPECT_EQ(harness.results_[0].body(), R"("blue")");
+}
+
+TEST(InterpreterSetTest, BareScalarIsLiteralText) {
+  Harness harness;
+  harness.interpreter_->Start(std::string(kSetBareScalar));
+
+  ASSERT_EQ(harness.results_.size(), 1U);
+  EXPECT_EQ(harness.results_[0].body(), R"("/bin/task.sh")");
+}
+
+TEST(InterpreterSetTest, OutputAsShapesTheSetResult) {
+  Harness harness;
+  harness.interpreter_->Start(std::string(kSetOutputAs), R"({"name":"world"})");
+
+  ASSERT_EQ(harness.results_.size(), 1U);
+  EXPECT_EQ(harness.results_[0].body(), R"("world")");
+}
+
+TEST(InterpreterSetTest, ExportAsWritesTheContextButTheSetDoesNot) {
+  Harness harness;
+  harness.interpreter_->Start(std::string(kSetExportAs), R"({"token":"abc"})");
+
+  ASSERT_EQ(harness.results_.size(), 1U);
+  EXPECT_EQ(harness.results_[0].body(), R"({"token":"abc"})");
+}
+
+TEST(InterpreterSetTest, ASetWithoutExportLeavesTheContextUnchanged) {
+  Harness harness;
+  harness.interpreter_->Start(std::string(kSetDoesNotModifyContext), R"({"token":"abc"})");
+
+  ASSERT_EQ(harness.results_.size(), 1U);
+  EXPECT_EQ(harness.results_[0].body(), "{}");
+}
+
+TEST(InterpreterSetTest, LiteralOnlySetWorksOverOpaqueInput) {
+  Harness harness;
+  harness.interpreter_->Start(std::string(kSetOpaqueLiteral), "not json");
+
+  ASSERT_EQ(harness.results_.size(), 1U);
+  EXPECT_EQ(harness.results_[0].body(), R"("fixed")");
+}
+
+TEST(InterpreterSetTest, ExpressionOverOpaqueInputFailsTheStep) {
+  Harness harness;
+  harness.interpreter_->Start(std::string(kSetOpaqueExpression), "not json");
+
+  ASSERT_EQ(harness.results_.size(), 1U);
+  EXPECT_EQ(harness.results_[0].status(), task::TASK_STATUS_INTERNAL);
+  EXPECT_NE(harness.results_[0].body().find("expr"), std::string::npos);
+  EXPECT_NE(harness.results_[0].body().find("not JSON"), std::string::npos);
+}
+
+TEST(InterpreterFlowTest, EndAtRootStillAppliesTheDocumentOutput) {
+  Harness harness;
+  harness.interpreter_->Start(std::string(kRootEndAppliesDocumentOutput));
+  ASSERT_EQ(harness.submitter_.size(), 1U);
+
+  test::CompleteSuccessAt(harness.submitter_, 0, "1");
+
+  ASSERT_EQ(harness.results_.size(), 1U);
+  EXPECT_EQ(harness.results_[0].body(), R"({"final":1})");
+  EXPECT_EQ(harness.submitter_.size(), 1U);
+}
+
+TEST(InterpreterSwitchTest, TheFirstMatchingCaseWins) {
+  Harness harness;
+  harness.interpreter_->Start(std::string(kSwitchFirstMatch), R"({"kind":"a"})");
+
+  ASSERT_EQ(harness.results_.size(), 1U);
+  EXPECT_EQ(harness.results_[0].body(), R"("A")");
+}
+
+TEST(InterpreterSwitchTest, TheFallbackHandlesAnUnmatchedInput) {
+  Harness harness;
+  harness.interpreter_->Start(std::string(kSwitchFallback), R"({"kind":"z"})");
+
+  ASSERT_EQ(harness.results_.size(), 1U);
+  EXPECT_EQ(harness.results_[0].body(), R"("F")");
+}
+
+TEST(InterpreterSwitchTest, ADeclaredFirstFallbackWaitsForConditionalCases) {
+  Harness harness;
+  harness.interpreter_->Start(std::string(kSwitchFallbackDeclaredFirst), R"({"kind":"a"})");
+
+  ASSERT_EQ(harness.results_.size(), 1U);
+  EXPECT_EQ(harness.results_[0].body(), R"("A")");
+}
+
+TEST(InterpreterSwitchTest, TheSwitchOwnThenHandlesNoMatch) {
+  Harness harness;
+  harness.interpreter_->Start(std::string(kSwitchOwnThen), R"({"kind":"z"})");
+
+  ASSERT_EQ(harness.results_.size(), 1U);
+  EXPECT_EQ(harness.results_[0].body(), R"("O")");
+}
+
+TEST(InterpreterSwitchTest, NoMatchAndNoThenContinues) {
+  Harness harness;
+  harness.interpreter_->Start(std::string(kSwitchNoMatchContinues), R"({"kind":"z"})");
+
+  ASSERT_EQ(harness.results_.size(), 1U);
+  EXPECT_EQ(harness.results_[0].body(), R"("N")");
+}
+
+TEST(InterpreterSwitchTest, ANonBooleanWhenFailsTheStepNamingTheCase) {
+  Harness harness;
+  harness.interpreter_->Start(std::string(kSwitchNonBoolean), R"({"value":3})");
+
+  ASSERT_EQ(harness.results_.size(), 1U);
+  EXPECT_EQ(harness.results_[0].status(), task::TASK_STATUS_INTERNAL);
+  EXPECT_NE(harness.results_[0].body().find("choose"), std::string::npos);
+  EXPECT_NE(harness.results_[0].body().find("flagged"), std::string::npos);
+  EXPECT_NE(harness.results_[0].body().find("boolean"), std::string::npos);
+}
+
+TEST(InterpreterSwitchTest, AConditionalCaseOverOpaqueInputFailsTheStep) {
+  Harness harness;
+  harness.interpreter_->Start(std::string(kSwitchOpaqueConditional), "not json");
+
+  ASSERT_EQ(harness.results_.size(), 1U);
+  EXPECT_EQ(harness.results_[0].status(), task::TASK_STATUS_INTERNAL);
+  EXPECT_NE(harness.results_[0].body().find("choose"), std::string::npos);
+  EXPECT_NE(harness.results_[0].body().find("not JSON"), std::string::npos);
+}
+
+TEST(InterpreterSwitchTest, ADefaultOnlySwitchNeedsNoJsonSubject) {
+  Harness harness;
+  harness.interpreter_->Start(std::string(kSwitchDefaultOnlyOpaque), "not json");
+
+  ASSERT_EQ(harness.results_.size(), 1U);
+  EXPECT_EQ(harness.results_[0].body(), R"("F")");
+}
+
+TEST(InterpreterSwitchTest, InputFromOutputAsAndExportAsApplyAroundTheSwitch) {
+  Harness harness;
+  harness.interpreter_->Start(std::string(kSwitchInputOutputExport), R"({"payload":{"kind":"a"}})");
+
+  ASSERT_EQ(harness.results_.size(), 1U);
+  EXPECT_EQ(harness.results_[0].body(), R"({"ctx":{"seen":"a"},"data":{"chosen":"a"}})");
+}
+
+TEST(InterpreterSwitchTest, AFalseIfSkipsTheSwitchEntirely) {
+  Harness harness;
+  harness.interpreter_->Start(std::string(kSwitchSkipped), R"({"kind":"a"})");
+
+  ASSERT_EQ(harness.results_.size(), 1U);
+  EXPECT_EQ(harness.results_[0].body(), R"("N")");
+}
+
+TEST(InterpreterSwitchTest, ASwitchInsideADoBranchSelectsSiblingWork) {
+  Harness harness;
+  harness.interpreter_->Start(std::string(kSwitchInsideDoBranch), R"({"kind":"a"})");
+
+  ASSERT_EQ(harness.results_.size(), 1U);
+  EXPECT_EQ(harness.results_[0].body(), R"(["C"])");
+}
+
+TEST(InterpreterSwitchTest, ADirectSwitchBranchCanConcludeTheWorkflow) {
+  Harness harness;
+  harness.interpreter_->Start(std::string(kSwitchDirectBranchEnd), R"({"kind":"a"})");
+
+  ASSERT_EQ(harness.results_.size(), 1U);
+  EXPECT_EQ(harness.results_[0].body(), R"({"kind":"a"})");
+}
+
+TEST(ValidateDocumentTest, ScopeAwareFlowDirectivesAcceptValidTargets) {
+  ExpressionEngine engine(test::JqEvaluatorConfig());
+  for (std::string_view document : {kValidForwardBackwardTargets, kBranchDoOwnBodyTarget}) {
+    auto parsed = ::strij::openworkflow::Parse(document);
+    ASSERT_TRUE(parsed.has_value());
+    EXPECT_FALSE(ValidateDocument(*parsed, engine).has_value());
+  }
+}
+
+TEST(InterpreterValidationTest, MalformedFlowDirectivesFailBeforeAnySubmission) {
+  for (std::string_view document :
+       {kUnknownThenTarget, kCrossScopeThenTarget, kDuplicateTaskNames, kBranchSiblingTarget}) {
+    Harness harness;
+    harness.interpreter_->Start(std::string(document));
+
+    ASSERT_EQ(harness.results_.size(), 1U);
+    EXPECT_EQ(harness.results_[0].status(), task::TASK_STATUS_MALFORMED_REQUEST);
+    EXPECT_EQ(harness.submitter_.size(), 0U);
+  }
+}
+
+TEST(InterpreterValidationTest, MalformedSwitchCasesFailBeforeAnySubmission) {
+  for (std::string_view document : {kSwitchInvalidWhen, kSwitchMissingThen, kSwitchTwoDefaults}) {
+    Harness harness;
+    harness.interpreter_->Start(std::string(document));
+
+    ASSERT_EQ(harness.results_.size(), 1U);
+    EXPECT_EQ(harness.results_[0].status(), task::TASK_STATUS_MALFORMED_REQUEST);
+    EXPECT_EQ(harness.submitter_.size(), 0U);
+  }
+}
+
+TEST(InterpreterValidationTest, MalformedSetDataFailsBeforeAnySubmission) {
+  for (std::string_view document : {kSetPartialWrapper, kSetInvalidProgram, kSetArray}) {
+    Harness harness;
+    harness.interpreter_->Start(std::string(document));
+
+    ASSERT_EQ(harness.results_.size(), 1U);
+    EXPECT_EQ(harness.results_[0].status(), task::TASK_STATUS_MALFORMED_REQUEST);
+    EXPECT_EQ(harness.submitter_.size(), 0U);
+  }
+}
+
 // NOLINTEND(modernize-use-trailing-return-type)
 
 } // namespace

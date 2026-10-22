@@ -206,6 +206,218 @@ do:
                         type: echo
 )YAML";
 
+constexpr std::string_view kTwoFlatStepsWithJump = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: jump
+  version: '0.1.0'
+do:
+  - one:
+      call: strij
+      with:
+        type: echo
+      then: three
+  - two:
+      call: strij
+      with:
+        type: echo
+  - three:
+      call: strij
+      with:
+        type: echo
+)YAML";
+
+constexpr std::string_view kNestedExit = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: nested-exit
+  version: '0.1.0'
+do:
+  - outer:
+      do:
+        - a:
+            call: strij
+            with:
+              type: echo
+            then: exit
+        - b:
+            call: strij
+            with:
+              type: echo
+  - after:
+      call: strij
+      with:
+        type: echo
+)YAML";
+
+constexpr std::string_view kNestedEnd = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: nested-end
+  version: '0.1.0'
+do:
+  - outer:
+      export:
+        as: '${ {outer: .} }'
+      do:
+        - a:
+            call: strij
+            with:
+              type: echo
+            then: end
+        - b:
+            call: strij
+            with:
+              type: echo
+  - after:
+      call: strij
+      with:
+        type: echo
+)YAML";
+
+constexpr std::string_view kForkBranchEnd = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: fork-end
+  version: '0.1.0'
+do:
+  - fan:
+      fork:
+        branches:
+          - a:
+              call: strij
+              with:
+                type: echo
+              then: end
+          - b:
+              call: strij
+              with:
+                type: echo
+)YAML";
+
+constexpr std::string_view kDoThenExit = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: do-exit
+  version: '0.1.0'
+do:
+  - outer:
+      do:
+        - a:
+            call: strij
+            with:
+              type: echo
+      then: exit
+  - after:
+      call: strij
+      with:
+        type: echo
+)YAML";
+
+constexpr std::string_view kSkippedStepWithThen = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: skipped-then
+  version: '0.1.0'
+do:
+  - skipped:
+      if: '${ false }'
+      call: strij
+      with:
+        type: echo
+      then: third
+  - second:
+      call: strij
+      with:
+        type: echo
+  - third:
+      call: strij
+      with:
+        type: echo
+)YAML";
+
+constexpr std::string_view kFailedStepWithThen = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: failed-then
+  version: '0.1.0'
+do:
+  - one:
+      call: strij
+      with:
+        type: echo
+      then: three
+  - two:
+      call: strij
+      with:
+        type: echo
+  - three:
+      call: strij
+      with:
+        type: echo
+)YAML";
+
+constexpr std::string_view kSelfJumpingSet = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: self-loop
+  version: '0.1.0'
+do:
+  - loop:
+      set: '${ . }'
+      then: loop
+)YAML";
+
+constexpr std::string_view kTwoTaskSetCycle = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: cycle
+  version: '0.1.0'
+do:
+  - a:
+      set: '${ . }'
+      then: b
+  - b:
+      set: '${ . }'
+      then: a
+)YAML";
+
+constexpr std::string_view kWideSynchronousFork = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: wide-fork
+  version: '0.1.0'
+do:
+  - fan:
+      fork:
+        branches:
+          - a:
+              set: '${ . }'
+          - b:
+              set: '${ . }'
+          - c:
+              set: '${ . }'
+          - d:
+              set: '${ . }'
+          - e:
+              set: '${ . }'
+          - f:
+              set: '${ . }'
+)YAML";
+
+constexpr std::string_view kSuspendingSelfJump = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: async-loop
+  version: '0.1.0'
+do:
+  - one:
+      call: strij
+      with:
+        type: echo
+      then: one
+)YAML";
+
 // Records calls, scripts inline/suspending/local-error outcomes, and lets a
 // test deliver an asynchronous outcome to the sequence that suspended on it.
 class FakeFrameContext final : public FrameContext {
@@ -235,10 +447,12 @@ public:
     Script(Effect{.kind_ = EffectKind::kInline, .body_ = std::move(body)});
   }
 
-  auto EvaluateCondition(const NamedTask& /*step*/, const StepDataValue& /*raw*/)
+  auto EvaluateCondition(const NamedTask& step, const StepDataValue& /*raw*/)
       -> absl::StatusOr<bool> override {
-    return true;
+    return step.name_ != skipped_step_;
   }
+
+  void SetSkippedStep(std::string name) { skipped_step_ = std::move(name); }
 
   auto TransformTaskInput(const NamedTask& /*step*/, const StepDataValue& raw)
       -> absl::StatusOr<StepDataValue> override {
@@ -256,6 +470,20 @@ public:
     exports_.push_back(ExportRecord{
         .step_ = step.name_, .input_ = input.Bytes(), .output_ = transformed_output.Bytes()});
     return absl::OkStatus();
+  }
+
+  auto EvaluateSet(const NamedTask& /*step*/, const StepDataValue& input)
+      -> absl::StatusOr<StepDataValue> override {
+    return input.Copy();
+  }
+
+  auto SelectSwitchDirective(const NamedTask& /*step*/, const StepDataValue& /*input*/)
+      -> absl::StatusOr<std::optional<std::string>> override {
+    return switch_directive_;
+  }
+
+  void SetSwitchDirective(std::optional<std::string> directive) {
+    switch_directive_ = std::move(directive);
   }
 
   auto ExecuteCall(SequenceFrame& owner, const NamedTask& step, const StepDataValue& /*input*/)
@@ -317,6 +545,8 @@ private:
   std::vector<std::string> forgotten_;
   std::vector<ExportRecord> exports_;
   std::map<std::string, SequenceFrame*> waiting_;
+  std::optional<std::string> switch_directive_;
+  std::string skipped_step_;
 };
 
 class LifecycleFrame final : public Frame {
@@ -643,6 +873,247 @@ TEST(ForkFrameTest, NestedJoinFailureIsNamedOnlyByTheInnerBranch) {
   ASSERT_NE(failed, nullptr);
   EXPECT_TRUE(failed->failure_.composed_);
   EXPECT_EQ(failed->failure_.message_, "branch 'leaf': the branch result is not a JSON value");
+}
+
+TEST(FlowDirectiveTest, ResolvesReservedAndNamedTargets) {
+  const std::vector<NamedTask> scope{NamedTask{.name_ = "first"}, NamedTask{.name_ = "second"}};
+  const std::span<const NamedTask> span(scope);
+
+  auto continue_directive = ResolveFlowDirective(span, "continue");
+  ASSERT_TRUE(continue_directive.ok());
+  EXPECT_EQ(continue_directive->kind_, FlowKind::kContinue);
+
+  auto absent = ResolveFlowDirective(span, "");
+  ASSERT_TRUE(absent.ok());
+  EXPECT_EQ(absent->kind_, FlowKind::kContinue);
+
+  auto exit_directive = ResolveFlowDirective(span, "exit");
+  ASSERT_TRUE(exit_directive.ok());
+  EXPECT_EQ(exit_directive->kind_, FlowKind::kExit);
+
+  auto end_directive = ResolveFlowDirective(span, "end");
+  ASSERT_TRUE(end_directive.ok());
+  EXPECT_EQ(end_directive->kind_, FlowKind::kEnd);
+
+  auto forward = ResolveFlowDirective(span, "second");
+  ASSERT_TRUE(forward.ok());
+  EXPECT_EQ(forward->kind_, FlowKind::kJump);
+  EXPECT_EQ(forward->target_, 1U);
+
+  auto backward = ResolveFlowDirective(span, "first");
+  ASSERT_TRUE(backward.ok());
+  EXPECT_EQ(backward->kind_, FlowKind::kJump);
+  EXPECT_EQ(backward->target_, 0U);
+
+  EXPECT_FALSE(ResolveFlowDirective(span, "missing").ok());
+}
+
+TEST(SequenceFrameFlowTest, ExitCompletesTheNestedSequenceAndContinues) {
+  auto parsed = ::strij::openworkflow::Parse(kNestedExit);
+  ASSERT_TRUE(parsed.has_value());
+  auto root = MakeRoot(*parsed);
+
+  FakeFrameContext context;
+  context.ScriptSuspend("child-a");
+  context.ScriptSuspend("child-after");
+
+  auto result = root->Advance(context);
+  ASSERT_TRUE(std::holds_alternative<Suspended>(result));
+
+  context.Deliver("child-a", FakeFrameContext::Success("1"));
+  result = root->Advance(context);
+  ASSERT_TRUE(std::holds_alternative<Suspended>(result));
+  EXPECT_EQ(context.Calls(), (std::vector<std::string>{"a", "after"}));
+  EXPECT_FALSE(root->IsFailed());
+}
+
+TEST(SequenceFrameFlowTest, EndSkipsTheEnclosingDoPipeline) {
+  auto parsed = ::strij::openworkflow::Parse(kNestedEnd);
+  ASSERT_TRUE(parsed.has_value());
+  auto root = MakeRoot(*parsed);
+
+  FakeFrameContext context;
+  context.ScriptSuspend("child-a");
+
+  auto result = root->Advance(context);
+  ASSERT_TRUE(std::holds_alternative<Suspended>(result));
+
+  context.Deliver("child-a", FakeFrameContext::Success("1"));
+  result = root->Advance(context);
+
+  auto* ended = std::get_if<Ended>(&result);
+  ASSERT_NE(ended, nullptr);
+  EXPECT_EQ(ended->value_.Bytes(), "1");
+  EXPECT_EQ(context.Calls(), std::vector<std::string>{"a"});
+  for (const auto& export_record : context.Exports()) {
+    EXPECT_NE(export_record.step_, "outer");
+  }
+}
+
+TEST(SequenceFrameFlowTest, EndInAForkBranchAbandonsItsSiblings) {
+  auto parsed = ::strij::openworkflow::Parse(kForkBranchEnd);
+  ASSERT_TRUE(parsed.has_value());
+  auto root = MakeRoot(*parsed);
+
+  FakeFrameContext context;
+  context.ScriptSuspend("child-a");
+  context.ScriptSuspend("child-b");
+
+  auto result = root->Advance(context);
+  ASSERT_TRUE(std::holds_alternative<Suspended>(result));
+  EXPECT_EQ(context.Calls(), (std::vector<std::string>{"a", "b"}));
+
+  context.Deliver("child-a", FakeFrameContext::Success("1"));
+  result = root->Advance(context);
+
+  auto* ended = std::get_if<Ended>(&result);
+  ASSERT_NE(ended, nullptr);
+  EXPECT_EQ(ended->value_.Bytes(), "1");
+  ASSERT_EQ(context.Forgotten().size(), 1U);
+  EXPECT_EQ(context.Forgotten()[0], "child-b");
+}
+
+TEST(SequenceFrameFlowTest, ContainerDirectiveExitCompletesTheSequence) {
+  auto parsed = ::strij::openworkflow::Parse(kDoThenExit);
+  ASSERT_TRUE(parsed.has_value());
+  auto root = MakeRoot(*parsed);
+
+  FakeFrameContext context;
+  context.ScriptInline("1");
+
+  auto result = root->Advance(context);
+  auto* completed = std::get_if<Completed>(&result);
+  ASSERT_NE(completed, nullptr);
+  EXPECT_EQ(completed->value_.Bytes(), "1");
+  EXPECT_EQ(context.Calls(), std::vector<std::string>{"a"});
+  EXPECT_TRUE(root->IsCompleted());
+}
+
+TEST(SequenceFrameFlowTest, AResumedCallRunsItsJumpDirective) {
+  auto parsed = ::strij::openworkflow::Parse(kTwoFlatStepsWithJump);
+  ASSERT_TRUE(parsed.has_value());
+  auto root = MakeRoot(*parsed);
+
+  FakeFrameContext context;
+  context.ScriptSuspend("child-one");
+  context.ScriptSuspend("child-three");
+
+  auto result = root->Advance(context);
+  ASSERT_TRUE(std::holds_alternative<Suspended>(result));
+
+  context.Deliver("child-one", FakeFrameContext::Success("1"));
+  EXPECT_EQ(root->Cursor(), 2U);
+
+  result = root->Advance(context);
+  ASSERT_TRUE(std::holds_alternative<Suspended>(result));
+  EXPECT_EQ(context.Calls(), (std::vector<std::string>{"one", "three"}));
+}
+
+TEST(SequenceFrameFlowTest, AnInlineCallRunsItsJumpDirective) {
+  auto parsed = ::strij::openworkflow::Parse(kTwoFlatStepsWithJump);
+  ASSERT_TRUE(parsed.has_value());
+  auto root = MakeRoot(*parsed);
+
+  FakeFrameContext context;
+  context.ScriptInline("1");
+  context.ScriptSuspend("child-three");
+
+  auto result = root->Advance(context);
+  ASSERT_TRUE(std::holds_alternative<Suspended>(result));
+  EXPECT_EQ(context.Calls(), (std::vector<std::string>{"one", "three"}));
+}
+
+TEST(SequenceFrameFlowTest, ASkippedStepDoesNotRunItsDirective) {
+  auto parsed = ::strij::openworkflow::Parse(kSkippedStepWithThen);
+  ASSERT_TRUE(parsed.has_value());
+  auto root = MakeRoot(*parsed);
+
+  FakeFrameContext context;
+  context.SetSkippedStep("skipped");
+  context.ScriptSuspend("child-second");
+
+  auto result = root->Advance(context);
+  ASSERT_TRUE(std::holds_alternative<Suspended>(result));
+  EXPECT_EQ(context.Calls(), std::vector<std::string>{"second"});
+}
+
+TEST(SequenceFrameFlowTest, AFailedStepDoesNotRunItsDirective) {
+  auto parsed = ::strij::openworkflow::Parse(kFailedStepWithThen);
+  ASSERT_TRUE(parsed.has_value());
+  auto root = MakeRoot(*parsed);
+
+  FakeFrameContext context;
+  context.Script(FakeFrameContext::Effect{.kind_ = FakeFrameContext::EffectKind::kLocalError,
+                                          .message_ = "boom"});
+
+  auto result = root->Advance(context);
+  auto* failed = std::get_if<Failed>(&result);
+  ASSERT_NE(failed, nullptr);
+  EXPECT_EQ(failed->failure_.status_, task::TASK_STATUS_INTERNAL);
+  EXPECT_EQ(context.Calls(), std::vector<std::string>{"one"});
+}
+
+TEST(SequenceFrameFlowTest, TheSynchronousGuardStopsASelfJump) {
+  auto parsed = ::strij::openworkflow::Parse(kSelfJumpingSet);
+  ASSERT_TRUE(parsed.has_value());
+  SequenceFrame root(std::span<const NamedTask>(parsed->do_), std::nullopt, 5);
+  root.Enter(StepDataValue::FromBytes("null"));
+
+  FakeFrameContext context;
+  auto result = root.Advance(context);
+
+  auto* failed = std::get_if<Failed>(&result);
+  ASSERT_NE(failed, nullptr);
+  EXPECT_EQ(failed->failure_.status_, task::TASK_STATUS_INTERNAL);
+  EXPECT_EQ(failed->failure_.step_, "loop");
+  EXPECT_NE(failed->failure_.message_.find("budget"), std::string::npos);
+}
+
+TEST(SequenceFrameFlowTest, TheSynchronousGuardStopsATwoTaskCycle) {
+  auto parsed = ::strij::openworkflow::Parse(kTwoTaskSetCycle);
+  ASSERT_TRUE(parsed.has_value());
+  SequenceFrame root(std::span<const NamedTask>(parsed->do_), std::nullopt, 7);
+  root.Enter(StepDataValue::FromBytes("null"));
+
+  FakeFrameContext context;
+  auto result = root.Advance(context);
+
+  auto* failed = std::get_if<Failed>(&result);
+  ASSERT_NE(failed, nullptr);
+  EXPECT_EQ(failed->failure_.status_, task::TASK_STATUS_INTERNAL);
+}
+
+TEST(SequenceFrameFlowTest, AWideSynchronousForkDoesNotTripTheGuard) {
+  auto parsed = ::strij::openworkflow::Parse(kWideSynchronousFork);
+  ASSERT_TRUE(parsed.has_value());
+  SequenceFrame root(std::span<const NamedTask>(parsed->do_), std::nullopt, 2);
+  root.Enter(StepDataValue::FromBytes("null"));
+
+  FakeFrameContext context;
+  auto result = root.Advance(context);
+
+  EXPECT_TRUE(std::holds_alternative<Completed>(result));
+  EXPECT_FALSE(root.IsFailed());
+}
+
+TEST(SequenceFrameFlowTest, ASuspendingLoopResetsTheSynchronousGuard) {
+  auto parsed = ::strij::openworkflow::Parse(kSuspendingSelfJump);
+  ASSERT_TRUE(parsed.has_value());
+  SequenceFrame root(std::span<const NamedTask>(parsed->do_), std::nullopt, 2);
+  root.Enter(StepDataValue::FromBytes("null"));
+
+  FakeFrameContext context;
+  context.ScriptSuspend("child-0");
+  auto result = root.Advance(context);
+  ASSERT_TRUE(std::holds_alternative<Suspended>(result));
+
+  for (int iteration = 1; iteration <= 10; ++iteration) {
+    context.Deliver("child-" + std::to_string(iteration - 1), FakeFrameContext::Success("1"));
+    context.ScriptSuspend("child-" + std::to_string(iteration));
+    result = root.Advance(context);
+    ASSERT_TRUE(std::holds_alternative<Suspended>(result));
+    EXPECT_FALSE(root.IsFailed());
+  }
 }
 
 // NOLINTEND(bugprone-unchecked-optional-access)
