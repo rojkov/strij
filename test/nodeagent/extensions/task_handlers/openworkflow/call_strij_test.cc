@@ -143,7 +143,7 @@ TEST(ProjectCallTest, ProjectsTypeParametersAndRequirements) {
       {"parameters", Value{Value::Object{{"function", Value{"/bin/cat"}}}}},
       {"requirements", Value{Value::Object{{"cpu", Value{std::int64_t{2}}}}}},
   });
-  auto projection = ProjectCall(with, &*subject, nullptr, engine);
+  auto projection = ProjectCall(with, &*subject, ExpressionArguments{}, engine);
   ASSERT_TRUE(projection.ok()) << projection.status().message();
   EXPECT_EQ(projection->type_, "piped_executable");
   EXPECT_EQ(projection->parameters_.at("function"), "/bin/cat");
@@ -159,7 +159,7 @@ TEST(ProjectCallTest, EvaluatesParameterExpressionUnquoted) {
       {"type", Value{"echo"}},
       {"parameters", Value{Value::Object{{"p", Value{"${ .name }"}}}}},
   });
-  auto projection = ProjectCall(with, &*subject, nullptr, engine);
+  auto projection = ProjectCall(with, &*subject, ExpressionArguments{}, engine);
   ASSERT_TRUE(projection.ok()) << projection.status().message();
   EXPECT_EQ(projection->parameters_.at("p"), "widget");
 }
@@ -175,7 +175,7 @@ TEST(ProjectCallTest, ParameterExpressionObservesTheLiveContext) {
       {"type", Value{"echo"}},
       {"parameters", Value{Value::Object{{"p", Value{"${ $context.token }"}}}}},
   });
-  auto projection = ProjectCall(with, &*subject, &*context, engine);
+  auto projection = ProjectCall(with, &*subject, ExpressionArguments{.context = &*context}, engine);
   ASSERT_TRUE(projection.ok()) << projection.status().message();
   EXPECT_EQ(projection->parameters_.at("p"), "abc");
 }
@@ -189,7 +189,7 @@ TEST(ProjectCallTest, RendersNumericParameterCanonically) {
       {"type", Value{"echo"}},
       {"parameters", Value{Value::Object{{"p", Value{"${ .n + 1 }"}}}}},
   });
-  auto projection = ProjectCall(with, &*subject, nullptr, engine);
+  auto projection = ProjectCall(with, &*subject, ExpressionArguments{}, engine);
   ASSERT_TRUE(projection.ok()) << projection.status().message();
   EXPECT_EQ(projection->parameters_.at("p"), "42");
 }
@@ -203,7 +203,7 @@ TEST(ProjectCallTest, RejectsNullParameterExpression) {
       {"type", Value{"echo"}},
       {"parameters", Value{Value::Object{{"p", Value{"${ .missing }"}}}}},
   });
-  EXPECT_FALSE(ProjectCall(with, &*subject, nullptr, engine).ok());
+  EXPECT_FALSE(ProjectCall(with, &*subject, ExpressionArguments{}, engine).ok());
 }
 
 TEST(ProjectCallTest, RejectsNonScalarParameterExpression) {
@@ -215,7 +215,7 @@ TEST(ProjectCallTest, RejectsNonScalarParameterExpression) {
       {"type", Value{"echo"}},
       {"parameters", Value{Value::Object{{"p", Value{"${ . }"}}}}},
   });
-  EXPECT_FALSE(ProjectCall(with, &*subject, nullptr, engine).ok());
+  EXPECT_FALSE(ProjectCall(with, &*subject, ExpressionArguments{}, engine).ok());
 }
 
 // NOLINTEND(modernize-use-trailing-return-type)

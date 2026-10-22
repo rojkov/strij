@@ -397,6 +397,107 @@ TEST_F(OpenWorkflowE2ETest, ScriptedTwoStepWorkflowChainsChildOutputs) {
   piped->ProcessCommand(deferred2);
 }
 
+TEST_F(OpenWorkflowE2ETest, NestedForAccumulatesAcrossRealChildProcesses) {
+  const std::string script = FindEchoScript();
+  ASSERT_FALSE(script.empty()) << "scripts/openworkflow_echo.sh not found in runfiles";
+
+  const std::string document_text =
+      absl::StrCat("document:\n"
+                   "  dsl: '1.0.3'\n"
+                   "  namespace: test\n"
+                   "  name: e2e-nested-for\n"
+                   "  version: '0.1.0'\n"
+                   "input:\n"
+                   "  from: '${ {\"colors\":[\"red\"]} }'\n"
+                   "do:\n"
+                   "  - outer:\n"
+                   "      for:\n"
+                   "        each: color\n"
+                   "        in: '${ .colors }'\n"
+                   "      do:\n"
+                   "        - inner:\n"
+                   "            for:\n"
+                   "              each: n\n"
+                   "              at: j\n"
+                   "              in: '${ [1,2] }'\n"
+                   "            do:\n"
+                   "              - run:\n"
+                   "                  call: strij\n"
+                   "                  output:\n"
+                   "                    as: '${ {seen: ((.echo.seen // []) + "
+                   "[{color: $color, n: $n, j: $j}])} }'\n"
+                   "                  with:\n"
+                   "                    type: piped_executable\n"
+                   "                    parameters:\n"
+                   "                      function: ",
+                   script,
+                   "\n"
+                   "                    requirements:\n"
+                   "                      cpu: 1\n");
+
+  OpenWorkflowTaskHandler handler(*router_, resolver_, test::JqEvaluatorConfig());
+  auto state = std::make_shared<test::TestSender::State>();
+
+  int stdin1 = -1;
+  int stdin2 = -1;
+  int pidfd1 = -1;
+  int pidfd2 = -1;
+  event::Completable* child1_raw = nullptr;
+  event::Completable* child2_raw = nullptr;
+  EXPECT_CALL(*dispatcher_, PrepareWrite(_, kStdinWrite, _, _, -1))
+      .WillOnce(DoAll(SaveArg<2>(&stdin1), Return()))
+      .WillOnce(DoAll(SaveArg<2>(&stdin2), Return()));
+  EXPECT_CALL(*dispatcher_, PreparePoll(_, kExitPoll, _, POLLIN))
+      .WillOnce(DoAll(SaveArg<0>(&child1_raw), SaveArg<2>(&pidfd1), Return()))
+      .WillOnce(DoAll(SaveArg<0>(&child2_raw), SaveArg<2>(&pidfd2), Return()));
+  event::Command deferred1{};
+  event::Command deferred2{};
+  EXPECT_CALL(*dispatcher_, SubmitCommand(_))
+      .WillOnce(SaveArg<0>(&deferred1))
+      .WillOnce(SaveArg<0>(&deferred2));
+
+  const std::string document = WriteDocument("nested-for.yaml", document_text);
+  handler.HandleTask(MakeParent("wf", document, ""), std::make_unique<test::TestSender>(state));
+
+  // The outer loop's first element seeds the inner loop's first child.
+  const std::string body1 = R"({"colors":["red"]})";
+  ASSERT_NE(child1_raw, nullptr);
+  ASSERT_GE(stdin1, 0);
+  auto* child1 = static_cast<ChildProcess*>(child1_raw);
+  ASSERT_EQ(::write(stdin1, body1.data(), body1.size()), static_cast<ssize_t>(body1.size()));
+  child1->HandleCompletion(kStdinWrite, static_cast<int>(body1.size()), 0);
+  ASSERT_TRUE(WaitForExit(pidfd1));
+  child1->HandleCompletion(kExitPoll, POLLIN, 0);
+  child1->HandleCompletion(kStdoutRead, 0, 0);
+  child1->HandleCompletion(kStderrRead, 0, 0);
+  EXPECT_TRUE(state->sent_.empty());
+
+  // The second inner iteration receives the first iteration's accumulator, and
+  // still sees the outer loop's `$color`.
+  const std::string body2 = R"({"seen":[{"color":"red","j":0,"n":1}]})";
+  ASSERT_NE(child2_raw, nullptr);
+  ASSERT_GE(stdin2, 0);
+  auto* child2 = static_cast<ChildProcess*>(child2_raw);
+  ASSERT_EQ(::write(stdin2, body2.data(), body2.size()), static_cast<ssize_t>(body2.size()));
+  child2->HandleCompletion(kStdinWrite, static_cast<int>(body2.size()), 0);
+  ASSERT_TRUE(WaitForExit(pidfd2));
+  child2->HandleCompletion(kExitPoll, POLLIN, 0);
+  child2->HandleCompletion(kStdoutRead, 0, 0);
+  child2->HandleCompletion(kStderrRead, 0, 0);
+
+  ASSERT_EQ(state->sent_.size(), 1U);
+  EXPECT_EQ(state->sent_[0].id(), "wf");
+  EXPECT_EQ(state->sent_[0].body(),
+            R"({"seen":[{"color":"red","j":0,"n":1},{"color":"red","j":1,"n":2}]})");
+  EXPECT_TRUE(state->sent_[0].is_final());
+  EXPECT_TRUE(utils::IsTaskResultOk(state->sent_[0]));
+
+  auto* piped = dynamic_cast<PipedExecutableTaskHandler*>(manager_->GetHandler("piped_executable"));
+  ASSERT_NE(piped, nullptr);
+  piped->ProcessCommand(deferred1);
+  piped->ProcessCommand(deferred2);
+}
+
 TEST_F(OpenWorkflowE2ETest, ExportFlowsIntoAConditionAndTheDocumentOutput) {
   const std::string script = FindEchoScript();
   ASSERT_FALSE(script.empty()) << "scripts/openworkflow_echo.sh not found in runfiles";

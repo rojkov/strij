@@ -37,6 +37,7 @@ namespace strij::nodeagent::task_handlers::openworkflow {
 using ::strij::openworkflow::CallBody;
 using ::strij::openworkflow::DoBody;
 using ::strij::openworkflow::Document;
+using ::strij::openworkflow::ForBody;
 using ::strij::openworkflow::ForkBody;
 using ::strij::openworkflow::NamedTask;
 using ::strij::openworkflow::SetBody;
@@ -102,9 +103,39 @@ auto slotValue(const std::variant<std::string, ::strij::openworkflow::Value>& sl
   return std::get<::strij::openworkflow::Value>(slot);
 }
 
+// Builds expression arguments from a runtime lexical scope. The storage vector
+// owns the bindings for the duration of one evaluation; the returned span points
+// into it.
+auto lexicalArguments(const LexicalScope* scope, const utils::Jv* context,
+                      std::vector<ExpressionLocal>& storage) -> ExpressionArguments {
+  storage.clear();
+  for (const LexicalScope* node = scope; node != nullptr; node = node->parent_.get()) {
+    storage.push_back(ExpressionLocal{.name_ = node->each_name_, .value_ = &node->item_});
+    storage.push_back(ExpressionLocal{.name_ = node->at_name_, .value_ = &node->index_});
+  }
+
+  return ExpressionArguments{.context = context,
+                             .locals = std::span<const ExpressionLocal>(storage)};
+}
+
+// Builds validation-time arguments: names only, no values.
+auto validationArguments(std::span<const std::string> names, std::vector<ExpressionLocal>& storage)
+    -> ExpressionArguments {
+  storage.clear();
+
+  for (const std::string& name : names) {
+    storage.push_back(ExpressionLocal{.name_ = name, .value_ = nullptr});
+  }
+
+  return ExpressionArguments{.locals = std::span<const ExpressionLocal>(storage)};
+}
+
 auto validateSlot(const std::variant<std::string, ::strij::openworkflow::Value>& slot,
-                  TypedSlot kind, ExpressionEngine& engine) -> std::optional<Failure> {
-  const absl::Status status = engine.ValidateTypedSlot(slotValue(slot), kind);
+                  TypedSlot kind, ExpressionEngine& engine, std::span<const std::string> locals)
+    -> std::optional<Failure> {
+  std::vector<ExpressionLocal> storage;
+  const absl::Status status =
+      engine.ValidateTypedSlot(slotValue(slot), kind, validationArguments(locals, storage));
   if (!status.ok()) {
     return Failure{.phase_ = Phase::kValidation,
                    .status_ = task::TASK_STATUS_MALFORMED_REQUEST,
@@ -114,10 +145,14 @@ auto validateSlot(const std::variant<std::string, ::strij::openworkflow::Value>&
   return std::nullopt;
 }
 
-auto validateTaskSlots(const Task& task, ExpressionEngine& engine) -> std::optional<Failure> {
+auto validateTaskSlots(const Task& task, ExpressionEngine& engine,
+                       std::span<const std::string> locals) -> std::optional<Failure> {
   if (task.if_.has_value()) {
+    std::vector<ExpressionLocal> storage;
+
     const absl::Status status =
-        engine.ValidateTypedSlot(::strij::openworkflow::Value{*task.if_}, TypedSlot::kIf);
+        engine.ValidateTypedSlot(::strij::openworkflow::Value{*task.if_}, TypedSlot::kIf,
+                                 validationArguments(locals, storage));
     if (!status.ok()) {
       return Failure{.phase_ = Phase::kValidation,
                      .status_ = task::TASK_STATUS_MALFORMED_REQUEST,
@@ -126,21 +161,21 @@ auto validateTaskSlots(const Task& task, ExpressionEngine& engine) -> std::optio
   }
 
   if (task.input_.has_value() && task.input_->from_.has_value()) {
-    if (auto failure = validateSlot(*task.input_->from_, TypedSlot::kInputFrom, engine);
+    if (auto failure = validateSlot(*task.input_->from_, TypedSlot::kInputFrom, engine, locals);
         failure.has_value()) {
       return failure;
     }
   }
 
   if (task.output_.has_value() && task.output_->as_.has_value()) {
-    if (auto failure = validateSlot(*task.output_->as_, TypedSlot::kTaskOutput, engine);
+    if (auto failure = validateSlot(*task.output_->as_, TypedSlot::kTaskOutput, engine, locals);
         failure.has_value()) {
       return failure;
     }
   }
 
   if (task.export_.has_value() && task.export_->as_.has_value()) {
-    if (auto failure = validateSlot(*task.export_->as_, TypedSlot::kTaskExport, engine);
+    if (auto failure = validateSlot(*task.export_->as_, TypedSlot::kTaskExport, engine, locals);
         failure.has_value()) {
       return failure;
     }
@@ -152,7 +187,8 @@ auto validateTaskSlots(const Task& task, ExpressionEngine& engine) -> std::optio
 using Scope = std::span<const NamedTask>;
 
 auto validateSequence(Scope scope, const Document& document, ExpressionEngine& engine,
-                      bool inside_fork_branch) -> std::optional<Failure>;
+                      bool inside_fork_branch, std::span<const std::string> locals)
+    -> std::optional<Failure>;
 
 auto malformedFlowDirective(Scope scope, std::string_view then, const NamedTask& named)
     -> std::optional<Failure> {
@@ -168,7 +204,8 @@ auto malformedFlowDirective(Scope scope, std::string_view then, const NamedTask&
 }
 
 auto validateSwitchBody(const NamedTask& named, const SwitchBody& switch_body,
-                        ExpressionEngine& engine, Scope scope) -> std::optional<Failure> {
+                        ExpressionEngine& engine, Scope scope, std::span<const std::string> locals)
+    -> std::optional<Failure> {
   // Compile every `when` before the shape checks, mirroring the call-argument
   // path so a malformed program is reported as a syntax error.
   for (const auto& switch_case : switch_body.cases_) {
@@ -177,11 +214,12 @@ auto validateSwitchBody(const NamedTask& named, const SwitchBody& switch_body,
     }
 
     if (auto failure = validateSlot(::strij::openworkflow::Value{*switch_case.when_},
-                                    TypedSlot::kSwitchWhen, engine);
+                                    TypedSlot::kSwitchWhen, engine, locals);
         failure.has_value()) {
       failure->step_ = named.name_;
       failure->message_ =
           absl::StrCat("switch case '", switch_case.name_, "': ", failure->message_);
+
       return failure;
     }
   }
@@ -219,7 +257,8 @@ auto validateSwitchBody(const NamedTask& named, const SwitchBody& switch_body,
 }
 
 auto validateTask(const NamedTask& named, Scope scope, const Document& document,
-                  ExpressionEngine& engine, bool inside_fork_branch) -> std::optional<Failure> {
+                  ExpressionEngine& engine, bool inside_fork_branch,
+                  std::span<const std::string> locals) -> std::optional<Failure> {
   const Task& task = named.task_;
 
   // Fork branches run concurrently, so there is no defined way to combine
@@ -231,7 +270,7 @@ auto validateTask(const NamedTask& named, Scope scope, const Document& document,
                    .message_ = "export inside a fork branch is not supported"};
   }
 
-  if (auto failure = validateTaskSlots(task, engine); failure.has_value()) {
+  if (auto failure = validateTaskSlots(task, engine, locals); failure.has_value()) {
     failure->step_ = named.name_;
     return failure;
   }
@@ -243,7 +282,7 @@ auto validateTask(const NamedTask& named, Scope scope, const Document& document,
   }
 
   if (const auto* do_body = std::get_if<DoBody>(&task.body_)) {
-    return validateSequence(do_body->do_, document, engine, inside_fork_branch);
+    return validateSequence(do_body->do_, document, engine, inside_fork_branch, locals);
   }
 
   if (const auto* fork_body = std::get_if<ForkBody>(&task.body_)) {
@@ -256,7 +295,7 @@ auto validateTask(const NamedTask& named, Scope scope, const Document& document,
 
     // Each branch is a one-task sequence at runtime, so it is its own scope.
     for (const NamedTask& branch : fork_body->branches_) {
-      if (auto failure = validateSequence(Scope(&branch, 1), document, engine, true);
+      if (auto failure = validateSequence(Scope(&branch, 1), document, engine, true, locals);
           failure.has_value()) {
         return failure;
       }
@@ -265,9 +304,63 @@ auto validateTask(const NamedTask& named, Scope scope, const Document& document,
     return std::nullopt;
   }
 
+  if (const auto* for_body = std::get_if<ForBody>(&task.body_)) {
+    auto loop_names = NormalizeLoopVariables(for_body->for_.each_, for_body->for_.at_);
+    if (!loop_names.ok()) {
+      return Failure{.phase_ = Phase::kValidation,
+                     .status_ = task::TASK_STATUS_MALFORMED_REQUEST,
+                     .step_ = named.name_,
+                     .message_ = std::string(loop_names.status().message())};
+    }
+
+    const ::strij::openworkflow::Value collection = slotValue(for_body->for_.in_);
+    if (collection.IsString()) {
+      if (auto failure = validateSlot(collection, TypedSlot::kForIn, engine, locals);
+          failure.has_value()) {
+        failure->step_ = named.name_;
+
+        return failure;
+      }
+    } else {
+      std::vector<ExpressionLocal> storage;
+      const absl::Status syntax = engine.Validate(collection, validationArguments(locals, storage));
+      if (!syntax.ok()) {
+        return Failure{.phase_ = Phase::kValidation,
+                       .status_ = task::TASK_STATUS_MALFORMED_REQUEST,
+                       .step_ = named.name_,
+                       .message_ = std::string(syntax.message())};
+      }
+
+      if (!collection.IsArray()) {
+        return Failure{.phase_ = Phase::kValidation,
+                       .status_ = task::TASK_STATUS_MALFORMED_REQUEST,
+                       .step_ = named.name_,
+                       .message_ = "a non-string for.in value must be an inline array"};
+      }
+    }
+
+    std::vector<std::string> body_locals(locals.begin(), locals.end());
+    body_locals.push_back(loop_names->each_);
+    body_locals.push_back(loop_names->at_);
+
+    if (for_body->while_.has_value()) {
+      if (auto failure = validateSlot(::strij::openworkflow::Value{*for_body->while_},
+                                      TypedSlot::kForWhile, engine, body_locals);
+          failure.has_value()) {
+        failure->step_ = named.name_;
+
+        return failure;
+      }
+    }
+
+    return validateSequence(for_body->do_, document, engine, inside_fork_branch, body_locals);
+  }
+
   if (const auto* set_body = std::get_if<SetBody>(&task.body_)) {
     const ::strij::openworkflow::Value data = slotValue(set_body->set_);
-    const absl::Status status = engine.Validate(data);
+    std::vector<ExpressionLocal> storage;
+
+    const absl::Status status = engine.Validate(data, validationArguments(locals, storage));
     if (!status.ok()) {
       return Failure{.phase_ = Phase::kValidation,
                      .status_ = task::TASK_STATUS_MALFORMED_REQUEST,
@@ -286,7 +379,7 @@ auto validateTask(const NamedTask& named, Scope scope, const Document& document,
   }
 
   if (const auto* switch_body = std::get_if<SwitchBody>(&task.body_)) {
-    return validateSwitchBody(named, *switch_body, engine, scope);
+    return validateSwitchBody(named, *switch_body, engine, scope, locals);
   }
 
   if (!std::holds_alternative<CallBody>(task.body_)) {
@@ -323,7 +416,8 @@ auto validateTask(const NamedTask& named, Scope scope, const Document& document,
   // Compile expressions before shape checks: a malformed program nested deep
   // in a value tree must be reported as a syntax error, not masked by the
   // enclosing value's shape.
-  auto syntax = engine.Validate(call.with_);
+  std::vector<ExpressionLocal> storage;
+  auto syntax = engine.Validate(call.with_, validationArguments(locals, storage));
   if (!syntax.ok()) {
     return Failure{.phase_ = Phase::kValidation,
                    .status_ = task::TASK_STATUS_MALFORMED_REQUEST,
@@ -343,8 +437,10 @@ auto validateTask(const NamedTask& named, Scope scope, const Document& document,
 }
 
 auto validateSequence(Scope scope, const Document& document, ExpressionEngine& engine,
-                      bool inside_fork_branch) -> std::optional<Failure> {
+                      bool inside_fork_branch, std::span<const std::string> locals)
+    -> std::optional<Failure> {
   std::unordered_set<std::string> names;
+
   for (const NamedTask& named : scope) {
     if (!names.insert(named.name_).second) {
       return Failure{.phase_ = Phase::kValidation,
@@ -356,7 +452,7 @@ auto validateSequence(Scope scope, const Document& document, ExpressionEngine& e
   }
 
   for (const NamedTask& named : scope) {
-    if (auto failure = validateTask(named, scope, document, engine, inside_fork_branch);
+    if (auto failure = validateTask(named, scope, document, engine, inside_fork_branch, locals);
         failure.has_value()) {
       return failure;
     }
@@ -370,27 +466,27 @@ auto validateSequence(Scope scope, const Document& document, ExpressionEngine& e
 auto ValidateDocument(const Document& document, ExpressionEngine& engine)
     -> std::optional<Failure> {
   if (document.input_.has_value() && document.input_->from_.has_value()) {
-    if (auto failure = validateSlot(*document.input_->from_, TypedSlot::kInputFrom, engine);
+    if (auto failure = validateSlot(*document.input_->from_, TypedSlot::kInputFrom, engine, {});
         failure.has_value()) {
       return failure;
     }
   }
 
   if (document.output_.has_value() && document.output_->as_.has_value()) {
-    if (auto failure = validateSlot(*document.output_->as_, TypedSlot::kDocumentOutput, engine);
+    if (auto failure = validateSlot(*document.output_->as_, TypedSlot::kDocumentOutput, engine, {});
         failure.has_value()) {
       return failure;
     }
   }
 
-  return validateSequence(document.do_, document, engine, false);
+  return validateSequence(document.do_, document, engine, false, {});
 }
 
 WorkflowInterpreter::WorkflowInterpreter(ChildTaskSubmitter& submitter,
                                          config::ExtensionConfig evaluator, std::string parent_id,
-                                         Completion on_complete)
+                                         Completion on_complete, std::size_t for_iteration_budget)
     : submitter_{submitter}, engine_{std::move(evaluator)}, parent_id_{std::move(parent_id)},
-      on_complete_{std::move(on_complete)} {}
+      on_complete_{std::move(on_complete)}, for_iteration_budget_{for_iteration_budget} {}
 
 void WorkflowInterpreter::setState(State new_state) {
   switch (new_state) {
@@ -413,6 +509,7 @@ void WorkflowInterpreter::setState(State new_state) {
     assert(false);
     return;
   }
+
   state_ = new_state;
 }
 
@@ -451,6 +548,7 @@ void WorkflowInterpreter::Start(std::string_view document_text, std::string_view
 
     return;
   }
+
   context_ = std::move(*context);
 
   // The invocation input seeds the chain. An empty body is the same as no
@@ -463,7 +561,7 @@ void WorkflowInterpreter::Start(std::string_view document_text, std::string_view
 
   StepDataValue seed;
   if (document_->input_.has_value() && document_->input_->from_.has_value()) {
-    auto transformed = transformInput(*document_->input_->from_, invocation_data_value);
+    auto transformed = transformInput(*document_->input_->from_, invocation_data_value, nullptr);
     if (!transformed.ok()) {
       fail(task::TASK_STATUS_INTERNAL, "", transformed.status().message());
 
@@ -475,7 +573,7 @@ void WorkflowInterpreter::Start(std::string_view document_text, std::string_view
     seed = std::move(invocation_data_value);
   }
 
-  root_ = CreateRootFrame(*document_);
+  root_ = CreateRootFrame(*document_, for_iteration_budget_);
   root_->Enter(std::move(seed));
   setState(State::kReady);
 
@@ -597,8 +695,8 @@ void WorkflowInterpreter::ForgetChild(std::string_view child_id) {
   owner_by_child_.erase(std::string(child_id));
 }
 
-auto WorkflowInterpreter::EvaluateCondition(const NamedTask& step, const StepDataValue& raw)
-    -> absl::StatusOr<bool> {
+auto WorkflowInterpreter::EvaluateCondition(const NamedTask& step, const StepDataValue& raw,
+                                            const LexicalScope* scope) -> absl::StatusOr<bool> {
   const Task& task = step.task_;
   if (!task.if_.has_value()) {
     return true;
@@ -608,8 +706,9 @@ auto WorkflowInterpreter::EvaluateCondition(const NamedTask& step, const StepDat
     return absl::InvalidArgumentError("the condition subject is not JSON");
   }
 
+  std::vector<ExpressionLocal> locals;
   auto result = engine_.EvaluateTypedSlot(::strij::openworkflow::Value{*task.if_}, TypedSlot::kIf,
-                                          raw.Json(), ExpressionArguments{.context = &context_});
+                                          raw.Json(), lexicalArguments(scope, &context_, locals));
   if (!result.ok()) {
     return result.status();
   }
@@ -622,30 +721,32 @@ auto WorkflowInterpreter::EvaluateCondition(const NamedTask& step, const StepDat
   return value.AsBool();
 }
 
-auto WorkflowInterpreter::TransformTaskInput(const NamedTask& step, const StepDataValue& raw)
+auto WorkflowInterpreter::TransformTaskInput(const NamedTask& step, const StepDataValue& raw,
+                                             const LexicalScope* scope)
     -> absl::StatusOr<StepDataValue> {
   const Task& task = step.task_;
   if (!task.input_.has_value() || !task.input_->from_.has_value()) {
     return raw.Copy();
   }
 
-  return transformInput(*task.input_->from_, raw);
+  return transformInput(*task.input_->from_, raw, scope);
 }
 
 auto WorkflowInterpreter::TransformTaskOutput(const NamedTask& step, const StepDataValue& input,
-                                              const StepDataValue& raw_output)
+                                              const StepDataValue& raw_output,
+                                              const LexicalScope* scope)
     -> absl::StatusOr<StepDataValue> {
   const Task& task = step.task_;
   if (!task.output_.has_value() || !task.output_->as_.has_value()) {
     return raw_output.Copy();
   }
 
-  return transformOutput(*task.output_->as_, input, raw_output);
+  return transformOutput(*task.output_->as_, input, raw_output, scope);
 }
 
 auto WorkflowInterpreter::transformInput(
     const std::variant<std::string, ::strij::openworkflow::Value>& from_value,
-    const StepDataValue& raw) -> absl::StatusOr<StepDataValue> {
+    const StepDataValue& raw, const LexicalScope* scope) -> absl::StatusOr<StepDataValue> {
   const ::strij::openworkflow::Value slot = slotValue(from_value);
   const utils::Jv* subject = raw.IsJson() ? &raw.Json() : nullptr;
 
@@ -669,8 +770,9 @@ auto WorkflowInterpreter::transformInput(
     subject = &null_subject;
   }
 
+  std::vector<ExpressionLocal> locals;
   auto result = engine_.EvaluateTypedSlot(slot, TypedSlot::kInputFrom, *subject,
-                                          ExpressionArguments{.context = &context_});
+                                          lexicalArguments(scope, &context_, locals));
   if (!result.ok()) {
     return result.status();
   }
@@ -680,7 +782,8 @@ auto WorkflowInterpreter::transformInput(
 
 auto WorkflowInterpreter::transformOutput(
     const std::variant<std::string, ::strij::openworkflow::Value>& as_value,
-    const StepDataValue& input, const StepDataValue& raw_output) -> absl::StatusOr<StepDataValue> {
+    const StepDataValue& input, const StepDataValue& raw_output, const LexicalScope* scope)
+    -> absl::StatusOr<StepDataValue> {
   if (!input.IsJson()) {
     return absl::InvalidArgumentError("the task input is not JSON");
   }
@@ -689,10 +792,12 @@ auto WorkflowInterpreter::transformOutput(
     return absl::InvalidArgumentError("the output subject is not JSON");
   }
 
-  auto result = engine_.EvaluateTypedSlot(
-      slotValue(as_value), TypedSlot::kTaskOutput, raw_output.Json(),
-      ExpressionArguments{
-          .context = &context_, .input = &input.Json(), .output = &raw_output.Json()});
+  std::vector<ExpressionLocal> locals;
+  ExpressionArguments arguments = lexicalArguments(scope, &context_, locals);
+  arguments.input = &input.Json();
+  arguments.output = &raw_output.Json();
+  auto result = engine_.EvaluateTypedSlot(slotValue(as_value), TypedSlot::kTaskOutput,
+                                          raw_output.Json(), arguments);
   if (!result.ok()) {
     return result.status();
   }
@@ -701,8 +806,8 @@ auto WorkflowInterpreter::transformOutput(
 }
 
 auto WorkflowInterpreter::ExportTaskResult(const NamedTask& step, const StepDataValue& input,
-                                           const StepDataValue& transformed_output)
-    -> absl::Status {
+                                           const StepDataValue& transformed_output,
+                                           const LexicalScope* scope) -> absl::Status {
   const Task& task = step.task_;
   if (!task.export_.has_value() || !task.export_->as_.has_value()) {
     return absl::OkStatus();
@@ -716,10 +821,12 @@ auto WorkflowInterpreter::ExportTaskResult(const NamedTask& step, const StepData
     return absl::InvalidArgumentError("the task output is not JSON");
   }
 
-  auto result = engine_.EvaluateTypedSlot(
-      slotValue(*task.export_->as_), TypedSlot::kTaskExport, transformed_output.Json(),
-      ExpressionArguments{
-          .context = &context_, .input = &input.Json(), .output = &transformed_output.Json()});
+  std::vector<ExpressionLocal> locals;
+  ExpressionArguments arguments = lexicalArguments(scope, &context_, locals);
+  arguments.input = &input.Json();
+  arguments.output = &transformed_output.Json();
+  auto result = engine_.EvaluateTypedSlot(slotValue(*task.export_->as_), TypedSlot::kTaskExport,
+                                          transformed_output.Json(), arguments);
   if (!result.ok()) {
     return result.status();
   }
@@ -733,8 +840,8 @@ auto WorkflowInterpreter::ExportTaskResult(const NamedTask& step, const StepData
   return absl::OkStatus();
 }
 
-auto WorkflowInterpreter::EvaluateSet(const NamedTask& step, const StepDataValue& input)
-    -> absl::StatusOr<StepDataValue> {
+auto WorkflowInterpreter::EvaluateSet(const NamedTask& step, const StepDataValue& input,
+                                      const LexicalScope* scope) -> absl::StatusOr<StepDataValue> {
   const auto& set_body = std::get<SetBody>(step.task_.body_);
   const ::strij::openworkflow::Value value = slotValue(set_body.set_);
   const utils::Jv* subject = input.IsJson() ? &input.Json() : nullptr;
@@ -757,7 +864,8 @@ auto WorkflowInterpreter::EvaluateSet(const NamedTask& step, const StepDataValue
     subject = &null_subject;
   }
 
-  auto result = engine_.Evaluate(value, *subject, ExpressionArguments{.context = &context_});
+  std::vector<ExpressionLocal> locals;
+  auto result = engine_.Evaluate(value, *subject, lexicalArguments(scope, &context_, locals));
   if (!result.ok()) {
     return result.status();
   }
@@ -765,7 +873,8 @@ auto WorkflowInterpreter::EvaluateSet(const NamedTask& step, const StepDataValue
   return StepDataValue::FromValue(*result);
 }
 
-auto WorkflowInterpreter::SelectSwitchDirective(const NamedTask& step, const StepDataValue& input)
+auto WorkflowInterpreter::SelectSwitchDirective(const NamedTask& step, const StepDataValue& input,
+                                                const LexicalScope* scope)
     -> absl::StatusOr<std::optional<std::string>> {
   const auto& switch_body = std::get<SwitchBody>(step.task_.body_);
   const ::strij::openworkflow::NamedCase* fallback = nullptr;
@@ -793,9 +902,10 @@ auto WorkflowInterpreter::SelectSwitchDirective(const NamedTask& step, const Ste
       continue;
     }
 
+    std::vector<ExpressionLocal> locals;
     auto result = engine_.EvaluateTypedSlot(::strij::openworkflow::Value{*switch_case.when_},
                                             TypedSlot::kSwitchWhen, input.Json(),
-                                            ExpressionArguments{.context = &context_});
+                                            lexicalArguments(scope, &context_, locals));
     if (!result.ok()) {
       return absl::InvalidArgumentError(absl::StrCat("switch '", step.name_, "': case '",
                                                      switch_case.name_,
@@ -817,8 +927,94 @@ auto WorkflowInterpreter::SelectSwitchDirective(const NamedTask& step, const Ste
   return fallback == nullptr ? std::nullopt : std::optional<std::string>{fallback->then_};
 }
 
+auto WorkflowInterpreter::EvaluateForIn(const NamedTask& step, const StepDataValue& input,
+                                        const LexicalScope* scope)
+    -> absl::StatusOr<StepDataValue> {
+  const auto& for_body = std::get<ForBody>(step.task_.body_);
+  const ::strij::openworkflow::Value collection = slotValue(for_body.for_.in_);
+
+  if (std::holds_alternative<std::string>(for_body.for_.in_)) {
+    if (!input.IsJson()) {
+      return absl::InvalidArgumentError("the data subject is not JSON");
+    }
+
+    std::vector<ExpressionLocal> locals;
+    auto result = engine_.EvaluateTypedSlot(collection, TypedSlot::kForIn, input.Json(),
+                                            lexicalArguments(scope, &context_, locals));
+    if (!result.ok()) {
+      return result.status();
+    }
+
+    const ::strij::openworkflow::Value value = ::strij::openworkflow::JvToValue(*result);
+    if (!value.IsArray() && !value.IsNull()) {
+      return absl::InvalidArgumentError("the for.in collection is not an array or null");
+    }
+
+    return StepDataValue::FromBytes(result->Dump());
+  }
+
+  const utils::Jv* subject = input.IsJson() ? &input.Json() : nullptr;
+  utils::Jv null_subject;
+  if (subject == nullptr) {
+    // A literal-only inline array needs no subject; any expression over an
+    // opaque value must fail rather than read an empty value.
+    auto programs = CollectExpressions(collection);
+    if (!programs.ok() || !programs->empty()) {
+      return absl::InvalidArgumentError("the data subject is not JSON");
+    }
+
+    auto parsed = utils::Jv::Parse("null");
+    if (!parsed.ok()) {
+      return parsed.status();
+    }
+
+    null_subject = std::move(*parsed);
+    subject = &null_subject;
+  }
+
+  std::vector<ExpressionLocal> locals;
+  auto result = engine_.Evaluate(collection, *subject, lexicalArguments(scope, &context_, locals));
+  if (!result.ok()) {
+    return result.status();
+  }
+
+  if (!result->IsArray() && !result->IsNull()) {
+    return absl::InvalidArgumentError("the for.in collection is not an array or null");
+  }
+
+  return StepDataValue::FromValue(*result);
+}
+
+auto WorkflowInterpreter::EvaluateForWhile(const NamedTask& step, const StepDataValue& accumulator,
+                                           const LexicalScope& scope) -> absl::StatusOr<bool> {
+  const auto& for_body = std::get<ForBody>(step.task_.body_);
+  if (!for_body.while_.has_value()) {
+    return true;
+  }
+
+  if (!accumulator.IsJson()) {
+    return absl::InvalidArgumentError("the data subject is not JSON");
+  }
+
+  std::vector<ExpressionLocal> locals;
+  auto result = engine_.EvaluateTypedSlot(::strij::openworkflow::Value{*for_body.while_},
+                                          TypedSlot::kForWhile, accumulator.Json(),
+                                          lexicalArguments(&scope, &context_, locals));
+  if (!result.ok()) {
+    return result.status();
+  }
+
+  const ::strij::openworkflow::Value value = ::strij::openworkflow::JvToValue(*result);
+  if (!value.IsBool()) {
+    return absl::InvalidArgumentError("the while result is not a boolean");
+  }
+
+  return value.AsBool();
+}
+
 auto WorkflowInterpreter::ExecuteCall(SequenceFrame& owner, const NamedTask& step,
-                                      const StepDataValue& input) -> absl::Status {
+                                      const StepDataValue& input, const LexicalScope* scope)
+    -> absl::Status {
   const Task& task = step.task_;
   const auto& call = std::get<CallBody>(task.body_);
 
@@ -826,7 +1022,9 @@ auto WorkflowInterpreter::ExecuteCall(SequenceFrame& owner, const NamedTask& ste
   // source of the child body. A step that merely passes opaque bytes through
   // to its child does not need a JSON subject.
   const utils::Jv* subject = input.IsJson() ? &input.Json() : nullptr;
-  auto projection = ProjectCall(call.with_, subject, &context_, engine_);
+  std::vector<ExpressionLocal> locals;
+  auto projection =
+      ProjectCall(call.with_, subject, lexicalArguments(scope, &context_, locals), engine_);
   if (!projection.ok()) {
     return projection.status();
   }

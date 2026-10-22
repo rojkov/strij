@@ -239,6 +239,112 @@ TEST(ExpressionEngineTest, UndeclaredDescriptorArgumentIsRejected) {
       engine.EvaluateTypedSlot(Value{"${ $runtime }"}, TypedSlot::kInputFrom, *subject).ok());
 }
 
+TEST(ExpressionEngineLocalTest, ADeclaredLocalIsVisibleAndAbsentOtherwise) {
+  ExpressionEngine engine(test::JqEvaluatorConfig());
+  const auto subject = *utils::Jv::Parse(R"({"name":"widget"})");
+  const auto item = *utils::Jv::Parse(R"("red")");
+  const ExpressionLocal local{.name_ = "item", .value_ = &item};
+  const ExpressionArguments arguments{.locals = std::span(&local, 1)};
+
+  auto visible = engine.Run("$item", subject, arguments);
+  ASSERT_TRUE(visible.ok()) << visible.status().message();
+  EXPECT_EQ(visible->Dump(), R"("red")");
+
+  auto evaluated =
+      engine.Evaluate(Value{Value::Object{{"color", Value{"${ $item }"}}}}, subject, arguments);
+  ASSERT_TRUE(evaluated.ok()) << evaluated.status().message();
+  EXPECT_EQ(evaluated->AsObject().at("color").AsString(), "red");
+
+  EXPECT_FALSE(engine.Run("$item", subject).ok());
+}
+
+TEST(ExpressionEngineLocalTest, TheFirstLocalWithANameShadowsLaterOnes) {
+  ExpressionEngine engine(test::JqEvaluatorConfig());
+  const auto subject = *utils::Jv::Parse("null");
+  const auto inner = *utils::Jv::Parse(R"("inner")");
+  const auto outer = *utils::Jv::Parse(R"("outer")");
+  const std::vector<ExpressionLocal> locals{
+      {.name_ = "item", .value_ = &inner},
+      {.name_ = "item", .value_ = &outer},
+  };
+
+  auto result = engine.Run("$item", subject,
+                           ExpressionArguments{.locals = std::span(locals.data(), locals.size())});
+  ASSERT_TRUE(result.ok()) << result.status().message();
+  EXPECT_EQ(result->Dump(), R"("inner")");
+}
+
+TEST(ExpressionEngineForSlotsTest, ForInAndWhileRequireWrappedExpressions) {
+  ExpressionEngine engine(test::JqEvaluatorConfig());
+  for (TypedSlot slot : {TypedSlot::kForIn, TypedSlot::kForWhile}) {
+    EXPECT_FALSE(engine.ValidateTypedSlot(Value{".colors"}, slot).ok());
+    EXPECT_FALSE(engine.ValidateTypedSlot(Value{"${ .colors( }"}, slot).ok());
+    EXPECT_TRUE(engine.ValidateTypedSlot(Value{"${ .colors }"}, slot).ok());
+    EXPECT_FALSE(engine.ValidateTypedSlot(Value{"${ $input }"}, slot).ok());
+    EXPECT_FALSE(engine.ValidateTypedSlot(Value{"${ $output }"}, slot).ok());
+  }
+}
+
+TEST(ExpressionEngineForSlotsTest, ForSlotsBindLocalsButNotInputOrOutput) {
+  ExpressionEngine engine(test::JqEvaluatorConfig());
+  const auto subject = *utils::Jv::Parse(R"({"colors":["red"]})");
+  const auto color = *utils::Jv::Parse(R"("red")");
+  const ExpressionLocal local{.name_ = "color", .value_ = &color};
+  const ExpressionArguments arguments{.locals = std::span(&local, 1)};
+
+  auto collection = engine.EvaluateTypedSlot(Value{"${ [.colors[], $color] }"}, TypedSlot::kForIn,
+                                             subject, arguments);
+  ASSERT_TRUE(collection.ok()) << collection.status().message();
+  EXPECT_EQ(collection->Dump(), R"(["red","red"])");
+
+  auto predicate = engine.EvaluateTypedSlot(Value{"${ $color == \"red\" }"}, TypedSlot::kForWhile,
+                                            subject, arguments);
+  ASSERT_TRUE(predicate.ok()) << predicate.status().message();
+  EXPECT_EQ(predicate->Dump(), "true");
+
+  auto non_boolean =
+      engine.EvaluateTypedSlot(Value{"${ 1 }"}, TypedSlot::kForWhile, subject, arguments);
+  ASSERT_TRUE(non_boolean.ok()) << non_boolean.status().message();
+  EXPECT_EQ(non_boolean->Dump(), "1");
+
+  EXPECT_TRUE(engine.ValidateTypedSlot(Value{"${ $color }"}, TypedSlot::kForIn, arguments).ok());
+}
+
+TEST(LoopVariableNormalizationTest, DefaultsAndBothSpellingsNormalizeToBareNames) {
+  auto defaults = NormalizeLoopVariables(std::nullopt, std::nullopt);
+  ASSERT_TRUE(defaults.ok()) << defaults.status().message();
+  EXPECT_EQ(defaults->each_, "item");
+  EXPECT_EQ(defaults->at_, "index");
+
+  auto empty = NormalizeLoopVariables(std::string{"   "}, std::string{"  "});
+  ASSERT_TRUE(empty.ok()) << empty.status().message();
+  EXPECT_EQ(empty->each_, "item");
+  EXPECT_EQ(empty->at_, "index");
+
+  auto plain = NormalizeLoopVariables(std::string{" color "}, std::string{"position"});
+  ASSERT_TRUE(plain.ok()) << plain.status().message();
+  EXPECT_EQ(plain->each_, "color");
+  EXPECT_EQ(plain->at_, "position");
+
+  auto prefixed = NormalizeLoopVariables(std::string{" $color "}, std::string{"$position"});
+  ASSERT_TRUE(prefixed.ok()) << prefixed.status().message();
+  EXPECT_EQ(prefixed->each_, "color");
+  EXPECT_EQ(prefixed->at_, "position");
+}
+
+TEST(LoopVariableNormalizationTest, RejectsInvalidDuplicateAndReservedNames) {
+  EXPECT_FALSE(NormalizeLoopVariables(std::string{"9bad"}, std::nullopt).ok());
+  EXPECT_FALSE(NormalizeLoopVariables(std::string{"has-dash"}, std::nullopt).ok());
+  EXPECT_FALSE(NormalizeLoopVariables(std::string{"$"}, std::nullopt).ok());
+  EXPECT_FALSE(NormalizeLoopVariables(std::string{"$$item"}, std::nullopt).ok());
+  EXPECT_FALSE(NormalizeLoopVariables(std::string{"same"}, std::string{"$same"}).ok());
+
+  for (std::string_view reserved : {kContextVariable, kInputVariable, kOutputVariable}) {
+    EXPECT_FALSE(NormalizeLoopVariables(std::string{reserved}, std::nullopt).ok());
+    EXPECT_FALSE(NormalizeLoopVariables(std::nullopt, std::string{reserved}).ok());
+  }
+}
+
 TEST(RenderScalarTest, RendersStringUnquotedAndNumberCanonically) {
   auto text = RenderScalar(*utils::Jv::Parse(R"("/bin/task.sh")"));
   ASSERT_TRUE(text.ok());

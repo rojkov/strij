@@ -1392,10 +1392,11 @@ do:
 )YAML";
 
 struct Harness {
-  Harness() {
+  explicit Harness(std::size_t for_iteration_budget = kDefaultSynchronousIterationBudget) {
     interpreter_ = std::make_shared<WorkflowInterpreter>(
         submitter_, test::JqEvaluatorConfig(), "parent",
-        [this](task::TaskResult result) { results_.push_back(std::move(result)); });
+        [this](task::TaskResult result) { results_.push_back(std::move(result)); },
+        for_iteration_budget);
   }
 
   test::FakeChildTaskSubmitter submitter_;
@@ -3135,6 +3136,863 @@ TEST(InterpreterValidationTest, MalformedSetDataFailsBeforeAnySubmission) {
     EXPECT_EQ(harness.results_[0].status(), task::TASK_STATUS_MALFORMED_REQUEST);
     EXPECT_EQ(harness.submitter_.size(), 0U);
   }
+}
+
+// ---------------------------------------------------------------------------
+// `for`
+// ---------------------------------------------------------------------------
+
+constexpr std::string_view kForAccumulate = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: for-accumulate
+  version: '0.1.0'
+input:
+  from: '${ {"colors":["red","green","blue"]} }'
+do:
+  - loop:
+      for:
+        in: '${ .colors }'
+      do:
+        - append:
+            set: '${ {items: ((.items // []) + [$item]), indexes: ((.indexes // []) + [$index])} }'
+)YAML";
+
+constexpr std::string_view kForCustomVariables = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: for-custom
+  version: '0.1.0'
+input:
+  from: '${ {"values":["red","green"]} }'
+do:
+  - loop:
+      for:
+        each: $color
+        at: position
+        in: '${ .values }'
+      do:
+        - append:
+            set: '${ {colors: ((.colors // []) + [$color]), positions: ((.positions // []) + [$position])} }'
+)YAML";
+
+constexpr std::string_view kForInlineArray = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: for-inline
+  version: '0.1.0'
+input:
+  from: '${ {"suffix":"green"} }'
+do:
+  - loop:
+      for:
+        in:
+          - red
+          - '${ .suffix }'
+          - 7
+      do:
+        - append:
+            set: '${ {items: ((.items // []) + [$item])} }'
+)YAML";
+
+constexpr std::string_view kForEmptyOrNull = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: for-empty
+  version: '0.1.0'
+do:
+  - loop:
+      for:
+        in: '${ .items }'
+      do:
+        - append:
+            set: '${ {items: ((.items // []) + [$item])} }'
+)YAML";
+
+constexpr std::string_view kForNonArray = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: for-non-array
+  version: '0.1.0'
+do:
+  - loop:
+      for:
+        in: '${ .items }'
+      do:
+        - append:
+            set: '${ {items: ($item)} }'
+)YAML";
+
+constexpr std::string_view kForOpaqueSubject = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: for-opaque
+  version: '0.1.0'
+do:
+  - loop:
+      for:
+        in: '${ .items }'
+      do:
+        - append:
+            set: '${ {items: ($item)} }'
+)YAML";
+
+constexpr std::string_view kForWhile = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: for-while
+  version: '0.1.0'
+input:
+  from: '${ [10,20,30] }'
+do:
+  - loop:
+      for:
+        in: '${ . }'
+      while: '${ $index < 2 and .value < 20 }'
+      do:
+        - body:
+            set: '${ {value: $item} }'
+)YAML";
+
+constexpr std::string_view kForWhileNonBoolean = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: for-while-non-boolean
+  version: '0.1.0'
+do:
+  - loop:
+      for:
+        in: '${ [1,2] }'
+      while: '${ .value }'
+      do:
+        - body:
+            set: '${ {value: $item} }'
+)YAML";
+
+constexpr std::string_view kForWhileOpaque = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: for-while-opaque
+  version: '0.1.0'
+do:
+  - loop:
+      for:
+        in: '${ [1,2] }'
+      while: '${ . }'
+      do:
+        - body:
+            call: strij
+            with:
+              type: echo
+)YAML";
+
+constexpr std::string_view kForSwitchSetExpressions = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: for-slots
+  version: '0.1.0'
+input:
+  from: '${ {"colors":["a","b"]} }'
+do:
+  - loop:
+      for:
+        each: color
+        at: index
+        in: '${ .colors }'
+      do:
+        - choose:
+            if: '${ $index >= 0 }'
+            input:
+              from: '${ . + {item: $color, index: $index} }'
+            switch:
+              - matched:
+                  when: '${ .item == $color and .index == $index }'
+                  then: record
+        - record:
+            set: '${ {items: ((.items // []) + [$color]), indexes: ((.indexes // []) + [$index])} }'
+)YAML";
+
+constexpr std::string_view kForCallSuspended = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: for-call
+  version: '0.1.0'
+input:
+  from: '${ {"colors":["red","green"]} }'
+output:
+  as: '${ {context: $context, result: .} }'
+do:
+  - loop:
+      for:
+        each: color
+        at: index
+        in: '${ .colors }'
+      do:
+        - body:
+            call: strij
+            input:
+              from: '${ . + {color: $color, index: $index} }'
+            output:
+              as: '${ {color: $color, index: $index, echo: .echo} }'
+            export:
+              as: '${ {lastColor: $color} }'
+            with:
+              type: echo
+              parameters:
+                p: '${ $index }'
+)YAML";
+
+constexpr std::string_view kForNestedShadowing = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: for-nested
+  version: '0.1.0'
+input:
+  from: '${ {"outer":["red"],"inner":["a","b"]} }'
+do:
+  - outer:
+      for:
+        each: color
+        at: outerPosition
+        in: '${ .outer }'
+      do:
+        - inner:
+            for:
+              each: color
+              at: position
+              in: '${ .inner }'
+            do:
+              - record:
+                  set: '${ {seen: ((.seen // []) + [{color: $color, position: $position, outer: $outerPosition}])} }'
+)YAML";
+
+constexpr std::string_view kForReference = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: for-reference
+  version: '0.1.0'
+input:
+  from: '${ {"values":["red","green","blue"]} }'
+do:
+  - loop:
+      for:
+        each: color
+        at: index
+        in: '${ .values }'
+      output:
+        as: '${ {processed: {colors: .colors, indexes: .indexes}} }'
+      do:
+        - append:
+            set: '${ {colors: ((.colors // []) + [$color]), indexes: ((.indexes // []) + [$index])} }'
+)YAML";
+
+constexpr std::string_view kForBodyFailure = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: for-body-failure
+  version: '0.1.0'
+do:
+  - loop:
+      for:
+        in: '${ [1,2] }'
+      do:
+        - body:
+            call: strij
+            with:
+              type: echo
+)YAML";
+
+constexpr std::string_view kForBound = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: for-bound
+  version: '0.1.0'
+do:
+  - loop:
+      for:
+        in: '${ [range(0; 10)] }'
+      do: []
+)YAML";
+
+constexpr std::string_view kForSuspending = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: for-suspending
+  version: '0.1.0'
+do:
+  - loop:
+      for:
+        in: '${ [1,2,3,4,5] }'
+      do:
+        - body:
+            call: strij
+            with:
+              type: echo
+)YAML";
+
+constexpr std::string_view kBareForIn = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: bare-for-in
+  version: '0.1.0'
+do:
+  - loop:
+      for:
+        in: .colors
+      do:
+        - body:
+            set: '${ . }'
+)YAML";
+
+constexpr std::string_view kMalformedForIn = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: malformed-for-in
+  version: '0.1.0'
+do:
+  - loop:
+      for:
+        in: '${ .colors( }'
+      do:
+        - body:
+            set: '${ . }'
+)YAML";
+
+constexpr std::string_view kPartialForIn = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: partial-for-in
+  version: '0.1.0'
+do:
+  - loop:
+      for:
+        in: 'colors/${ .colors }'
+      do:
+        - body:
+            set: '${ . }'
+)YAML";
+
+constexpr std::string_view kBareForWhile = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: bare-for-while
+  version: '0.1.0'
+do:
+  - loop:
+      for:
+        in: '${ .colors }'
+      while: .ok
+      do:
+        - body:
+            set: '${ . }'
+)YAML";
+
+constexpr std::string_view kMalformedForWhile = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: malformed-for-while
+  version: '0.1.0'
+do:
+  - loop:
+      for:
+        in: '${ .colors }'
+      while: '${ .ok( }'
+      do:
+        - body:
+            set: '${ . }'
+)YAML";
+
+constexpr std::string_view kForInlineNotArray = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: for-inline-object
+  version: '0.1.0'
+do:
+  - loop:
+      for:
+        in:
+          a: b
+      do:
+        - body:
+            set: '${ . }'
+)YAML";
+
+constexpr std::string_view kForInvalidName = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: for-invalid-name
+  version: '0.1.0'
+do:
+  - loop:
+      for:
+        each: 9bad
+        in: '${ .colors }'
+      do:
+        - body:
+            set: '${ . }'
+)YAML";
+
+constexpr std::string_view kForDuplicateName = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: for-duplicate-name
+  version: '0.1.0'
+do:
+  - loop:
+      for:
+        each: color
+        at: $color
+        in: '${ .colors }'
+      do:
+        - body:
+            set: '${ . }'
+)YAML";
+
+constexpr std::string_view kForReservedName = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: for-reserved-name
+  version: '0.1.0'
+do:
+  - loop:
+      for:
+        each: context
+        in: '${ .colors }'
+      do:
+        - body:
+            set: '${ . }'
+)YAML";
+
+constexpr std::string_view kForMalformedBody = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: for-malformed-body
+  version: '0.1.0'
+do:
+  - loop:
+      for:
+        in: '${ .colors }'
+      do:
+        - body:
+            call: bogus
+            with:
+              type: echo
+)YAML";
+
+constexpr std::string_view kForBodyReadsItem = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: for-body-item
+  version: '0.1.0'
+do:
+  - loop:
+      for:
+        in: '${ .colors }'
+      do:
+        - body:
+            call: strij
+            with:
+              type: echo
+              parameters:
+                p: '${ $item }'
+)YAML";
+
+constexpr std::string_view kForBodyExportInFork = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: for-body-export
+  version: '0.1.0'
+do:
+  - fan:
+      fork:
+        branches:
+          - branch:
+              for:
+                in: '${ .colors }'
+              do:
+                - body:
+                    call: strij
+                    export:
+                      as: '${ {a: 1} }'
+                    with:
+                      type: echo
+)YAML";
+
+constexpr std::string_view kForExitInBody = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: for-exit
+  version: '0.1.0'
+input:
+  from: '${ [1,2] }'
+do:
+  - loop:
+      for:
+        in: '${ . }'
+      do:
+        - first:
+            call: strij
+            with:
+              type: echo
+            then: exit
+        - skipped:
+            set: '${ {bad: true} }'
+  - after:
+      set: '${ . }'
+)YAML";
+
+constexpr std::string_view kForForkBranch = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: for-branch
+  version: '0.1.0'
+input:
+  from: '${ [] }'
+do:
+  - fan:
+      fork:
+        branches:
+          - a:
+              for:
+                in: '${ [1,2] }'
+              do:
+                - step:
+                    set: '${ . + [$item] }'
+)YAML";
+
+constexpr std::string_view kForTaskExport = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: for-export
+  version: '0.1.0'
+input:
+  from: '${ 0 }'
+do:
+  - loop:
+      for:
+        in: '${ [1,2] }'
+      output:
+        as: '${ {sum: .} }'
+      export:
+        as: '${ {total: .sum} }'
+      do:
+        - step:
+            set: '${ . + $item }'
+  - after:
+      set: '${ $context }'
+)YAML";
+
+constexpr std::string_view kForInputFrom = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: for-input
+  version: '0.1.0'
+do:
+  - loop:
+      input:
+        from: '${ {"colors":["red","green"]} }'
+      for:
+        in: '${ .colors }'
+      do:
+        - step:
+            set: '${ {colors: .colors, seen: ((.seen // []) + [$item])} }'
+)YAML";
+
+constexpr std::string_view kForThenFollowingStep = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: for-position
+  version: '0.1.0'
+input:
+  from: '${ 0 }'
+do:
+  - loop:
+      for:
+        in: '${ [1,2,3] }'
+      do:
+        - step:
+            set: '${ . + 1 }'
+  - after:
+      set: '${ {done: true, value: .} }'
+)YAML";
+
+TEST(InterpreterForTest, IteratesInOrderWithDefaultLoopVariablesAndAccumulator) {
+  Harness harness;
+  harness.interpreter_->Start(std::string(kForAccumulate));
+
+  ASSERT_EQ(harness.results_.size(), 1U);
+  EXPECT_EQ(harness.results_[0].body(), R"({"indexes":[0,1,2],"items":["red","green","blue"]})");
+  EXPECT_TRUE(harness.results_[0].is_final());
+  EXPECT_EQ(harness.submitter_.size(), 0U);
+}
+
+TEST(InterpreterForTest, CustomLoopVariableNamesAreBound) {
+  Harness harness;
+  harness.interpreter_->Start(std::string(kForCustomVariables));
+
+  ASSERT_EQ(harness.results_.size(), 1U);
+  EXPECT_EQ(harness.results_[0].body(), R"({"colors":["red","green"],"positions":[0,1]})");
+}
+
+TEST(InterpreterForTest, AnInlineArrayEvaluatesWrappedMembersAndKeepsLiterals) {
+  Harness harness;
+  harness.interpreter_->Start(std::string(kForInlineArray));
+
+  ASSERT_EQ(harness.results_.size(), 1U);
+  EXPECT_EQ(harness.results_[0].body(), R"({"items":["red","green",7]})");
+}
+
+TEST(InterpreterForTest, EmptyAndNullCollectionsPreserveTheTransformedInput) {
+  for (std::string_view body : {R"({"items":[]})", R"({"items":null})"}) {
+    Harness harness;
+    harness.interpreter_->Start(std::string(kForEmptyOrNull), body);
+
+    ASSERT_EQ(harness.results_.size(), 1U);
+    EXPECT_EQ(harness.results_[0].body(), body);
+    EXPECT_EQ(harness.submitter_.size(), 0U);
+  }
+}
+
+TEST(InterpreterForTest, ANonArrayCollectionFailsNamingTheTask) {
+  Harness harness;
+  harness.interpreter_->Start(std::string(kForNonArray), R"({"items":5})");
+
+  ASSERT_EQ(harness.results_.size(), 1U);
+  EXPECT_EQ(harness.results_[0].status(), task::TASK_STATUS_INTERNAL);
+  EXPECT_NE(harness.results_[0].body().find("loop"), std::string::npos);
+  EXPECT_NE(harness.results_[0].body().find("array"), std::string::npos);
+  EXPECT_EQ(harness.submitter_.size(), 0U);
+}
+
+TEST(InterpreterForTest, AnExpressionCollectionOverOpaqueInputFails) {
+  Harness harness;
+  harness.interpreter_->Start(std::string(kForOpaqueSubject), "not json");
+
+  ASSERT_EQ(harness.results_.size(), 1U);
+  EXPECT_EQ(harness.results_[0].status(), task::TASK_STATUS_INTERNAL);
+  EXPECT_NE(harness.results_[0].body().find("loop"), std::string::npos);
+  EXPECT_NE(harness.results_[0].body().find("not JSON"), std::string::npos);
+  EXPECT_EQ(harness.submitter_.size(), 0U);
+}
+
+TEST(InterpreterForTest, WhileReadsTheAccumulatorAndCurrentLoopVariables) {
+  Harness harness;
+  harness.interpreter_->Start(std::string(kForWhile));
+
+  ASSERT_EQ(harness.results_.size(), 1U);
+  EXPECT_EQ(harness.results_[0].body(), R"({"value":20})");
+}
+
+TEST(InterpreterForTest, ANonBooleanWhileFailsNamingTheTask) {
+  Harness harness;
+  harness.interpreter_->Start(std::string(kForWhileNonBoolean));
+
+  ASSERT_EQ(harness.results_.size(), 1U);
+  EXPECT_EQ(harness.results_[0].status(), task::TASK_STATUS_INTERNAL);
+  EXPECT_NE(harness.results_[0].body().find("loop"), std::string::npos);
+  EXPECT_NE(harness.results_[0].body().find("boolean"), std::string::npos);
+}
+
+TEST(InterpreterForTest, WhileOverAnOpaqueAccumulatorFailsNamingTheTask) {
+  Harness harness;
+  harness.interpreter_->Start(std::string(kForWhileOpaque));
+  ASSERT_EQ(harness.submitter_.size(), 1U);
+
+  test::CompleteSuccessAt(harness.submitter_, 0, "not json");
+
+  ASSERT_EQ(harness.results_.size(), 1U);
+  EXPECT_EQ(harness.results_[0].status(), task::TASK_STATUS_INTERNAL);
+  EXPECT_NE(harness.results_[0].body().find("loop"), std::string::npos);
+  EXPECT_NE(harness.results_[0].body().find("not JSON"), std::string::npos);
+  EXPECT_EQ(harness.submitter_.size(), 1U);
+}
+
+TEST(InterpreterForTest, BodyIfInputSwitchAndSetSeeTheLoopVariables) {
+  Harness harness;
+  harness.interpreter_->Start(std::string(kForSwitchSetExpressions));
+
+  ASSERT_EQ(harness.results_.size(), 1U);
+  EXPECT_EQ(harness.results_[0].body(), R"({"indexes":[0,1],"items":["a","b"]})");
+}
+
+TEST(InterpreterForTest, ASuspendedCallKeepsItsLoopVariablesAcrossTheResult) {
+  Harness harness;
+  harness.interpreter_->Start(std::string(kForCallSuspended));
+  ASSERT_EQ(harness.submitter_.size(), 1U);
+  EXPECT_EQ(harness.submitter_.at(0)->task_.body(),
+            R"({"color":"red","colors":["red","green"],"index":0})");
+  EXPECT_EQ(harness.submitter_.at(0)->task_.parameters().at("p"), "0");
+
+  test::CompleteSuccessAt(harness.submitter_, 0, R"({"echo":"one"})");
+  ASSERT_EQ(harness.submitter_.size(), 2U);
+  EXPECT_EQ(harness.submitter_.at(1)->task_.body(), R"({"color":"green","echo":"one","index":1})");
+  EXPECT_EQ(harness.submitter_.at(1)->task_.parameters().at("p"), "1");
+
+  test::CompleteSuccessAt(harness.submitter_, 1, R"({"echo":"two"})");
+
+  ASSERT_EQ(harness.results_.size(), 1U);
+  EXPECT_EQ(
+      harness.results_[0].body(),
+      R"({"context":{"lastColor":"green"},"result":{"color":"green","echo":"two","index":1}})");
+}
+
+TEST(InterpreterForTest, NestedLoopsInheritOuterVariablesAndShadowByName) {
+  Harness harness;
+  harness.interpreter_->Start(std::string(kForNestedShadowing));
+
+  ASSERT_EQ(harness.results_.size(), 1U);
+  EXPECT_EQ(
+      harness.results_[0].body(),
+      R"({"seen":[{"color":"a","outer":0,"position":0},{"color":"b","outer":0,"position":1}]})");
+}
+
+TEST(InterpreterForTest, BodyFailurePropagatesItsExistingOrigin) {
+  Harness harness;
+  harness.interpreter_->Start(std::string(kForBodyFailure));
+  ASSERT_EQ(harness.submitter_.size(), 1U);
+
+  test::CompleteError(harness.submitter_, "boom", task::TASK_STATUS_CAPACITY_REFUSED);
+
+  ASSERT_EQ(harness.results_.size(), 1U);
+  EXPECT_EQ(harness.results_[0].status(), task::TASK_STATUS_CAPACITY_REFUSED);
+  EXPECT_EQ(harness.results_[0].body(), "step 'body': boom");
+}
+
+TEST(InterpreterForTest, ANonSuspendingLoopTripsTheIterationBudget) {
+  Harness harness(3);
+  harness.interpreter_->Start(std::string(kForBound));
+
+  ASSERT_EQ(harness.results_.size(), 1U);
+  EXPECT_EQ(harness.results_[0].status(), task::TASK_STATUS_INTERNAL);
+  EXPECT_NE(harness.results_[0].body().find("loop"), std::string::npos);
+  EXPECT_NE(harness.results_[0].body().find("budget"), std::string::npos);
+  EXPECT_EQ(harness.submitter_.size(), 0U);
+}
+
+TEST(InterpreterForTest, ALoopThatSuspendsOnEveryIterationDoesNotTripTheBudget) {
+  Harness harness(2);
+  harness.interpreter_->Start(std::string(kForSuspending));
+  ASSERT_EQ(harness.submitter_.size(), 1U);
+
+  for (std::size_t index = 0; index < 5; ++index) {
+    test::CompleteSuccessAt(harness.submitter_, index, std::to_string(index));
+    if (index + 1 < 5) {
+      ASSERT_EQ(harness.submitter_.size(), index + 2);
+    }
+  }
+
+  ASSERT_EQ(harness.results_.size(), 1U);
+  EXPECT_EQ(harness.results_[0].body(), "4");
+}
+
+TEST(InterpreterForTest, ReferenceColorsAndIndexesScenarioAccumulatesExactly) {
+  Harness harness;
+  harness.interpreter_->Start(std::string(kForReference));
+
+  ASSERT_EQ(harness.results_.size(), 1U);
+  EXPECT_EQ(harness.results_[0].body(),
+            R"({"processed":{"colors":["red","green","blue"],"indexes":[0,1,2]}})");
+}
+
+TEST(InterpreterForTest, ExitInsideTheBodyCompletesOnlyTheCurrentIteration) {
+  Harness harness;
+  harness.interpreter_->Start(std::string(kForExitInBody));
+  ASSERT_EQ(harness.submitter_.size(), 1U);
+
+  test::CompleteSuccessAt(harness.submitter_, 0, "1");
+  ASSERT_EQ(harness.submitter_.size(), 2U);
+
+  test::CompleteSuccessAt(harness.submitter_, 1, "2");
+
+  ASSERT_EQ(harness.results_.size(), 1U);
+  EXPECT_EQ(harness.results_[0].body(), "2");
+  EXPECT_EQ(harness.submitter_.size(), 2U);
+}
+
+TEST(InterpreterForTest, AForBranchContributesItsAccumulatorToTheJoin) {
+  Harness harness;
+  harness.interpreter_->Start(std::string(kForForkBranch));
+
+  ASSERT_EQ(harness.results_.size(), 1U);
+  EXPECT_EQ(harness.results_[0].body(), R"([[1,2]])");
+  EXPECT_EQ(harness.submitter_.size(), 0U);
+}
+
+TEST(InterpreterForTest, TheForTaskExportUpdatesTheContextAfterIteration) {
+  Harness harness;
+  harness.interpreter_->Start(std::string(kForTaskExport));
+
+  ASSERT_EQ(harness.results_.size(), 1U);
+  EXPECT_EQ(harness.results_[0].body(), R"({"total":3})");
+}
+
+TEST(InterpreterForTest, TransformedInputSeedsTheLoopAndItsBody) {
+  Harness harness;
+  harness.interpreter_->Start(std::string(kForInputFrom));
+
+  ASSERT_EQ(harness.results_.size(), 1U);
+  EXPECT_EQ(harness.results_[0].body(), R"({"colors":["red","green"],"seen":["red","green"]})");
+}
+
+TEST(InterpreterForTest, TheStepFollowingTheLoopRunsAfterEveryIteration) {
+  Harness harness;
+  harness.interpreter_->Start(std::string(kForThenFollowingStep));
+
+  ASSERT_EQ(harness.results_.size(), 1U);
+  EXPECT_EQ(harness.results_[0].body(), R"({"done":true,"value":3})");
+  EXPECT_EQ(harness.submitter_.size(), 0U);
+}
+
+TEST(InterpreterValidationTest, BareAndMalformedForExpressionsFailBeforeSubmission) {
+  for (std::string_view document :
+       {kBareForIn, kMalformedForIn, kPartialForIn, kBareForWhile, kMalformedForWhile}) {
+    Harness harness;
+    harness.interpreter_->Start(std::string(document));
+
+    ASSERT_EQ(harness.results_.size(), 1U);
+    EXPECT_EQ(harness.results_[0].status(), task::TASK_STATUS_MALFORMED_REQUEST);
+    EXPECT_EQ(harness.submitter_.size(), 0U);
+  }
+}
+
+TEST(InterpreterValidationTest, NonArrayInlineForCollectionAndInvalidNamesFailBeforeSubmission) {
+  for (std::string_view document :
+       {kForInlineNotArray, kForInvalidName, kForDuplicateName, kForReservedName}) {
+    Harness harness;
+    harness.interpreter_->Start(std::string(document));
+
+    ASSERT_EQ(harness.results_.size(), 1U);
+    EXPECT_EQ(harness.results_[0].status(), task::TASK_STATUS_MALFORMED_REQUEST);
+    EXPECT_EQ(harness.submitter_.size(), 0U);
+  }
+}
+
+TEST(InterpreterValidationTest, AMalformedTaskInsideAForBodyFailsBeforeSubmission) {
+  Harness harness;
+  harness.interpreter_->Start(std::string(kForMalformedBody));
+
+  ASSERT_EQ(harness.results_.size(), 1U);
+  EXPECT_EQ(harness.results_[0].status(), task::TASK_STATUS_MALFORMED_REQUEST);
+  EXPECT_NE(harness.results_[0].body().find("not recognized"), std::string::npos);
+  EXPECT_EQ(harness.submitter_.size(), 0U);
+}
+
+TEST(InterpreterValidationTest, AForBodyExpressionMayReferenceItsLoopVariables) {
+  Harness harness;
+  harness.interpreter_->Start(std::string(kForBodyReadsItem), R"({"colors":["red"]})");
+
+  ASSERT_EQ(harness.submitter_.size(), 1U);
+  EXPECT_EQ(harness.submitter_.last()->task_.parameters().at("p"), "red");
+}
+
+TEST(InterpreterValidationTest, AForBodyInsideAForkBranchInheritsTheExportRejection) {
+  Harness harness;
+  harness.interpreter_->Start(std::string(kForBodyExportInFork));
+
+  ASSERT_EQ(harness.results_.size(), 1U);
+  EXPECT_EQ(harness.results_[0].status(), task::TASK_STATUS_UNIMPLEMENTED);
+  EXPECT_NE(harness.results_[0].body().find("fork branch"), std::string::npos);
+  EXPECT_EQ(harness.submitter_.size(), 0U);
 }
 
 // NOLINTEND(modernize-use-trailing-return-type)

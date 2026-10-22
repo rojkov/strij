@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
@@ -22,12 +23,22 @@ inline constexpr std::string_view kContextVariable = "context";
 inline constexpr std::string_view kInputVariable = "input";
 inline constexpr std::string_view kOutputVariable = "output";
 
+// One lexical binding supplied by a frame's scope chain. `name_` is the bare jq
+// variable name (without `$`). `value_` is null on validation-only paths.
+struct ExpressionLocal {
+  std::string_view name_;
+  const utils::Jv* value_{nullptr};
+};
+
 // The values an expression may reference by name. Slots that do not bind a
-// value leave its pointer null; `Run` and `Evaluate` bind only `context`.
+// value leave its pointer null; `Run` and `Evaluate` bind only `context` plus
+// any lexical locals. Locals are declared after the reserved variables and are
+// deduplicated innermost-first, so an inner loop shadows an outer one.
 struct ExpressionArguments {
   const utils::Jv* context{nullptr};
   const utils::Jv* input{nullptr};
   const utils::Jv* output{nullptr};
+  std::span<const ExpressionLocal> locals{};
 };
 
 // An expression-typed DSL slot. Unlike literal-capable value slots, every
@@ -39,6 +50,8 @@ enum class TypedSlot : std::uint8_t {
   kTaskExport = 3,
   kDocumentOutput = 4,
   kSwitchWhen = 5,
+  kForIn = 6,
+  kForWhile = 7,
 };
 
 [[nodiscard]] auto TypedSlotName(TypedSlot slot) -> std::string_view;
@@ -76,11 +89,14 @@ public:
   auto Run(std::string_view program, const utils::Jv& subject,
            const ExpressionArguments& arguments = {}) -> absl::StatusOr<utils::Jv>;
 
-  // Validation over a value tree: compiles every expression it contains.
-  auto Validate(const ::strij::openworkflow::Value& value) -> absl::Status;
+  // Validation over a value tree: compiles every expression it contains with
+  // the supplied reserved and lexical variables.
+  auto Validate(const ::strij::openworkflow::Value& value,
+                const ExpressionArguments& arguments = {}) -> absl::Status;
 
   // Evaluates every expression in `value` against `subject`, preserving
-  // literals and the surrounding structure. Only `$context` is bound.
+  // literals and the surrounding structure. `$context` and any lexical locals
+  // are bound.
   auto Evaluate(const ::strij::openworkflow::Value& value, const utils::Jv& subject,
                 const ExpressionArguments& arguments = {})
       -> absl::StatusOr<::strij::openworkflow::Value>;
@@ -107,6 +123,19 @@ private:
 
   config::ExtensionConfig evaluator_;
 };
+
+// The normalized loop variable names for a `for` task. `each` and `at` are bare
+// jq identifiers (no leading `$`), defaulted to `item` and `index`.
+struct LoopVariableNames {
+  std::string each_;
+  std::string at_;
+};
+
+// Trims, defaults, strips one leading `$`, validates the identifier shape, and
+// rejects equal or reserved (`context`, `input`, `output`) names.
+auto NormalizeLoopVariables(const std::optional<std::string>& each,
+                            const std::optional<std::string>& at)
+    -> absl::StatusOr<LoopVariableNames>;
 
 // Renders a scalar result as a parameter string: a string is unquoted, a number
 // is canonical, a boolean is `true`/`false`. Null and non-scalars are rejected.

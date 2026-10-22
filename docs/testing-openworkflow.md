@@ -30,9 +30,9 @@ What each target covers:
 | `step_data_value_test` | Data-value sniffing: JSON text, non-JSON text, empty input. |
 | `expression_test` | Strict-mode `${ }` recognition, typed-slot validation (wrapped-only), JSON-faithful evaluation, data-chain subject vs a live `$context`, `$input`/`$output` (including their absence from slots that do not bind them), and scalar rendering. |
 | `call_strij_test` | The `with` key set, parameter projection (including `$context`), requirement coercion (incl. rejecting `100M`), reserved call targets. |
-| `interpreter_test` | The frame tree, resumable step loop, reentrancy, stale results, the validation/execution split, fork entry/join (join-all, compete, nested), fail-fast branch failures, seeding from the invocation body, `if` short-circuiting, the `input.from` pipeline, task/document `output.as`, and `export.as` context updates (merge/replace, skipped/failed steps, composite tasks, opaque/non-object failures, and the fork-branch rejection). |
+| `interpreter_test` | The frame tree, resumable step loop, reentrancy, stale results, the validation/execution split, fork entry/join (join-all, compete, nested), fail-fast branch failures, seeding from the invocation body, `if` short-circuiting, the `input.from` pipeline, `for` iteration and loop variables, task/document `output.as`, and `export.as` context updates (merge/replace, skipped/failed steps, composite tasks, opaque/non-object failures, and the fork-branch rejection). |
 | `openworkflow_task_handler_test` | The handler/factory, function reference resolution and artifact loading, failure-status classification, and connection teardown. |
-| `openworkflow_e2e_test` | The full path through the **real** `piped_executable` handler, driving the child process with a mock dispatcher, with the document loaded from a file and input supplied in the body. Includes join-all, competing fork, `input.from` + `if` + `output.as` pipeline scenarios, and an `export.as` value read by a later `if` and the document output. |
+| `openworkflow_e2e_test` | The full path through the **real** `piped_executable` handler, driving the child process with a mock dispatcher, with the document loaded from a file and input supplied in the body. Includes join-all, competing fork, `input.from` + `if` + `output.as` pipeline scenarios, an `export.as` value read by a later `if` and the document output, and a nested `for` that accumulates results across real child processes. |
 
 `openworkflow_e2e_test` includes `ScriptedTwoStepWorkflowChainsChildOutputs`,
 which runs the exact two-step workflow in section 3 through `piped_executable`
@@ -398,6 +398,109 @@ switch's own `then` as the implicit default, omit the fallback case and declare
 `then: physical` on the `route` task (see
 `SwitchImplicitDefaultUsesTheSwitchThen`). A case condition over opaque input
 fails during execution; a switch with only a default case needs no JSON subject.
+
+### Looping with for
+
+A `for` task evaluates its collection **once** against the transformed task
+input, then runs its `do` body once per element in declaration order. The first
+iteration starts with the transformed input, each completed iteration's data
+value seeds the next, and the loop's raw output is the final accumulator. An
+empty array or `null` collection runs no body steps and leaves the transformed
+input unchanged.
+
+`for.in` is a collection slot. A string is a whole-value `${ }` expression; a
+non-string inline value must be an array, whose bare strings stay literal and
+whose `${ }`-wrapped members are evaluated. Any other runtime result fails the
+step with `TASK_STATUS_INTERNAL` and names the `for` task. `null` is the one
+non-array runtime result that is allowed and means zero iterations.
+
+`for.each` and `for.at` name the current element and zero-based index, defaulting
+to `item` and `index`. A leading `$` is optional in the declaration, so `each:
+color` and `each: $color` both bind `$color`. The names must be valid identifiers,
+must differ, and must not be `context`, `input`, or `output`. The bindings are
+lexical: every expression in the body sees them, including through a suspension
+and through nested `do`, `fork`, and `for` bodies. A nested loop that reuses a
+name shadows the outer binding inside its body.
+
+This document is the same shape as
+`InterpreterForTest.ReferenceColorsAndIndexesScenarioAccumulatesExactly`. The
+body appends each `$color` and `$index` to the accumulator, and the loop's
+`output.as` wraps the final accumulator:
+
+```yaml
+document:
+  dsl: '1.0.3'
+  namespace: docs
+  name: for-reference
+  version: '0.1.0'
+input:
+  from: '${ {"values":["red","green","blue"]} }'
+do:
+  - loop:
+      for:
+        each: color
+        at: index
+        in: '${ .values }'
+      output:
+        as: '${ {processed: {colors: .colors, indexes: .indexes}} }'
+      do:
+        - append:
+            set: '${ {colors: ((.colors // []) + [$color]), indexes: ((.indexes // []) + [$index])} }'
+```
+
+The result is exactly
+`{"processed":{"colors":["red","green","blue"],"indexes":[0,1,2]}}`.
+Use `in: '${ .values }'` with an expression slot, or an inline array such as
+`in: [red, '${ .suffix }', 7]`; in the inline form, `red` and `7` are literals
+and only wrapped strings are evaluated.
+
+`while` is checked after each completed iteration against the accumulator, with
+that iteration's loop variables and `$context` bound. It is an expression-typed
+slot and must yield a boolean; `false` stops before the next element:
+
+```yaml
+      while: '${ $index < 2 and .value < 20 }'
+```
+
+Nested loops inherit the enclosing names. This document is the same shape as
+`InterpreterForTest.NestedLoopsInheritOuterVariablesAndShadowByName`; the inner
+`color` shadows the outer `color`, while `$outerPosition` remains visible:
+
+```yaml
+do:
+  - outer:
+      for:
+        each: color
+        at: outerPosition
+        in: '${ .outer }'
+      do:
+        - inner:
+            for:
+              each: color
+              at: position
+              in: '${ .inner }'
+            do:
+              - record:
+                  set: '${ {seen: ((.seen // []) + [{color: $color, position: $position, outer: $outerPosition}])} }'
+```
+
+A `for` is a normal composite step: `if` can skip the whole loop, `input.from`
+seeds it, and `output.as`, `export.as`, and `then` apply after iteration
+completes. The loop's own `if`, `input.from`, `output.as`, `export.as`, and
+`then` do **not** see its own loop variables (only enclosing loops'); `in` sees
+only enclosing names, while `while` and every body task see the loop's names.
+`end` inside a body concludes the workflow and skips the `for`'s own shaping;
+`exit` completes only that iteration and lets the next element begin. A `for`
+may run inside a fork branch, but the existing rule still rejects `export` in its
+body when the loop is inside that branch.
+
+**Local binding narrows the expression arguments.** `for.in` and `for.while`
+bind `$context` plus loop variables, not `$input` or `$output`. Use `.` for the
+current subject, `$context` for the preserved workflow context, or an enclosing
+loop variable. Body tasks keep the ordinary pipeline, so `output.as` and
+`export.as` still bind `$input` and `$output`. A synchronous `for` over a large
+collection is bounded per stretch and fails with `TASK_STATUS_INTERNAL` rather
+than starving the event loop; a loop that suspends on a child resets the bound.
 
 `exit` completes the current sequence while letting its enclosing step continue.
 This document is the same shape as `ThenExitSkipsTheRestOfANestedDo`: `first`

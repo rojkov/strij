@@ -13,6 +13,7 @@
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "common/task/task.pb.h"
+#include "nodeagent/extensions/task_handlers/openworkflow/expression.hh"
 #include "nodeagent/extensions/task_handlers/openworkflow/step_data_value.hh"
 #include "openworkflow/document.hh"
 #include "openworkflow/task.hh"
@@ -30,6 +31,18 @@ struct ChildOutcome {
 };
 
 class SequenceFrame;
+
+// One immutable node in the lexical loop-variable chain. A sequence carries the
+// innermost scope that is visible to its expressions; a `for` body installs a
+// node whose parent is the declaring sequence's scope. Names are bare jq
+// variable names (without `$`).
+struct LexicalScope {
+  std::shared_ptr<const LexicalScope> parent_;
+  std::string each_name_;
+  utils::Jv item_;
+  std::string at_name_;
+  utils::Jv index_;
+};
 
 // A failure travelling upward through the frame tree. `origin_` is the sequence
 // whose cursor was on the failing step; it points at a frame that stays alive
@@ -83,10 +96,13 @@ struct FlowDirective {
 auto ResolveFlowDirective(std::span<const ::strij::openworkflow::NamedTask> scope,
                           std::string_view then) -> absl::StatusOr<FlowDirective>;
 
-// The number of steps one sequence may advance in a single synchronous stretch.
-// Generous so ordinary workflows are unaffected; a backward jump that never
-// suspends trips it instead of wedging the event loop.
+// The number of steps one sequence may advance in a single synchronous stretch,
+// and the number of iterations one `for` may advance in a single stretch.
+// Generous so ordinary workflows are unaffected; a backward jump or a large
+// synchronous loop trips it instead of wedging the event loop.
 inline constexpr std::size_t kDefaultSynchronousTransitionBudget = 100000;
+inline constexpr std::size_t kDefaultSynchronousIterationBudget =
+    kDefaultSynchronousTransitionBudget;
 
 // The effects a frame needs from its owner. The interpreter is the only
 // implementation; frame tests supply a fake.
@@ -101,43 +117,59 @@ public:
 
   // Evaluates a task's `if` against the raw task input. Absent `if` is true.
   virtual auto EvaluateCondition(const ::strij::openworkflow::NamedTask& step,
-                                 const StepDataValue& raw) -> absl::StatusOr<bool> PURE;
+                                 const StepDataValue& raw, const LexicalScope* scope)
+      -> absl::StatusOr<bool> PURE;
 
   // Evaluates a task's `input.from` against the raw task input. Absent
   // `input.from` is the identity.
   virtual auto TransformTaskInput(const ::strij::openworkflow::NamedTask& step,
-                                  const StepDataValue& raw) -> absl::StatusOr<StepDataValue> PURE;
+                                  const StepDataValue& raw, const LexicalScope* scope)
+      -> absl::StatusOr<StepDataValue> PURE;
 
   // Evaluates a task's `output.as` against the raw output, with the transformed
   // input available as `$input`. Absent `output.as` is the identity.
   virtual auto TransformTaskOutput(const ::strij::openworkflow::NamedTask& step,
-                                   const StepDataValue& input, const StepDataValue& raw_output)
-      -> absl::StatusOr<StepDataValue> PURE;
+                                   const StepDataValue& input, const StepDataValue& raw_output,
+                                   const LexicalScope* scope) -> absl::StatusOr<StepDataValue> PURE;
 
   // Applies a task's `export.as` against the shaped task output. Absent
   // `export`/`as` leaves the context unchanged. A returned error is the step's
   // own (local) failure.
   virtual auto ExportTaskResult(const ::strij::openworkflow::NamedTask& step,
-                                const StepDataValue& input, const StepDataValue& transformed_output)
-      -> absl::Status PURE;
+                                const StepDataValue& input, const StepDataValue& transformed_output,
+                                const LexicalScope* scope) -> absl::Status PURE;
 
   // Evaluates a `set` task's data against the transformed task input, using the
   // same subject rules as `input.from`.
-  virtual auto EvaluateSet(const ::strij::openworkflow::NamedTask& step, const StepDataValue& input)
-      -> absl::StatusOr<StepDataValue> PURE;
+  virtual auto EvaluateSet(const ::strij::openworkflow::NamedTask& step, const StepDataValue& input,
+                           const LexicalScope* scope) -> absl::StatusOr<StepDataValue> PURE;
 
   // Selects the `then` of a `switch` case against the transformed task input.
   // Returns nullopt when no case matches, letting the sequence fall back to the
   // switch task's own `then`.
   virtual auto SelectSwitchDirective(const ::strij::openworkflow::NamedTask& step,
-                                     const StepDataValue& input)
+                                     const StepDataValue& input, const LexicalScope* scope)
       -> absl::StatusOr<std::optional<std::string>> PURE;
 
   // Runs one `call: strij` step for `owner`, projecting its arguments from the
   // transformed input, building the child body, submitting it, and applying an
   // inline outcome. A returned error is the step's own (local) failure.
   virtual auto ExecuteCall(SequenceFrame& owner, const ::strij::openworkflow::NamedTask& step,
-                           const StepDataValue& input) -> absl::Status PURE;
+                           const StepDataValue& input, const LexicalScope* scope)
+      -> absl::Status PURE;
+
+  // Evaluates a `for` task's collection against its transformed input. The
+  // result is a JSON array or null. `scope` is the declaring sequence's scope
+  // (the loop's own variables are not visible to `in`).
+  virtual auto EvaluateForIn(const ::strij::openworkflow::NamedTask& step,
+                             const StepDataValue& input, const LexicalScope* scope)
+      -> absl::StatusOr<StepDataValue> PURE;
+
+  // Evaluates a `for` task's `while` after a completed iteration against the
+  // accumulator. The scope includes that iteration's loop variables.
+  virtual auto EvaluateForWhile(const ::strij::openworkflow::NamedTask& step,
+                                const StepDataValue& accumulator, const LexicalScope& scope)
+      -> absl::StatusOr<bool> PURE;
 
   // Drops a child id from the outcome-routing map. Called only when a waiting
   // frame is abandoned.
@@ -221,8 +253,11 @@ public:
 
   explicit SequenceFrame(std::span<const ::strij::openworkflow::NamedTask> steps,
                          std::optional<Branch> branch = std::nullopt,
-                         std::size_t transition_budget = kDefaultSynchronousTransitionBudget)
-      : steps_{steps}, branch_{branch}, transition_budget_{transition_budget} {}
+                         std::size_t transition_budget = kDefaultSynchronousTransitionBudget,
+                         std::shared_ptr<const LexicalScope> scope = nullptr,
+                         std::size_t for_iteration_budget = kDefaultSynchronousIterationBudget)
+      : steps_{steps}, branch_{branch}, scope_{std::move(scope)},
+        transition_budget_{transition_budget}, for_iteration_budget_{for_iteration_budget} {}
 
   ~SequenceFrame() override = default;
 
@@ -253,6 +288,7 @@ public:
   [[nodiscard]] auto WaitingChildId() const -> const std::string& { return *waiting_child_id_; }
   [[nodiscard]] auto Child() const -> const Frame* { return child_.get(); }
   [[nodiscard]] auto BranchInfo() const -> const std::optional<Branch>& { return branch_; }
+  [[nodiscard]] auto Scope() const -> const std::shared_ptr<const LexicalScope>& { return scope_; }
 
 private:
   void materializeChild();
@@ -283,20 +319,74 @@ private:
   std::unique_ptr<Frame> child_;
   std::optional<std::string> waiting_child_id_;
   std::optional<Branch> branch_;
+  std::shared_ptr<const LexicalScope> scope_;
   std::optional<ExecutionFailure> failure_;
   // Set by an `exit`/`end` directive while a completion sink is on the stack;
   // consumed by the next `Advance`.
   std::optional<FrameResult> pending_result_;
   std::size_t transitions_{0};
   std::size_t transition_budget_{kDefaultSynchronousTransitionBudget};
+  std::size_t for_iteration_budget_{kDefaultSynchronousIterationBudget};
+};
+
+// A sequential `for` composite. It evaluates `for.in` once, then lazily creates
+// one body sequence per element. The accumulator starts as the transformed input
+// and is replaced by each completed iteration's value, so zero iterations make
+// the loop an identity. A failed body is kept alive because its
+// `ExecutionFailure::origin_` may point into it.
+class ForFrame final : public Frame {
+public:
+  ForFrame(const ::strij::openworkflow::NamedTask& task, const ::strij::openworkflow::ForBody& body,
+           std::shared_ptr<const LexicalScope> scope,
+           std::size_t iteration_budget = kDefaultSynchronousIterationBudget);
+
+  ~ForFrame() override = default;
+
+  ForFrame(const ForFrame&) = delete;
+  auto operator=(const ForFrame&) -> ForFrame& = delete;
+  ForFrame(ForFrame&&) noexcept = delete;
+  auto operator=(ForFrame&&) noexcept -> ForFrame& = delete;
+
+  void Enter(StepDataValue data) override;
+  auto Advance(FrameContext& context) -> FrameResult override;
+  void Abandon(FrameContext& context) override;
+
+  [[nodiscard]] auto Accumulator() const -> const StepDataValue& { return accumulator_; }
+  [[nodiscard]] auto NextIndex() const -> std::size_t { return next_index_; }
+  [[nodiscard]] auto BodyFrame() const -> const SequenceFrame* { return body_frame_.get(); }
+  [[nodiscard]] auto IterationScope() const -> const LexicalScope* {
+    return iteration_scope_.get();
+  }
+
+private:
+  [[nodiscard]] auto startCollection(FrameContext& context) -> std::optional<FrameResult>;
+  [[nodiscard]] auto fail(std::string message) -> FrameResult;
+  void beginIteration();
+
+  const ::strij::openworkflow::NamedTask& task_;
+  const ::strij::openworkflow::ForBody& body_;
+  std::shared_ptr<const LexicalScope> scope_;
+  LoopVariableNames names_;
+  bool started_{false};
+  ::strij::openworkflow::Value::Array items_;
+  std::size_t next_index_{0};
+  StepDataValue accumulator_;
+  std::unique_ptr<SequenceFrame> body_frame_;
+  std::shared_ptr<const LexicalScope> iteration_scope_;
+  std::optional<ExecutionFailure> failure_;
+  std::size_t iterations_{0};
+  std::size_t iteration_budget_{kDefaultSynchronousIterationBudget};
 };
 
 // Concurrent branch sequences plus the join policy. All branches are created
 // and seeded on `Enter`; later steps are never prebuilt.
 class ForkFrame final : public Frame {
 public:
-  ForkFrame(std::span<const ::strij::openworkflow::NamedTask> branch_declarations, bool compete)
-      : branch_declarations_{branch_declarations}, compete_{compete} {}
+  ForkFrame(std::span<const ::strij::openworkflow::NamedTask> branch_declarations, bool compete,
+            std::shared_ptr<const LexicalScope> scope = nullptr,
+            std::size_t for_iteration_budget = kDefaultSynchronousIterationBudget)
+      : branch_declarations_{branch_declarations}, compete_{compete}, scope_{std::move(scope)},
+        for_iteration_budget_{for_iteration_budget} {}
 
   ~ForkFrame() override = default;
 
@@ -325,6 +415,8 @@ private:
   // The fork's declared branches, owned by the document.
   std::span<const ::strij::openworkflow::NamedTask> branch_declarations_;
   bool compete_{false};
+  std::shared_ptr<const LexicalScope> scope_;
+  std::size_t for_iteration_budget_{kDefaultSynchronousIterationBudget};
   std::vector<std::unique_ptr<SequenceFrame>> branches_;
   // One slot per branch, in declaration order.
   std::vector<std::optional<StepDataValue>> results_;
@@ -333,7 +425,8 @@ private:
 
 // Creates the root sequence over the document's top-level `do` body. The caller
 // enters it with the seed value.
-auto CreateRootFrame(const ::strij::openworkflow::Document& document)
+auto CreateRootFrame(const ::strij::openworkflow::Document& document,
+                     std::size_t for_iteration_budget = kDefaultSynchronousIterationBudget)
     -> std::unique_ptr<SequenceFrame>;
 
 } // namespace strij::nodeagent::task_handlers::openworkflow

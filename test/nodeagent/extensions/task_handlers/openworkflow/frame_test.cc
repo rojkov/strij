@@ -418,6 +418,81 @@ do:
       then: one
 )YAML";
 
+constexpr std::string_view kForBodyCalls = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: for-body-calls
+  version: '0.1.0'
+do:
+  - loop:
+      for:
+        each: color
+        at: position
+        in: '${ .colors }'
+      do:
+        - body:
+            call: strij
+            with:
+              type: echo
+)YAML";
+
+constexpr std::string_view kForBodyWhile = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: for-body-while
+  version: '0.1.0'
+do:
+  - loop:
+      for:
+        in: '${ .colors }'
+      while: '${ true }'
+      do:
+        - body:
+            call: strij
+            with:
+              type: echo
+)YAML";
+
+constexpr std::string_view kForBodyEnd = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: for-body-end
+  version: '0.1.0'
+do:
+  - loop:
+      for:
+        in: '${ .colors }'
+      do:
+        - body:
+            call: strij
+            with:
+              type: echo
+            then: end
+  - after:
+      call: strij
+      with:
+        type: echo
+)YAML";
+
+constexpr std::string_view kForNestedDo = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: for-nested-do
+  version: '0.1.0'
+do:
+  - loop:
+      for:
+        each: color
+        in: '${ .colors }'
+      do:
+        - outer:
+            do:
+              - a:
+                  call: strij
+                  with:
+                    type: echo
+)YAML";
+
 // Records calls, scripts inline/suspending/local-error outcomes, and lets a
 // test deliver an asynchronous outcome to the sequence that suspended on it.
 class FakeFrameContext final : public FrameContext {
@@ -447,47 +522,80 @@ public:
     Script(Effect{.kind_ = EffectKind::kInline, .body_ = std::move(body)});
   }
 
-  auto EvaluateCondition(const NamedTask& step, const StepDataValue& /*raw*/)
-      -> absl::StatusOr<bool> override {
+  auto EvaluateCondition(const NamedTask& step, const StepDataValue& /*raw*/,
+                         const LexicalScope* scope) -> absl::StatusOr<bool> override {
+    if (scope != nullptr) {
+      scope_items_.insert_or_assign(step.name_, scope->item_.Dump());
+    }
+
     return step.name_ != skipped_step_;
   }
 
   void SetSkippedStep(std::string name) { skipped_step_ = std::move(name); }
 
-  auto TransformTaskInput(const NamedTask& /*step*/, const StepDataValue& raw)
-      -> absl::StatusOr<StepDataValue> override {
+  auto TransformTaskInput(const NamedTask& /*step*/, const StepDataValue& raw,
+                          const LexicalScope* /*scope*/) -> absl::StatusOr<StepDataValue> override {
     return raw.Copy();
   }
 
   auto TransformTaskOutput(const NamedTask& /*step*/, const StepDataValue& /*input*/,
-                           const StepDataValue& raw_output)
+                           const StepDataValue& raw_output, const LexicalScope* /*scope*/)
       -> absl::StatusOr<StepDataValue> override {
     return raw_output.Copy();
   }
 
   auto ExportTaskResult(const NamedTask& step, const StepDataValue& input,
-                        const StepDataValue& transformed_output) -> absl::Status override {
+                        const StepDataValue& transformed_output, const LexicalScope* /*scope*/)
+      -> absl::Status override {
     exports_.push_back(ExportRecord{
         .step_ = step.name_, .input_ = input.Bytes(), .output_ = transformed_output.Bytes()});
     return absl::OkStatus();
   }
 
-  auto EvaluateSet(const NamedTask& /*step*/, const StepDataValue& input)
-      -> absl::StatusOr<StepDataValue> override {
+  auto EvaluateSet(const NamedTask& /*step*/, const StepDataValue& input,
+                   const LexicalScope* /*scope*/) -> absl::StatusOr<StepDataValue> override {
     return input.Copy();
   }
 
-  auto SelectSwitchDirective(const NamedTask& /*step*/, const StepDataValue& /*input*/)
+  auto SelectSwitchDirective(const NamedTask& /*step*/, const StepDataValue& /*input*/,
+                             const LexicalScope* /*scope*/)
       -> absl::StatusOr<std::optional<std::string>> override {
     return switch_directive_;
   }
+
+  auto EvaluateForIn(const NamedTask& step, const StepDataValue& input,
+                     const LexicalScope* /*scope*/) -> absl::StatusOr<StepDataValue> override {
+    for_in_steps_.push_back(step.name_);
+    for_in_inputs_.push_back(input.Bytes());
+    return for_collection_.has_value() ? for_collection_->Copy() : StepDataValue::FromBytes("[]");
+  }
+
+  auto EvaluateForWhile(const NamedTask& step, const StepDataValue& accumulator,
+                        const LexicalScope& scope) -> absl::StatusOr<bool> override {
+    while_steps_.push_back(step.name_);
+    while_accumulators_.push_back(accumulator.Bytes());
+    while_scope_items_.push_back(scope.item_.Dump());
+
+    if (!while_results_.empty()) {
+      const bool result = while_results_.front();
+      while_results_.pop_front();
+
+      return result;
+    }
+
+    return while_default_;
+  }
+
+  void SetForIn(StepDataValue collection) { for_collection_ = std::move(collection); }
+  void PushWhile(bool result) { while_results_.push_back(result); }
+  void SetWhileDefault(bool result) { while_default_ = result; }
 
   void SetSwitchDirective(std::optional<std::string> directive) {
     switch_directive_ = std::move(directive);
   }
 
-  auto ExecuteCall(SequenceFrame& owner, const NamedTask& step, const StepDataValue& /*input*/)
-      -> absl::Status override {
+  auto ExecuteCall(SequenceFrame& owner, const NamedTask& step, const StepDataValue& /*input*/,
+                   const LexicalScope* /*scope*/) -> absl::Status override {
     calls_.push_back(step.name_);
 
     Effect effect;
@@ -530,6 +638,18 @@ public:
   [[nodiscard]] auto Calls() const -> const std::vector<std::string>& { return calls_; }
   [[nodiscard]] auto Forgotten() const -> const std::vector<std::string>& { return forgotten_; }
   [[nodiscard]] auto Exports() const -> const std::vector<ExportRecord>& { return exports_; }
+  [[nodiscard]] auto ForInInputs() const -> const std::vector<std::string>& {
+    return for_in_inputs_;
+  }
+  [[nodiscard]] auto WhileAccumulators() const -> const std::vector<std::string>& {
+    return while_accumulators_;
+  }
+  [[nodiscard]] auto WhileScopeItems() const -> const std::vector<std::string>& {
+    return while_scope_items_;
+  }
+  [[nodiscard]] auto ScopeItems() const -> const std::map<std::string, std::string>& {
+    return scope_items_;
+  }
 
   [[nodiscard]] static auto Success(std::string body) -> ChildOutcome {
     return ChildOutcome{.body_ = std::move(body), .reason_ = {}, .status_ = task::TASK_STATUS_OK};
@@ -547,6 +667,15 @@ private:
   std::map<std::string, SequenceFrame*> waiting_;
   std::optional<std::string> switch_directive_;
   std::string skipped_step_;
+  std::optional<StepDataValue> for_collection_;
+  std::deque<bool> while_results_;
+  bool while_default_{true};
+  std::vector<std::string> for_in_steps_;
+  std::vector<std::string> for_in_inputs_;
+  std::vector<std::string> while_steps_;
+  std::vector<std::string> while_accumulators_;
+  std::vector<std::string> while_scope_items_;
+  std::map<std::string, std::string> scope_items_;
 };
 
 class LifecycleFrame final : public Frame {
@@ -1114,6 +1243,183 @@ TEST(SequenceFrameFlowTest, ASuspendingLoopResetsTheSynchronousGuard) {
     ASSERT_TRUE(std::holds_alternative<Suspended>(result));
     EXPECT_FALSE(root.IsFailed());
   }
+}
+
+TEST(ForFrameTest, IteratesInOrderAndCarriesTheAccumulator) {
+  auto parsed = ::strij::openworkflow::Parse(kForBodyCalls);
+  ASSERT_TRUE(parsed.has_value());
+  auto root = MakeRoot(*parsed);
+
+  FakeFrameContext context;
+  context.SetForIn(StepDataValue::FromBytes(R"(["red","green","blue"])"));
+  context.ScriptInline("1");
+  context.ScriptInline("2");
+  context.ScriptInline("3");
+
+  auto result = root->Advance(context);
+  auto* completed = std::get_if<Completed>(&result);
+  ASSERT_NE(completed, nullptr);
+  EXPECT_EQ(completed->value_.Bytes(), "3");
+  EXPECT_EQ(context.Calls(), (std::vector<std::string>{"body", "body", "body"}));
+  ASSERT_EQ(context.ForInInputs().size(), 1U);
+  EXPECT_EQ(context.ForInInputs()[0], "null");
+}
+
+TEST(ForFrameTest, EmptyAndNullCollectionsAreIdentities) {
+  for (std::string_view collection : {"[]", "null"}) {
+    auto parsed = ::strij::openworkflow::Parse(kForBodyCalls);
+    ASSERT_TRUE(parsed.has_value());
+    auto root = MakeRoot(*parsed);
+
+    FakeFrameContext context;
+    context.SetForIn(StepDataValue::FromBytes(std::string(collection)));
+
+    auto result = root->Advance(context);
+    auto* completed = std::get_if<Completed>(&result);
+    ASSERT_NE(completed, nullptr);
+    EXPECT_EQ(completed->value_.Bytes(), "null");
+    EXPECT_TRUE(context.Calls().empty());
+  }
+}
+
+TEST(ForFrameTest, ASuspendedIterationResumesWithTheSameBody) {
+  auto parsed = ::strij::openworkflow::Parse(kForBodyCalls);
+  ASSERT_TRUE(parsed.has_value());
+  auto root = MakeRoot(*parsed);
+
+  FakeFrameContext context;
+  context.SetForIn(StepDataValue::FromBytes(R"(["red","green"])"));
+  context.ScriptSuspend("child-0");
+
+  auto result = root->Advance(context);
+  ASSERT_TRUE(std::holds_alternative<Suspended>(result));
+
+  context.Deliver("child-0", FakeFrameContext::Success("10"));
+  context.ScriptSuspend("child-1");
+  result = root->Advance(context);
+  ASSERT_TRUE(std::holds_alternative<Suspended>(result));
+  EXPECT_EQ(context.Calls(), (std::vector<std::string>{"body", "body"}));
+
+  context.Deliver("child-1", FakeFrameContext::Success("20"));
+  result = root->Advance(context);
+  auto* completed = std::get_if<Completed>(&result);
+  ASSERT_NE(completed, nullptr);
+  EXPECT_EQ(completed->value_.Bytes(), "20");
+}
+
+TEST(ForFrameTest, WhileFalseStopsBeforeTheNextElement) {
+  auto parsed = ::strij::openworkflow::Parse(kForBodyWhile);
+  ASSERT_TRUE(parsed.has_value());
+  auto root = MakeRoot(*parsed);
+
+  FakeFrameContext context;
+  context.SetForIn(StepDataValue::FromBytes(R"(["red","green","blue"])"));
+  context.SetWhileDefault(false);
+  context.ScriptInline("1");
+  context.ScriptInline("2");
+
+  auto result = root->Advance(context);
+  auto* completed = std::get_if<Completed>(&result);
+  ASSERT_NE(completed, nullptr);
+  EXPECT_EQ(completed->value_.Bytes(), "1");
+  EXPECT_EQ(context.Calls(), std::vector<std::string>{"body"});
+  ASSERT_EQ(context.WhileAccumulators().size(), 1U);
+  EXPECT_EQ(context.WhileAccumulators()[0], "1");
+  ASSERT_EQ(context.WhileScopeItems().size(), 1U);
+  EXPECT_EQ(context.WhileScopeItems()[0], R"("red")");
+}
+
+TEST(ForFrameTest, EndInsideTheBodyStopsTheWholeWorkflow) {
+  auto parsed = ::strij::openworkflow::Parse(kForBodyEnd);
+  ASSERT_TRUE(parsed.has_value());
+  auto root = MakeRoot(*parsed);
+
+  FakeFrameContext context;
+  context.SetForIn(StepDataValue::FromBytes(R"(["red","green"])"));
+  context.ScriptInline("1");
+
+  auto result = root->Advance(context);
+  auto* ended = std::get_if<Ended>(&result);
+  ASSERT_NE(ended, nullptr);
+  EXPECT_EQ(ended->value_.Bytes(), "1");
+  EXPECT_EQ(context.Calls(), std::vector<std::string>{"body"});
+}
+
+TEST(ForFrameTest, ABodyFailurePropagatesAndKeepsTheBodyAlive) {
+  auto parsed = ::strij::openworkflow::Parse(kForBodyCalls);
+  ASSERT_TRUE(parsed.has_value());
+  auto root = MakeRoot(*parsed);
+
+  FakeFrameContext context;
+  context.SetForIn(StepDataValue::FromBytes(R"(["red"])"));
+  context.Script(FakeFrameContext::Effect{.kind_ = FakeFrameContext::EffectKind::kLocalError,
+                                          .message_ = "boom"});
+
+  auto result = root->Advance(context);
+  auto* failed = std::get_if<Failed>(&result);
+  ASSERT_NE(failed, nullptr);
+  EXPECT_EQ(failed->failure_.status_, task::TASK_STATUS_INTERNAL);
+  EXPECT_EQ(failed->failure_.step_, "body");
+  EXPECT_EQ(failed->failure_.message_, "boom");
+
+  const auto* loop = dynamic_cast<const ForFrame*>(root->Child());
+  ASSERT_NE(loop, nullptr);
+  EXPECT_NE(loop->BodyFrame(), nullptr);
+}
+
+TEST(ForFrameTest, AbandonForgetsTheCurrentIterationsChild) {
+  auto parsed = ::strij::openworkflow::Parse(kForBodyCalls);
+  ASSERT_TRUE(parsed.has_value());
+  auto root = MakeRoot(*parsed);
+
+  FakeFrameContext context;
+  context.SetForIn(StepDataValue::FromBytes(R"(["red","green"])"));
+  context.ScriptSuspend("child-0");
+
+  auto result = root->Advance(context);
+  ASSERT_TRUE(std::holds_alternative<Suspended>(result));
+
+  const auto* loop = dynamic_cast<const ForFrame*>(root->Child());
+  ASSERT_NE(loop, nullptr);
+  root->Abandon(context);
+
+  EXPECT_TRUE(loop->IsAbandoned());
+  ASSERT_EQ(context.Forgotten().size(), 1U);
+  EXPECT_EQ(context.Forgotten()[0], "child-0");
+}
+
+TEST(ForFrameTest, TheSynchronousIterationBudgetStopsALargeLoop) {
+  auto parsed = ::strij::openworkflow::Parse(kForBodyCalls);
+  ASSERT_TRUE(parsed.has_value());
+  const auto& body = std::get<::strij::openworkflow::ForBody>(parsed->do_[0].task_.body_);
+  ForFrame loop(parsed->do_[0], body, nullptr, 2);
+  loop.Enter(StepDataValue::FromBytes("null"));
+
+  FakeFrameContext context;
+  context.SetForIn(StepDataValue::FromBytes("[1,2,3,4,5]"));
+
+  auto result = loop.Advance(context);
+  auto* failed = std::get_if<Failed>(&result);
+  ASSERT_NE(failed, nullptr);
+  EXPECT_EQ(failed->failure_.status_, task::TASK_STATUS_INTERNAL);
+  EXPECT_EQ(failed->failure_.step_, "loop");
+  EXPECT_NE(failed->failure_.message_.find("budget"), std::string::npos);
+  EXPECT_EQ(context.Calls().size(), 2U);
+}
+
+TEST(ForFrameTest, ANestedDoInsideTheBodyInheritsTheLoopScope) {
+  auto parsed = ::strij::openworkflow::Parse(kForNestedDo);
+  ASSERT_TRUE(parsed.has_value());
+  auto root = MakeRoot(*parsed);
+
+  FakeFrameContext context;
+  context.SetForIn(StepDataValue::FromBytes(R"(["red"])"));
+  context.ScriptInline("1");
+
+  auto result = root->Advance(context);
+  EXPECT_TRUE(std::holds_alternative<Completed>(result));
+  EXPECT_EQ(context.ScopeItems().at("outer"), R"("red")");
+  EXPECT_EQ(context.ScopeItems().at("a"), R"("red")");
 }
 
 // NOLINTEND(bugprone-unchecked-optional-access)

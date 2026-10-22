@@ -46,7 +46,8 @@ public:
   using Completion = std::move_only_function<void(task::TaskResult)>;
 
   WorkflowInterpreter(ChildTaskSubmitter& submitter, config::ExtensionConfig evaluator,
-                      std::string parent_id, Completion on_complete);
+                      std::string parent_id, Completion on_complete,
+                      std::size_t for_iteration_budget = kDefaultSynchronousIterationBudget);
   ~WorkflowInterpreter() = default;
 
   WorkflowInterpreter(const WorkflowInterpreter&) = delete;
@@ -96,29 +97,36 @@ private:
   void drive();
   void terminalize(FrameResult result);
 
-  auto EvaluateCondition(const ::strij::openworkflow::NamedTask& step, const StepDataValue& raw)
-      -> absl::StatusOr<bool> override;
-  auto TransformTaskInput(const ::strij::openworkflow::NamedTask& step, const StepDataValue& raw)
-      -> absl::StatusOr<StepDataValue> override;
+  auto EvaluateCondition(const ::strij::openworkflow::NamedTask& step, const StepDataValue& raw,
+                         const LexicalScope* scope) -> absl::StatusOr<bool> override;
+  auto TransformTaskInput(const ::strij::openworkflow::NamedTask& step, const StepDataValue& raw,
+                          const LexicalScope* scope) -> absl::StatusOr<StepDataValue> override;
   auto TransformTaskOutput(const ::strij::openworkflow::NamedTask& step, const StepDataValue& input,
-                           const StepDataValue& raw_output)
+                           const StepDataValue& raw_output, const LexicalScope* scope)
       -> absl::StatusOr<StepDataValue> override;
   auto ExportTaskResult(const ::strij::openworkflow::NamedTask& step, const StepDataValue& input,
-                        const StepDataValue& transformed_output) -> absl::Status override;
-  auto EvaluateSet(const ::strij::openworkflow::NamedTask& step, const StepDataValue& input)
-      -> absl::StatusOr<StepDataValue> override;
+                        const StepDataValue& transformed_output, const LexicalScope* scope)
+      -> absl::Status override;
+  auto EvaluateSet(const ::strij::openworkflow::NamedTask& step, const StepDataValue& input,
+                   const LexicalScope* scope) -> absl::StatusOr<StepDataValue> override;
   auto SelectSwitchDirective(const ::strij::openworkflow::NamedTask& step,
-                             const StepDataValue& input)
+                             const StepDataValue& input, const LexicalScope* scope)
       -> absl::StatusOr<std::optional<std::string>> override;
   auto ExecuteCall(SequenceFrame& owner, const ::strij::openworkflow::NamedTask& step,
-                   const StepDataValue& input) -> absl::Status override;
+                   const StepDataValue& input, const LexicalScope* scope) -> absl::Status override;
+  auto EvaluateForIn(const ::strij::openworkflow::NamedTask& step, const StepDataValue& input,
+                     const LexicalScope* scope) -> absl::StatusOr<StepDataValue> override;
+  auto EvaluateForWhile(const ::strij::openworkflow::NamedTask& step,
+                        const StepDataValue& accumulator, const LexicalScope& scope)
+      -> absl::StatusOr<bool> override;
   void ForgetChild(std::string_view child_id) override;
 
   auto transformInput(const std::variant<std::string, ::strij::openworkflow::Value>& from_value,
-                      const StepDataValue& raw) -> absl::StatusOr<StepDataValue>;
-  auto transformOutput(const std::variant<std::string, ::strij::openworkflow::Value>& as_value,
-                       const StepDataValue& input, const StepDataValue& raw_output)
+                      const StepDataValue& raw, const LexicalScope* scope)
       -> absl::StatusOr<StepDataValue>;
+  auto transformOutput(const std::variant<std::string, ::strij::openworkflow::Value>& as_value,
+                       const StepDataValue& input, const StepDataValue& raw_output,
+                       const LexicalScope* scope) -> absl::StatusOr<StepDataValue>;
   void succeed(StepDataValue value);
   void fail(task::TaskStatus status, std::string_view step, std::string_view message);
 
@@ -129,6 +137,7 @@ private:
   utils::Jv context_;
   std::string parent_id_;
   Completion on_complete_;
+  std::size_t for_iteration_budget_{kDefaultSynchronousIterationBudget};
 
   std::optional<::strij::openworkflow::Document> document_;
   std::unique_ptr<SequenceFrame> root_;

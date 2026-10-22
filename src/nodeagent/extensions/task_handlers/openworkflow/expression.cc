@@ -2,10 +2,13 @@
 
 #include <cctype>
 #include <functional>
+#include <initializer_list>
 #include <iterator>
+#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -48,6 +51,135 @@ void appendPrograms(std::vector<std::string>& programs,
                     const absl::StatusOr<std::vector<std::string>>& nested) {
   programs.insert(programs.end(), std::make_move_iterator(nested->begin()),
                   std::make_move_iterator(nested->end()));
+}
+
+// A reserved-plus-lexical variable list in jq_compile_args order. Locals keep
+// their given order (innermost scope first) and the first occurrence of a name
+// wins, so an inner loop shadows an outer one with the same name.
+struct VariableSet {
+  std::vector<std::string> names_;
+  std::vector<const ExpressionLocal*> locals_;
+};
+
+auto makeVariableSet(std::span<const std::string_view> reserved,
+                     std::span<const ExpressionLocal> locals) -> VariableSet {
+  VariableSet variables;
+  std::unordered_set<std::string> seen;
+
+  for (std::string_view name : reserved) {
+    if (seen.emplace(name).second) {
+      variables.names_.emplace_back(name);
+    }
+  }
+
+  for (const ExpressionLocal& local : locals) {
+    if (local.name_.empty()) {
+      continue;
+    }
+
+    std::string name{local.name_};
+    if (seen.emplace(name).second) {
+      variables.names_.push_back(std::move(name));
+      variables.locals_.push_back(&local);
+    }
+  }
+
+  return variables;
+}
+
+auto makeVariableSet(std::initializer_list<std::string_view> reserved,
+                     std::span<const ExpressionLocal> locals) -> VariableSet {
+  return makeVariableSet(std::span<const std::string_view>(reserved.begin(), reserved.size()),
+                         locals);
+}
+
+// Returns the reserved variables bound by a typed slot, in declaration order.
+auto typedSlotReservedNames(TypedSlot slot) -> std::vector<std::string_view> {
+  std::vector<std::string_view> variables{kContextVariable};
+
+  if (slot == TypedSlot::kTaskOutput || slot == TypedSlot::kTaskExport) {
+    variables.push_back(kInputVariable);
+    variables.push_back(kOutputVariable);
+  }
+
+  return variables;
+}
+
+// Appends each selected local's value copy to `args`. A validation-only local
+// (null value) cannot be used at runtime.
+auto appendLocalArguments(const VariableSet& variables, std::vector<utils::Jv>& args)
+    -> absl::Status {
+  for (const ExpressionLocal* local : variables.locals_) {
+    if (local->value_ == nullptr) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("the lexical variable '", local->name_, "' has no value"));
+    }
+
+    args.push_back(local->value_->Copy());
+  }
+
+  return absl::OkStatus();
+}
+
+auto trim(std::string_view text) -> std::string {
+  const auto is_space = [](char character) {
+    return std::isspace(static_cast<unsigned char>(character)) != 0;
+  };
+
+  while (!text.empty() && is_space(text.front())) {
+    text.remove_prefix(1);
+  }
+
+  while (!text.empty() && is_space(text.back())) {
+    text.remove_suffix(1);
+  }
+
+  return std::string(text);
+}
+
+auto isIdentifier(std::string_view text) -> bool {
+  if (text.empty()) {
+    return false;
+  }
+
+  const auto is_alpha = [](char character) {
+    return (character >= 'A' && character <= 'Z') || (character >= 'a' && character <= 'z') ||
+           character == '_';
+  };
+  const auto is_alnum = [is_alpha](char character) {
+    return is_alpha(character) || (character >= '0' && character <= '9');
+  };
+
+  if (!is_alpha(text.front())) {
+    return false;
+  }
+
+  for (char character : text.substr(1)) {
+    if (!is_alnum(character)) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+auto normalizeLoopName(const std::optional<std::string>& declared, std::string_view fallback,
+                       std::string_view field) -> absl::StatusOr<std::string> {
+  std::string name = declared.has_value() ? trim(*declared) : std::string(fallback);
+  if (name.empty()) {
+    name = std::string(fallback);
+  }
+
+  if (name.starts_with('$')) {
+    name.erase(0, 1);
+  }
+
+  if (!isIdentifier(name)) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("for.", field, " '", name, "' is not a valid variable name"));
+  }
+
+  return name;
 }
 
 } // namespace
@@ -114,23 +246,16 @@ auto TypedSlotName(TypedSlot slot) -> std::string_view {
     return "the document's output.as";
   case TypedSlot::kSwitchWhen:
     return "a switch case's when";
+  case TypedSlot::kForIn:
+    return "a for task's in";
+  case TypedSlot::kForWhile:
+    return "a for task's while";
   }
 
   return "expression";
 }
 
 namespace {
-
-auto typedSlotVariables(TypedSlot slot) -> std::vector<std::string> {
-  std::vector<std::string> variables{std::string(kContextVariable)};
-
-  if (slot == TypedSlot::kTaskOutput || slot == TypedSlot::kTaskExport) {
-    variables.emplace_back(kInputVariable);
-    variables.emplace_back(kOutputVariable);
-  }
-
-  return variables;
-}
 
 auto collectTypedPrograms(const ::strij::openworkflow::Value& value, std::string_view slot,
                           std::vector<std::string>& programs) -> absl::Status {
@@ -205,10 +330,16 @@ auto ExpressionEngine::Run(std::string_view program, const utils::Jv& subject,
     context = &empty_context;
   }
 
+  const VariableSet variables = makeVariableSet({kContextVariable}, arguments.locals);
   std::vector<utils::Jv> args;
+  args.reserve(variables.names_.size());
   args.push_back(context->Copy());
+  auto appended = appendLocalArguments(variables, args);
+  if (!appended.ok()) {
+    return appended;
+  }
 
-  return run(program, subject, {std::string(kContextVariable)}, args);
+  return run(program, subject, variables.names_, args);
 }
 
 auto ExpressionEngine::run(std::string_view program, const utils::Jv& subject,
@@ -239,14 +370,16 @@ auto ExpressionEngine::run(std::string_view program, const utils::Jv& subject,
   return std::move(outputs->front());
 }
 
-auto ExpressionEngine::Validate(const ::strij::openworkflow::Value& value) -> absl::Status {
+auto ExpressionEngine::Validate(const ::strij::openworkflow::Value& value,
+                                const ExpressionArguments& arguments) -> absl::Status {
   auto programs = CollectExpressions(value);
   if (!programs.ok()) {
     return programs.status();
   }
 
+  const VariableSet variables = makeVariableSet({kContextVariable}, arguments.locals);
   for (const std::string& program : *programs) {
-    auto status = Compile(program);
+    auto status = compile(program, variables.names_);
     if (!status.ok()) {
       return status;
     }
@@ -312,16 +445,17 @@ auto ExpressionEngine::Evaluate(const ::strij::openworkflow::Value& value, const
 }
 
 auto ExpressionEngine::ValidateTypedSlot(const ::strij::openworkflow::Value& value, TypedSlot slot,
-                                         const ExpressionArguments& /*arguments*/) -> absl::Status {
+                                         const ExpressionArguments& arguments) -> absl::Status {
   std::vector<std::string> programs;
   auto status = collectTypedPrograms(value, TypedSlotName(slot), programs);
   if (!status.ok()) {
     return status;
   }
 
-  const std::vector<std::string> variable_names = typedSlotVariables(slot);
+  const std::vector<std::string_view> reserved = typedSlotReservedNames(slot);
+  const VariableSet variables = makeVariableSet(reserved, arguments.locals);
   for (const std::string& program : programs) {
-    status = compile(program, variable_names);
+    status = compile(program, variables.names_);
     if (!status.ok()) {
       return status;
     }
@@ -334,7 +468,8 @@ auto ExpressionEngine::EvaluateTypedSlot(const ::strij::openworkflow::Value& val
                                          const utils::Jv& subject,
                                          const ExpressionArguments& arguments)
     -> absl::StatusOr<utils::Jv> {
-  const std::vector<std::string> variable_names = typedSlotVariables(slot);
+  const std::vector<std::string_view> reserved = typedSlotReservedNames(slot);
+  const VariableSet variables = makeVariableSet(reserved, arguments.locals);
 
   utils::Jv empty_context;
   const utils::Jv* context = arguments.context;
@@ -349,6 +484,7 @@ auto ExpressionEngine::EvaluateTypedSlot(const ::strij::openworkflow::Value& val
   }
 
   std::vector<utils::Jv> args;
+  args.reserve(variables.names_.size());
   args.push_back(context->Copy());
 
   if (slot == TypedSlot::kTaskOutput || slot == TypedSlot::kTaskExport) {
@@ -361,6 +497,11 @@ auto ExpressionEngine::EvaluateTypedSlot(const ::strij::openworkflow::Value& val
 
     args.push_back(arguments.input->Copy());
     args.push_back(arguments.output->Copy());
+  }
+
+  auto appended = appendLocalArguments(variables, args);
+  if (!appended.ok()) {
+    return appended;
   }
 
   std::function<absl::StatusOr<::strij::openworkflow::Value>(const ::strij::openworkflow::Value&)>
@@ -379,7 +520,7 @@ auto ExpressionEngine::EvaluateTypedSlot(const ::strij::openworkflow::Value& val
             absl::StrCat("'", TypedSlotName(slot), "' must be a whole ${ } expression"));
       }
 
-      auto result = run(ExpressionProgram(text), subject, variable_names, args);
+      auto result = run(ExpressionProgram(text), subject, variables.names_, args);
       if (!result.ok()) {
         return result.status();
       }
@@ -425,6 +566,34 @@ auto ExpressionEngine::EvaluateTypedSlot(const ::strij::openworkflow::Value& val
   }
 
   return ::strij::openworkflow::ValueToJv(*evaluated);
+}
+
+auto NormalizeLoopVariables(const std::optional<std::string>& each,
+                            const std::optional<std::string>& at)
+    -> absl::StatusOr<LoopVariableNames> {
+  auto each_name = normalizeLoopName(each, "item", "each");
+  if (!each_name.ok()) {
+    return each_name.status();
+  }
+
+  auto at_name = normalizeLoopName(at, "index", "at");
+  if (!at_name.ok()) {
+    return at_name.status();
+  }
+
+  if (*each_name == *at_name) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("for.each and for.at must differ, but both name '", *each_name, "'"));
+  }
+
+  for (std::string_view reserved : {kContextVariable, kInputVariable, kOutputVariable}) {
+    if (*each_name == reserved || *at_name == reserved) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("for loop variables may not shadow the reserved '", reserved, "'"));
+    }
+  }
+
+  return LoopVariableNames{.each_ = std::move(*each_name), .at_ = std::move(*at_name)};
 }
 
 auto RenderScalar(const utils::Jv& value) -> absl::StatusOr<std::string> {
