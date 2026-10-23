@@ -24,6 +24,8 @@
 
 namespace strij::nodeagent::task_handlers::openworkflow {
 
+class NestedWorkflowRunner;
+
 // The data-independent validation pass: call targets, the `with` key set,
 // requirement coercion, and compiling every strict-mode expression. It recurses
 // every task in every nested sequence, including fork branch tasks, and rejects
@@ -47,7 +49,8 @@ public:
 
   WorkflowInterpreter(ChildTaskSubmitter& submitter, config::ExtensionConfig evaluator,
                       std::string parent_id, Completion on_complete,
-                      std::size_t for_iteration_budget = kDefaultSynchronousIterationBudget);
+                      std::size_t for_iteration_budget = kDefaultSynchronousIterationBudget,
+                      NestedWorkflowRunner* runner = nullptr, std::size_t depth = 0);
   ~WorkflowInterpreter() = default;
 
   WorkflowInterpreter(const WorkflowInterpreter&) = delete;
@@ -114,6 +117,8 @@ private:
       -> absl::StatusOr<std::optional<std::string>> override;
   auto ExecuteCall(SequenceFrame& owner, const ::strij::openworkflow::NamedTask& step,
                    const StepDataValue& input, const LexicalScope* scope) -> absl::Status override;
+  auto ExecuteRun(SequenceFrame& owner, const ::strij::openworkflow::NamedTask& step,
+                  const StepDataValue& input, const LexicalScope* scope) -> absl::Status override;
   auto EvaluateForIn(const ::strij::openworkflow::NamedTask& step, const StepDataValue& input,
                      const LexicalScope* scope) -> absl::StatusOr<StepDataValue> override;
   auto EvaluateForWhile(const ::strij::openworkflow::NamedTask& step,
@@ -132,6 +137,8 @@ private:
 
   ChildTaskSubmitter& submitter_;
   ExpressionEngine engine_;
+  NestedWorkflowRunner* runner_{nullptr};
+  std::size_t depth_{0};
   // The workflow-scope `$context`, seeded as `{}` at start and replaced only by
   // a task's `export.as`.
   utils::Jv context_;

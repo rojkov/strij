@@ -493,6 +493,39 @@ do:
                     type: echo
 )YAML";
 
+constexpr std::string_view kAwaitedRun = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: awaited-run
+  version: '0.1.0'
+do:
+  - subflow:
+      run:
+        workflow:
+          namespace: embedded
+          name: child
+          version: '0.1.0'
+          input: "document:\n  dsl: '1.0.3'\n  namespace: child\n  name: child\n  version: '0.1.0'\ndo:\n  - one:\n      set: {a: 1}\n"
+      output:
+        as: '${ . }'
+)YAML";
+
+constexpr std::string_view kDetachedRun = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: detached-run
+  version: '0.1.0'
+do:
+  - subflow:
+      run:
+        await: false
+        workflow:
+          namespace: embedded
+          name: child
+          version: '0.1.0'
+          input: "document:\n  dsl: '1.0.3'\n  namespace: child\n  name: child\n  version: '0.1.0'\ndo:\n  - one:\n      set: {a: 1}\n"
+)YAML";
+
 // Records calls, scripts inline/suspending/local-error outcomes, and lets a
 // test deliver an asynchronous outcome to the sequence that suspended on it.
 class FakeFrameContext final : public FrameContext {
@@ -598,26 +631,19 @@ public:
                    const LexicalScope* /*scope*/) -> absl::Status override {
     calls_.push_back(step.name_);
 
-    Effect effect;
-    if (!effects_.empty()) {
-      effect = std::move(effects_.front());
-      effects_.pop_front();
-    }
+    return applyNextEffect(owner);
+  }
 
-    switch (effect.kind_) {
-    case EffectKind::kLocalError:
-      return absl::InternalError(effect.message_);
-    case EffectKind::kSuspend:
-      owner.Suspend(effect.child_id_);
-      waiting_.insert_or_assign(effect.child_id_, &owner);
-      return absl::OkStatus();
-    case EffectKind::kInline:
-      owner.Suspend("inline-child");
-      owner.ApplyOutcome(Success(std::move(effect.body_)), *this);
+  auto ExecuteRun(SequenceFrame& owner, const NamedTask& step, const StepDataValue& /*input*/,
+                  const LexicalScope* /*scope*/) -> absl::Status override {
+    runs_.push_back(step.name_);
+
+    const auto& run_body = std::get<::strij::openworkflow::RunBody>(step.task_.body_);
+    if (run_body.await_.has_value() && !*run_body.await_) {
       return absl::OkStatus();
     }
 
-    return absl::InternalError("unreachable");
+    return applyNextEffect(owner);
   }
 
   void ForgetChild(std::string_view child_id) override {
@@ -636,6 +662,7 @@ public:
   }
 
   [[nodiscard]] auto Calls() const -> const std::vector<std::string>& { return calls_; }
+  [[nodiscard]] auto Runs() const -> const std::vector<std::string>& { return runs_; }
   [[nodiscard]] auto Forgotten() const -> const std::vector<std::string>& { return forgotten_; }
   [[nodiscard]] auto Exports() const -> const std::vector<ExportRecord>& { return exports_; }
   [[nodiscard]] auto ForInInputs() const -> const std::vector<std::string>& {
@@ -660,8 +687,32 @@ public:
   }
 
 private:
+  auto applyNextEffect(SequenceFrame& owner) -> absl::Status {
+    Effect effect;
+    if (!effects_.empty()) {
+      effect = std::move(effects_.front());
+      effects_.pop_front();
+    }
+
+    switch (effect.kind_) {
+    case EffectKind::kLocalError:
+      return absl::InternalError(effect.message_);
+    case EffectKind::kSuspend:
+      owner.Suspend(effect.child_id_);
+      waiting_.insert_or_assign(effect.child_id_, &owner);
+      return absl::OkStatus();
+    case EffectKind::kInline:
+      owner.Suspend("inline-child");
+      owner.ApplyOutcome(Success(std::move(effect.body_)), *this);
+      return absl::OkStatus();
+    }
+
+    return absl::InternalError("unreachable");
+  }
+
   std::deque<Effect> effects_;
   std::vector<std::string> calls_;
+  std::vector<std::string> runs_;
   std::vector<std::string> forgotten_;
   std::vector<ExportRecord> exports_;
   std::map<std::string, SequenceFrame*> waiting_;
@@ -1420,6 +1471,74 @@ TEST(ForFrameTest, ANestedDoInsideTheBodyInheritsTheLoopScope) {
   EXPECT_TRUE(std::holds_alternative<Completed>(result));
   EXPECT_EQ(context.ScopeItems().at("outer"), R"("red")");
   EXPECT_EQ(context.ScopeItems().at("a"), R"("red")");
+}
+
+TEST(SequenceFrameTest, AnAwaitedRunDispatchesAndSuspends) {
+  auto parsed = ::strij::openworkflow::Parse(kAwaitedRun);
+  ASSERT_TRUE(parsed.has_value());
+  auto root = MakeRoot(*parsed);
+
+  FakeFrameContext context;
+  context.ScriptSuspend("nested-1");
+
+  auto result = root->Advance(context);
+  ASSERT_TRUE(std::holds_alternative<Suspended>(result));
+  EXPECT_EQ(context.Runs(), std::vector<std::string>{"subflow"});
+  EXPECT_TRUE(context.Calls().empty());
+  ASSERT_TRUE(root->IsWaiting());
+  EXPECT_EQ(root->WaitingChildId(), "nested-1");
+
+  context.Deliver("nested-1", FakeFrameContext::Success(R"("nested-result")"));
+  auto resumed = root->Advance(context);
+  ASSERT_TRUE(std::holds_alternative<Completed>(resumed));
+  EXPECT_EQ(std::get<Completed>(resumed).value_.Bytes(), R"("nested-result")");
+}
+
+TEST(SequenceFrameTest, AnAwaitedRunCompletionAppliesTheStepPipeline) {
+  auto parsed = ::strij::openworkflow::Parse(kAwaitedRun);
+  ASSERT_TRUE(parsed.has_value());
+  auto root = MakeRoot(*parsed);
+
+  FakeFrameContext context;
+  context.ScriptInline("7");
+
+  auto result = root->Advance(context);
+  ASSERT_TRUE(std::holds_alternative<Completed>(result));
+  EXPECT_EQ(context.Runs(), std::vector<std::string>{"subflow"});
+  EXPECT_EQ(std::get<Completed>(result).value_.Bytes(), "7");
+  ASSERT_EQ(context.Exports().size(), 1U);
+  EXPECT_EQ(context.Exports()[0].step_, "subflow");
+}
+
+TEST(SequenceFrameTest, ADetachedRunCompletesWithItsTransformedInput) {
+  auto parsed = ::strij::openworkflow::Parse(kDetachedRun);
+  ASSERT_TRUE(parsed.has_value());
+  auto root = MakeRoot(*parsed);
+
+  FakeFrameContext context;
+
+  auto result = root->Advance(context);
+  ASSERT_TRUE(std::holds_alternative<Completed>(result));
+  EXPECT_EQ(context.Runs(), std::vector<std::string>{"subflow"});
+  EXPECT_FALSE(root->IsWaiting());
+  EXPECT_EQ(std::get<Completed>(result).value_.Bytes(), "null");
+}
+
+TEST(SequenceFrameTest, ARunDispatchFailureFailsTheStep) {
+  auto parsed = ::strij::openworkflow::Parse(kAwaitedRun);
+  ASSERT_TRUE(parsed.has_value());
+  auto root = MakeRoot(*parsed);
+
+  FakeFrameContext context;
+  context.Script(FakeFrameContext::Effect{
+      .kind_ = FakeFrameContext::EffectKind::kLocalError, .message_ = "cannot start"});
+
+  auto result = root->Advance(context);
+  auto* failed = std::get_if<Failed>(&result);
+  ASSERT_NE(failed, nullptr);
+  EXPECT_EQ(failed->failure_.status_, task::TASK_STATUS_INTERNAL);
+  EXPECT_EQ(failed->failure_.step_, "subflow");
+  EXPECT_NE(failed->failure_.message_.find("cannot start"), std::string::npos);
 }
 
 // NOLINTEND(bugprone-unchecked-optional-access)

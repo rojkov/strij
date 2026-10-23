@@ -12,6 +12,7 @@ strij_cc_library(
         "frame.cc",
         "interpreter.cc",
         "openworkflow_task_handler.cc",
+        "run_workflow.cc",
         "step_data_value.cc",
     ],
     hdrs = [
@@ -22,6 +23,7 @@ strij_cc_library(
         "frame.hh",
         "interpreter.hh",
         "openworkflow_task_handler.hh",
+        "run_workflow.hh",
         "step_data_value.hh",
     ],
     visibility = [
@@ -40,6 +42,7 @@ strij_cc_library(
         "//include/strij/nodeagent:task_handlers_interface",
         "//src/common/core/utils:jv_lib",
         "//src/common/core/utils:task_id_lib",
+        "//src/common/core/utils:task_status_lib",
         "//src/common/extensions/evaluators:evaluator_interface",
         "//src/common/loaders:evaluator_loader_lib",
         "//src/openworkflow:openworkflow_model_lib",

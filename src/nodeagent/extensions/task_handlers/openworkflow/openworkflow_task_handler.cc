@@ -43,7 +43,8 @@ void sendError(ResultSender& sender, const std::string& task_id, task::TaskStatu
 OpenWorkflowTaskHandler::OpenWorkflowTaskHandler(ChildTaskSubmitter& submitter,
                                                  FunctionResolver& resolver,
                                                  config::ExtensionConfig evaluator)
-    : submitter_{submitter}, resolver_{resolver}, evaluator_{std::move(evaluator)} {}
+    : submitter_{submitter}, resolver_{resolver}, evaluator_{std::move(evaluator)},
+      runner_{submitter_, evaluator_} {}
 
 void OpenWorkflowTaskHandler::HandleTask(const task::Task& task, ResultSenderPtr sender) {
   const std::string& task_id = task.id();
@@ -78,7 +79,8 @@ void OpenWorkflowTaskHandler::HandleTask(const task::Task& task, ResultSenderPtr
   // synchronous completion sends the result and reaps its own run.
   auto interpreter = std::make_shared<WorkflowInterpreter>(
       submitter_, evaluator_, task_id,
-      [this, task_id](task::TaskResult result) { send(task_id, std::move(result)); });
+      [this, task_id](task::TaskResult result) { send(task_id, std::move(result)); },
+      kDefaultSynchronousIterationBudget, &runner_);
 
   Run run;
   run.sender_ = std::move(sender);

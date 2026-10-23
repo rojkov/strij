@@ -30,9 +30,9 @@ What each target covers:
 | `step_data_value_test` | Data-value sniffing: JSON text, non-JSON text, empty input. |
 | `expression_test` | Strict-mode `${ }` recognition, typed-slot validation (wrapped-only), JSON-faithful evaluation, data-chain subject vs a live `$context`, `$input`/`$output` (including their absence from slots that do not bind them), and scalar rendering. |
 | `call_strij_test` | The `with` key set, parameter projection (including `$context`), requirement coercion (incl. rejecting `100M`), reserved call targets. |
-| `interpreter_test` | The frame tree, resumable step loop, reentrancy, stale results, the validation/execution split, fork entry/join (join-all, compete, nested), fail-fast branch failures, seeding from the invocation body, `if` short-circuiting, the `input.from` pipeline, `for` iteration and loop variables, task/document `output.as`, and `export.as` context updates (merge/replace, skipped/failed steps, composite tasks, opaque/non-object failures, and the fork-branch rejection). |
-| `openworkflow_task_handler_test` | The handler/factory, function reference resolution and artifact loading, failure-status classification, and connection teardown. |
-| `openworkflow_e2e_test` | The full path through the **real** `piped_executable` handler, driving the child process with a mock dispatcher, with the document loaded from a file and input supplied in the body. Includes join-all, competing fork, `input.from` + `if` + `output.as` pipeline scenarios, an `export.as` value read by a later `if` and the document output, and a nested `for` that accumulates results across real child processes. |
+| `interpreter_test` | The frame tree, resumable step loop, reentrancy, stale results, the validation/execution split, fork entry/join (join-all, compete, nested), fail-fast branch failures, seeding from the invocation body, `if` short-circuiting, the `input.from` pipeline, `for` iteration and loop variables, task/document `output.as`, `export.as` context updates (merge/replace, skipped/failed steps, composite tasks, opaque/non-object failures, and the fork-branch rejection), and the embedded `run.workflow` profile (awaited/detached execution, inline completion, cancellation, abandonment, recursive validation, nesting limits, and unsupported shapes). |
+| `openworkflow_task_handler_test` | The handler/factory, function reference resolution and artifact loading, failure-status classification, connection teardown, and the nested-workflow runner (start/completion, cancel, detached ownership, recursive embedding, depth limit, and detached runs outliving a reaped parent). |
+| `openworkflow_e2e_test` | The full path through the **real** `piped_executable` handler, driving the child process with a mock dispatcher, with the document loaded from a file and input supplied in the body. Includes join-all, competing fork, `input.from` + `if` + `output.as` pipeline scenarios, an `export.as` value read by a later `if` and the document output, a nested `for` that accumulates results across real child processes, and embedded `run.workflow` subflows (awaited input/output shaping, detached continuation, awaited failure propagation, and ignored detached failure). |
 
 `openworkflow_e2e_test` includes `ScriptedTwoStepWorkflowChainsChildOutputs`,
 which runs the exact two-step workflow in section 3 through `piped_executable`
@@ -283,6 +283,91 @@ inside a fork branch — directly or under a nested `do`/`fork` — is rejected
 during validation with `TASK_STATUS_UNIMPLEMENTED` before any child is
 submitted. A `fork` task's own `export` is supported: it runs after the join
 resolves, against the fork's shaped output.
+
+### Composing subflows with `run.workflow`
+
+A `run` task whose process is `workflow` executes an embedded child workflow
+in-process. The v1 profile is deliberately narrow:
+
+- `namespace` must be the sentinel `embedded`. Any other namespace (for example
+  `production`) is recognized but unsupported, so it fails validation with
+  `TASK_STATUS_UNIMPLEMENTED` before any step runs.
+- `input` is a **definition-only string** holding the child document, not
+  subflow data. A YAML block scalar (`input: |`) is the natural way to write it.
+- The child's invocation input is the run step's transformed task input (after
+  the step's own `input.from`). The child starts with an empty `$context` and its
+  own data chain; it does not inherit the parent's context.
+- `name` and `version` are parser-required but inert. They label diagnostics and
+  do not have to match the embedded document's own `document.name`/`version`.
+- `await` absent or `true` waits for the child. The child's final value becomes
+  the step's raw output and then flows through the ordinary `output.as`,
+  `export.as`, and `then` pipeline.
+- `await: false` starts the child and continues immediately, using the step's
+  transformed input as its raw output. A later child outcome is discarded and is
+  never reported to the parent. Detached children survive the parent's
+  completion or connection close; awaited children are cancelled with the parent.
+- `container`, `shell`, and `script` processes, a declared `return`, and an
+  external namespace remain recognized-but-unsupported
+  (`TASK_STATUS_UNIMPLEMENTED`).
+- Every embedded definition is parsed, mode-checked, and recursively validated
+  during the parent's pre-execution pass, even when the step's `if` is false or
+  it does not await. Nesting is bounded (32 embedded levels); exceeding it fails
+  validation as unimplemented.
+
+This awaited example is the same shape as
+`AwaitedEmbeddedSubflowUsesTransformedInputAndOutputShape`:
+
+```yaml
+document:
+  dsl: '1.0.3'
+  namespace: docs
+  name: embedded-awaited
+  version: '0.1.0'
+input:
+  from: '${ . }'
+do:
+  - subflow:
+      input:
+        from: '${ .order }'
+      run:
+        workflow:
+          namespace: embedded
+          name: child
+          version: '0.1.0'
+          input: |
+            document:
+              dsl: '1.0.3'
+              namespace: child
+              name: child
+              version: '0.1.0'
+            do:
+              - echo:
+                  call: strij
+                  with:
+                    type: piped_executable
+                    parameters:
+                      function: scripts/openworkflow_echo.sh
+                    requirements:
+                      cpu: 1
+      output:
+        as: '${ {shaped: .} }'
+```
+
+With the invocation body `{"order":{"id":7}}`, the child receives `{"id":7}`
+(its invocation input is the run step's transformed input), echoes it, and the
+parent's final result is `{"shaped":{"echo":{"id":7}}}`.
+
+Making the same run step `await: false` (the shape of
+`DetachedEmbeddedSubflowCompletesImmediatelyWithItsInput`) starts the child but
+completes the step with its transformed input. With the body `{"v":1}` and
+`output.as: '${ {seen: .} }'`, the parent result is `{"seen":{"v":1}}` before
+the child finishes; the child's eventual result is ignored.
+
+An awaited child failure propagates its status and names the run step (see
+`AwaitedEmbeddedSubflowFailurePropagatesItsStatus`); the same failure in a
+detached child is ignored (`DetachedEmbeddedSubflowFailureIsIgnored`). Malformed
+embedded documents, a non-string or missing `input`, and a non-strict
+`evaluate.mode` fail validation before the parent's first step.
 
 ### Set, switch, and flow directives
 

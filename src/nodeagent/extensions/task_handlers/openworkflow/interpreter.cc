@@ -19,10 +19,12 @@
 #include "common/config/extensions.pb.h"
 #include "common/core/utils/jv.hh"
 #include "common/core/utils/task_id.hh"
+#include "common/core/utils/task_status.hh"
 #include "common/task/task.pb.h"
 #include "nodeagent/extensions/task_handlers/openworkflow/call_strij.hh"
 #include "nodeagent/extensions/task_handlers/openworkflow/errors.hh"
 #include "nodeagent/extensions/task_handlers/openworkflow/expression.hh"
+#include "nodeagent/extensions/task_handlers/openworkflow/run_workflow.hh"
 #include "nodeagent/extensions/task_handlers/openworkflow/step_data_value.hh"
 #include "openworkflow/document.hh"
 #include "openworkflow/events.hh"
@@ -93,6 +95,16 @@ private:
   std::string body_;
   bool delivered_{false};
 };
+
+auto toChildOutcome(task::TaskResult result) -> ChildOutcome {
+  if (utils::IsTaskResultOk(result)) {
+    return ChildOutcome{
+        .body_ = std::move(*result.mutable_body()), .reason_ = {}, .status_ = task::TASK_STATUS_OK};
+  }
+
+  return ChildOutcome{
+      .body_ = {}, .reason_ = std::move(*result.mutable_body()), .status_ = result.status()};
+}
 
 auto slotValue(const std::variant<std::string, ::strij::openworkflow::Value>& slot)
     -> ::strij::openworkflow::Value {
@@ -187,8 +199,16 @@ auto validateTaskSlots(const Task& task, ExpressionEngine& engine,
 using Scope = std::span<const NamedTask>;
 
 auto validateSequence(Scope scope, const Document& document, ExpressionEngine& engine,
-                      bool inside_fork_branch, std::span<const std::string> locals)
+                      bool inside_fork_branch, std::span<const std::string> locals,
+                      std::size_t depth) -> std::optional<Failure>;
+
+auto validateDocument(const Document& document, ExpressionEngine& engine, std::size_t depth)
     -> std::optional<Failure>;
+
+auto validationStatus(const absl::Status& status) -> task::TaskStatus {
+  return status.code() == absl::StatusCode::kUnimplemented ? task::TASK_STATUS_UNIMPLEMENTED
+                                                           : task::TASK_STATUS_MALFORMED_REQUEST;
+}
 
 auto malformedFlowDirective(Scope scope, std::string_view then, const NamedTask& named)
     -> std::optional<Failure> {
@@ -256,9 +276,55 @@ auto validateSwitchBody(const NamedTask& named, const SwitchBody& switch_body,
   return std::nullopt;
 }
 
+auto validateRunBody(const NamedTask& named, const ::strij::openworkflow::RunBody& run_body,
+                     ExpressionEngine& engine, std::size_t depth) -> std::optional<Failure> {
+  auto embedded = ExtractEmbeddedWorkflow(run_body);
+  if (!embedded.ok()) {
+    return Failure{.phase_ = Phase::kValidation,
+                   .status_ = validationStatus(embedded.status()),
+                   .step_ = named.name_,
+                   .message_ = std::string(embedded.status().message())};
+  }
+
+  if (depth >= kDefaultEmbeddedNestingLimit) {
+    return Failure{.phase_ = Phase::kValidation,
+                   .status_ = task::TASK_STATUS_UNIMPLEMENTED,
+                   .step_ = named.name_,
+                   .message_ = absl::StrCat("embedded workflow '", embedded->name_,
+                                            "' exceeds the nesting limit of ",
+                                            kDefaultEmbeddedNestingLimit)};
+  }
+
+  auto child = ParseEmbeddedDefinition(embedded->definition_);
+  if (!child.ok()) {
+    return Failure{.phase_ = Phase::kValidation,
+                   .status_ = task::TASK_STATUS_MALFORMED_REQUEST,
+                   .step_ = named.name_,
+                   .message_ = absl::StrCat("embedded workflow '", embedded->name_,
+                                            "': ", child.status().message())};
+  }
+
+  auto failure = validateDocument(*child, engine, depth + 1);
+  if (!failure.has_value()) {
+    return std::nullopt;
+  }
+
+  std::string message = absl::StrCat("embedded workflow '", embedded->name_, "': ");
+  if (!failure->step_.empty()) {
+    absl::StrAppend(&message, "step '", failure->step_, "': ");
+  }
+  absl::StrAppend(&message, failure->message_);
+
+  return Failure{.phase_ = Phase::kValidation,
+                 .status_ = failure->status_,
+                 .step_ = named.name_,
+                 .message_ = std::move(message)};
+}
+
 auto validateTask(const NamedTask& named, Scope scope, const Document& document,
                   ExpressionEngine& engine, bool inside_fork_branch,
-                  std::span<const std::string> locals) -> std::optional<Failure> {
+                  std::span<const std::string> locals, std::size_t depth)
+    -> std::optional<Failure> {
   const Task& task = named.task_;
 
   // Fork branches run concurrently, so there is no defined way to combine
@@ -282,7 +348,7 @@ auto validateTask(const NamedTask& named, Scope scope, const Document& document,
   }
 
   if (const auto* do_body = std::get_if<DoBody>(&task.body_)) {
-    return validateSequence(do_body->do_, document, engine, inside_fork_branch, locals);
+    return validateSequence(do_body->do_, document, engine, inside_fork_branch, locals, depth);
   }
 
   if (const auto* fork_body = std::get_if<ForkBody>(&task.body_)) {
@@ -295,7 +361,7 @@ auto validateTask(const NamedTask& named, Scope scope, const Document& document,
 
     // Each branch is a one-task sequence at runtime, so it is its own scope.
     for (const NamedTask& branch : fork_body->branches_) {
-      if (auto failure = validateSequence(Scope(&branch, 1), document, engine, true, locals);
+      if (auto failure = validateSequence(Scope(&branch, 1), document, engine, true, locals, depth);
           failure.has_value()) {
         return failure;
       }
@@ -353,7 +419,8 @@ auto validateTask(const NamedTask& named, Scope scope, const Document& document,
       }
     }
 
-    return validateSequence(for_body->do_, document, engine, inside_fork_branch, body_locals);
+    return validateSequence(for_body->do_, document, engine, inside_fork_branch, body_locals,
+                            depth);
   }
 
   if (const auto* set_body = std::get_if<SetBody>(&task.body_)) {
@@ -380,6 +447,10 @@ auto validateTask(const NamedTask& named, Scope scope, const Document& document,
 
   if (const auto* switch_body = std::get_if<SwitchBody>(&task.body_)) {
     return validateSwitchBody(named, *switch_body, engine, scope, locals);
+  }
+
+  if (const auto* run_body = std::get_if<::strij::openworkflow::RunBody>(&task.body_)) {
+    return validateRunBody(named, *run_body, engine, depth);
   }
 
   if (!std::holds_alternative<CallBody>(task.body_)) {
@@ -437,8 +508,8 @@ auto validateTask(const NamedTask& named, Scope scope, const Document& document,
 }
 
 auto validateSequence(Scope scope, const Document& document, ExpressionEngine& engine,
-                      bool inside_fork_branch, std::span<const std::string> locals)
-    -> std::optional<Failure> {
+                      bool inside_fork_branch, std::span<const std::string> locals,
+                      std::size_t depth) -> std::optional<Failure> {
   std::unordered_set<std::string> names;
 
   for (const NamedTask& named : scope) {
@@ -452,7 +523,8 @@ auto validateSequence(Scope scope, const Document& document, ExpressionEngine& e
   }
 
   for (const NamedTask& named : scope) {
-    if (auto failure = validateTask(named, scope, document, engine, inside_fork_branch, locals);
+    if (auto failure =
+            validateTask(named, scope, document, engine, inside_fork_branch, locals, depth);
         failure.has_value()) {
       return failure;
     }
@@ -461,9 +533,7 @@ auto validateSequence(Scope scope, const Document& document, ExpressionEngine& e
   return std::nullopt;
 }
 
-} // namespace
-
-auto ValidateDocument(const Document& document, ExpressionEngine& engine)
+auto validateDocument(const Document& document, ExpressionEngine& engine, std::size_t depth)
     -> std::optional<Failure> {
   if (document.input_.has_value() && document.input_->from_.has_value()) {
     if (auto failure = validateSlot(*document.input_->from_, TypedSlot::kInputFrom, engine, {});
@@ -479,14 +549,23 @@ auto ValidateDocument(const Document& document, ExpressionEngine& engine)
     }
   }
 
-  return validateSequence(document.do_, document, engine, false, {});
+  return validateSequence(document.do_, document, engine, false, {}, depth);
+}
+
+} // namespace
+
+auto ValidateDocument(const Document& document, ExpressionEngine& engine)
+    -> std::optional<Failure> {
+  return validateDocument(document, engine, 0);
 }
 
 WorkflowInterpreter::WorkflowInterpreter(ChildTaskSubmitter& submitter,
                                          config::ExtensionConfig evaluator, std::string parent_id,
-                                         Completion on_complete, std::size_t for_iteration_budget)
-    : submitter_{submitter}, engine_{std::move(evaluator)}, parent_id_{std::move(parent_id)},
-      on_complete_{std::move(on_complete)}, for_iteration_budget_{for_iteration_budget} {}
+                                         Completion on_complete, std::size_t for_iteration_budget,
+                                         NestedWorkflowRunner* runner, std::size_t depth)
+    : submitter_{submitter}, engine_{std::move(evaluator)}, runner_{runner}, depth_{depth},
+      parent_id_{std::move(parent_id)}, on_complete_{std::move(on_complete)},
+      for_iteration_budget_{for_iteration_budget} {}
 
 void WorkflowInterpreter::setState(State new_state) {
   switch (new_state) {
@@ -604,21 +683,27 @@ void WorkflowInterpreter::OnChildOutcome(const std::string& child_id, ChildOutco
 }
 
 void WorkflowInterpreter::Cancel() {
-  if (!IsTerminalState(state_)) {
-    setState(State::kCancelled);
+  if (IsTerminalState(state_)) {
+    return;
   }
-}
 
-auto WorkflowInterpreter::validateMode() -> absl::Status {
-  if (document_->evaluate_.has_value() && document_->evaluate_->mode_.has_value()) {
-    const std::string& mode = *document_->evaluate_->mode_;
-    if (mode != "strict") {
-      return absl::InvalidArgumentError(
-          absl::StrCat("evaluate mode '", mode, "' is not supported; only 'strict' is"));
+  setState(State::kCancelled);
+
+  // Awaited nested runs are linked to this run's outstanding child ids. The
+  // runner ignores ids that belong to ordinary child tasks, and detached runs
+  // are not keyed here, so they survive.
+  if (runner_ != nullptr) {
+    for (const auto& entry : owner_by_child_) {
+      runner_->Cancel(entry.first);
     }
   }
 
-  return absl::OkStatus();
+  owner_by_child_.clear();
+  pending_.clear();
+}
+
+auto WorkflowInterpreter::validateMode() -> absl::Status {
+  return ValidateEvaluateMode(*document_);
 }
 
 void WorkflowInterpreter::terminalize(FrameResult result) {
@@ -1050,6 +1135,56 @@ auto WorkflowInterpreter::ExecuteCall(SequenceFrame& owner, const NamedTask& ste
   // A local child may complete before `Submit` returns. Drain only this
   // branch's entry here; outcomes belonging to other frames stay queued for the
   // driver so they cannot disturb this branch's advancement.
+  auto pending = pending_.find(child_id);
+  if (pending != pending_.end()) {
+    ChildOutcome outcome = std::move(pending->second);
+    pending_.erase(pending);
+    owner_by_child_.erase(child_id);
+    owner.ApplyOutcome(std::move(outcome), *this);
+  }
+
+  return absl::OkStatus();
+}
+
+auto WorkflowInterpreter::ExecuteRun(SequenceFrame& owner, const NamedTask& step,
+                                     const StepDataValue& input, const LexicalScope* /*scope*/)
+    -> absl::Status {
+  const auto& run_body = std::get<::strij::openworkflow::RunBody>(step.task_.body_);
+  auto embedded = ExtractEmbeddedWorkflow(run_body);
+  if (!embedded.ok()) {
+    return embedded.status();
+  }
+
+  if (runner_ == nullptr) {
+    return absl::InternalError("no nested workflow runner is configured");
+  }
+
+  const bool awaited = !run_body.await_.has_value() || *run_body.await_;
+  if (!awaited) {
+    return runner_->Start(std::move(embedded->definition_), input.Bytes(), {}, depth_ + 1, {});
+  }
+
+  const std::string child_id = utils::GenerateTaskId();
+  owner.Suspend(child_id);
+  owner_by_child_.insert_or_assign(child_id, &owner);
+
+  std::weak_ptr<WorkflowInterpreter> weak = weak_from_this();
+  absl::Status started =
+      runner_->Start(std::move(embedded->definition_), input.Bytes(), child_id, depth_ + 1,
+                     [weak, child_id](task::TaskResult result) {
+                       if (auto interpreter = weak.lock()) {
+                         interpreter->OnChildOutcome(child_id, toChildOutcome(std::move(result)));
+                       }
+                     });
+
+  if (!started.ok()) {
+    owner_by_child_.erase(child_id);
+    owner.ClearWait();
+    return started;
+  }
+
+  // A nested run may complete before `Start` returns. Drain only this step's
+  // entry here, matching the call-submission path.
   auto pending = pending_.find(child_id);
   if (pending != pending_.end()) {
     ChildOutcome outcome = std::move(pending->second);

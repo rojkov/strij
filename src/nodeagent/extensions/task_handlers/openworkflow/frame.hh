@@ -158,6 +158,14 @@ public:
                            const StepDataValue& input, const LexicalScope* scope)
       -> absl::Status PURE;
 
+  // Runs one `run.workflow` step for `owner`. When the step awaits, it suspends
+  // the owner under a synthetic child id and starts the nested run; an inline
+  // outcome is applied by the context. When it does not await, the nested run is
+  // started without suspending. A returned error is the step's own failure.
+  virtual auto ExecuteRun(SequenceFrame& owner, const ::strij::openworkflow::NamedTask& step,
+                          const StepDataValue& input, const LexicalScope* scope)
+      -> absl::Status PURE;
+
   // Evaluates a `for` task's collection against its transformed input. The
   // result is a JSON array or null. `scope` is the declaring sequence's scope
   // (the loop's own variables are not visible to `in`).
@@ -274,6 +282,10 @@ public:
   // already waiting.
   void Suspend(std::string child_id);
 
+  // Clears the current wait without delivering an outcome. Used when a child
+  // fails to start after the wait was registered.
+  void ClearWait();
+
   // Applies a terminal child outcome: clears the wait, then either advances the
   // data chain and cursor (applying `output.as`), or stores the failure and
   // marks this frame failed.
@@ -296,6 +308,8 @@ private:
   [[nodiscard]] auto terminalResult() -> std::optional<FrameResult>;
   [[nodiscard]] auto advanceCall(const ::strij::openworkflow::NamedTask& step,
                                  FrameContext& context) -> std::optional<FrameResult>;
+  [[nodiscard]] auto advanceRun(const ::strij::openworkflow::NamedTask& step,
+                                FrameContext& context) -> std::optional<FrameResult>;
   [[nodiscard]] auto advanceContainer(FrameContext& context) -> std::optional<FrameResult>;
   // Applies `output.as` and `export.as` to a completed step's raw output, then
   // the step's flow directive. A returned value is a failure; an `exit`/`end`

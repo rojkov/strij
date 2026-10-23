@@ -112,6 +112,19 @@ auto FindEchoScript() -> std::string {
   return {};
 }
 
+// Drives one piped_executable child to completion with `body` on its stdin.
+void DriveChild(event::Completable* raw, int stdin_fd, int pidfd, std::string_view body) {
+  ASSERT_NE(raw, nullptr);
+  ASSERT_GE(stdin_fd, 0);
+  ASSERT_EQ(::write(stdin_fd, body.data(), body.size()), static_cast<ssize_t>(body.size()));
+  auto* child = static_cast<ChildProcess*>(raw);
+  child->HandleCompletion(kStdinWrite, static_cast<int>(body.size()), 0);
+  ASSERT_TRUE(WaitForExit(pidfd));
+  child->HandleCompletion(kExitPoll, POLLIN, 0);
+  child->HandleCompletion(kStdoutRead, 0, 0);
+  child->HandleCompletion(kStderrRead, 0, 0);
+}
+
 class OpenWorkflowE2ETest : public ::testing::Test {
 protected:
   void SetUp() override {
@@ -1323,6 +1336,212 @@ TEST_F(OpenWorkflowE2ETest, ForkDoBranchSwitchSelectsSiblingWork) {
   auto* piped = dynamic_cast<PipedExecutableTaskHandler*>(manager_->GetHandler("piped_executable"));
   ASSERT_NE(piped, nullptr);
   piped->ProcessCommand(deferred);
+}
+
+TEST_F(OpenWorkflowE2ETest, AwaitedEmbeddedSubflowUsesTransformedInputAndOutputShape) {
+  const std::string script = FindEchoScript();
+  ASSERT_FALSE(script.empty()) << "scripts/openworkflow_echo.sh not found in runfiles";
+
+  int stdin_w = -1;
+  int pidfd = -1;
+  event::Completable* child_raw = nullptr;
+  EXPECT_CALL(*dispatcher_, PrepareWrite(_, kStdinWrite, _, _, -1))
+      .WillOnce(DoAll(SaveArg<2>(&stdin_w), Return()));
+  EXPECT_CALL(*dispatcher_, PreparePoll(_, kExitPoll, _, POLLIN))
+      .WillOnce(DoAll(SaveArg<0>(&child_raw), SaveArg<2>(&pidfd), Return()));
+
+  const std::string document_text = absl::StrCat(
+      "document:\n"
+      "  dsl: '1.0.3'\n"
+      "  namespace: test\n"
+      "  name: e2e-embedded-awaited\n"
+      "  version: '0.1.0'\n"
+      "input:\n"
+      "  from: '${ . }'\n"
+      "do:\n"
+      "  - subflow:\n"
+      "      input:\n"
+      "        from: '${ .order }'\n"
+      "      run:\n"
+      "        workflow:\n"
+      "          namespace: embedded\n"
+      "          name: child\n"
+      "          version: '0.1.0'\n"
+      "          input: |\n"
+      "            document:\n"
+      "              dsl: '1.0.3'\n"
+      "              namespace: child\n"
+      "              name: child\n"
+      "              version: '0.1.0'\n"
+      "            do:\n"
+      "              - echo:\n"
+      "                  call: strij\n"
+      "                  with:\n"
+      "                    type: piped_executable\n"
+      "                    parameters:\n"
+      "                      function: ",
+      script,
+      "\n"
+      "                    requirements:\n"
+      "                      cpu: 1\n"
+      "      output:\n"
+      "        as: '${ {shaped: .} }'\n");
+
+  OpenWorkflowTaskHandler handler(*router_, resolver_, test::JqEvaluatorConfig());
+  auto state = std::make_shared<test::TestSender::State>();
+  const std::string document = WriteDocument("embedded-awaited.yaml", document_text);
+  handler.HandleTask(MakeParent("wf", document, R"({"order":{"id":7}})"),
+                     std::make_unique<test::TestSender>(state));
+
+  ASSERT_NE(child_raw, nullptr);
+  DriveChild(child_raw, stdin_w, pidfd, R"({"id":7})");
+
+  ASSERT_EQ(state->sent_.size(), 1U);
+  EXPECT_EQ(state->sent_[0].id(), "wf");
+  EXPECT_EQ(state->sent_[0].body(), R"({"shaped":{"echo":{"id":7}}})");
+  EXPECT_TRUE(utils::IsTaskResultOk(state->sent_[0]));
+}
+
+TEST_F(OpenWorkflowE2ETest, DetachedEmbeddedSubflowCompletesImmediatelyWithItsInput) {
+  const std::string script = FindEchoScript();
+  ASSERT_FALSE(script.empty()) << "scripts/openworkflow_echo.sh not found in runfiles";
+
+  int stdin_w = -1;
+  int pidfd = -1;
+  event::Completable* child_raw = nullptr;
+  EXPECT_CALL(*dispatcher_, PrepareWrite(_, kStdinWrite, _, _, -1))
+      .WillOnce(DoAll(SaveArg<2>(&stdin_w), Return()));
+  EXPECT_CALL(*dispatcher_, PreparePoll(_, kExitPoll, _, POLLIN))
+      .WillOnce(DoAll(SaveArg<0>(&child_raw), SaveArg<2>(&pidfd), Return()));
+
+  const std::string document_text = absl::StrCat(
+      "document:\n"
+      "  dsl: '1.0.3'\n"
+      "  namespace: test\n"
+      "  name: e2e-embedded-detached\n"
+      "  version: '0.1.0'\n"
+      "input:\n"
+      "  from: '${ . }'\n"
+      "do:\n"
+      "  - subflow:\n"
+      "      run:\n"
+      "        await: false\n"
+      "        workflow:\n"
+      "          namespace: embedded\n"
+      "          name: child\n"
+      "          version: '0.1.0'\n"
+      "          input: |\n"
+      "            document:\n"
+      "              dsl: '1.0.3'\n"
+      "              namespace: child\n"
+      "              name: child\n"
+      "              version: '0.1.0'\n"
+      "            do:\n"
+      "              - echo:\n"
+      "                  call: strij\n"
+      "                  with:\n"
+      "                    type: piped_executable\n"
+      "                    parameters:\n"
+      "                      function: ",
+      script,
+      "\n"
+      "                    requirements:\n"
+      "                      cpu: 1\n"
+      "      output:\n"
+      "        as: '${ {seen: .} }'\n");
+
+  OpenWorkflowTaskHandler handler(*router_, resolver_, test::JqEvaluatorConfig());
+  auto state = std::make_shared<test::TestSender::State>();
+  const std::string document = WriteDocument("embedded-detached.yaml", document_text);
+  handler.HandleTask(MakeParent("wf", document, R"({"v":1})"),
+                     std::make_unique<test::TestSender>(state));
+
+  // The parent completes with its transformed input before the detached child
+  // finishes.
+  ASSERT_EQ(state->sent_.size(), 1U);
+  EXPECT_EQ(state->sent_[0].body(), R"({"seen":{"v":1}})");
+  EXPECT_TRUE(utils::IsTaskResultOk(state->sent_[0]));
+  ASSERT_NE(child_raw, nullptr);
+
+  // The detached child still runs to completion and produces no parent result.
+  DriveChild(child_raw, stdin_w, pidfd, R"({"v":1})");
+  EXPECT_EQ(state->sent_.size(), 1U);
+}
+
+TEST_F(OpenWorkflowE2ETest, AwaitedEmbeddedSubflowFailurePropagatesItsStatus) {
+  const std::string document_text = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: e2e-embedded-failure
+  version: '0.1.0'
+do:
+  - subflow:
+      run:
+        workflow:
+          namespace: embedded
+          name: child
+          version: '0.1.0'
+          input: |
+            document:
+              dsl: '1.0.3'
+              namespace: child
+              name: child
+              version: '0.1.0'
+            do:
+              - ghost:
+                  call: strij
+                  with:
+                    type: ghost
+)YAML";
+
+  OpenWorkflowTaskHandler handler(*router_, resolver_, test::JqEvaluatorConfig());
+  auto state = std::make_shared<test::TestSender::State>();
+  const std::string document = WriteDocument("embedded-failure.yaml", document_text);
+  handler.HandleTask(MakeParent("wf", document, R"({"v":1})"),
+                     std::make_unique<test::TestSender>(state));
+
+  ASSERT_EQ(state->sent_.size(), 1U);
+  EXPECT_EQ(state->sent_[0].status(), task::TASK_STATUS_CAPACITY_REFUSED);
+  EXPECT_NE(state->sent_[0].body().find("subflow"), std::string::npos);
+  EXPECT_FALSE(utils::IsTaskResultOk(state->sent_[0]));
+}
+
+TEST_F(OpenWorkflowE2ETest, DetachedEmbeddedSubflowFailureIsIgnored) {
+  const std::string document_text = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: e2e-embedded-detached-failure
+  version: '0.1.0'
+do:
+  - subflow:
+      run:
+        await: false
+        workflow:
+          namespace: embedded
+          name: child
+          version: '0.1.0'
+          input: |
+            document:
+              dsl: '1.0.3'
+              namespace: child
+              name: child
+              version: '0.1.0'
+            do:
+              - ghost:
+                  call: strij
+                  with:
+                    type: ghost
+)YAML";
+
+  OpenWorkflowTaskHandler handler(*router_, resolver_, test::JqEvaluatorConfig());
+  auto state = std::make_shared<test::TestSender::State>();
+  const std::string document = WriteDocument("embedded-detached-failure.yaml", document_text);
+  handler.HandleTask(MakeParent("wf", document, R"({"v":1})"),
+                     std::make_unique<test::TestSender>(state));
+
+  ASSERT_EQ(state->sent_.size(), 1U);
+  EXPECT_EQ(state->sent_[0].body(), R"({"v":1})");
+  EXPECT_TRUE(utils::IsTaskResultOk(state->sent_[0]));
 }
 
 } // namespace

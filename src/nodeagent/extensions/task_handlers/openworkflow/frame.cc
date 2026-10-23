@@ -23,6 +23,7 @@ using ::strij::openworkflow::DoBody;
 using ::strij::openworkflow::ForBody;
 using ::strij::openworkflow::ForkBody;
 using ::strij::openworkflow::NamedTask;
+using ::strij::openworkflow::RunBody;
 using ::strij::openworkflow::SetBody;
 using ::strij::openworkflow::SwitchBody;
 using ::strij::openworkflow::Task;
@@ -176,6 +177,11 @@ void SequenceFrame::Suspend(std::string child_id) {
   waiting_child_id_ = std::move(child_id);
 }
 
+void SequenceFrame::ClearWait() {
+  assert(waiting_child_id_.has_value());
+  waiting_child_id_.reset();
+}
+
 void SequenceFrame::ApplyOutcome(ChildOutcome outcome, FrameContext& context) {
   assert(IsActive());
   assert(waiting_child_id_.has_value());
@@ -291,6 +297,35 @@ auto SequenceFrame::advanceCall(const NamedTask& step, FrameContext& context)
   }
 
   return std::nullopt;
+}
+
+auto SequenceFrame::advanceRun(const NamedTask& step, FrameContext& context)
+    -> std::optional<FrameResult> {
+  assert(step_input_.has_value());
+
+  const absl::Status status = context.ExecuteRun(*this, step, *step_input_, scope_.get());
+  if (!status.ok()) {
+    return failStep(task::TASK_STATUS_INTERNAL, step, std::string(status.message()));
+  }
+
+  if (failure_.has_value()) {
+    return storedFailureResult();
+  }
+
+  if (waiting_child_id_.has_value()) {
+    return Suspended{};
+  }
+
+  const auto& run_body = std::get<RunBody>(step.task_.body_);
+  const bool awaited = !run_body.await_.has_value() || *run_body.await_;
+  if (awaited) {
+    // An awaited run that did not suspend completed inline and already applied
+    // its own completed-step pipeline.
+    return std::nullopt;
+  }
+
+  // A detached run completes the step with its transformed input as raw output.
+  return applyCompletedStep(step, step_input_->Copy(), context, stepThen(step));
 }
 
 auto SequenceFrame::advanceContainer(FrameContext& context) -> std::optional<FrameResult> {
@@ -417,6 +452,8 @@ auto SequenceFrame::Advance(FrameContext& context) -> FrameResult {
     std::optional<FrameResult> step_result;
     if (std::holds_alternative<CallBody>(task.body_)) {
       step_result = advanceCall(step, context);
+    } else if (std::holds_alternative<RunBody>(task.body_)) {
+      step_result = advanceRun(step, context);
     } else if (std::holds_alternative<DoBody>(task.body_) ||
                std::holds_alternative<ForkBody>(task.body_) ||
                std::holds_alternative<ForBody>(task.body_)) {

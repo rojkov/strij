@@ -10,6 +10,7 @@
 #include "common/config/extensions.pb.h"
 #include "common/node/capabilities.pb.h"
 #include "nodeagent/extensions/task_handlers/openworkflow/interpreter.hh"
+#include "nodeagent/extensions/task_handlers/openworkflow/run_workflow.hh"
 #include "strij/nodeagent/child_task_submitter.hh"
 #include "strij/nodeagent/function_resolver.hh"
 #include "strij/nodeagent/task_handlers.hh"
@@ -53,6 +54,9 @@ private:
   ChildTaskSubmitter& submitter_;
   FunctionResolver& resolver_;
   config::ExtensionConfig evaluator_;
+  // Owns nested interpreters started by `run.workflow` steps. It outlives every
+  // interpreter, including detached runs that continue past a parent run.
+  NestedWorkflowRunner runner_;
   std::map<std::string, Run> runs_;
 };
 
