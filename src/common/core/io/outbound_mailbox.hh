@@ -40,6 +40,12 @@ public:
   auto RegisterOnClose(CloseCallback close_cb) -> std::size_t;
   void UnregisterOnClose(std::size_t token);
 
+  // Optional backpressure: a probe reports the peer connection's current
+  // write-queue depth. A non-zero max drops frames once the depth is reached.
+  void SetQueueDepthProbe(std::function<std::size_t()> probe);
+  void SetMaxQueueDepth(std::size_t max_depth);
+  [[nodiscard]] auto DroppedFrames() const -> std::size_t { return dropped_frames_; }
+
 private:
   friend class Connection;
   void Close();
@@ -48,6 +54,9 @@ private:
   bool active_{true};
   std::vector<std::pair<std::size_t, CloseCallback>> close_callbacks_;
   std::size_t next_token_{0};
+  std::function<std::size_t()> queue_depth_probe_;
+  std::size_t max_queue_depth_{0};
+  std::size_t dropped_frames_{0};
 };
 
 } // namespace strij::io

@@ -203,6 +203,7 @@ auto RunNodeagent(int argc, char** argv) -> int {
        gateway_client = gateway_client.get(), relay_service = node_relay_service.get(),
        event_client = node_event_client.get()](io::Connection& conn) -> io::ProtocolParserPtr {
         // The gateway dialed us; this outbound link is the node's forward path.
+        conn.Mailbox()->SetMaxQueueDepth(1024);
         gateway_client->RegisterConnection(conn.Mailbox());
         auto handler = std::make_unique<NodeagentTlvHandler>(router, capabilities, relay_service,
                                                              event_client);

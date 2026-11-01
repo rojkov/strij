@@ -56,9 +56,9 @@
 
 ## 7. Limits, observability, and integration
 
-- [ ] 7.1 Add and enforce bounds for in-flight events per subscription, relay payload size, relay queue depth, and the pending-event queue in `ListenFrame`; verify tests cover rejection and drop behavior.
+- [x] 7.1 Add and enforce bounds for in-flight events per subscription, relay payload size, relay queue depth, and the pending-event queue in `ListenFrame`; verify tests cover rejection and drop behavior.
 - [x] 7.2 Log subscription readiness with the actual delivery mode, dropped events, and relay failures; verify the log paths are exercised in the tests.
-- [ ] 7.3 Add an end-to-end test with two gateways, a relay node, and two nodes: emit on one node, listen on the other, and assert delivery with the expected CloudEvent attributes.
+- [x] 7.3 Add an end-to-end test with two gateways, a relay node, and two nodes: emit on one node, listen on the other, and assert delivery with the expected CloudEvent attributes.
 - [x] 7.4 Add an integration test that asserts a listener subscribing after an event is emitted misses it (v1 best-effort) and does not hang.
 - [x] 7.5 Add the example gateway/nodeagent configuration with `event_plane` and verify `--validate_only` passes for both binaries.
 - [x] 7.6 Run `make build`, `make test`, and `make check`; verify all targets pass and no existing scheduler, child-task, or task-handler test regresses.

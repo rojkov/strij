@@ -14,6 +14,7 @@ Connection::Connection(int connection_fd, event::DispatcherSharedPtr dispatcher,
     : fd_{connection_fd}, dispatcher_{std::move(dispatcher)}, owner_{owner},
       mailbox_{std::make_shared<OutboundMailbox>(
           [this](std::vector<std::byte> frame) { Write(std::move(frame)); })} {
+  mailbox_->SetQueueDepthProbe([this]() { return write_queue_.size(); });
   parser_ = factory(*this);
   dispatcher_->PrepareRead(this, kRead, fd_, parser_->GetReadBuffer(), 0);
 }
