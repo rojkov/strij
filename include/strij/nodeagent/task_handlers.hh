@@ -12,6 +12,7 @@
 #include "strij/common/pure.hh"
 #include "strij/event/dispatcher.hh"
 #include "strij/nodeagent/child_task_submitter.hh"
+#include "strij/nodeagent/event_bus.hh"
 #include "strij/nodeagent/function_resolver.hh"
 
 namespace strij::nodeagent {
@@ -75,6 +76,12 @@ struct TaskHandlerDeps {
                   ChildTaskSubmitter& child_task_submitter_ref)
       : dispatcher_{dispatcher_ref}, function_resolver_{function_resolver_ref},
         child_task_submitter_{child_task_submitter_ref} {}
+
+  TaskHandlerDeps(event::Dispatcher& dispatcher_ref, FunctionResolver& function_resolver_ref,
+                  ChildTaskSubmitter& child_task_submitter_ref, EventBus& event_bus_ref)
+      : dispatcher_{dispatcher_ref}, function_resolver_{function_resolver_ref},
+        child_task_submitter_{child_task_submitter_ref}, event_bus_{&event_bus_ref} {}
+
   ~TaskHandlerDeps() = default;
 
   TaskHandlerDeps(const TaskHandlerDeps&) = delete;
@@ -85,6 +92,9 @@ struct TaskHandlerDeps {
   event::Dispatcher& dispatcher_;
   FunctionResolver& function_resolver_;
   ChildTaskSubmitter& child_task_submitter_;
+  // Optional for handlers that do not use events; the nodeagent framework
+  // supplies a live bus to every factory in production.
+  EventBus* event_bus_{nullptr};
 };
 
 class TaskHandlerFactory {

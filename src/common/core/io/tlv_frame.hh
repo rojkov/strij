@@ -27,6 +27,14 @@ struct TlvFrame {
   static constexpr uint8_t kTaskPull = 8;
   static constexpr uint8_t kTaskGrant = 9;
   static constexpr uint8_t kTaskDecline = 10;
+  // Event plane and gateway relay (append-only).
+  static constexpr uint8_t kGatewayHello = 11;
+  static constexpr uint8_t kPeerRelay = 12;
+  static constexpr uint8_t kPeerRelayDelivery = 13;
+  static constexpr uint8_t kEventPublish = 14;
+  static constexpr uint8_t kEventSubscribe = 15;
+  static constexpr uint8_t kEventUnsubscribe = 16;
+  static constexpr uint8_t kEventDelivery = 17;
 };
 
 auto SerializeTlvFrame(uint8_t type_id, std::span<const std::byte> value) -> std::vector<std::byte>;

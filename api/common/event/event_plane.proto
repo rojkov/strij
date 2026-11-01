@@ -1,0 +1,87 @@
+syntax = "proto3";
+
+package strij.event;
+
+import "common/event/cloudevent.proto";
+
+// The delivery guarantee requested or reported for a subscription. AUTO asks
+// the configured event-plane extension to choose its strongest supported mode.
+enum DeliveryMode {
+  DELIVERY_MODE_AUTO = 0;
+  DELIVERY_MODE_BEST_EFFORT = 1;
+  DELIVERY_MODE_AT_LEAST_ONCE = 2;
+}
+
+// A coarse routing pattern. An empty field matches any value.
+message EventPattern {
+  string type = 1;
+  string source = 2;
+  string subject = 3;
+}
+
+// Node -> gateway: a gateway announces its identity on each accepted node
+// connection so the node can relay targeted peer messages.
+message GatewayHello {
+  string gateway_id = 1;
+}
+
+// Gateway -> node: an opaque gateway-to-gateway payload. An empty target list
+// means broadcast to every other gateway connection.
+message PeerRelay {
+  repeated string target_gateway_ids = 1;
+  bytes payload = 2;
+}
+
+// Node -> gateway: a relayed payload delivered from another gateway.
+message PeerRelayDelivery {
+  bytes payload = 1;
+}
+
+// Node -> gateway: register a subscription.
+message EventSubscriptionRequest {
+  string subscription_id = 1;
+  EventPattern pattern = 2;
+  DeliveryMode delivery_mode = 3;
+}
+
+// Node -> gateway: remove a subscription.
+message EventUnsubscribe {
+  string subscription_id = 1;
+}
+
+// Gateway -> node: deliver a CloudEvent for a subscription. The token is
+// opaque to the node; the v1 best-effort plane treats acknowledgement as a
+// no-op.
+message EventDelivery {
+  string subscription_id = 1;
+  string token = 2;
+  CloudEvent event = 3;
+}
+
+// Node -> gateway: acknowledge a delivery token. Present for the durable
+// contract; the v1 best-effort plane does not require it.
+message EventAck {
+  string subscription_id = 1;
+  string token = 2;
+}
+
+// A gateway-to-gateway event-plane message. The transport treats the payload
+// as opaque bytes; the event-plane extension interprets this envelope.
+message EventPlaneMessage {
+  string sender_id = 1;
+  uint64 epoch = 2;
+
+  oneof body {
+    RouteSummary summary = 3;
+    CloudEvent event = 4;
+  }
+}
+
+// A compact description of the event types and sources a gateway's local
+// subscriptions can consume. `match_all` covers subscriptions with no type or
+// source constraint.
+message RouteSummary {
+  repeated string types = 1;
+  repeated string sources = 2;
+  bool match_all = 3;
+}

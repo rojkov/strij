@@ -2,8 +2,8 @@
 
 ## 1. Event model and public contracts
 
-- [ ] 1.1 Add the CloudEvent proto (specversion, id, source, type, subject, time, datacontenttype, dataschema, bytes data, extension attributes) and its Bazel target; verify a serialization round-trip test covers required and optional fields.
-- [ ] 1.2 Add the relay, subscription, and delivery protos (`GatewayHello`, `PeerRelay`, `PeerRelayDelivery`, `EventSubscriptionRequest`, `EventUnsubscribe`, `EventDelivery`) and Bazel targets; verify round-trip tests for each message.
+- [x] 1.1 Add the CloudEvent proto (specversion, id, source, type, subject, time, datacontenttype, dataschema, bytes data, extension attributes) and its Bazel target; verify a serialization round-trip test covers required and optional fields.
+- [x] 1.2 Add the relay, subscription, and delivery protos (`GatewayHello`, `PeerRelay`, `PeerRelayDelivery`, `EventSubscriptionRequest`, `EventUnsubscribe`, `EventDelivery`) and Bazel targets; verify round-trip tests for each message.
 - [ ] 1.3 Define the public node `EventBus` and `EventSubscription` contracts with publish, subscribe with `auto`, acknowledge, detach, and delete; verify a fake subscription in a unit test exercises the readiness callback and acknowledgement.
 - [ ] 1.4 Define the public gateway `EventPlane`, `EventPlaneFactory`, `EventPlaneDeps`, `EventPattern`, and delivery-mode contracts; verify a fake event plane can be constructed and selected through the registry in a unit test.
 - [ ] 1.5 Define the public `GatewayTransport` contract with send, broadcast, and inbound-message operations; verify a fake transport drives an event-plane unit test.
@@ -12,7 +12,7 @@
 
 ## 2. TLV frames and gateway relay
 
-- [ ] 2.1 Add frame constants 11 through 17 to `TlvFrame`; verify a unit test asserts each value and that 0 through 10 are unchanged.
+- [x] 2.1 Add frame constants 11 through 17 to `TlvFrame`; verify a unit test asserts each value and that 0 through 10 are unchanged.
 - [ ] 2.2 Generalize the node's outbound gateway pool into a shared `GatewayConnections` service and make `GatewayClient` a user of it; verify existing child-forward tests still pass and a new test covers pruning a dead connection.
 - [ ] 2.3 Handle `kGatewayHello` on the node and maintain the gateway-id-to-connection map; verify tests cover identity learning, targeted lookup, and deterministic replacement on a repeated handshake.
 - [ ] 2.4 Handle `kPeerRelay` on the node: broadcast with an empty target list, targeted forwarding, source exclusion, missing-target drop, and payload-size rejection; verify each behavior with a unit test.

@@ -1,0 +1,19 @@
+syntax = "proto3";
+
+package strij.event;
+
+// A CloudEvents 1.0 envelope. `data` is opaque at the event-plane boundary;
+// consumers decide whether it is JSON, text, or another media type.
+message CloudEvent {
+  string specversion = 1;
+  string id = 2;
+  string source = 3;
+  string type = 4;
+  string subject = 5;
+  string time = 6;
+  string datacontenttype = 7;
+  string dataschema = 8;
+  bytes data = 9;
+  // CloudEvents extension attributes, e.g. a correlation attribute.
+  map<string, string> attributes = 10;
+}
