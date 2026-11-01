@@ -11,6 +11,7 @@
 #include "common/core/io/connection.hh"
 #include "common/core/io/outbound_mailbox.hh"
 #include "common/core/io/tlv_frame.hh"
+#include "common/core/logging/log.hh"
 #include "common/event/cloudevent.pb.h"
 #include "common/event/event_plane.pb.h"
 #include "strij/extensions/event_plane.hh"
@@ -76,6 +77,8 @@ auto GatewayEventEdge::HandleSubscribeFrame(const io::TlvFrame& frame, io::Conne
 
   plane_->AddSubscription(subscription_id, request.pattern());
   plane_->AttachSubscription(subscription_id);
+  LOG_INFO("Event subscription {} registered (mode={})", subscription_id,
+           static_cast<int>(plane_->SupportedDeliveryMode()));
   return absl::OkStatus();
 }
 

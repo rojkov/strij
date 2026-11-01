@@ -179,6 +179,18 @@ public:
                                     const event::CloudEvent& event, const LexicalScope* scope)
       -> absl::StatusOr<bool> PURE;
 
+  // Applies a `listen.foreach` iteration's output transformation.
+  virtual auto TransformListenForeachOutput(
+      const ::strij::openworkflow::SubscriptionIterator& iterator,
+      const StepDataValue& selected, const StepDataValue& body_output, const LexicalScope& scope)
+      -> absl::StatusOr<StepDataValue> PURE;
+
+  // Applies a `listen.foreach` iteration's export transformation.
+  virtual auto ExportListenForeach(const ::strij::openworkflow::SubscriptionIterator& iterator,
+                                   const StepDataValue& selected,
+                                   const StepDataValue& transformed_output,
+                                   const LexicalScope& scope) -> absl::Status PURE;
+
   // Evaluates an `any` strategy's until condition against the consumed events.
   virtual auto EvaluateListenUntil(const ::strij::openworkflow::NamedTask& step,
                                    const ::strij::openworkflow::ListenBody& body,

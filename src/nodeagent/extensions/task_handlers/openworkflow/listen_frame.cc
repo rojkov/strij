@@ -11,12 +11,18 @@
 #include "absl/status/status.h"
 #include "absl/strings/escaping.h"
 #include "absl/strings/str_cat.h"
+#include "common/core/logging/log.hh"
 #include "common/core/utils/jv.hh"
 #include "common/task/task.pb.h"
+#include "nodeagent/extensions/task_handlers/openworkflow/expression.hh"
 #include "openworkflow/events.hh"
 #include "openworkflow/task.hh"
 
 namespace strij::nodeagent::task_handlers::openworkflow {
+
+namespace {
+constexpr std::size_t kMaxPendingEvents = 1024;
+} // namespace
 
 using ::strij::openworkflow::EventConsumptionStrategy;
 using ::strij::openworkflow::ListenBody;
@@ -40,7 +46,15 @@ auto jsonValueOrString(std::string_view value) -> std::string {
 
 ListenFrame::ListenFrame(const NamedTask& task, const ListenBody& body,
                          std::shared_ptr<const LexicalScope> scope)
-    : task_{task}, body_{body}, scope_{std::move(scope)} {}
+    : task_{task}, body_{body}, scope_{std::move(scope)} {
+  if (body_.foreach_.has_value()) {
+    auto names = NormalizeLoopVariables(body_.foreach_->item_, body_.foreach_->at_);
+    if (names.ok()) {
+      foreach_item_name_ = names->each_;
+      foreach_index_name_ = names->at_;
+    }
+  }
+}
 
 void ListenFrame::Enter(StepDataValue data) {
   input_ = std::move(data);
@@ -59,6 +73,10 @@ void ListenFrame::SetReady(absl::Status status, event::DeliveryMode mode) {
 }
 
 void ListenFrame::OnEvent(event::CloudEvent event, std::string token) {
+  if (queued_.size() >= kMaxPendingEvents) {
+    LOG_WARNING("Dropping event for listen '{}': pending queue is full", task_.name_);
+    return;
+  }
   queued_.push_back(QueuedEvent{.event_ = std::move(event), .token_ = std::move(token)});
 }
 
@@ -94,6 +112,59 @@ auto ListenFrame::completeWith(std::vector<event::CloudEvent> events) -> FrameRe
   result_ = StepDataValue::FromBytes(std::move(json));
   markCompleted();
   return Completed{.value_ = result_.Copy()};
+}
+
+auto ListenFrame::completeForeach() -> FrameResult {
+  std::string json = "[";
+  for (std::size_t index = 0; index < foreach_results_.size(); ++index) {
+    if (index > 0) {
+      json.push_back(',');
+    }
+    json.append(jsonValueOrString(foreach_results_[index]));
+  }
+  json.push_back(']');
+
+  complete_ = true;
+  result_ = StepDataValue::FromBytes(std::move(json));
+  markCompleted();
+  return Completed{.value_ = result_.Copy()};
+}
+
+auto ListenFrame::startForeachBody(FrameContext& /*context*/) -> std::optional<FrameResult> {
+  if (foreach_pending_.empty()) {
+    return std::nullopt;
+  }
+
+  event::CloudEvent event = std::move(foreach_pending_.front());
+  foreach_pending_.pop_front();
+  StepDataValue selected = StepDataValue::FromBytes(itemBytes(event));
+
+  auto index = utils::Jv::Parse(std::to_string(foreach_index_++));
+  if (!index.ok()) {
+    return fail(task::TASK_STATUS_INTERNAL, "failed to build the foreach index");
+  }
+
+  utils::Jv item = selected.IsJson() ? selected.Json().Copy() : [&]() -> utils::Jv {
+    auto parsed = utils::Jv::Parse(selected.Bytes());
+    if (parsed.ok()) {
+      return std::move(*parsed);
+    }
+    auto null_value = utils::Jv::Parse("null");
+    return null_value.ok() ? std::move(*null_value) : utils::Jv{};
+  }();
+
+  foreach_scope_ = std::make_shared<LexicalScope>(LexicalScope{
+      .parent_ = scope_,
+      .each_name_ = foreach_item_name_,
+      .item_ = std::move(item),
+      .at_name_ = foreach_index_name_,
+      .index_ = std::move(*index),
+  });
+  foreach_body_ = std::make_unique<SequenceFrame>(
+      body_.foreach_->do_, std::nullopt, kDefaultSynchronousTransitionBudget, foreach_scope_);
+  foreach_selected_ = std::move(selected);
+  foreach_body_->Enter(foreach_selected_.Copy());
+  return std::nullopt;
 }
 
 auto ListenFrame::fail(task::TaskStatus status, std::string message) -> FrameResult {
@@ -152,6 +223,64 @@ auto ListenFrame::process(const QueuedEvent& queued, FrameContext& context)
     subscription_->Ack(queued.token_);
   }
 
+  if (body_.foreach_.has_value()) {
+    switch (body_.to_.mode_) {
+    case EventConsumptionStrategy::Mode::kOne:
+      if (matched) {
+        foreach_pending_.push_back(queued.event_);
+        strategy_complete_ = true;
+      }
+      break;
+    case EventConsumptionStrategy::Mode::kAll: {
+      bool all = true;
+      for (const auto& slot : all_matches_) {
+        if (!slot.has_value()) {
+          all = false;
+          break;
+        }
+      }
+      if (all) {
+        strategy_complete_ = true;
+        foreach_pending_.clear();
+        for (const auto& slot : all_matches_) {
+          foreach_pending_.push_back(*slot);
+        }
+      }
+      break;
+    }
+    case EventConsumptionStrategy::Mode::kAny:
+      if (matched) {
+        consumed_.push_back(queued.event_);
+        foreach_pending_.push_back(queued.event_);
+        if (!body_.to_.until_.has_value()) {
+          strategy_complete_ = true;
+        } else {
+          auto until = context.EvaluateListenUntil(task_, body_, consumed_, scope_.get());
+          if (!until.ok()) {
+            return fail(task::TASK_STATUS_INTERNAL, std::string(until.status().message()));
+          }
+          if (*until) {
+            strategy_complete_ = true;
+          }
+        }
+      } else if (body_.to_.until_.has_value() && !body_.to_.until_->IsString()) {
+        std::vector<event::CloudEvent> candidate = consumed_;
+        candidate.push_back(queued.event_);
+        auto until = context.EvaluateListenUntil(task_, body_, candidate, scope_.get());
+        if (!until.ok()) {
+          return fail(task::TASK_STATUS_INTERNAL, std::string(until.status().message()));
+        }
+        if (*until) {
+          consumed_ = std::move(candidate);
+          foreach_pending_.push_back(queued.event_);
+          strategy_complete_ = true;
+        }
+      }
+      break;
+    }
+    return std::nullopt;
+  }
+
   switch (body_.to_.mode_) {
   case EventConsumptionStrategy::Mode::kOne:
     if (matched) {
@@ -186,6 +315,16 @@ auto ListenFrame::process(const QueuedEvent& queued, FrameContext& context)
       }
       if (*until) {
         return completeWith(consumed_);
+      }
+    } else if (body_.to_.until_.has_value() && !body_.to_.until_->IsString()) {
+      std::vector<event::CloudEvent> candidate = consumed_;
+      candidate.push_back(queued.event_);
+      auto until = context.EvaluateListenUntil(task_, body_, candidate, scope_.get());
+      if (!until.ok()) {
+        return fail(task::TASK_STATUS_INTERNAL, std::string(until.status().message()));
+      }
+      if (*until) {
+        return completeWith(std::move(candidate));
       }
     }
     break;
@@ -242,6 +381,80 @@ auto ListenFrame::Advance(FrameContext& context) -> FrameResult {
     }
   }
 
+  if (body_.foreach_.has_value()) {
+    while (true) {
+      if (foreach_body_ != nullptr) {
+        FrameResult result = foreach_body_->Advance(context);
+        if (std::holds_alternative<Suspended>(result)) {
+          return Suspended{};
+        }
+        if (auto* ended = std::get_if<Ended>(&result); ended != nullptr) {
+          if (subscription_ != nullptr) {
+            subscription_->Delete();
+            subscription_.reset();
+          }
+          return Ended{.value_ = std::move(ended->value_)};
+        }
+        if (auto* failed = std::get_if<Failed>(&result); failed != nullptr) {
+          if (subscription_ != nullptr) {
+            subscription_->Delete();
+            subscription_.reset();
+          }
+          failure_ = std::move(failed->failure_);
+          markFailed();
+          return Failed{.failure_ = *failure_};
+        }
+
+        StepDataValue body_output = std::move(std::get<Completed>(result).value_);
+        auto transformed = context.TransformListenForeachOutput(
+            *body_.foreach_, input_, body_output, *foreach_scope_);
+        if (!transformed.ok()) {
+          foreach_body_.reset();
+          foreach_scope_.reset();
+          if (subscription_ != nullptr) {
+            subscription_->Delete();
+            subscription_.reset();
+          }
+          return fail(task::TASK_STATUS_INTERNAL, std::string(transformed.status().message()));
+        }
+
+        const absl::Status exported = context.ExportListenForeach(
+            *body_.foreach_, input_, *transformed, *foreach_scope_);
+        if (!exported.ok()) {
+          foreach_body_.reset();
+          foreach_scope_.reset();
+          if (subscription_ != nullptr) {
+            subscription_->Delete();
+            subscription_.reset();
+          }
+          return fail(task::TASK_STATUS_INTERNAL, std::string(exported.message()));
+        }
+
+        foreach_results_.push_back(transformed->Bytes());
+        foreach_body_.reset();
+        foreach_scope_.reset();
+        continue;
+      }
+
+      if (!foreach_pending_.empty()) {
+        if (auto failure = startForeachBody(context); failure.has_value()) {
+          return std::move(*failure);
+        }
+        continue;
+      }
+
+      if (strategy_complete_) {
+        if (subscription_ != nullptr) {
+          subscription_->Delete();
+          subscription_.reset();
+        }
+        return completeForeach();
+      }
+
+      return Suspended{};
+    }
+  }
+
   return Suspended{};
 }
 
@@ -253,6 +466,11 @@ void ListenFrame::Abandon(FrameContext& context) {
   if (subscription_ != nullptr) {
     subscription_->Delete();
     subscription_.reset();
+  }
+
+  if (foreach_body_ != nullptr) {
+    foreach_body_->Abandon(context);
+    foreach_body_.reset();
   }
 
   markAbandoned();

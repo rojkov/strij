@@ -20,6 +20,9 @@
 #include "nodeagent/core/data_dependency_fetcher_router.hh"
 #include "nodeagent/core/function_resolver.hh"
 #include "nodeagent/core/gateway_client.hh"
+#include "nodeagent/core/gateway_connection_pool.hh"
+#include "nodeagent/core/node_event_client.hh"
+#include "nodeagent/core/node_relay_service.hh"
 #include "nodeagent/core/nodeagent_scheduler_router.hh"
 #include "nodeagent/core/nodeagent_tlv_handler.hh"
 #include "nodeagent/core/object_cache.hh"
@@ -91,7 +94,10 @@ auto RunNodeagent(int argc, char** argv) -> int {
   // upstream over live connections (no dial fallback). It is dependency-free and
   // is handed to scheduler factories through NodeSchedulerDeps, so the bundled
   // "default" scheduler's forward path exists from the moment it is created.
-  auto gateway_client = std::make_unique<GatewayClient>();
+  const auto gateway_connection_pool = std::make_shared<GatewayConnectionPool>();
+  auto gateway_client = std::make_unique<GatewayClient>(*gateway_connection_pool);
+  auto node_event_client = std::make_shared<NodeEventClient>(*gateway_connection_pool);
+  auto node_relay_service = std::make_shared<NodeRelayService>(*gateway_connection_pool);
 
   // Service construction order resolves the cycle
   //   manager -> (workflow) submitter -> scheduler router -> run-task -> manager
@@ -146,7 +152,8 @@ auto RunNodeagent(int argc, char** argv) -> int {
   // exists, so a workflow handler factory receives a valid submitter. This must
   // run before the --validate_only short-circuit so that unknown handler names
   // fail validation.
-  const TaskHandlerDeps handler_deps{*dispatcher, *function_resolver, *child_router};
+  const TaskHandlerDeps handler_deps{*dispatcher, *function_resolver, *child_router,
+                                     *node_event_client};
   const absl::Status handler_load_status =
       task_handler_manager->LoadTaskHandlers(config.task_handlers(), handler_deps);
   if (!handler_load_status.ok()) {
@@ -193,10 +200,12 @@ auto RunNodeagent(int argc, char** argv) -> int {
   io::TcpListener listener{
       dispatcher, config.tlv_listener().port(),
       [capabilities, router = child_router.get(), state_reporter,
-       gateway_client = gateway_client.get()](io::Connection& conn) -> io::ProtocolParserPtr {
+       gateway_client = gateway_client.get(), relay_service = node_relay_service.get(),
+       event_client = node_event_client.get()](io::Connection& conn) -> io::ProtocolParserPtr {
         // The gateway dialed us; this outbound link is the node's forward path.
         gateway_client->RegisterConnection(conn.Mailbox());
-        auto handler = std::make_unique<NodeagentTlvHandler>(router, capabilities);
+        auto handler = std::make_unique<NodeagentTlvHandler>(router, capabilities, relay_service,
+                                                             event_client);
         handler->SendAdvertisement(conn);
         state_reporter->AddConnection(conn.Mailbox());
         return std::make_unique<io::TlvParser>(

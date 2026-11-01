@@ -19,6 +19,7 @@
 #include "absl/strings/str_cat.h"
 #include "common/config/extensions.pb.h"
 #include "common/core/utils/jv.hh"
+#include "common/core/logging/log.hh"
 #include "common/core/utils/task_id.hh"
 #include "common/event/cloudevent.pb.h"
 #include "common/core/utils/task_status.hh"
@@ -516,13 +517,7 @@ auto validateTask(const NamedTask& named, Scope scope, const Document& document,
       }
     }
 
-    if (listen->to_.until_.has_value()) {
-      if (!listen->to_.until_->IsString()) {
-        return Failure{.phase_ = Phase::kValidation,
-                       .status_ = task::TASK_STATUS_UNIMPLEMENTED,
-                       .step_ = named.name_,
-                       .message_ = "nested until strategies are not supported yet"};
-      }
+    if (listen->to_.until_.has_value() && listen->to_.until_->IsString()) {
       std::vector<ExpressionLocal> storage;
       const absl::Status status =
           engine.Validate(*listen->to_.until_, validationArguments(locals, storage));
@@ -535,10 +530,44 @@ auto validateTask(const NamedTask& named, Scope scope, const Document& document,
     }
 
     if (listen->foreach_.has_value()) {
-      return Failure{.phase_ = Phase::kValidation,
-                     .status_ = task::TASK_STATUS_UNIMPLEMENTED,
-                     .step_ = named.name_,
-                     .message_ = "listen.foreach is not supported yet"};
+      auto names = NormalizeLoopVariables(listen->foreach_->item_, listen->foreach_->at_);
+      if (!names.ok()) {
+        return Failure{.phase_ = Phase::kValidation,
+                       .status_ = task::TASK_STATUS_MALFORMED_REQUEST,
+                       .step_ = named.name_,
+                       .message_ = std::string(names.status().message())};
+      }
+
+      std::vector<std::string> body_locals(locals.begin(), locals.end());
+      body_locals.push_back(names->each_);
+      body_locals.push_back(names->at_);
+
+      if (listen->foreach_->output_.has_value() &&
+          listen->foreach_->output_->as_.has_value()) {
+        if (auto failure = validateSlot(*listen->foreach_->output_->as_, TypedSlot::kTaskOutput,
+                                        engine, body_locals);
+            failure.has_value()) {
+          failure->step_ = named.name_;
+          return failure;
+        }
+      }
+
+      if (listen->foreach_->export_.has_value() &&
+          listen->foreach_->export_->as_.has_value()) {
+        if (auto failure = validateSlot(*listen->foreach_->export_->as_, TypedSlot::kTaskExport,
+                                        engine, body_locals);
+            failure.has_value()) {
+          failure->step_ = named.name_;
+          return failure;
+        }
+      }
+
+      if (auto failure =
+              validateSequence(listen->foreach_->do_, document, engine, inside_fork_branch,
+                               body_locals, depth);
+          failure.has_value()) {
+        return failure;
+      }
     }
 
     return std::nullopt;
@@ -792,6 +821,10 @@ void WorkflowInterpreter::Cancel() {
 
   owner_by_child_.clear();
   pending_.clear();
+
+  if (root_ != nullptr) {
+    root_->Abandon(*this);
+  }
 }
 
 auto WorkflowInterpreter::validateMode() -> absl::Status {
@@ -1304,10 +1337,6 @@ auto WorkflowInterpreter::StartListen(ListenFrame& frame, const NamedTask& step,
     return absl::UnimplementedError("the event plane is not configured");
   }
 
-  if (body.foreach_.has_value()) {
-    return absl::UnimplementedError("listen.foreach is not supported yet");
-  }
-
   event::EventSubscriptionRequest request;
   request.set_subscription_id(
       absl::StrCat(parent_id_, "/", step.name_, "/", listen_activation_++));
@@ -1331,7 +1360,14 @@ auto WorkflowInterpreter::StartListen(ListenFrame& frame, const NamedTask& step,
 
   auto subscription = event_bus_->Subscribe(
       request,
-      [&frame](absl::Status status, event::DeliveryMode mode) {
+      [&frame, subscription_id = request.subscription_id()](absl::Status status,
+                                                            event::DeliveryMode mode) {
+        if (status.ok()) {
+          LOG_INFO("Listen subscription {} ready (mode={})", subscription_id,
+                   static_cast<int>(mode));
+        } else {
+          LOG_WARNING("Listen subscription {} failed: {}", subscription_id, status.message());
+        }
         frame.SetReady(std::move(status), mode);
       },
       [this, &frame](const event::CloudEvent& event, std::string_view token) {
@@ -1447,7 +1483,66 @@ auto WorkflowInterpreter::EvaluateListenUntil(const NamedTask& /*step*/, const L
   }
 
   if (!body.to_.until_->IsString()) {
-    return absl::UnimplementedError("nested until strategies are not supported yet");
+    if (!body.to_.until_->IsObject()) {
+      return absl::InvalidArgumentError("the until value is not a string or strategy");
+    }
+
+    const auto matchesFilter = [&](const ::strij::openworkflow::Value& filter) -> bool {
+      if (!filter.IsObject()) {
+        return false;
+      }
+      const auto& filter_object = filter.AsObject();
+      auto with = filter_object.find("with");
+      if (with == filter_object.end() || !with->second.IsObject()) {
+        return false;
+      }
+      const auto& with_object = with->second.AsObject();
+      std::string type;
+      std::string source;
+      auto type_iter = with_object.find("type");
+      if (type_iter != with_object.end() && type_iter->second.IsString()) {
+        type = type_iter->second.AsString();
+      }
+      auto source_iter = with_object.find("source");
+      if (source_iter != with_object.end() && source_iter->second.IsString()) {
+        source = source_iter->second.AsString();
+      }
+      for (const auto& event : consumed) {
+        if ((type.empty() || event.type() == type) &&
+            (source.empty() || event.source() == source)) {
+          return true;
+        }
+      }
+      return false;
+    };
+
+    const auto& until_object = body.to_.until_->AsObject();
+    auto one = until_object.find("one");
+    if (one != until_object.end()) {
+      return matchesFilter(one->second);
+    }
+    auto any = until_object.find("any");
+    if (any != until_object.end()) {
+      if (any->second.IsArray()) {
+        for (const auto& filter : any->second.AsArray()) {
+          if (matchesFilter(filter)) {
+            return true;
+          }
+        }
+        return false;
+      }
+      return matchesFilter(any->second);
+    }
+    auto all = until_object.find("all");
+    if (all != until_object.end() && all->second.IsArray()) {
+      for (const auto& filter : all->second.AsArray()) {
+        if (!matchesFilter(filter)) {
+          return false;
+        }
+      }
+      return true;
+    }
+    return absl::InvalidArgumentError("unknown nested until strategy");
   }
 
   std::string array = "[";
@@ -1482,6 +1577,64 @@ auto WorkflowInterpreter::EvaluateListenUntil(const NamedTask& /*step*/, const L
   }
 
   return value.AsBool();
+}
+
+auto WorkflowInterpreter::TransformListenForeachOutput(
+    const ::strij::openworkflow::SubscriptionIterator& iterator, const StepDataValue& selected,
+    const StepDataValue& body_output, const LexicalScope& scope) -> absl::StatusOr<StepDataValue> {
+  if (!iterator.output_.has_value() || !iterator.output_->as_.has_value()) {
+    return body_output.Copy();
+  }
+
+  if (!body_output.IsJson()) {
+    return absl::InvalidArgumentError("the foreach body output is not JSON");
+  }
+
+  if (!selected.IsJson()) {
+    return absl::InvalidArgumentError("the foreach selected value is not JSON");
+  }
+
+  std::vector<ExpressionLocal> locals;
+  ExpressionArguments arguments = lexicalArguments(&scope, &context_, locals);
+  arguments.input = &selected.Json();
+  arguments.output = &body_output.Json();
+  auto result = engine_.EvaluateTypedSlot(slotValue(*iterator.output_->as_),
+                                          TypedSlot::kTaskOutput, body_output.Json(), arguments);
+  if (!result.ok()) {
+    return result.status();
+  }
+
+  return StepDataValue::FromValue(::strij::openworkflow::JvToValue(*result));
+}
+
+auto WorkflowInterpreter::ExportListenForeach(
+    const ::strij::openworkflow::SubscriptionIterator& iterator, const StepDataValue& selected,
+    const StepDataValue& transformed_output, const LexicalScope& scope) -> absl::Status {
+  if (!iterator.export_.has_value() || !iterator.export_->as_.has_value()) {
+    return absl::OkStatus();
+  }
+
+  if (!selected.IsJson() || !transformed_output.IsJson()) {
+    return absl::InvalidArgumentError("the foreach export values are not JSON");
+  }
+
+  std::vector<ExpressionLocal> locals;
+  ExpressionArguments arguments = lexicalArguments(&scope, &context_, locals);
+  arguments.input = &selected.Json();
+  arguments.output = &transformed_output.Json();
+  auto result = engine_.EvaluateTypedSlot(slotValue(*iterator.export_->as_),
+                                          TypedSlot::kTaskExport, transformed_output.Json(),
+                                          arguments);
+  if (!result.ok()) {
+    return result.status();
+  }
+
+  if (!::strij::openworkflow::JvToValue(*result).IsObject()) {
+    return absl::InvalidArgumentError("the exported context must be an object");
+  }
+
+  context_ = std::move(*result);
+  return absl::OkStatus();
 }
 
 auto WorkflowInterpreter::ExecuteRun(SequenceFrame& owner, const NamedTask& step,

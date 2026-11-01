@@ -200,6 +200,40 @@ TEST_F(GatewayEventEdgeTest, PublishIsForwardedToThePlane) {
   EXPECT_EQ(plane.published[0].id(), "evt-1");
 }
 
+
+TEST_F(GatewayEventEdgeTest, ReattachesTheSameStableSubscriptionId) {
+  FakeEventPlane plane;
+  GatewayEventEdge edge;
+  edge.SetPlane(&plane);
+  ASSERT_TRUE(edge.HandleSubscribeFrame(makeSubscribeFrame("sub-1"), *conn_).ok());
+  ASSERT_EQ(plane.added.size(), 1U);
+
+  conn_->Close();
+  EXPECT_EQ(edge.SubscriptionCount(), 0U);
+  ASSERT_EQ(plane.detached.size(), 1U);
+  EXPECT_EQ(plane.detached[0], "sub-1");
+
+  std::array<int, 2> fds{};
+  ASSERT_EQ(0, socketpair(AF_UNIX, SOCK_STREAM, 0, fds.data()));
+  auto dispatcher = std::make_shared<event::MockDispatcher>();
+  event::DummyOwner owner;
+  EXPECT_CALL(*dispatcher,
+              PrepareRead(::testing::_, ::testing::_, ::testing::_, ::testing::_, ::testing::_))
+      .WillOnce(::testing::Return());
+  io::Connection conn2(fds[0], dispatcher, &owner,
+                       [](io::Connection&) -> io::ProtocolParserPtr {
+                         return std::make_unique<io::TrivialParser>();
+                       });
+
+  ASSERT_TRUE(edge.HandleSubscribeFrame(makeSubscribeFrame("sub-1"), conn2).ok());
+  EXPECT_EQ(edge.SubscriptionCount(), 1U);
+  ASSERT_EQ(plane.added.size(), 2U);
+  EXPECT_EQ(plane.added[1].first, "sub-1");
+  ASSERT_EQ(plane.attached.size(), 2U);
+  EXPECT_EQ(plane.attached[1], "sub-1");
+  close(fds[1]);
+}
+
 TEST_F(GatewayEventEdgeTest, NoEventPlaneRejectsEventOperations) {
   GatewayEventEdge edge;
   EXPECT_FALSE(edge.HandlePublishFrame(io::TlvFrame{.type_id = io::TlvFrame::kEventPublish,

@@ -135,6 +135,14 @@ private:
                            const ::strij::openworkflow::ListenBody& body,
                            const std::vector<event::CloudEvent>& consumed,
                            const LexicalScope* scope) -> absl::StatusOr<bool> override;
+  auto TransformListenForeachOutput(
+      const ::strij::openworkflow::SubscriptionIterator& iterator, const StepDataValue& selected,
+      const StepDataValue& body_output, const LexicalScope& scope)
+      -> absl::StatusOr<StepDataValue> override;
+  auto ExportListenForeach(const ::strij::openworkflow::SubscriptionIterator& iterator,
+                           const StepDataValue& selected,
+                           const StepDataValue& transformed_output, const LexicalScope& scope)
+      -> absl::Status override;
   auto EvaluateForIn(const ::strij::openworkflow::NamedTask& step, const StepDataValue& input,
                      const LexicalScope* scope) -> absl::StatusOr<StepDataValue> override;
   auto EvaluateForWhile(const ::strij::openworkflow::NamedTask& step,

@@ -662,6 +662,20 @@ public:
     return false;
   }
 
+  auto TransformListenForeachOutput(
+      const ::strij::openworkflow::SubscriptionIterator& /*iterator*/,
+      const StepDataValue& /*selected*/, const StepDataValue& body_output,
+      const LexicalScope& /*scope*/) -> absl::StatusOr<StepDataValue> override {
+    return body_output.Copy();
+  }
+
+  auto ExportListenForeach(const ::strij::openworkflow::SubscriptionIterator& /*iterator*/,
+                           const StepDataValue& /*selected*/,
+                           const StepDataValue& /*transformed_output*/,
+                           const LexicalScope& /*scope*/) -> absl::Status override {
+    return absl::OkStatus();
+  }
+
   auto ExecuteRun(SequenceFrame& owner, const NamedTask& step, const StepDataValue& /*input*/,
                   const LexicalScope* /*scope*/) -> absl::Status override {
     runs_.push_back(step.name_);
