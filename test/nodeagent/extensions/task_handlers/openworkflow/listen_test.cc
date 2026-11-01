@@ -234,6 +234,125 @@ do:
   EXPECT_EQ(harness.results_[0].body(), "[1,1]");
 }
 
+
+TEST(ListenTest, ForeachRunsTheBodyPerConsumedEvent) {
+  Harness harness;
+  const std::string document = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: listen-foreach
+  version: '0.1.0'
+do:
+  - wait:
+      listen:
+        to:
+          any:
+            - with:
+                type: tick
+          until: '${ (. | length) > 1 }'
+      foreach:
+        item: message
+        do:
+          - record:
+              set:
+                seen: '${ $message }'
+        output:
+          as: '${ {value: .} }'
+)YAML";
+  harness.interpreter_->Start(document, R"({})");
+  ASSERT_NE(harness.subscription(), nullptr);
+
+  harness.event_bus_.Deliver("parent/wait/0", makeEvent("e1", "tick", "1"), "t1");
+  harness.event_bus_.Deliver("parent/wait/0", makeEvent("e2", "tick", "2"), "t2");
+
+  ASSERT_EQ(harness.results_.size(), 1U);
+  EXPECT_EQ(harness.results_[0].body(), R"([{"value":{"seen":1}},{"value":{"seen":2}}])");
+}
+
+TEST(ListenTest, NestedUntilStrategyCompletesTheAnyConsumption) {
+  Harness harness;
+  const std::string document = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: listen-nested-until
+  version: '0.1.0'
+do:
+  - wait:
+      listen:
+        to:
+          any:
+            - with:
+                type: tick
+          until:
+            one:
+              with:
+                type: stop
+)YAML";
+  harness.interpreter_->Start(document, R"({})");
+  ASSERT_NE(harness.subscription(), nullptr);
+
+  harness.event_bus_.Deliver("parent/wait/0", makeEvent("e1", "tick", "1"), "t1");
+  EXPECT_TRUE(harness.results_.empty());
+  harness.event_bus_.Deliver("parent/wait/0", makeEvent("e2", "stop", "2"), "t2");
+
+  ASSERT_EQ(harness.results_.size(), 1U);
+  EXPECT_EQ(harness.results_[0].body(), "[1,2]");
+}
+
+
+TEST(ListenTest, CompetingForkAbandonsTheListenSubscription) {
+  Harness harness;
+  const std::string document = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: listen-abandon
+  version: '0.1.0'
+do:
+  - race:
+      fork:
+        compete: true
+        branches:
+          - wait:
+              listen:
+                to:
+                  one:
+                    with:
+                      type: never
+          - finish:
+              set:
+                done: true
+)YAML";
+  harness.interpreter_->Start(document, R"({})");
+
+  ASSERT_EQ(harness.results_.size(), 1U);
+  EXPECT_TRUE(utils::IsTaskResultOk(harness.results_[0]));
+  EXPECT_TRUE(harness.event_bus_.subscribers_.empty());
+}
+
+TEST(ListenTest, CancelDeletesTheListenSubscription) {
+  Harness harness;
+  harness.interpreter_->Start(OneDocument(), R"({})");
+  ASSERT_NE(harness.subscription(), nullptr);
+
+  harness.interpreter_->Cancel();
+  EXPECT_TRUE(harness.event_bus_.subscribers_.empty());
+}
+
+TEST(ListenTest, AtLeastOnceModeStillUsesTheAcknowledgementSeam) {
+  Harness harness;
+  harness.event_bus_.SetDeliveryMode(event::DELIVERY_MODE_AT_LEAST_ONCE);
+  harness.interpreter_->Start(OneDocument(), R"({})");
+  ASSERT_NE(harness.subscription(), nullptr);
+
+  harness.event_bus_.Deliver("parent/wait/0",
+                             makeEvent("e1", "order.created", R"({"n":1})"), "t1");
+
+  ASSERT_EQ(harness.results_.size(), 1U);
+  ASSERT_EQ(harness.event_bus_.acked_tokens_.size(), 1U);
+  EXPECT_EQ(harness.event_bus_.acked_tokens_[0], "t1");
+  EXPECT_TRUE(harness.event_bus_.subscribers_.empty());
+}
+
 TEST(ListenTest, InvalidReadModeFailsValidation) {
   Harness harness;
   harness.interpreter_->Start(OneDocument("bogus"), R"({})");

@@ -210,6 +210,20 @@ TEST_F(SummaryMeshEventPlaneTest, ExpiredPeerSummaryIsNotUsed) {
   EXPECT_TRUE(transport_a_.sent_targets.empty());
 }
 
+
+TEST_F(SummaryMeshEventPlaneTest, LateSubscriptionMissesAnEarlierEvent) {
+  plane_a_->AddSubscription("a", makePattern("order.created"));
+
+  plane_a_->Publish(makeEvent("order.created"));
+  EXPECT_TRUE(host_b_.deliveries.empty());
+
+  plane_b_->AddSubscription("b", makePattern("order.created"));
+  plane_a_->Publish(makeEvent("order.created"));
+
+  ASSERT_EQ(host_b_.deliveries.size(), 1U);
+  EXPECT_EQ(host_b_.deliveries[0].first, "b");
+}
+
 // NOLINTEND(modernize-use-trailing-return-type)
 
 } // namespace

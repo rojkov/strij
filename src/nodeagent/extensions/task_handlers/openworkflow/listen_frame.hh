@@ -52,6 +52,8 @@ private:
   [[nodiscard]] auto process(const QueuedEvent& queued, FrameContext& context)
       -> std::optional<FrameResult>;
   [[nodiscard]] auto completeWith(std::vector<event::CloudEvent> events) -> FrameResult;
+  [[nodiscard]] auto completeForeach() -> FrameResult;
+  [[nodiscard]] auto startForeachBody(FrameContext& context) -> std::optional<FrameResult>;
   [[nodiscard]] auto fail(task::TaskStatus status, std::string message) -> FrameResult;
   [[nodiscard]] auto itemBytes(const event::CloudEvent& event) const -> std::string;
 
@@ -67,6 +69,15 @@ private:
   std::deque<QueuedEvent> queued_;
   std::vector<event::CloudEvent> consumed_;
   std::vector<std::optional<event::CloudEvent>> all_matches_;
+  std::deque<event::CloudEvent> foreach_pending_;
+  std::vector<std::string> foreach_results_;
+  std::unique_ptr<SequenceFrame> foreach_body_;
+  std::shared_ptr<const LexicalScope> foreach_scope_;
+  std::string foreach_item_name_{"item"};
+  std::string foreach_index_name_{"index"};
+  std::size_t foreach_index_{0};
+  StepDataValue foreach_selected_;
+  bool strategy_complete_{false};
   std::map<std::string, bool> seen_;
   std::optional<ExecutionFailure> failure_;
   bool complete_{false};

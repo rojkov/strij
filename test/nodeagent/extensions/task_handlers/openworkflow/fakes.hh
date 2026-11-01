@@ -120,7 +120,10 @@ public:
     explicit FakeSubscription(FakeEventBus& bus, std::string subscription_id)
         : bus_{bus}, subscription_id_{std::move(subscription_id)} {}
 
-    void Ack(std::string_view token) override { acked_.emplace_back(token); }
+    void Ack(std::string_view token) override {
+      acked_.emplace_back(token);
+      bus_.acked_tokens_.emplace_back(token);
+    }
     void Detach() override { detached_ = true; }
     void Delete() override {
       deleted_ = true;
@@ -155,7 +158,7 @@ public:
     subscribers_[id] = std::make_shared<Subscriber>(
         Subscriber{.request_ = std::move(request), .subscription_ = subscription.get(),
                    .on_event_ = std::move(on_event)});
-    std::move(on_ready)(absl::OkStatus(), event::DELIVERY_MODE_BEST_EFFORT);
+    std::move(on_ready)(absl::OkStatus(), delivery_mode_);
     return subscription;
   }
 
@@ -172,12 +175,15 @@ public:
   }
 
   void SetPublishStatus(absl::Status status) { publish_status_ = std::move(status); }
+  void SetDeliveryMode(event::DeliveryMode mode) { delivery_mode_ = mode; }
 
   std::vector<event::CloudEvent> published_;
+  std::vector<std::string> acked_tokens_;
   std::unordered_map<std::string, std::shared_ptr<Subscriber>> subscribers_;
 
 private:
   absl::Status publish_status_;
+  event::DeliveryMode delivery_mode_{event::DELIVERY_MODE_BEST_EFFORT};
 };
 
 // The bundled jq evaluator selection used by the tests.
