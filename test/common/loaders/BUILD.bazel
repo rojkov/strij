@@ -34,3 +34,21 @@ strij_cc_test(
         "@googletest//:gtest_main",
     ],
 )
+
+strij_cc_test(
+    name = "event_plane_loader_test",
+    srcs = ["event_plane_loader_test.cc"],
+    deps = [
+        "//api/common/event:cloudevent_cc_proto",
+        "//api/gateway/config:gateway_config_cc_proto",
+        "//api/gateway/extensions/event_planes/summary_mesh:summary_mesh_cc_proto",
+        "//include/strij/extensions:event_plane_interface",
+        "//include/strij/extensions:gateway_transport_interface",
+        "//src/common/loaders:event_plane_loader_lib",
+        "//src/gateway/extensions/event_planes/summary_mesh:summary_mesh_event_plane_lib",
+        "//test/mocks/event:event_mocks_lib",
+        "//test/mocks/extensions:extensions_mocks_lib",
+        "@abseil-cpp//absl/status",
+        "@googletest//:gtest_main",
+    ],
+)

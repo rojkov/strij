@@ -1,0 +1,149 @@
+#include "gateway/core/gateway_event_edge.hh"
+
+#include <cstddef>
+#include <memory>
+#include <span>
+#include <string>
+#include <string_view>
+#include <utility>
+
+#include "absl/status/status.h"
+#include "common/core/io/connection.hh"
+#include "common/core/io/outbound_mailbox.hh"
+#include "common/core/io/tlv_frame.hh"
+#include "common/event/cloudevent.pb.h"
+#include "common/event/event_plane.pb.h"
+#include "strij/extensions/event_plane.hh"
+
+namespace strij::gateway {
+
+GatewayEventEdge::~GatewayEventEdge() {
+  for (const auto& [mailbox, watch] : close_watches_) {
+    (void)mailbox;
+    watch.mailbox->UnregisterOnClose(watch.token);
+  }
+}
+
+namespace {
+
+auto asBytes(std::string_view text) -> std::span<const std::byte> {
+  return std::as_bytes(std::span(text.data(), text.size()));
+}
+
+} // namespace
+
+auto GatewayEventEdge::HandlePublishFrame(const io::TlvFrame& frame) -> absl::Status {
+  if (plane_ == nullptr) {
+    return absl::UnimplementedError("event plane is not configured");
+  }
+
+  event::CloudEvent event;
+  if (!event.ParseFromArray(std::bit_cast<const char*>(frame.value.data()),
+                            static_cast<int>(frame.value.size()))) {
+    return absl::InvalidArgumentError("malformed CloudEvent");
+  }
+
+  plane_->Publish(std::move(event));
+  return absl::OkStatus();
+}
+
+auto GatewayEventEdge::HandleSubscribeFrame(const io::TlvFrame& frame, io::Connection& conn)
+    -> absl::Status {
+  if (plane_ == nullptr) {
+    return absl::UnimplementedError("event plane is not configured");
+  }
+
+  event::EventSubscriptionRequest request;
+  if (!request.ParseFromArray(std::bit_cast<const char*>(frame.value.data()),
+                              static_cast<int>(frame.value.size()))) {
+    return absl::InvalidArgumentError("malformed EventSubscriptionRequest");
+  }
+
+  if (request.subscription_id().empty()) {
+    return absl::InvalidArgumentError("subscription id must not be empty");
+  }
+
+  if (subscriptions_.contains(request.subscription_id())) {
+    return absl::AlreadyExistsError("subscription id is already active");
+  }
+
+  const std::string subscription_id = request.subscription_id();
+  const std::shared_ptr<io::OutboundMailbox> mailbox = conn.Mailbox();
+  subscriptions_.emplace(
+      subscription_id,
+      Entry{.subscription_id = subscription_id, .mailbox = mailbox});
+  ensureCloseWatched(mailbox);
+
+  plane_->AddSubscription(subscription_id, request.pattern());
+  plane_->AttachSubscription(subscription_id);
+  return absl::OkStatus();
+}
+
+auto GatewayEventEdge::HandleUnsubscribeFrame(const io::TlvFrame& frame) -> absl::Status {
+  if (plane_ == nullptr) {
+    return absl::UnimplementedError("event plane is not configured");
+  }
+
+  event::EventUnsubscribe unsubscribe;
+  if (!unsubscribe.ParseFromArray(std::bit_cast<const char*>(frame.value.data()),
+                                  static_cast<int>(frame.value.size()))) {
+    return absl::InvalidArgumentError("malformed EventUnsubscribe");
+  }
+
+  auto iter = subscriptions_.find(unsubscribe.subscription_id());
+  if (iter == subscriptions_.end()) {
+    return absl::NotFoundError("unknown subscription");
+  }
+
+  plane_->RemoveSubscription(unsubscribe.subscription_id());
+  subscriptions_.erase(iter);
+  return absl::OkStatus();
+}
+
+void GatewayEventEdge::Deliver(std::string_view subscription_id, const event::CloudEvent& event,
+                               std::string_view token) {
+  auto iter = subscriptions_.find(std::string(subscription_id));
+  if (iter == subscriptions_.end() || iter->second.mailbox == nullptr) {
+    return;
+  }
+
+  event::EventDelivery delivery;
+  delivery.set_subscription_id(std::string(subscription_id));
+  delivery.set_token(std::string(token));
+  *delivery.mutable_event() = event;
+
+  std::string serialized;
+  if (!delivery.SerializeToString(&serialized)) {
+    return;
+  }
+
+  iter->second.mailbox->Enqueue(
+      io::SerializeTlvFrame(io::TlvFrame::kEventDelivery, asBytes(serialized)));
+}
+
+void GatewayEventEdge::ensureCloseWatched(const std::shared_ptr<io::OutboundMailbox>& mailbox) {
+  if (close_watches_.contains(mailbox.get())) {
+    return;
+  }
+
+  const std::size_t token =
+      mailbox->RegisterOnClose([this, raw = mailbox.get()]() { onConnectionClosed(raw); });
+  close_watches_.emplace(mailbox.get(), CloseWatch{.mailbox = mailbox, .token = token});
+}
+
+void GatewayEventEdge::onConnectionClosed(io::OutboundMailbox* mailbox) {
+  close_watches_.erase(mailbox);
+
+  for (auto iter = subscriptions_.begin(); iter != subscriptions_.end();) {
+    if (iter->second.mailbox.get() == mailbox) {
+      if (plane_ != nullptr) {
+        plane_->DetachSubscription(iter->first);
+      }
+      iter = subscriptions_.erase(iter);
+    } else {
+      ++iter;
+    }
+  }
+}
+
+} // namespace strij::gateway

@@ -14,6 +14,7 @@ class Scheduler;
 
 namespace strij::gateway {
 
+class GatewayEventEdge;
 class GatewayRelayTransport;
 
 // The capability version this gateway understands. v1 mismatch is a warning,
@@ -26,9 +27,10 @@ public:
                     // TODO: I don't like default parameters, they make code error prone.
                     extensions::Scheduler* scheduler = nullptr,
                     ExactStateTracker* state_tracker = nullptr,
-                    GatewayRelayTransport* relay_transport = nullptr)
+                    GatewayRelayTransport* relay_transport = nullptr,
+                    GatewayEventEdge* event_edge = nullptr)
       : directory_{directory}, storage_{storage}, scheduler_{scheduler},
-        state_tracker_{state_tracker}, relay_transport_{relay_transport} {}
+        state_tracker_{state_tracker}, relay_transport_{relay_transport}, event_edge_{event_edge} {}
   ~GatewayTlvHandler() = default;
 
   GatewayTlvHandler(const GatewayTlvHandler&) = delete;
@@ -60,6 +62,8 @@ private:
   ExactStateTracker* state_tracker_;
   // Optional v1 gateway relay transport; null when no event plane is configured.
   GatewayRelayTransport* relay_transport_;
+  // Optional event-plane edge; null when no event plane is configured.
+  GatewayEventEdge* event_edge_;
 };
 
 } // namespace strij::gateway

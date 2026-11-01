@@ -1,0 +1,12 @@
+syntax = "proto3";
+
+package strij.extensions.event_planes.summary_mesh;
+
+// Configures the bundled best-effort subscription-summary event plane.
+message SummaryMeshConfig {
+  // How often the local route summary is re-broadcast and peer summaries are
+  // checked for expiry.
+  uint64 refresh_interval_ms = 1;
+  // A peer summary not refreshed within this window is discarded.
+  uint64 peer_ttl_ms = 2;
+}
