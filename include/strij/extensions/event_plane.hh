@@ -61,9 +61,11 @@ using EventPlanePtr = std::unique_ptr<EventPlane>;
 
 struct EventPlaneDeps {
   EventPlaneDeps(event::Dispatcher& dispatcher_ref, std::string gateway_id_value,
-                 GatewayTransport& transport_ref, EventPlaneHost& host_ref)
+                 GatewayTransport& transport_ref, EventPlaneHost& host_ref,
+                 event::DispatcherSharedPtr shared_dispatcher_value)
       : dispatcher_{dispatcher_ref}, gateway_id_{std::move(gateway_id_value)},
-        transport_{transport_ref}, host_{host_ref} {}
+        transport_{transport_ref}, host_{host_ref},
+        shared_dispatcher_{std::move(shared_dispatcher_value)} {}
   ~EventPlaneDeps() = default;
 
   EventPlaneDeps(const EventPlaneDeps&) = delete;
@@ -75,6 +77,7 @@ struct EventPlaneDeps {
   std::string gateway_id_;
   GatewayTransport& transport_;
   EventPlaneHost& host_;
+  event::DispatcherSharedPtr shared_dispatcher_;
 };
 
 // Registered in extensions::Registry<EventPlaneFactory> and selected by
@@ -94,7 +97,7 @@ public:
   [[nodiscard]] virtual auto Name() const -> std::string PURE;
   virtual auto CreateEmptyConfigProto() -> MessagePtr PURE;
   virtual auto Create(const ::google::protobuf::Message& config,
-                      gateway::GatewayFactoryContext& context, const EventPlaneDeps& deps)
+                      GatewayFactoryContext& context, const EventPlaneDeps& deps)
       -> EventPlanePtr PURE;
 };
 

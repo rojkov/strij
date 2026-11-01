@@ -21,20 +21,20 @@
 
 ## 3. Bundled summary-mesh event plane
 
-- [ ] 3.1 Implement route-summary computation from local subscriptions (exact types, exact sources, match-all) and verify unit tests cover each combination.
-- [ ] 3.2 Implement the local subscription registry and `host.Deliver` routing with the full CloudEvent envelope; verify a test delivers to matching local subscriptions and skips non-matching ones.
-- [ ] 3.3 Implement publish routing: local delivery plus targeted `GatewayTransport::Send` to peers whose summaries match; verify tests cover local-only, peer-only, and both.
-- [ ] 3.4 Implement summary broadcast on change, periodic refresh, peer summary storage, epoch ordering, and TTL expiry; verify tests cover propagation, stale-summary rejection, and expiry.
-- [ ] 3.5 Implement the v1 acknowledgement no-op and the detach-versus-delete lifecycle; verify tests distinguish detach from delete at the extension boundary.
-- [ ] 3.6 Register the summary-mesh factory and load it from `GatewayConfig.event_plane`; verify startup succeeds for a valid config and fails for an unknown name or bad typed config.
+- [x] 3.1 Implement route-summary computation from local subscriptions (exact types, exact sources, match-all) and verify unit tests cover each combination.
+- [x] 3.2 Implement the local subscription registry and `host.Deliver` routing with the full CloudEvent envelope; verify a test delivers to matching local subscriptions and skips non-matching ones.
+- [x] 3.3 Implement publish routing: local delivery plus targeted `GatewayTransport::Send` to peers whose summaries match; verify tests cover local-only, peer-only, and both.
+- [x] 3.4 Implement summary broadcast on change, periodic refresh, peer summary storage, epoch ordering, and TTL expiry; verify tests cover propagation, stale-summary rejection, and expiry.
+- [x] 3.5 Implement the v1 acknowledgement no-op and the detach-versus-delete lifecycle; verify tests distinguish detach from delete at the extension boundary.
+- [x] 3.6 Register the summary-mesh factory and load it from `GatewayConfig.event_plane`; verify startup succeeds for a valid config and fails for an unknown name or bad typed config.
 
 ## 4. Node event bus and gateway event edge
 
 - [x] 4.1 Implement the node event client: publish and subscribe over a live gateway connection, readiness callback, and unsubscribe; verify tests cover success and the no-live-gateway failure path.
 - [x] 4.2 Implement inbound `kEventDelivery` dispatch to the local subscription and the v1 no-op acknowledgement; verify a test delivers an event and accepts an acknowledgement without durable state.
-- [ ] 4.3 Implement the gateway event edge: subscription-id-to-node mapping, subscribe registration, publish forwarding, and delivery to the owning node; verify a test routes an event to the correct node connection.
-- [ ] 4.4 Detach gateway subscriptions on node connection loss and delete them on explicit unsubscribe; verify tests cover both paths and assert no later delivery occurs.
-- [ ] 4.5 Make emit/listen fail with an unsupported-capability status when no event plane is configured; verify a gateway without `event_plane` still schedules ordinary tasks and rejects event operations cleanly.
+- [x] 4.3 Implement the gateway event edge: subscription-id-to-node mapping, subscribe registration, publish forwarding, and delivery to the owning node; verify a test routes an event to the correct node connection.
+- [x] 4.4 Detach gateway subscriptions on node connection loss and delete them on explicit unsubscribe; verify tests cover both paths and assert no later delivery occurs.
+- [x] 4.5 Make emit/listen fail with an unsupported-capability status when no event plane is configured; verify a gateway without `event_plane` still schedules ordinary tasks and rejects event operations cleanly.
 - [ ] 4.6 Wire the event plane, relay transport, and node event bus into the gateway and node frameworks; verify `make build` succeeds with no wiring changes needed in existing handler tests.
 
 ## 5. Emit task
