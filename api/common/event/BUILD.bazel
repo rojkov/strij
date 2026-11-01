@@ -1,0 +1,29 @@
+load("@protobuf//bazel:cc_proto_library.bzl", "cc_proto_library")
+load("@rules_proto//proto:defs.bzl", "proto_library")
+
+proto_library(
+    name = "cloudevent_proto",
+    srcs = ["cloudevent.proto"],
+    strip_import_prefix = "/api",
+    visibility = ["//visibility:public"],
+)
+
+cc_proto_library(
+    name = "cloudevent_cc_proto",
+    visibility = ["//visibility:public"],
+    deps = [":cloudevent_proto"],
+)
+
+proto_library(
+    name = "event_plane_proto",
+    srcs = ["event_plane.proto"],
+    strip_import_prefix = "/api",
+    visibility = ["//visibility:public"],
+    deps = [":cloudevent_proto"],
+)
+
+cc_proto_library(
+    name = "event_plane_cc_proto",
+    visibility = ["//visibility:public"],
+    deps = [":event_plane_proto"],
+)

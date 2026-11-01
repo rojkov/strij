@@ -74,8 +74,21 @@ strij_cc_library(
         "//include/strij/common:pure_lib",
         "//include/strij/event:dispatcher_interface",
         "//include/strij/nodeagent:child_task_submitter_interface",
+        "//include/strij/nodeagent:event_bus_interface",
         "//include/strij/nodeagent:function_resolver_interface",
         "@abseil-cpp//absl/status:statusor",
         "@protobuf",
+    ],
+)
+
+strij_cc_library(
+    name = "event_bus_interface",
+    hdrs = ["event_bus.hh"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//api/common/event:cloudevent_cc_proto",
+        "//api/common/event:event_plane_cc_proto",
+        "//include/strij/common:pure_lib",
+        "@abseil-cpp//absl/status",
     ],
 )

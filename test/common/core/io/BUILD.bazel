@@ -64,3 +64,14 @@ strij_cc_test(
         "@googletest//:gtest_main",
     ],
 )
+
+strij_cc_test(
+    name = "event_plane_frames_test",
+    srcs = ["event_plane_frames_test.cc"],
+    deps = [
+        "//api/common/event:cloudevent_cc_proto",
+        "//api/common/event:event_plane_cc_proto",
+        "//src/common/core/io:tlv_frame",
+        "@googletest//:gtest_main",
+    ],
+)
