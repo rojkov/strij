@@ -13,9 +13,9 @@
 ## 2. TLV frames and gateway relay
 
 - [x] 2.1 Add frame constants 11 through 17 to `TlvFrame`; verify a unit test asserts each value and that 0 through 10 are unchanged.
-- [ ] 2.2 Generalize the node's outbound gateway pool into a shared `GatewayConnections` service and make `GatewayClient` a user of it; verify existing child-forward tests still pass and a new test covers pruning a dead connection.
-- [ ] 2.3 Handle `kGatewayHello` on the node and maintain the gateway-id-to-connection map; verify tests cover identity learning, targeted lookup, and deterministic replacement on a repeated handshake.
-- [ ] 2.4 Handle `kPeerRelay` on the node: broadcast with an empty target list, targeted forwarding, source exclusion, missing-target drop, and payload-size rejection; verify each behavior with a unit test.
+- [ ] 2.2 Generalize the node's outbound gateway pool into a shared `GatewayConnectionPool` service and make `GatewayClient` a user of it; verify existing child-forward tests still pass and a new test covers pruning a dead connection.
+- [x] 2.3 Handle `kGatewayHello` on the node and maintain the gateway-id-to-connection map; verify tests cover identity learning, targeted lookup, and deterministic replacement on a repeated handshake.
+- [x] 2.4 Handle `kPeerRelay` on the node: broadcast with an empty target list, targeted forwarding, source exclusion, missing-target drop, and payload-size rejection; verify each behavior with a unit test.
 - [ ] 2.5 Implement the gateway-side relay transport: choose a live node, write `kPeerRelay`, receive `kPeerRelayDelivery`, and return `Unavailable` when no node is live; verify tests cover successful send, broadcast, no-live-node, and relay-node failure.
 - [ ] 2.6 Add the new frame cases to the gateway and node TLV handlers; verify a test asserts event-plane and relay frames do not reach the scheduler router.
 
@@ -30,8 +30,8 @@
 
 ## 4. Node event bus and gateway event edge
 
-- [ ] 4.1 Implement the node event client: publish and subscribe over a live gateway connection, readiness callback, and unsubscribe; verify tests cover success and the no-live-gateway failure path.
-- [ ] 4.2 Implement inbound `kEventDelivery` dispatch to the local subscription and the v1 no-op acknowledgement; verify a test delivers an event and accepts an acknowledgement without durable state.
+- [x] 4.1 Implement the node event client: publish and subscribe over a live gateway connection, readiness callback, and unsubscribe; verify tests cover success and the no-live-gateway failure path.
+- [x] 4.2 Implement inbound `kEventDelivery` dispatch to the local subscription and the v1 no-op acknowledgement; verify a test delivers an event and accepts an acknowledgement without durable state.
 - [ ] 4.3 Implement the gateway event edge: subscription-id-to-node mapping, subscribe registration, publish forwarding, and delivery to the owning node; verify a test routes an event to the correct node connection.
 - [ ] 4.4 Detach gateway subscriptions on node connection loss and delete them on explicit unsubscribe; verify tests cover both paths and assert no later delivery occurs.
 - [ ] 4.5 Make emit/listen fail with an unsupported-capability status when no event plane is configured; verify a gateway without `event_plane` still schedules ordinary tasks and rejects event operations cleanly.

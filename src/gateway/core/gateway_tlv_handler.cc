@@ -1,5 +1,7 @@
 #include "gateway/core/gateway_tlv_handler.hh"
 
+#include "gateway/core/gateway_relay_transport.hh"
+
 #include <cstddef>
 #include <span>
 #include <utility>
@@ -31,6 +33,11 @@ auto GatewayTlvHandler::HandleFrame(const io::TlvFrame& frame, io::Connection& c
   case io::TlvFrame::kHeartbeat:
     LOG_DEBUG("Received heartbeat");
     return absl::OkStatus();
+  case io::TlvFrame::kPeerRelayDelivery:
+    if (relay_transport_ != nullptr) {
+      return relay_transport_->HandleFrame(frame);
+    }
+    return absl::InvalidArgumentError("no event-plane relay transport configured");
   default:
     // Frame-routing seam: a frame type the built-in cases don't own is the
     // scheduler's to handle. The scheduler returns the Status — the router

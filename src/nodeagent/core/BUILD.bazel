@@ -66,6 +66,8 @@ strij_cc_library(
     hdrs = ["nodeagent_tlv_handler.hh"],
     visibility = ["//visibility:public"],
     deps = [
+        ":event_delivery_sink_interface",
+        ":node_relay_service_lib",
         "//api/common/node:node_cc_proto",
         "//include/strij/extensions:scheduler_interface",
         "//src/common/core/io:connection_lib",
@@ -165,10 +167,12 @@ strij_cc_library(
     hdrs = ["gateway_client.hh"],
     visibility = ["//visibility:public"],
     deps = [
+        ":gateway_connection_pool_lib",
         "//api/common/task:task_cc_proto",
         "//include/strij/nodeagent:child_task_forwarder_interface",
         "//include/strij/nodeagent:child_task_submitter_interface",
         "//src/common/core/io:connection_lib",
+        "//src/common/core/io:outbound_mailbox_lib",
         "//src/common/core/io:tlv_frame",
         "//src/common/core/logging:log_lib",
     ],
@@ -228,5 +232,59 @@ strij_cc_library(
         "@abseil-cpp//absl/status",
         "@abseil-cpp//absl/status:statusor",
         "@abseil-cpp//absl/strings",
+    ],
+)
+
+
+strij_cc_library(
+    name = "gateway_connection_pool_lib",
+    srcs = ["gateway_connection_pool.cc"],
+    hdrs = ["gateway_connection_pool.hh"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//src/common/core/io:outbound_mailbox_lib",
+    ],
+)
+
+strij_cc_library(
+    name = "node_relay_service_lib",
+    srcs = ["node_relay_service.cc"],
+    hdrs = ["node_relay_service.hh"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":gateway_connection_pool_lib",
+        "//api/common/event:event_plane_cc_proto",
+        "//src/common/core/io:connection_lib",
+        "//src/common/core/io:outbound_mailbox_lib",
+        "//src/common/core/io:tlv_frame",
+        "@abseil-cpp//absl/status",
+    ],
+)
+
+strij_cc_library(
+    name = "event_delivery_sink_interface",
+    hdrs = ["event_delivery_sink.hh"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//include/strij/common:pure_lib",
+        "//src/common/core/io:tlv_frame",
+    ],
+)
+
+strij_cc_library(
+    name = "node_event_client_lib",
+    srcs = ["node_event_client.cc"],
+    hdrs = ["node_event_client.hh"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":event_delivery_sink_interface",
+        ":gateway_connection_pool_lib",
+        "//api/common/event:cloudevent_cc_proto",
+        "//api/common/event:event_plane_cc_proto",
+        "//include/strij/nodeagent:event_bus_interface",
+        "//src/common/core/io:connection_lib",
+        "//src/common/core/io:outbound_mailbox_lib",
+        "//src/common/core/io:tlv_frame",
+        "@abseil-cpp//absl/status",
     ],
 )
