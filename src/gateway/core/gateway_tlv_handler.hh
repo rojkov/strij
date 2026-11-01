@@ -14,6 +14,8 @@ class Scheduler;
 
 namespace strij::gateway {
 
+class GatewayRelayTransport;
+
 // The capability version this gateway understands. v1 mismatch is a warning,
 // not a rejection.
 inline constexpr uint32_t kSupportedCapabilityVersion = 1;
@@ -23,9 +25,10 @@ public:
   GatewayTlvHandler(NodeDirectoryImpl& directory, ResultReceiverStorage& storage,
                     // TODO: I don't like default parameters, they make code error prone.
                     extensions::Scheduler* scheduler = nullptr,
-                    ExactStateTracker* state_tracker = nullptr)
+                    ExactStateTracker* state_tracker = nullptr,
+                    GatewayRelayTransport* relay_transport = nullptr)
       : directory_{directory}, storage_{storage}, scheduler_{scheduler},
-        state_tracker_{state_tracker} {}
+        state_tracker_{state_tracker}, relay_transport_{relay_transport} {}
   ~GatewayTlvHandler() = default;
 
   GatewayTlvHandler(const GatewayTlvHandler&) = delete;
@@ -55,6 +58,8 @@ private:
   extensions::Scheduler* scheduler_;
   // Optional exact state accounting; null in unit tests that don't need it.
   ExactStateTracker* state_tracker_;
+  // Optional v1 gateway relay transport; null when no event plane is configured.
+  GatewayRelayTransport* relay_transport_;
 };
 
 } // namespace strij::gateway

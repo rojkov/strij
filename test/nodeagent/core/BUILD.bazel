@@ -192,3 +192,19 @@ strij_cc_test(
         "@googletest//:gtest_main",
     ],
 )
+
+strij_cc_test(
+    name = "event_plane_test",
+    srcs = ["event_plane_test.cc"],
+    deps = [
+        "//api/common/event:cloudevent_cc_proto",
+        "//api/common/event:event_plane_cc_proto",
+        "//src/common/core/io:outbound_mailbox_lib",
+        "//src/common/core/io:tlv_frame",
+        "//src/nodeagent/core:gateway_connection_pool_lib",
+        "//src/nodeagent/core:node_event_client_lib",
+        "//src/nodeagent/core:node_relay_service_lib",
+        "@abseil-cpp//absl/status",
+        "@googletest//:gtest_main",
+    ],
+)

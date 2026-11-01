@@ -2,10 +2,10 @@
 
 #include <cstddef>
 #include <memory>
-#include <vector>
 
 #include "absl/status/status.h"
 #include "common/task/task.pb.h"
+#include "nodeagent/core/gateway_connection_pool.hh"
 #include "strij/nodeagent/child_task_forwarder.hh"
 
 namespace strij::io {
@@ -19,8 +19,9 @@ namespace strij::nodeagent {
 // RegisterConnection) and round-robins kTaskSubmission frames across them.
 class GatewayClient final : public ChildTaskForwarder {
 public:
-  GatewayClient() = default;
-  ~GatewayClient() override;
+  GatewayClient() : connections_{owned_connections_} {}
+  explicit GatewayClient(GatewayConnectionPool& connections) : connections_{connections} {}
+  ~GatewayClient() override = default;
   GatewayClient(const GatewayClient&) = delete;
   auto operator=(const GatewayClient&) -> GatewayClient& = delete;
   GatewayClient(GatewayClient&&) noexcept = delete;
@@ -38,13 +39,10 @@ public:
   [[nodiscard]] auto LiveCount() const -> size_t;
 
 private:
-  struct MailboxRegistration {
-    std::shared_ptr<io::OutboundMailbox> mailbox_;
-    std::size_t close_token_;
-  };
-
-  std::vector<MailboxRegistration> live_mailboxes_;
-  size_t next_index_{0};
+  // Used only by the default constructor, so tests can construct a
+  // GatewayClient without a framework-owned pool.
+  GatewayConnectionPool owned_connections_;
+  GatewayConnectionPool& connections_;
 };
 
 } // namespace strij::nodeagent

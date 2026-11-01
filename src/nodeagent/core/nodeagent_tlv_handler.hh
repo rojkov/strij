@@ -9,6 +9,9 @@
 
 namespace strij::nodeagent {
 
+class EventDeliverySink;
+class NodeRelayService;
+
 // Dispatches inbound TLV frames received from a single gateway connection.
 // This is the node side's frame-routing seam (the mirror of the gateway
 // GatewayTlvHandler): every frame is handed to the composite
@@ -23,7 +26,9 @@ public:
   // stays with the caller. A null router (setups without schedulers) turns
   // every frame into an error-drop.
   NodeagentTlvHandler(extensions::Scheduler* router,
-                      std::shared_ptr<const node::NodeCapabilities> capabilities);
+                      std::shared_ptr<const node::NodeCapabilities> capabilities,
+                      NodeRelayService* relay_service = nullptr,
+                      EventDeliverySink* delivery_sink = nullptr);
 
   // Serializes and writes the kNodeAdvertisement frame to the connection. Must
   // be the first frame sent on every accepted gateway connection.
@@ -36,6 +41,8 @@ public:
 private:
   extensions::Scheduler* scheduler_;
   std::shared_ptr<const node::NodeCapabilities> capabilities_;
+  NodeRelayService* relay_service_{nullptr};
+  EventDeliverySink* delivery_sink_{nullptr};
 };
 
 } // namespace strij::nodeagent

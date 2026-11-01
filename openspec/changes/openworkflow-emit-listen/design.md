@@ -76,7 +76,7 @@ Each gateway announces a `gateway_id` on every accepted node connection (`kGatew
 
 The gateway chooses any live node as the relay. The relay frame carries the target ids and payload; the node excludes the source connection. A missing target connection drops only that copy.
 
-The node's existing child-forward path and the relay share one node-side `GatewayConnections` pool, with `GatewayClient` becoming a user of that pool. This preserves child-forward behavior while giving the relay the same live-connection view.
+The node's existing child-forward path and the relay share one node-side `GatewayConnectionPool` pool, with `GatewayClient` becoming a user of that pool. This preserves child-forward behavior while giving the relay the same live-connection view.
 
 ### D5: Coarse routing at the gateway, full filtering at the listener
 
