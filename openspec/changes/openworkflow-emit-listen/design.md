@@ -72,7 +72,7 @@ Alternatives considered:
 
 ### D4: Gateway identity and relay forwarding
 
-Each gateway announces a `gateway_id` on every accepted node connection (`kGatewayHello`). The node stores `gateway_id -> connection` and forwards `kPeerRelay` frames to the named target connections, or to all other gateway connections for an empty target list. The node never parses the event-plane payload.
+Each gateway announces a `gateway_id` and its event plane's strongest delivery mode on every accepted node connection (`kGatewayHello`). A gateway without an event plane sends no handshake, so the node treats that connection as event-incapable and fails `emit`/`listen` locally instead of hanging. The node stores `gateway_id -> connection` (plus the delivery mode) and forwards `kPeerRelay` frames to the named target connections, or to all other gateway connections for an empty target list. The node never parses the event-plane payload.
 
 The gateway chooses any live node as the relay. The relay frame carries the target ids and payload; the node excludes the source connection. A missing target connection drops only that copy.
 
@@ -141,11 +141,11 @@ The exact filter-matching rules are specified in `specs/openworkflow-interpreter
 
 ### D10: Acknowledgement and detach/delete are v1 seams
 
-Every delivery carries an opaque token. The listener acknowledges after processing the event, including non-matching events. In v1 the acknowledgement is a no-op. The event-plane contract distinguishes detach (connection lost) from delete (explicit termination); the v1 summary-mesh extension treats detach as delete, while a durable extension can preserve the offset.
+Every delivery carries an opaque token. The listener acknowledges after processing the event, including non-matching events. A node acknowledgement travels to the gateway edge in `kEventAck`, which forwards the token to the extension's acknowledge operation; in v1 that operation is a no-op. The event-plane contract distinguishes detach (connection lost) from delete (explicit termination); the v1 summary-mesh extension treats detach as delete, while a durable extension can preserve the offset.
 
 Subscription identity is stable: workflow identity + step path + activation index. This costs little now and is required for v2 reattachment.
 
-The `ListenFrame` is written to tolerate duplicate and out-of-order events by event identity, even though v1's relay is at-most-once. This keeps v2 from requiring an interpreter rewrite.
+The gateway edge answers a subscription request with `kEventSubscribeResult` (acceptance plus the delivery mode resolved by the extension), so the node reports a subscription ready only after the edge accepted it and with the actual guarantee. The node event bus watches its gateway connection and fails a ready subscription with `Unavailable` when the connection is lost. The `ListenFrame` is written to tolerate duplicate and out-of-order events by event identity, even though v1's relay is at-most-once. This keeps v2 from requiring an interpreter rewrite.
 
 ### D11: v2 durability is a new extension behind the same seam
 
@@ -182,7 +182,8 @@ When a bound is reached, the event is dropped with a log/metric. A slow `foreach
 ### D15: Failure status mapping
 
 - Malformed emit/listen document or expression: `TASK_STATUS_MALFORMED_REQUEST`, before any publish or subscribe.
-- No event path or lost subscription: `TASK_STATUS_UNAVAILABLE`.
+- Gateway live but no event plane configured: `TASK_STATUS_UNIMPLEMENTED`, decided locally by the node from the missing handshake.
+- No event path (no live gateway) or lost subscription: `TASK_STATUS_UNAVAILABLE`.
 - Unsupported guarantee (explicit request only): `TASK_STATUS_UNIMPLEMENTED`.
 - Runtime predicate/processing failure: `TASK_STATUS_INTERNAL`.
 

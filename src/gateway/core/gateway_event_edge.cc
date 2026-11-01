@@ -48,7 +48,8 @@ auto GatewayEventEdge::HandlePublishFrame(const io::TlvFrame& frame) -> absl::St
   return absl::OkStatus();
 }
 
-auto GatewayEventEdge::HandleSubscribeFrame(const io::TlvFrame& frame, io::Connection& conn)
+auto GatewayEventEdge::HandleSubscribeFrame(const io::TlvFrame& frame,
+                                            const std::shared_ptr<io::OutboundMailbox>& mailbox)
     -> absl::Status {
   if (plane_ == nullptr) {
     return absl::UnimplementedError("event plane is not configured");
@@ -64,21 +65,62 @@ auto GatewayEventEdge::HandleSubscribeFrame(const io::TlvFrame& frame, io::Conne
     return absl::InvalidArgumentError("subscription id must not be empty");
   }
 
-  if (subscriptions_.contains(request.subscription_id())) {
+  const std::string subscription_id = request.subscription_id();
+  auto resolved = plane_->ResolveDeliveryMode(request.delivery_mode());
+  if (!resolved.ok()) {
+    sendSubscriptionResult(mailbox, subscription_id, false, resolved.status().message(),
+                           event::DELIVERY_MODE_BEST_EFFORT);
+    return resolved.status();
+  }
+
+  if (subscriptions_.contains(subscription_id)) {
+    sendSubscriptionResult(mailbox, subscription_id, false, "subscription id is already active",
+                           *resolved);
     return absl::AlreadyExistsError("subscription id is already active");
   }
 
-  const std::string subscription_id = request.subscription_id();
-  const std::shared_ptr<io::OutboundMailbox> mailbox = conn.Mailbox();
-  subscriptions_.emplace(
-      subscription_id,
-      Entry{.subscription_id = subscription_id, .mailbox = mailbox});
+  subscriptions_.emplace(subscription_id,
+                         Entry{.subscription_id = subscription_id, .mailbox = mailbox});
   ensureCloseWatched(mailbox);
 
   plane_->AddSubscription(subscription_id, request.pattern());
   plane_->AttachSubscription(subscription_id);
+  sendSubscriptionResult(mailbox, subscription_id, true, {}, *resolved);
   LOG_INFO("Event subscription {} registered (mode={})", subscription_id,
-           static_cast<int>(plane_->SupportedDeliveryMode()));
+           static_cast<int>(*resolved));
+  return absl::OkStatus();
+}
+
+void GatewayEventEdge::sendSubscriptionResult(const std::shared_ptr<io::OutboundMailbox>& mailbox,
+                                              std::string_view subscription_id, bool accepted,
+                                              std::string_view reason,
+                                              event::DeliveryMode delivery_mode) {
+  event::EventSubscriptionResult result;
+  result.set_subscription_id(std::string(subscription_id));
+  result.set_accepted(accepted);
+  result.set_reason(std::string(reason));
+  result.set_delivery_mode(delivery_mode);
+
+  std::string serialized;
+  if (!result.SerializeToString(&serialized)) {
+    return;
+  }
+
+  mailbox->Enqueue(io::SerializeTlvFrame(io::TlvFrame::kEventSubscribeResult, asBytes(serialized)));
+}
+
+auto GatewayEventEdge::HandleAckFrame(const io::TlvFrame& frame) -> absl::Status {
+  if (plane_ == nullptr) {
+    return absl::UnimplementedError("event plane is not configured");
+  }
+
+  event::EventAck ack;
+  if (!ack.ParseFromArray(std::bit_cast<const char*>(frame.value.data()),
+                          static_cast<int>(frame.value.size()))) {
+    return absl::InvalidArgumentError("malformed EventAck");
+  }
+
+  plane_->Ack(ack.subscription_id(), ack.token());
   return absl::OkStatus();
 }
 

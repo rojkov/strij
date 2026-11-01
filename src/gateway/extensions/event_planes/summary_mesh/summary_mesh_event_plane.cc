@@ -15,6 +15,7 @@
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "common/core/io/periodic_timer.hh"
+#include "common/core/logging/log.hh"
 #include "common/event/cloudevent.pb.h"
 #include "common/event/event_plane.pb.h"
 #include "gateway/extensions/event_planes/summary_mesh/summary_mesh.pb.h"
@@ -116,7 +117,9 @@ void SummaryMeshEventPlane::Publish(event::CloudEvent event) {
     return;
   }
 
-  (void)transport_.Send(targets, asBytes(serialized));
+  if (const absl::Status status = transport_.Send(targets, asBytes(serialized)); !status.ok()) {
+    LOG_WARNING("Event-plane relay send failed: {}", status.message());
+  }
 }
 
 void SummaryMeshEventPlane::AddSubscription(std::string subscription_id,
@@ -137,8 +140,7 @@ void SummaryMeshEventPlane::RemoveSubscription(std::string_view subscription_id)
   }
 }
 
-void SummaryMeshEventPlane::Ack(std::string_view /*subscription_id*/,
-                                std::string_view /*token*/) {}
+void SummaryMeshEventPlane::Ack(std::string_view /*subscription_id*/, std::string_view /*token*/) {}
 
 auto SummaryMeshEventPlane::SupportedDeliveryMode() const -> event::DeliveryMode {
   return event::DELIVERY_MODE_BEST_EFFORT;
@@ -186,7 +188,9 @@ void SummaryMeshEventPlane::broadcastSummary() {
     return;
   }
 
-  (void)transport_.Broadcast(asBytes(serialized));
+  if (const absl::Status status = transport_.Broadcast(asBytes(serialized)); !status.ok()) {
+    LOG_WARNING("Event-plane summary broadcast failed: {}", status.message());
+  }
 }
 
 void SummaryMeshEventPlane::ExpirePeers(absl::Time now) {
@@ -253,8 +257,8 @@ auto SummaryMeshEventPlaneFactory::Create(const ::google::protobuf::Message& con
     -> extensions::EventPlanePtr {
   std::uint64_t refresh_ms = kDefaultRefreshMs;
   std::uint64_t ttl_ms = kDefaultTtlMs;
-  if (const auto* mesh_config = dynamic_cast<
-          const extensions::event_planes::summary_mesh::SummaryMeshConfig*>(&config);
+  if (const auto* mesh_config =
+          dynamic_cast<const extensions::event_planes::summary_mesh::SummaryMeshConfig*>(&config);
       mesh_config != nullptr) {
     refresh_ms = mesh_config->refresh_interval_ms();
     ttl_ms = mesh_config->peer_ttl_ms();
@@ -265,6 +269,6 @@ auto SummaryMeshEventPlaneFactory::Create(const ::google::protobuf::Message& con
 
 } // namespace strij::gateway::event_planes
 
-REGISTER_FACTORY_FULLY_QUALIFIED(
-    strij::gateway::event_planes::SummaryMeshEventPlaneFactory,
-    strij::extensions::EventPlaneFactory, summary_mesh_event_plane_registrar)
+REGISTER_FACTORY_FULLY_QUALIFIED(strij::gateway::event_planes::SummaryMeshEventPlaneFactory,
+                                 strij::extensions::EventPlaneFactory,
+                                 summary_mesh_event_plane_registrar)

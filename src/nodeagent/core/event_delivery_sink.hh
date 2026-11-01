@@ -22,6 +22,8 @@ public:
   auto operator=(EventDeliverySink&&) noexcept -> EventDeliverySink& = delete;
 
   virtual void HandleDelivery(const io::TlvFrame& frame) PURE;
+  // Dispatches an inbound kEventSubscribeResult frame.
+  virtual void HandleSubscribeResult(const io::TlvFrame& frame) PURE;
 };
 
 } // namespace strij::nodeagent

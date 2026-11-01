@@ -43,11 +43,41 @@ TEST(CloudEventTest, RequiredAndOptionalFieldsRoundTrip) {
 TEST(EventPlaneFramePayloadsTest, GatewayHelloRoundTrip) {
   GatewayHello hello;
   hello.set_gateway_id("gateway-a");
+  hello.set_delivery_mode(DELIVERY_MODE_AT_LEAST_ONCE);
   std::string bytes;
   ASSERT_TRUE(hello.SerializeToString(&bytes));
   GatewayHello parsed;
   ASSERT_TRUE(parsed.ParseFromString(bytes));
   EXPECT_EQ(parsed.gateway_id(), "gateway-a");
+  EXPECT_EQ(parsed.delivery_mode(), DELIVERY_MODE_AT_LEAST_ONCE);
+}
+
+TEST(EventPlaneFramePayloadsTest, SubscriptionResultRoundTrip) {
+  EventSubscriptionResult result;
+  result.set_subscription_id("sub-1");
+  result.set_accepted(false);
+  result.set_reason("unsupported");
+  result.set_delivery_mode(DELIVERY_MODE_BEST_EFFORT);
+  std::string bytes;
+  ASSERT_TRUE(result.SerializeToString(&bytes));
+  EventSubscriptionResult parsed;
+  ASSERT_TRUE(parsed.ParseFromString(bytes));
+  EXPECT_EQ(parsed.subscription_id(), "sub-1");
+  EXPECT_FALSE(parsed.accepted());
+  EXPECT_EQ(parsed.reason(), "unsupported");
+  EXPECT_EQ(parsed.delivery_mode(), DELIVERY_MODE_BEST_EFFORT);
+}
+
+TEST(EventPlaneFramePayloadsTest, AckRoundTrip) {
+  EventAck ack;
+  ack.set_subscription_id("sub-1");
+  ack.set_token("token-1");
+  std::string bytes;
+  ASSERT_TRUE(ack.SerializeToString(&bytes));
+  EventAck parsed;
+  ASSERT_TRUE(parsed.ParseFromString(bytes));
+  EXPECT_EQ(parsed.subscription_id(), "sub-1");
+  EXPECT_EQ(parsed.token(), "token-1");
 }
 
 TEST(EventPlaneFramePayloadsTest, PeerRelayRoundTrip) {
@@ -87,6 +117,8 @@ TEST(TlvFrameConstantsTest, EventPlaneIdsAreAppendOnly) {
   EXPECT_EQ(io::TlvFrame::kEventSubscribe, 15);
   EXPECT_EQ(io::TlvFrame::kEventUnsubscribe, 16);
   EXPECT_EQ(io::TlvFrame::kEventDelivery, 17);
+  EXPECT_EQ(io::TlvFrame::kEventAck, 18);
+  EXPECT_EQ(io::TlvFrame::kEventSubscribeResult, 19);
   EXPECT_EQ(io::TlvFrame::kTaskSubmission, 0);
   EXPECT_EQ(io::TlvFrame::kTaskDecline, 10);
 }

@@ -3,9 +3,9 @@
 #include <cstddef>
 #include <memory>
 #include <span>
-#include <unordered_map>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -111,7 +111,6 @@ inline void CompleteErrorAt(FakeChildTaskSubmitter& submitter, std::size_t index
   submitter.receiver(index)->DeliverError(reason, status);
 }
 
-
 // Captures publishes and lets tests drive subscriptions synchronously.
 class FakeEventBus final : public nodeagent::EventBus {
 public:
@@ -141,6 +140,7 @@ public:
     event::EventSubscriptionRequest request_;
     FakeSubscription* subscription_{nullptr};
     EventCallback on_event_;
+    ErrorCallback on_error_;
   };
 
   auto Publish(event::CloudEvent event) -> absl::Status override {
@@ -152,12 +152,17 @@ public:
   }
 
   auto Subscribe(event::EventSubscriptionRequest request, ReadyCallback on_ready,
-                 EventCallback on_event) -> EventSubscriptionPtr override {
+                 EventCallback on_event, ErrorCallback on_error) -> EventSubscriptionPtr override {
     const std::string id = request.subscription_id();
     auto subscription = std::make_unique<FakeSubscription>(*this, id);
-    subscribers_[id] = std::make_shared<Subscriber>(
-        Subscriber{.request_ = std::move(request), .subscription_ = subscription.get(),
-                   .on_event_ = std::move(on_event)});
+    subscribers_[id] = std::make_shared<Subscriber>(Subscriber{.request_ = std::move(request),
+                                                               .subscription_ = subscription.get(),
+                                                               .on_event_ = std::move(on_event),
+                                                               .on_error_ = std::move(on_error)});
+    if (!ready_status_.ok()) {
+      std::move(on_ready)(ready_status_, delivery_mode_);
+      return subscription;
+    }
     std::move(on_ready)(absl::OkStatus(), delivery_mode_);
     return subscription;
   }
@@ -174,7 +179,19 @@ public:
     }
   }
 
+  void DeliverError(std::string_view subscription_id, absl::Status status) {
+    auto iter = subscribers_.find(std::string(subscription_id));
+    if (iter == subscribers_.end()) {
+      return;
+    }
+    std::shared_ptr<Subscriber> subscriber = iter->second;
+    if (subscriber->on_error_) {
+      subscriber->on_error_(std::move(status));
+    }
+  }
+
   void SetPublishStatus(absl::Status status) { publish_status_ = std::move(status); }
+  void SetReadyStatus(absl::Status status) { ready_status_ = std::move(status); }
   void SetDeliveryMode(event::DeliveryMode mode) { delivery_mode_ = mode; }
 
   std::vector<event::CloudEvent> published_;
@@ -183,6 +200,7 @@ public:
 
 private:
   absl::Status publish_status_;
+  absl::Status ready_status_;
   event::DeliveryMode delivery_mode_{event::DELIVERY_MODE_BEST_EFFORT};
 };
 

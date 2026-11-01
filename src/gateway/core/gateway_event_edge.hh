@@ -32,8 +32,10 @@ public:
   [[nodiscard]] auto Plane() const -> extensions::EventPlane* { return plane_; }
 
   auto HandlePublishFrame(const io::TlvFrame& frame) -> absl::Status;
-  auto HandleSubscribeFrame(const io::TlvFrame& frame, io::Connection& conn) -> absl::Status;
+  auto HandleSubscribeFrame(const io::TlvFrame& frame,
+                            const std::shared_ptr<io::OutboundMailbox>& mailbox) -> absl::Status;
   auto HandleUnsubscribeFrame(const io::TlvFrame& frame) -> absl::Status;
+  auto HandleAckFrame(const io::TlvFrame& frame) -> absl::Status;
 
   // extensions::EventPlaneHost
   void Deliver(std::string_view subscription_id, const event::CloudEvent& event,
@@ -49,6 +51,9 @@ private:
 
   void ensureCloseWatched(const std::shared_ptr<io::OutboundMailbox>& mailbox);
   void onConnectionClosed(io::OutboundMailbox* mailbox);
+  static void sendSubscriptionResult(const std::shared_ptr<io::OutboundMailbox>& mailbox,
+                                     std::string_view subscription_id, bool accepted,
+                                     std::string_view reason, event::DeliveryMode delivery_mode);
 
   struct CloseWatch {
     std::shared_ptr<io::OutboundMailbox> mailbox;

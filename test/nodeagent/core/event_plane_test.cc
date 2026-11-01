@@ -10,6 +10,9 @@
 #include <utility>
 #include <vector>
 
+#include "test/mocks/common/common_mocks.hh"
+#include "test/mocks/event/mocks.hh"
+
 #include "absl/status/status.h"
 #include "common/core/io/connection.hh"
 #include "common/core/io/outbound_mailbox.hh"
@@ -21,8 +24,6 @@
 #include "nodeagent/core/gateway_connection_pool.hh"
 #include "nodeagent/core/node_event_client.hh"
 #include "nodeagent/core/node_relay_service.hh"
-#include "test/mocks/common/common_mocks.hh"
-#include "test/mocks/event/mocks.hh"
 
 namespace strij::nodeagent {
 namespace {
@@ -63,6 +64,36 @@ auto makeRelayFrame(const event::PeerRelay& relay) -> io::TlvFrame {
                       .value = std::as_bytes(std::span(storage.data(), storage.size()))};
 }
 
+auto makeHelloFrame(std::string gateway_id,
+                    event::DeliveryMode mode = event::DELIVERY_MODE_BEST_EFFORT) -> io::TlvFrame {
+  static std::string storage;
+  event::GatewayHello hello;
+  hello.set_gateway_id(std::move(gateway_id));
+  hello.set_delivery_mode(mode);
+  EXPECT_TRUE(hello.SerializeToString(&storage));
+  return io::TlvFrame{.type_id = io::TlvFrame::kGatewayHello,
+                      .value = std::as_bytes(std::span(storage.data(), storage.size()))};
+}
+
+auto makeSubscribeResultFrame(std::string subscription_id, bool accepted, event::DeliveryMode mode)
+    -> io::TlvFrame {
+  static std::string storage;
+  event::EventSubscriptionResult result;
+  result.set_subscription_id(std::move(subscription_id));
+  result.set_accepted(accepted);
+  result.set_delivery_mode(mode);
+  EXPECT_TRUE(result.SerializeToString(&storage));
+  return io::TlvFrame{.type_id = io::TlvFrame::kEventSubscribeResult,
+                      .value = std::as_bytes(std::span(storage.data(), storage.size()))};
+}
+
+auto makeDeliveryFrame(const event::EventDelivery& delivery) -> io::TlvFrame {
+  static std::string storage;
+  EXPECT_TRUE(delivery.SerializeToString(&storage));
+  return io::TlvFrame{.type_id = io::TlvFrame::kEventDelivery,
+                      .value = std::as_bytes(std::span(storage.data(), storage.size()))};
+}
+
 TEST(GatewayConnectionPoolTest, BroadcastExcludesSourceAndTargetsResolve) {
   GatewayConnectionPool connections;
   CapturedMailbox first;
@@ -93,9 +124,9 @@ TEST(GatewayConnectionPoolTest, ClosedConnectionIsPruned) {
 
   GatewayConnectionPool pool;
   {
-    io::Connection conn(
-        fds[0], dispatcher, &owner,
-        [](io::Connection&) -> io::ProtocolParserPtr { return std::make_unique<io::TrivialParser>(); });
+    io::Connection conn(fds[0], dispatcher, &owner, [](io::Connection&) -> io::ProtocolParserPtr {
+      return std::make_unique<io::TrivialParser>();
+    });
     pool.Register(conn.Mailbox());
     EXPECT_EQ(pool.LiveCount(), 1U);
     conn.Close();
@@ -109,6 +140,7 @@ TEST(NodeEventClientTest, PublishSubscribeAndDelivery) {
   GatewayConnectionPool connections;
   CapturedMailbox gateway;
   connections.Register(gateway.mailbox);
+  connections.SetGatewayId(gateway.mailbox.get(), "gateway-a", event::DELIVERY_MODE_BEST_EFFORT);
   NodeEventClient client(connections);
 
   event::CloudEvent event;
@@ -141,24 +173,24 @@ TEST(NodeEventClientTest, PublishSubscribeAndDelivery) {
         delivered.push_back(delivered_event.id() + ":" + std::string(token));
       });
   ASSERT_TRUE(subscription != nullptr);
-  EXPECT_TRUE(ready_status.ok());
-  EXPECT_EQ(ready_mode, event::DELIVERY_MODE_BEST_EFFORT);
+  EXPECT_FALSE(ready_status.ok()) << "ready must wait for the gateway edge";
   ASSERT_EQ(gateway.frames.size(), 2U);
   EXPECT_EQ(parseFrame(gateway.frames[1]).type_id, io::TlvFrame::kEventSubscribe);
+
+  client.HandleSubscribeResult(
+      makeSubscribeResultFrame("sub-1", true, event::DELIVERY_MODE_BEST_EFFORT));
+  EXPECT_TRUE(ready_status.ok());
+  EXPECT_EQ(ready_mode, event::DELIVERY_MODE_BEST_EFFORT);
 
   event::EventDelivery delivery;
   delivery.set_subscription_id("sub-1");
   delivery.set_token("token-1");
   *delivery.mutable_event() = event;
-  std::string serialized;
-  ASSERT_TRUE(delivery.SerializeToString(&serialized));
-  const io::TlvFrame delivery_frame{
-      .type_id = io::TlvFrame::kEventDelivery,
-      .value = std::as_bytes(std::span(serialized.data(), serialized.size()))};
-  client.HandleDelivery(delivery_frame);
+  client.HandleDelivery(makeDeliveryFrame(delivery));
   ASSERT_EQ(delivered.size(), 1U);
   EXPECT_EQ(delivered[0], "evt-1:token-1");
   subscription->Ack("token-1");
+  EXPECT_EQ(gateway.frames.size(), 2U) << "best-effort ack is a no-op";
 
   subscription->Delete();
   ASSERT_EQ(gateway.frames.size(), 3U);
@@ -176,8 +208,148 @@ TEST(NodeEventClientTest, SubscribeWithoutGatewayFailsReady) {
   auto subscription = client.Subscribe(
       request, [&](absl::Status status, event::DeliveryMode /*mode*/) { ready_status = status; },
       [](const event::CloudEvent& /*event*/, std::string_view /*token*/) {});
-  EXPECT_FALSE(ready_status.ok());
+  EXPECT_EQ(ready_status.code(), absl::StatusCode::kUnavailable);
   EXPECT_NE(subscription, nullptr);
+}
+
+TEST(NodeEventClientTest, WithoutEventPlanePublishAndSubscribeFailUnimplemented) {
+  GatewayConnectionPool connections;
+  CapturedMailbox gateway;
+  connections.Register(gateway.mailbox);
+  NodeEventClient client(connections);
+
+  event::CloudEvent event;
+  event.set_id("evt-1");
+  EXPECT_EQ(client.Publish(event).code(), absl::StatusCode::kUnimplemented);
+
+  event::EventSubscriptionRequest request;
+  request.set_subscription_id("sub-1");
+  request.set_delivery_mode(event::DELIVERY_MODE_AUTO);
+  absl::Status ready_status = absl::OkStatus();
+  client.Subscribe(
+      request, [&](absl::Status status, event::DeliveryMode /*mode*/) { ready_status = status; },
+      [](const event::CloudEvent& /*event*/, std::string_view /*token*/) {});
+  EXPECT_EQ(ready_status.code(), absl::StatusCode::kUnimplemented);
+  EXPECT_TRUE(gateway.frames.empty());
+}
+
+TEST(NodeEventClientTest, AtLeastOnceSubscriptionAcksWithTheOpaqueToken) {
+  GatewayConnectionPool connections;
+  CapturedMailbox gateway;
+  connections.Register(gateway.mailbox);
+  connections.SetGatewayId(gateway.mailbox.get(), "gateway-a", event::DELIVERY_MODE_AT_LEAST_ONCE);
+  NodeEventClient client(connections);
+
+  event::EventSubscriptionRequest request;
+  request.set_subscription_id("sub-1");
+  request.set_delivery_mode(event::DELIVERY_MODE_AUTO);
+
+  absl::Status ready_status = absl::InternalError("not called");
+  event::DeliveryMode ready_mode = event::DELIVERY_MODE_AUTO;
+  auto subscription = client.Subscribe(
+      request,
+      [&](absl::Status status, event::DeliveryMode mode) {
+        ready_status = std::move(status);
+        ready_mode = mode;
+      },
+      [](const event::CloudEvent& /*event*/, std::string_view /*token*/) {});
+  client.HandleSubscribeResult(
+      makeSubscribeResultFrame("sub-1", true, event::DELIVERY_MODE_AT_LEAST_ONCE));
+  EXPECT_TRUE(ready_status.ok());
+  EXPECT_EQ(ready_mode, event::DELIVERY_MODE_AT_LEAST_ONCE);
+
+  const std::size_t before_ack = gateway.frames.size();
+  subscription->Ack("token-1");
+  ASSERT_EQ(gateway.frames.size(), before_ack + 1);
+  const ParsedFrame ack_frame = parseFrame(gateway.frames.back());
+  EXPECT_EQ(ack_frame.type_id, io::TlvFrame::kEventAck);
+  event::EventAck ack;
+  ASSERT_TRUE(ack.ParseFromString(ack_frame.value));
+  EXPECT_EQ(ack.subscription_id(), "sub-1");
+  EXPECT_EQ(ack.token(), "token-1");
+}
+
+TEST(NodeEventClientTest, RejectedSubscriptionFailsReady) {
+  GatewayConnectionPool connections;
+  CapturedMailbox gateway;
+  connections.Register(gateway.mailbox);
+  connections.SetGatewayId(gateway.mailbox.get(), "gateway-a", event::DELIVERY_MODE_BEST_EFFORT);
+  NodeEventClient client(connections);
+
+  event::EventSubscriptionRequest request;
+  request.set_subscription_id("sub-1");
+  request.set_delivery_mode(event::DELIVERY_MODE_AUTO);
+  absl::Status ready_status = absl::OkStatus();
+  auto subscription = client.Subscribe(
+      request,
+      [&](absl::Status status, event::DeliveryMode /*mode*/) { ready_status = std::move(status); },
+      [](const event::CloudEvent& /*event*/, std::string_view /*token*/) {});
+
+  client.HandleSubscribeResult(
+      makeSubscribeResultFrame("sub-1", false, event::DELIVERY_MODE_BEST_EFFORT));
+  EXPECT_EQ(ready_status.code(), absl::StatusCode::kInvalidArgument);
+}
+
+TEST(NodeEventClientTest, ConnectionLossFailsAReadySubscription) {
+  GatewayConnectionPool connections;
+  std::array<int, 2> fds{};
+  ASSERT_EQ(0, socketpair(AF_UNIX, SOCK_STREAM, 0, fds.data()));
+  auto dispatcher = std::make_shared<event::MockDispatcher>();
+  event::DummyOwner owner;
+  EXPECT_CALL(*dispatcher,
+              PrepareRead(::testing::_, ::testing::_, ::testing::_, ::testing::_, ::testing::_))
+      .WillOnce(::testing::Return());
+  io::Connection conn(fds[0], dispatcher, &owner, [](io::Connection&) -> io::ProtocolParserPtr {
+    return std::make_unique<io::TrivialParser>();
+  });
+  connections.Register(conn.Mailbox());
+  connections.SetGatewayId(conn.Mailbox().get(), "gateway-a", event::DELIVERY_MODE_BEST_EFFORT);
+  NodeEventClient client(connections);
+
+  event::EventSubscriptionRequest request;
+  request.set_subscription_id("sub-1");
+  request.set_delivery_mode(event::DELIVERY_MODE_AUTO);
+  absl::Status error_status = absl::OkStatus();
+  auto subscription = client.Subscribe(
+      request, [](absl::Status /*status*/, event::DeliveryMode /*mode*/) {},
+      [](const event::CloudEvent& /*event*/, std::string_view /*token*/) {},
+      [&](absl::Status status) { error_status = std::move(status); });
+  client.HandleSubscribeResult(
+      makeSubscribeResultFrame("sub-1", true, event::DELIVERY_MODE_BEST_EFFORT));
+  conn.Close();
+
+  EXPECT_EQ(error_status.code(), absl::StatusCode::kUnavailable);
+  close(fds[1]);
+}
+
+TEST(NodeEventClientTest, ConnectionLossBeforeReadyReportsReadyError) {
+  GatewayConnectionPool connections;
+  std::array<int, 2> fds{};
+  ASSERT_EQ(0, socketpair(AF_UNIX, SOCK_STREAM, 0, fds.data()));
+  auto dispatcher = std::make_shared<event::MockDispatcher>();
+  event::DummyOwner owner;
+  EXPECT_CALL(*dispatcher,
+              PrepareRead(::testing::_, ::testing::_, ::testing::_, ::testing::_, ::testing::_))
+      .WillOnce(::testing::Return());
+  io::Connection conn(fds[0], dispatcher, &owner, [](io::Connection&) -> io::ProtocolParserPtr {
+    return std::make_unique<io::TrivialParser>();
+  });
+  connections.Register(conn.Mailbox());
+  connections.SetGatewayId(conn.Mailbox().get(), "gateway-a", event::DELIVERY_MODE_BEST_EFFORT);
+  NodeEventClient client(connections);
+
+  event::EventSubscriptionRequest request;
+  request.set_subscription_id("sub-1");
+  request.set_delivery_mode(event::DELIVERY_MODE_AUTO);
+  absl::Status ready_status = absl::OkStatus();
+  auto subscription = client.Subscribe(
+      request,
+      [&](absl::Status status, event::DeliveryMode /*mode*/) { ready_status = std::move(status); },
+      [](const event::CloudEvent& /*event*/, std::string_view /*token*/) {});
+  conn.Close();
+
+  EXPECT_EQ(ready_status.code(), absl::StatusCode::kUnavailable);
+  close(fds[1]);
 }
 
 TEST(NodeRelayServiceTest, TargetedRelayReachesOnlyTarget) {

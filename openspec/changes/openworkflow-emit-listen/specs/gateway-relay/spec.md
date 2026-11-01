@@ -22,12 +22,12 @@ The v1 gateway relay SHALL rely on the deployment invariant that every gateway i
 
 ### Requirement: Gateway identity handshake
 
-Each gateway SHALL announce a stable identity on every accepted node connection before relay traffic is accepted. The node SHALL record the mapping from gateway identity to that connection and SHALL use it to resolve targeted relay messages. A later handshake for the same identity on the same node SHALL replace the previous mapping deterministically, and the node SHALL NOT deliver the same targeted message to two live connections for the same identity.
+Each gateway SHALL announce a stable identity on every accepted node connection before relay traffic is accepted. The handshake SHALL also carry the strongest delivery mode the gateway's event plane supports, and its presence SHALL tell the node that the gateway has an event plane. The node SHALL record the mapping from gateway identity to that connection and SHALL use it to resolve targeted relay messages. A later handshake for the same identity on the same node SHALL replace the previous mapping deterministically, and the node SHALL NOT deliver the same targeted message to two live connections for the same identity.
 
 #### Scenario: The node learns each gateway identity
 
 - **WHEN** a gateway connects to a node and sends its identity
-- **THEN** the node SHALL associate that identity with the connection
+- **THEN** the node SHALL associate that identity with the connection and learn the gateway's delivery mode
 
 #### Scenario: Targeted relay resolves by identity
 
@@ -38,6 +38,11 @@ Each gateway SHALL announce a stable identity on every accepted node connection 
 
 - **WHEN** the same gateway identity handshakes again on a different connection to the same node
 - **THEN** the node SHALL use the newer mapping for subsequent targeted messages and SHALL NOT duplicate their delivery across both connections
+
+#### Scenario: A gateway without an event plane sends no handshake
+
+- **WHEN** a gateway has no event plane configured
+- **THEN** it SHALL NOT announce an identity, so the node treats the connection as event-incapable
 
 ### Requirement: Opaque peer relay frames
 

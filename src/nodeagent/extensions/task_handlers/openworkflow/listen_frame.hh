@@ -39,6 +39,9 @@ public:
   void Abandon(FrameContext& context) override;
 
   void OnEvent(event::CloudEvent event, std::string token);
+  // An asynchronous subscription failure after it became ready (for example,
+  // the gateway connection was lost). Fails the step with UNAVAILABLE.
+  void OnSubscriptionError(absl::Status status);
   void SetSubscription(EventSubscriptionPtr subscription);
   void SetReady(absl::Status status, event::DeliveryMode mode);
 

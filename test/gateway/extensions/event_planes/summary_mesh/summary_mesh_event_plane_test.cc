@@ -1,10 +1,13 @@
 #include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <span>
 #include <string>
 #include <string_view>
 #include <utility>
 #include <vector>
+
+#include "test/mocks/event/mocks.hh"
 
 #include "absl/status/status.h"
 #include "absl/time/clock.h"
@@ -13,13 +16,14 @@
 #include "common/core/io/tlv_frame.hh"
 #include "common/event/cloudevent.pb.h"
 #include "common/event/event_plane.pb.h"
+#include "gateway/core/gateway_event_edge.hh"
 #include "gateway/extensions/event_planes/summary_mesh/summary_mesh_event_plane.hh"
-#include "nodeagent/core/gateway_connection_pool.hh"
-#include "nodeagent/core/node_relay_service.hh"
 #include "gtest/gtest.h"
+#include "nodeagent/core/gateway_connection_pool.hh"
+#include "nodeagent/core/node_event_client.hh"
+#include "nodeagent/core/node_relay_service.hh"
 #include "strij/extensions/event_plane.hh"
 #include "strij/extensions/gateway_transport.hh"
-#include "test/mocks/event/mocks.hh"
 
 namespace strij::gateway::event_planes {
 namespace {
@@ -95,9 +99,9 @@ protected:
   void SetUp() override {
     dispatcher_ = std::make_shared<event::MockDispatcher>();
     deps_a_ = std::make_unique<extensions::EventPlaneDeps>(*dispatcher_, "gateway-a", transport_a_,
-                                                          host_a_, nullptr);
+                                                           host_a_, nullptr);
     deps_b_ = std::make_unique<extensions::EventPlaneDeps>(*dispatcher_, "gateway-b", transport_b_,
-                                                          host_b_, nullptr);
+                                                           host_b_, nullptr);
     plane_a_ = std::make_unique<SummaryMeshEventPlane>(*deps_a_, 1000, 5000);
     plane_b_ = std::make_unique<SummaryMeshEventPlane>(*deps_b_, 1000, 5000);
     transport_a_.peer = &transport_b_;
@@ -214,7 +218,6 @@ TEST_F(SummaryMeshEventPlaneTest, ExpiredPeerSummaryIsNotUsed) {
   EXPECT_TRUE(transport_a_.sent_targets.empty());
 }
 
-
 TEST_F(SummaryMeshEventPlaneTest, LateSubscriptionMissesAnEarlierEvent) {
   plane_a_->AddSubscription("a", makePattern("order.created"));
 
@@ -227,7 +230,6 @@ TEST_F(SummaryMeshEventPlaneTest, LateSubscriptionMissesAnEarlierEvent) {
   ASSERT_EQ(host_b_.deliveries.size(), 1U);
   EXPECT_EQ(host_b_.deliveries[0].first, "b");
 }
-
 
 class RelayTransport final : public extensions::GatewayTransport {
 public:
@@ -245,9 +247,9 @@ public:
     if (!relay.SerializeToString(&serialized)) {
       return absl::InternalError("failed to serialize relay");
     }
-    const io::TlvFrame frame{
-        .type_id = io::TlvFrame::kPeerRelay,
-        .value = std::as_bytes(std::span(serialized.data(), serialized.size()))};
+    const io::TlvFrame frame{.type_id = io::TlvFrame::kPeerRelay,
+                             .value =
+                                 std::as_bytes(std::span(serialized.data(), serialized.size()))};
     return relay_.HandleFrame(frame, source_);
   }
 
@@ -295,9 +297,21 @@ TEST(SummaryMeshRelayIntegrationTest, DeliversAcrossTwoGatewaysThroughTheRelayNo
   GatewayMailbox gateway_b_mailbox;
   relay_pool.Register(gateway_a_mailbox.mailbox);
   relay_pool.Register(gateway_b_mailbox.mailbox);
-  relay_pool.SetGatewayId(gateway_a_mailbox.mailbox.get(), "gateway-a");
-  relay_pool.SetGatewayId(gateway_b_mailbox.mailbox.get(), "gateway-b");
   nodeagent::NodeRelayService relay(relay_pool);
+
+  const auto announce = [&relay](GatewayMailbox& gateway, std::string gateway_id) {
+    event::GatewayHello hello;
+    hello.set_gateway_id(std::move(gateway_id));
+    hello.set_delivery_mode(event::DELIVERY_MODE_BEST_EFFORT);
+    std::string serialized;
+    ASSERT_TRUE(hello.SerializeToString(&serialized));
+    const io::TlvFrame frame{.type_id = io::TlvFrame::kGatewayHello,
+                             .value =
+                                 std::as_bytes(std::span(serialized.data(), serialized.size()))};
+    ASSERT_TRUE(relay.HandleFrame(frame, *gateway.mailbox).ok());
+  };
+  announce(gateway_a_mailbox, "gateway-a");
+  announce(gateway_b_mailbox, "gateway-b");
 
   event::MockDispatcher dispatcher;
   FakeHost host_a;
@@ -325,6 +339,136 @@ TEST(SummaryMeshRelayIntegrationTest, DeliversAcrossTwoGatewaysThroughTheRelayNo
   ASSERT_EQ(host_a.deliveries.size(), 1U);
   ASSERT_EQ(host_b.deliveries.size(), 1U);
   EXPECT_EQ(host_b.deliveries[0].first, "b");
+}
+
+TEST(SummaryMeshNodeRelayIntegrationTest, EmitAndListenAcrossTwoGatewaysAndNodes) {
+  nodeagent::GatewayConnectionPool relay_pool;
+  GatewayMailbox gateway_a;
+  GatewayMailbox gateway_b;
+  relay_pool.Register(gateway_a.mailbox);
+  relay_pool.Register(gateway_b.mailbox);
+  nodeagent::NodeRelayService relay(relay_pool);
+
+  nodeagent::GatewayConnectionPool node_a_connections;
+  nodeagent::GatewayConnectionPool node_b_connections;
+  node_a_connections.Register(gateway_a.mailbox);
+  node_b_connections.Register(gateway_b.mailbox);
+
+  const auto announce = [&](GatewayMailbox& gateway, std::string gateway_id) {
+    event::GatewayHello hello;
+    hello.set_gateway_id(gateway_id);
+    hello.set_delivery_mode(event::DELIVERY_MODE_BEST_EFFORT);
+    std::string serialized;
+    ASSERT_TRUE(hello.SerializeToString(&serialized));
+    const io::TlvFrame frame{.type_id = io::TlvFrame::kGatewayHello,
+                             .value =
+                                 std::as_bytes(std::span(serialized.data(), serialized.size()))};
+    ASSERT_TRUE(relay.HandleFrame(frame, *gateway.mailbox).ok());
+  };
+  announce(gateway_a, "gateway-a");
+  announce(gateway_b, "gateway-b");
+  node_a_connections.SetGatewayId(gateway_a.mailbox.get(), "gateway-a",
+                                  event::DELIVERY_MODE_BEST_EFFORT);
+  node_b_connections.SetGatewayId(gateway_b.mailbox.get(), "gateway-b",
+                                  event::DELIVERY_MODE_BEST_EFFORT);
+
+  event::MockDispatcher dispatcher_a;
+  event::MockDispatcher dispatcher_b;
+  gateway::GatewayEventEdge edge_a;
+  gateway::GatewayEventEdge edge_b;
+  RelayTransport transport_a(relay, *gateway_a.mailbox);
+  RelayTransport transport_b(relay, *gateway_b.mailbox);
+  extensions::EventPlaneDeps deps_a(dispatcher_a, "gateway-a", transport_a, edge_a, nullptr);
+  extensions::EventPlaneDeps deps_b(dispatcher_b, "gateway-b", transport_b, edge_b, nullptr);
+  SummaryMeshEventPlane plane_a(deps_a, 1000, 5000);
+  SummaryMeshEventPlane plane_b(deps_b, 1000, 5000);
+  edge_a.SetPlane(&plane_a);
+  edge_b.SetPlane(&plane_b);
+
+  nodeagent::NodeEventClient node_a(node_a_connections);
+  nodeagent::NodeEventClient node_b(node_b_connections);
+
+  const auto route = [&](GatewayMailbox& self, gateway::GatewayEventEdge& edge,
+                         RelayTransport& transport, nodeagent::NodeEventClient& node,
+                         std::vector<std::byte> frame) {
+    ASSERT_GE(frame.size(), 5U);
+    const std::size_t length = (std::to_integer<std::size_t>(frame[1]) << 24) |
+                               (std::to_integer<std::size_t>(frame[2]) << 16) |
+                               (std::to_integer<std::size_t>(frame[3]) << 8) |
+                               std::to_integer<std::size_t>(frame[4]);
+    const io::TlvFrame tlv{.type_id = std::to_integer<std::uint8_t>(frame[0]),
+                           .value = std::as_bytes(std::span(frame.data() + 5, length))};
+
+    switch (tlv.type_id) {
+    case io::TlvFrame::kPeerRelay:
+      EXPECT_TRUE(relay.HandleFrame(tlv, *self.mailbox).ok());
+      break;
+    case io::TlvFrame::kPeerRelayDelivery: {
+      event::PeerRelayDelivery delivery;
+      ASSERT_TRUE(delivery.ParseFromArray(reinterpret_cast<const char*>(tlv.value.data()),
+                                          static_cast<int>(tlv.value.size())));
+      edge.Plane()->OnMessage(
+          std::as_bytes(std::span(delivery.payload().data(), delivery.payload().size())));
+      break;
+    }
+    case io::TlvFrame::kEventPublish:
+      EXPECT_TRUE(edge.HandlePublishFrame(tlv).ok());
+      break;
+    case io::TlvFrame::kEventSubscribe:
+      EXPECT_TRUE(edge.HandleSubscribeFrame(tlv, self.mailbox).ok());
+      break;
+    case io::TlvFrame::kEventUnsubscribe:
+      EXPECT_TRUE(edge.HandleUnsubscribeFrame(tlv).ok());
+      break;
+    case io::TlvFrame::kEventAck:
+      EXPECT_TRUE(edge.HandleAckFrame(tlv).ok());
+      break;
+    case io::TlvFrame::kEventDelivery:
+      node.HandleDelivery(tlv);
+      break;
+    case io::TlvFrame::kEventSubscribeResult:
+      node.HandleSubscribeResult(tlv);
+      break;
+    default:
+      break;
+    }
+  };
+  gateway_a.on_frame = [&](std::vector<std::byte> frame) {
+    route(gateway_a, edge_a, transport_a, node_a, std::move(frame));
+  };
+  gateway_b.on_frame = [&](std::vector<std::byte> frame) {
+    route(gateway_b, edge_b, transport_b, node_b, std::move(frame));
+  };
+
+  event::EventSubscriptionRequest request;
+  request.set_subscription_id("sub-1");
+  request.mutable_pattern()->set_type("order.created");
+  request.set_delivery_mode(event::DELIVERY_MODE_AUTO);
+  absl::Status ready_status = absl::InternalError("not called");
+  std::vector<event::CloudEvent> delivered;
+  auto subscription = node_b.Subscribe(
+      request,
+      [&](absl::Status status, event::DeliveryMode /*mode*/) { ready_status = std::move(status); },
+      [&](const event::CloudEvent& event, std::string_view /*token*/) {
+        delivered.push_back(event);
+      });
+  ASSERT_TRUE(ready_status.ok()) << ready_status.message();
+
+  event::CloudEvent event;
+  event.set_specversion("1.0");
+  event.set_id("evt-1");
+  event.set_source("tests");
+  event.set_type("order.created");
+  event.set_subject("orders/1");
+  event.set_data(R"({"id":7})");
+  ASSERT_TRUE(node_a.Publish(event).ok());
+
+  ASSERT_EQ(delivered.size(), 1U);
+  EXPECT_EQ(delivered[0].id(), "evt-1");
+  EXPECT_EQ(delivered[0].source(), "tests");
+  EXPECT_EQ(delivered[0].type(), "order.created");
+  EXPECT_EQ(delivered[0].subject(), "orders/1");
+  EXPECT_EQ(delivered[0].data(), R"({"id":7})");
 }
 
 // NOLINTEND(modernize-use-trailing-return-type)

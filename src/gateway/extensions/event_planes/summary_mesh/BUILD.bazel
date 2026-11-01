@@ -17,6 +17,7 @@ strij_cc_library(
         "//include/strij/extensions:extension_registry_lib",
         "//include/strij/extensions:gateway_transport_interface",
         "//src/common/core/io:periodic_timer_lib",
+        "//src/common/core/logging:log_lib",
         "@abseil-cpp//absl/status",
         "@abseil-cpp//absl/status:statusor",
         "@abseil-cpp//absl/time",

@@ -7,6 +7,8 @@
 #include <string_view>
 #include <vector>
 
+#include "common/event/event_plane.pb.h"
+
 namespace strij::io {
 class OutboundMailbox;
 } // namespace strij::io
@@ -29,17 +31,22 @@ public:
   [[nodiscard]] auto LiveCount() const -> std::size_t;
   // Round-robin over live connections. Null when none are live.
   auto Next() -> io::OutboundMailbox*;
+  // Round-robin over live connections whose gateway announced an event plane.
+  // When `mode` is non-null it reports that gateway's strongest delivery mode.
+  auto NextEventCapable(event::DeliveryMode* mode = nullptr) -> io::OutboundMailbox*;
   // Enqueue `frame` to every live connection except `exclude`.
   void Broadcast(std::span<const std::byte> frame, io::OutboundMailbox* exclude);
-  // Associate a gateway identity with a live connection. A duplicate identity
-  // replaces the previous mapping deterministically.
-  void SetGatewayId(io::OutboundMailbox* mailbox, std::string gateway_id);
+  // Associate a gateway identity (and its event-plane delivery mode) with a
+  // live connection. A duplicate identity replaces the previous mapping.
+  void SetGatewayId(io::OutboundMailbox* mailbox, std::string gateway_id,
+                    event::DeliveryMode delivery_mode = event::DELIVERY_MODE_BEST_EFFORT);
   auto Find(std::string_view gateway_id) -> io::OutboundMailbox*;
 
 private:
   struct Entry {
     std::shared_ptr<io::OutboundMailbox> mailbox_;
     std::string gateway_id_;
+    event::DeliveryMode delivery_mode_{event::DELIVERY_MODE_BEST_EFFORT};
     bool live_{true};
   };
 

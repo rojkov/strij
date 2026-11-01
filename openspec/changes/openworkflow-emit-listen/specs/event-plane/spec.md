@@ -27,7 +27,7 @@ The system SHALL represent workflow events as CloudEvents 1.0. Every event SHALL
 
 ### Requirement: Node-facing event bus
 
-The nodeagent SHALL expose an event bus to task handlers. The bus SHALL provide publish and subscribe operations. A publish SHALL hand a CloudEvent to a live gateway connection and return a status; a publish with no live gateway connection SHALL return a non-Ok status. A subscribe SHALL take a coarse event pattern, a stable subscription identity, and the `auto` delivery mode; it SHALL complete through a ready callback carrying the actual delivery guarantee, or through an error. The returned subscription handle SHALL provide acknowledge, detach, and delete operations. A subscription SHALL NOT be reported ready before the gateway edge has accepted it.
+The nodeagent SHALL expose an event bus to task handlers. The bus SHALL provide publish and subscribe operations. A publish SHALL hand a CloudEvent to a live gateway connection that announced an event plane and return a status; a publish with no live gateway connection SHALL return an unavailable status, and a publish when gateways are live but none announced an event plane SHALL return an unsupported-capability status. A subscribe SHALL take a coarse event pattern, a stable subscription identity, and the `auto` delivery mode; it SHALL complete through a ready callback carrying the actual delivery guarantee, or through an error. The returned subscription handle SHALL provide acknowledge, detach, and delete operations. A subscription SHALL NOT be reported ready before the gateway edge has accepted it.
 
 #### Scenario: Handler publishes an event
 
@@ -37,7 +37,12 @@ The nodeagent SHALL expose an event bus to task handlers. The bus SHALL provide 
 #### Scenario: Publish without a gateway connection fails
 
 - **WHEN** a task handler publishes a CloudEvent and no live gateway connection exists
-- **THEN** the publish SHALL return a non-Ok status and the workflow step SHALL be able to report the failure
+- **THEN** the publish SHALL return an unavailable status and the workflow step SHALL be able to report the failure
+
+#### Scenario: Publish without an event plane fails
+
+- **WHEN** a task handler publishes a CloudEvent and live gateways exist but none has an event plane
+- **THEN** the publish SHALL return an unsupported-capability status and SHALL NOT silently succeed
 
 #### Scenario: Subscribe reports the actual guarantee
 
@@ -49,6 +54,11 @@ The nodeagent SHALL expose an event bus to task handlers. The bus SHALL provide 
 
 - **WHEN** a best-effort subscription acknowledges a delivered event
 - **THEN** the acknowledgement SHALL succeed as a no-op
+
+#### Scenario: An at-least-once acknowledgement reaches the extension
+
+- **WHEN** a subscription with an at-least-once delivery guarantee acknowledges a delivery
+- **THEN** the node SHALL send the opaque token to the gateway edge and the edge SHALL pass it to the event-plane extension's acknowledge operation
 
 ### Requirement: Gateway event edge and subscription lifecycle
 
@@ -63,6 +73,7 @@ The gateway SHALL provide an event edge that maps each accepted subscription ide
 
 - **WHEN** the node connection carrying a subscription is lost
 - **THEN** the gateway edge SHALL detach the subscription
+- **AND** the node event bus SHALL fail the subscription so a waiting listen reports an unavailable status rather than waiting indefinitely
 - **AND** a best-effort event plane SHALL remove it
 - **AND** a durable event plane SHALL preserve its identity and offset until the subscription is deleted or expires
 

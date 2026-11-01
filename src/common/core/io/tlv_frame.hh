@@ -35,6 +35,8 @@ struct TlvFrame {
   static constexpr uint8_t kEventSubscribe = 15;
   static constexpr uint8_t kEventUnsubscribe = 16;
   static constexpr uint8_t kEventDelivery = 17;
+  static constexpr uint8_t kEventAck = 18;
+  static constexpr uint8_t kEventSubscribeResult = 19;
 };
 
 auto SerializeTlvFrame(uint8_t type_id, std::span<const std::byte> value) -> std::vector<std::byte>;
