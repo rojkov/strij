@@ -634,6 +634,34 @@ public:
     return applyNextEffect(owner);
   }
 
+  auto ExecuteEmit(SequenceFrame& /*owner*/, const NamedTask& step, const StepDataValue& /*input*/,
+                   const LexicalScope* /*scope*/) -> absl::Status override {
+    emits_.push_back(step.name_);
+    return absl::OkStatus();
+  }
+
+  auto StartListen(ListenFrame& /*frame*/, const NamedTask& step,
+                   const ::strij::openworkflow::ListenBody& /*body*/,
+                   const StepDataValue& /*input*/, const LexicalScope* /*scope*/)
+      -> absl::Status override {
+    listens_.push_back(step.name_);
+    return absl::OkStatus();
+  }
+
+  auto EvaluateListenFilter(const NamedTask& /*step*/,
+                            const ::strij::openworkflow::EventFilter& /*filter*/,
+                            const event::CloudEvent& /*event*/, const LexicalScope* /*scope*/)
+      -> absl::StatusOr<bool> override {
+    return false;
+  }
+
+  auto EvaluateListenUntil(const NamedTask& /*step*/,
+                           const ::strij::openworkflow::ListenBody& /*body*/,
+                           const std::vector<event::CloudEvent>& /*consumed*/,
+                           const LexicalScope* /*scope*/) -> absl::StatusOr<bool> override {
+    return false;
+  }
+
   auto ExecuteRun(SequenceFrame& owner, const NamedTask& step, const StepDataValue& /*input*/,
                   const LexicalScope* /*scope*/) -> absl::Status override {
     runs_.push_back(step.name_);
@@ -712,6 +740,8 @@ private:
 
   std::deque<Effect> effects_;
   std::vector<std::string> calls_;
+  std::vector<std::string> emits_;
+  std::vector<std::string> listens_;
   std::vector<std::string> runs_;
   std::vector<std::string> forgotten_;
   std::vector<ExportRecord> exports_;

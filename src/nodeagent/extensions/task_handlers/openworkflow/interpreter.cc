@@ -15,15 +15,20 @@
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/escaping.h"
 #include "absl/strings/str_cat.h"
 #include "common/config/extensions.pb.h"
 #include "common/core/utils/jv.hh"
 #include "common/core/utils/task_id.hh"
+#include "common/event/cloudevent.pb.h"
 #include "common/core/utils/task_status.hh"
 #include "common/task/task.pb.h"
+#include "absl/time/clock.h"
+#include "absl/time/time.h"
 #include "nodeagent/extensions/task_handlers/openworkflow/call_strij.hh"
 #include "nodeagent/extensions/task_handlers/openworkflow/errors.hh"
 #include "nodeagent/extensions/task_handlers/openworkflow/expression.hh"
+#include "nodeagent/extensions/task_handlers/openworkflow/listen_frame.hh"
 #include "nodeagent/extensions/task_handlers/openworkflow/run_workflow.hh"
 #include "nodeagent/extensions/task_handlers/openworkflow/step_data_value.hh"
 #include "openworkflow/document.hh"
@@ -38,8 +43,11 @@ namespace strij::nodeagent::task_handlers::openworkflow {
 
 using ::strij::openworkflow::CallBody;
 using ::strij::openworkflow::DoBody;
+using ::strij::openworkflow::EmitBody;
+using ::strij::openworkflow::EventFilter;
 using ::strij::openworkflow::Document;
 using ::strij::openworkflow::ForBody;
+using ::strij::openworkflow::ListenBody;
 using ::strij::openworkflow::ForkBody;
 using ::strij::openworkflow::NamedTask;
 using ::strij::openworkflow::SetBody;
@@ -190,6 +198,18 @@ auto validateTaskSlots(const Task& task, ExpressionEngine& engine,
     if (auto failure = validateSlot(*task.export_->as_, TypedSlot::kTaskExport, engine, locals);
         failure.has_value()) {
       return failure;
+    }
+  }
+
+  if (const auto* emit = std::get_if<EmitBody>(&task.body_);
+      emit != nullptr && emit->event_.with_.data_.has_value()) {
+    std::vector<ExpressionLocal> storage;
+    const absl::Status status =
+        engine.Validate(*emit->event_.with_.data_, validationArguments(locals, storage));
+    if (!status.ok()) {
+      return Failure{.phase_ = Phase::kValidation,
+                     .status_ = task::TASK_STATUS_MALFORMED_REQUEST,
+                     .message_ = std::string(status.message())};
     }
   }
 
@@ -453,6 +473,77 @@ auto validateTask(const NamedTask& named, Scope scope, const Document& document,
     return validateRunBody(named, *run_body, engine, depth);
   }
 
+  if (std::holds_alternative<EmitBody>(task.body_)) {
+    return std::nullopt;
+  }
+
+  if (const auto* listen = std::get_if<ListenBody>(&task.body_)) {
+    if (listen->read_.has_value() && *listen->read_ != "data" && *listen->read_ != "envelope") {
+      return Failure{.phase_ = Phase::kValidation,
+                     .status_ = task::TASK_STATUS_MALFORMED_REQUEST,
+                     .step_ = named.name_,
+                     .message_ = "listen.read must be 'data' or 'envelope'"};
+    }
+
+    if (listen->to_.mode_ == ::strij::openworkflow::EventConsumptionStrategy::Mode::kOne &&
+        listen->to_.filters_.size() != 1) {
+      return Failure{.phase_ = Phase::kValidation,
+                     .status_ = task::TASK_STATUS_MALFORMED_REQUEST,
+                     .step_ = named.name_,
+                     .message_ = "a one listen must declare exactly one filter"};
+    }
+
+    if (listen->to_.mode_ == ::strij::openworkflow::EventConsumptionStrategy::Mode::kAll &&
+        listen->to_.filters_.empty()) {
+      return Failure{.phase_ = Phase::kValidation,
+                     .status_ = task::TASK_STATUS_MALFORMED_REQUEST,
+                     .step_ = named.name_,
+                     .message_ = "an all listen must declare at least one filter"};
+    }
+
+    for (const auto& filter : listen->to_.filters_) {
+      if (!filter.with_.data_.has_value()) {
+        continue;
+      }
+      std::vector<ExpressionLocal> storage;
+      const absl::Status status =
+          engine.Validate(*filter.with_.data_, validationArguments(locals, storage));
+      if (!status.ok()) {
+        return Failure{.phase_ = Phase::kValidation,
+                       .status_ = task::TASK_STATUS_MALFORMED_REQUEST,
+                       .step_ = named.name_,
+                       .message_ = std::string(status.message())};
+      }
+    }
+
+    if (listen->to_.until_.has_value()) {
+      if (!listen->to_.until_->IsString()) {
+        return Failure{.phase_ = Phase::kValidation,
+                       .status_ = task::TASK_STATUS_UNIMPLEMENTED,
+                       .step_ = named.name_,
+                       .message_ = "nested until strategies are not supported yet"};
+      }
+      std::vector<ExpressionLocal> storage;
+      const absl::Status status =
+          engine.Validate(*listen->to_.until_, validationArguments(locals, storage));
+      if (!status.ok()) {
+        return Failure{.phase_ = Phase::kValidation,
+                       .status_ = task::TASK_STATUS_MALFORMED_REQUEST,
+                       .step_ = named.name_,
+                       .message_ = std::string(status.message())};
+      }
+    }
+
+    if (listen->foreach_.has_value()) {
+      return Failure{.phase_ = Phase::kValidation,
+                     .status_ = task::TASK_STATUS_UNIMPLEMENTED,
+                     .step_ = named.name_,
+                     .message_ = "listen.foreach is not supported yet"};
+    }
+
+    return std::nullopt;
+  }
+
   if (!std::holds_alternative<CallBody>(task.body_)) {
     return Failure{.phase_ = Phase::kValidation,
                    .status_ = task::TASK_STATUS_UNIMPLEMENTED,
@@ -562,9 +653,10 @@ auto ValidateDocument(const Document& document, ExpressionEngine& engine)
 WorkflowInterpreter::WorkflowInterpreter(ChildTaskSubmitter& submitter,
                                          config::ExtensionConfig evaluator, std::string parent_id,
                                          Completion on_complete, std::size_t for_iteration_budget,
-                                         NestedWorkflowRunner* runner, std::size_t depth)
-    : submitter_{submitter}, engine_{std::move(evaluator)}, runner_{runner}, depth_{depth},
-      parent_id_{std::move(parent_id)}, on_complete_{std::move(on_complete)},
+                                         NestedWorkflowRunner* runner, std::size_t depth,
+                                         EventBus* event_bus)
+    : submitter_{submitter}, engine_{std::move(evaluator)}, event_bus_{event_bus}, runner_{runner},
+      depth_{depth}, parent_id_{std::move(parent_id)}, on_complete_{std::move(on_complete)},
       for_iteration_budget_{for_iteration_budget} {}
 
 void WorkflowInterpreter::setState(State new_state) {
@@ -1144,6 +1236,252 @@ auto WorkflowInterpreter::ExecuteCall(SequenceFrame& owner, const NamedTask& ste
   }
 
   return absl::OkStatus();
+}
+
+auto WorkflowInterpreter::ExecuteEmit(SequenceFrame& /*owner*/, const NamedTask& step,
+                                      const StepDataValue& input, const LexicalScope* scope)
+    -> absl::Status {
+  if (event_bus_ == nullptr) {
+    return absl::UnimplementedError("the event plane is not configured");
+  }
+
+  const auto& emit_body = std::get<EmitBody>(step.task_.body_);
+  const auto& properties = emit_body.event_.with_;
+
+  event::CloudEvent cloud_event;
+  cloud_event.set_specversion("1.0");
+  cloud_event.set_id(properties.id_.value_or(utils::GenerateTaskId()));
+  cloud_event.set_source(properties.source_.value_or(""));
+  cloud_event.set_type(properties.type_.value_or(""));
+
+  if (properties.subject_.has_value()) {
+    cloud_event.set_subject(*properties.subject_);
+  }
+  cloud_event.set_time(properties.time_.value_or(
+      absl::FormatTime("%Y-%m-%dT%H:%M:%SZ", absl::Now(), absl::UTCTimeZone())));
+  if (properties.datacontenttype_.has_value()) {
+    cloud_event.set_datacontenttype(*properties.datacontenttype_);
+  }
+  if (properties.dataschema_.has_value()) {
+    cloud_event.set_dataschema(*properties.dataschema_);
+  }
+
+  if (properties.data_.has_value()) {
+    const utils::Jv* subject = input.IsJson() ? &input.Json() : nullptr;
+    utils::Jv null_subject;
+    if (subject == nullptr) {
+      auto programs = CollectExpressions(*properties.data_);
+      if (!programs.ok() || !programs->empty()) {
+        return absl::InvalidArgumentError("the event data subject is not JSON");
+      }
+      auto parsed = utils::Jv::Parse("null");
+      if (!parsed.ok()) {
+        return parsed.status();
+      }
+      null_subject = std::move(*parsed);
+      subject = &null_subject;
+    }
+
+    std::vector<ExpressionLocal> locals;
+    auto data = engine_.Evaluate(*properties.data_, *subject,
+                                 lexicalArguments(scope, &context_, locals));
+    if (!data.ok()) {
+      return data.status();
+    }
+    cloud_event.set_data(::strij::openworkflow::ValueToJv(*data).Dump());
+    if (!properties.datacontenttype_.has_value()) {
+      cloud_event.set_datacontenttype("application/json");
+    }
+  }
+
+  return event_bus_->Publish(std::move(cloud_event));
+}
+
+auto WorkflowInterpreter::StartListen(ListenFrame& frame, const NamedTask& step,
+                                       const ListenBody& body, const StepDataValue& /*input*/,
+                                       const LexicalScope* /*scope*/) -> absl::Status {
+  if (event_bus_ == nullptr) {
+    return absl::UnimplementedError("the event plane is not configured");
+  }
+
+  if (body.foreach_.has_value()) {
+    return absl::UnimplementedError("listen.foreach is not supported yet");
+  }
+
+  event::EventSubscriptionRequest request;
+  request.set_subscription_id(
+      absl::StrCat(parent_id_, "/", step.name_, "/", listen_activation_++));
+  request.set_delivery_mode(event::DELIVERY_MODE_AUTO);
+
+  if (!body.to_.filters_.empty()) {
+    const auto& first = body.to_.filters_.front().with_;
+    bool same_type = true;
+    bool same_source = true;
+    for (const auto& filter : body.to_.filters_) {
+      same_type = same_type && filter.with_.type_ == first.type_;
+      same_source = same_source && filter.with_.source_ == first.source_;
+    }
+    if (same_type && first.type_.has_value()) {
+      request.mutable_pattern()->set_type(*first.type_);
+    }
+    if (same_source && first.source_.has_value()) {
+      request.mutable_pattern()->set_source(*first.source_);
+    }
+  }
+
+  auto subscription = event_bus_->Subscribe(
+      request,
+      [&frame](absl::Status status, event::DeliveryMode mode) {
+        frame.SetReady(std::move(status), mode);
+      },
+      [this, &frame](const event::CloudEvent& event, std::string_view token) {
+        frame.OnEvent(event, std::string(token));
+        drive();
+      });
+  frame.SetSubscription(std::move(subscription));
+  return absl::OkStatus();
+}
+
+auto WorkflowInterpreter::EvaluateListenFilter(const NamedTask& /*step*/, const EventFilter& filter,
+                                               const event::CloudEvent& event,
+                                               const LexicalScope* scope)
+    -> absl::StatusOr<bool> {
+  const auto matches = [](const std::optional<std::string>& expected,
+                          const std::string& actual) -> bool {
+    return !expected.has_value() || *expected == actual;
+  };
+
+  if (!matches(filter.with_.id_, event.id()) || !matches(filter.with_.source_, event.source()) ||
+      !matches(filter.with_.type_, event.type()) ||
+      !matches(filter.with_.subject_, event.subject()) ||
+      !matches(filter.with_.time_, event.time()) ||
+      !matches(filter.with_.datacontenttype_, event.datacontenttype()) ||
+      !matches(filter.with_.dataschema_, event.dataschema())) {
+    return false;
+  }
+
+  std::vector<ExpressionLocal> locals;
+  utils::Jv subject = [&]() -> utils::Jv {
+    auto parsed = utils::Jv::Parse(event.data().empty() ? "null" : event.data());
+    if (parsed.ok()) {
+      return std::move(*parsed);
+    }
+    auto fallback = utils::Jv::Parse("null");
+    return fallback.ok() ? std::move(*fallback) : utils::Jv{};
+  }();
+
+  if (filter.with_.data_.has_value()) {
+    auto event_data = utils::Jv::Parse(event.data().empty() ? "null" : event.data());
+    if (!event_data.ok()) {
+      return absl::InvalidArgumentError("the event data is not JSON");
+    }
+
+    auto predicate = engine_.Evaluate(*filter.with_.data_, *event_data,
+                                      lexicalArguments(scope, &context_, locals));
+    if (!predicate.ok()) {
+      return predicate.status();
+    }
+
+    if (predicate->IsBool()) {
+      if (!predicate->AsBool()) {
+        return false;
+      }
+    } else if (predicate->IsObject() &&
+               ::strij::openworkflow::JvToValue(*event_data).IsObject()) {
+      const auto& expected = predicate->AsObject();
+      const auto& actual = ::strij::openworkflow::JvToValue(*event_data).AsObject();
+      for (const auto& [key, value] : expected) {
+        auto found = actual.find(key);
+        if (found == actual.end() || found->second != value) {
+          return false;
+        }
+      }
+    } else {
+      return false;
+    }
+  }
+
+  for (const auto& [attribute, correlation] : filter.correlate_) {
+    auto data_value = engine_.Run(correlation.from_, subject,
+                                  lexicalArguments(scope, &context_, locals));
+    if (!data_value.ok()) {
+      return data_value.status();
+    }
+    auto rendered = RenderScalar(*data_value);
+    if (!rendered.ok()) {
+      return rendered.status();
+    }
+
+    std::string actual;
+    if (attribute == "id") {
+      actual = event.id();
+    } else if (attribute == "source") {
+      actual = event.source();
+    } else if (attribute == "type") {
+      actual = event.type();
+    } else if (attribute == "subject") {
+      actual = event.subject();
+    } else {
+      auto found = event.attributes().find(attribute);
+      if (found == event.attributes().end()) {
+        return false;
+      }
+      actual = found->second;
+    }
+
+    const std::string expected = correlation.expect_.value_or(*rendered);
+    if (actual != expected) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+auto WorkflowInterpreter::EvaluateListenUntil(const NamedTask& /*step*/, const ListenBody& body,
+                                              const std::vector<event::CloudEvent>& consumed,
+                                              const LexicalScope* scope)
+    -> absl::StatusOr<bool> {
+  if (!body.to_.until_.has_value()) {
+    return false;
+  }
+
+  if (!body.to_.until_->IsString()) {
+    return absl::UnimplementedError("nested until strategies are not supported yet");
+  }
+
+  std::string array = "[";
+  for (std::size_t index = 0; index < consumed.size(); ++index) {
+    if (index > 0) {
+      array.push_back(',');
+    }
+    auto parsed = utils::Jv::Parse(consumed[index].data());
+    if (parsed.ok()) {
+      array.append(consumed[index].data());
+    } else {
+      absl::StrAppend(&array, "\"", absl::CEscape(consumed[index].data()), "\"");
+    }
+  }
+  array.push_back(']');
+
+  auto subject = utils::Jv::Parse(array);
+  if (!subject.ok()) {
+    return subject.status();
+  }
+
+  std::vector<ExpressionLocal> locals;
+  auto result = engine_.Run(ExpressionProgram(body.to_.until_->AsString()), *subject,
+                            lexicalArguments(scope, &context_, locals));
+  if (!result.ok()) {
+    return result.status();
+  }
+
+  const auto value = ::strij::openworkflow::JvToValue(*result);
+  if (!value.IsBool()) {
+    return absl::InvalidArgumentError("the until result is not a boolean");
+  }
+
+  return value.AsBool();
 }
 
 auto WorkflowInterpreter::ExecuteRun(SequenceFrame& owner, const NamedTask& step,

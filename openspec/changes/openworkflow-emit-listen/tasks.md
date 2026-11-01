@@ -39,20 +39,20 @@
 
 ## 5. Emit task
 
-- [ ] 5.1 Implement emit property evaluation and CloudEvent defaults (specversion, id, time, JSON datacontenttype), keeping context attributes literal; verify unit tests for defaults, authored values, and data expressions.
-- [ ] 5.2 Implement the publish path, transformed-input raw output, and the `output.as`/`export.as`/`then` pipeline; verify tests cover success, output shaping, export, and a skipped emit.
-- [ ] 5.3 Implement emit validation and failure statuses (`MALFORMED_REQUEST`, `UNAVAILABLE`, `INTERNAL`); verify tests cover a malformed data expression and a publish failure.
-- [ ] 5.4 Verify emit works in a `for` body and a fork branch; add tests for both placements and for the branch contribution to the join.
+- [x] 5.1 Implement emit property evaluation and CloudEvent defaults (specversion, id, time, JSON datacontenttype), keeping context attributes literal; verify unit tests for defaults, authored values, and data expressions.
+- [x] 5.2 Implement the publish path, transformed-input raw output, and the `output.as`/`export.as`/`then` pipeline; verify tests cover success, output shaping, export, and a skipped emit.
+- [x] 5.3 Implement emit validation and failure statuses (`MALFORMED_REQUEST`, `UNAVAILABLE`, `INTERNAL`); verify tests cover a malformed data expression and a publish failure.
+- [x] 5.4 Verify emit works in a `for` body and a fork branch; add tests for both placements and for the branch contribution to the join.
 
 ## 6. Listen task
 
-- [ ] 6.1 Implement subscription creation with the stable subscription id and `auto` mode, readiness handling, and sequence suspension; verify a test subscribes, suspends, and resumes on a delivered event.
-- [ ] 6.2 Implement filter matching, `with.data` predicates, correlation, and acknowledgement of non-matching events; verify tests cover a matching event, a non-matching event, and a correlation match.
+- [x] 6.1 Implement subscription creation with the stable subscription id and `auto` mode, readiness handling, and sequence suspension; verify a test subscribes, suspends, and resumes on a delivered event.
+- [x] 6.2 Implement filter matching, `with.data` predicates, correlation, and acknowledgement of non-matching events; verify tests cover a matching event, a non-matching event, and a correlation match.
 - [ ] 6.3 Implement the `one`, `all`, `any`, and `until` strategies, including the `until` expression and nested-strategy form; verify each strategy with a unit test and check the raw-output ordering.
 - [ ] 6.4 Implement `read: data|envelope`, `foreach` body execution, loop-variable bindings, per-iteration output/export, and the array raw output; verify tests for both read modes and for multiple consumed events.
 - [ ] 6.5 Implement completion, abandonment, and cancellation of listen subscriptions, plus the lost-subscription `UNAVAILABLE` failure; verify tests for normal completion, competing-fork abandonment, and connection loss.
 - [ ] 6.6 Implement listen validation before subscription: filter expressions, `until`, `read`, foreach variable names, and strategy shapes; verify malformed documents fail before any subscribe frame is written.
-- [ ] 6.7 Add duplicate tolerance by `(source, id)` in `ListenFrame`; verify a test delivers the same event twice and processes it once.
+- [x] 6.7 Add duplicate tolerance by `(source, id)` in `ListenFrame`; verify a test delivers the same event twice and processes it once.
 
 ## 7. Limits, observability, and integration
 

@@ -38,11 +38,12 @@ public:
 
 private:
   class Subscription;
+  class SubscriptionHandle;
 
   void removeSubscription(std::string_view subscription_id, bool notify_gateway);
 
   GatewayConnectionPool& connections_;
-  std::unordered_map<std::string, Subscription*> subscriptions_;
+  std::unordered_map<std::string, std::shared_ptr<Subscription>> subscriptions_;
 };
 
 } // namespace strij::nodeagent

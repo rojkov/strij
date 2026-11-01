@@ -10,6 +10,8 @@
 #include <variant>
 #include <vector>
 
+#include "common/event/cloudevent.pb.h"
+
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "common/task/task.pb.h"
@@ -30,6 +32,7 @@ struct ChildOutcome {
   task::TaskStatus status_{task::TASK_STATUS_INTERNAL};
 };
 
+class ListenFrame;
 class SequenceFrame;
 
 // One immutable node in the lexical loop-variable chain. A sequence carries the
@@ -157,6 +160,30 @@ public:
   virtual auto ExecuteCall(SequenceFrame& owner, const ::strij::openworkflow::NamedTask& step,
                            const StepDataValue& input, const LexicalScope* scope)
       -> absl::Status PURE;
+
+  // Publishes one `emit` step's CloudEvent for `owner`. A returned error is the
+  // step's own local failure.
+  virtual auto ExecuteEmit(SequenceFrame& owner, const ::strij::openworkflow::NamedTask& step,
+                           const StepDataValue& input, const LexicalScope* scope)
+      -> absl::Status PURE;
+
+  // Starts one `listen` step's subscription and wires its event callback.
+  virtual auto StartListen(ListenFrame& frame, const ::strij::openworkflow::NamedTask& step,
+                           const ::strij::openworkflow::ListenBody& body,
+                           const StepDataValue& input, const LexicalScope* scope)
+      -> absl::Status PURE;
+
+  // Evaluates one listen filter against a delivered event.
+  virtual auto EvaluateListenFilter(const ::strij::openworkflow::NamedTask& step,
+                                    const ::strij::openworkflow::EventFilter& filter,
+                                    const event::CloudEvent& event, const LexicalScope* scope)
+      -> absl::StatusOr<bool> PURE;
+
+  // Evaluates an `any` strategy's until condition against the consumed events.
+  virtual auto EvaluateListenUntil(const ::strij::openworkflow::NamedTask& step,
+                                   const ::strij::openworkflow::ListenBody& body,
+                                   const std::vector<event::CloudEvent>& consumed,
+                                   const LexicalScope* scope) -> absl::StatusOr<bool> PURE;
 
   // Runs one `run.workflow` step for `owner`. When the step awaits, it suspends
   // the owner under a synthetic child id and starts the nested run; an inline
@@ -310,6 +337,8 @@ private:
                                  FrameContext& context) -> std::optional<FrameResult>;
   [[nodiscard]] auto advanceRun(const ::strij::openworkflow::NamedTask& step,
                                 FrameContext& context) -> std::optional<FrameResult>;
+  [[nodiscard]] auto advanceEmit(const ::strij::openworkflow::NamedTask& step,
+                                 FrameContext& context) -> std::optional<FrameResult>;
   [[nodiscard]] auto advanceContainer(FrameContext& context) -> std::optional<FrameResult>;
   // Applies `output.as` and `export.as` to a completed step's raw output, then
   // the step's flow directive. A returned value is a failure; an `exit`/`end`

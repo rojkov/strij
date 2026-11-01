@@ -58,7 +58,8 @@ public:
   using Completion = std::move_only_function<void(task::TaskResult)>;
 
   NestedWorkflowRunner(ChildTaskSubmitter& submitter, config::ExtensionConfig evaluator,
-                       std::size_t max_depth = kDefaultEmbeddedNestingLimit);
+                       std::size_t max_depth = kDefaultEmbeddedNestingLimit,
+                       EventBus* event_bus = nullptr);
   ~NestedWorkflowRunner();
 
   NestedWorkflowRunner(const NestedWorkflowRunner&) = delete;
@@ -93,6 +94,7 @@ private:
 
   ChildTaskSubmitter& submitter_;
   config::ExtensionConfig evaluator_;
+  EventBus* event_bus_{nullptr};
   std::size_t max_depth_;
   std::map<std::string, NestedRun> runs_;
   std::vector<std::shared_ptr<WorkflowInterpreter>> reaped_;
