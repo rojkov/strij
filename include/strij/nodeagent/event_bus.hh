@@ -6,11 +6,10 @@
 #include <string>
 #include <string_view>
 
-#include "strij/common/pure.hh"
-
 #include "absl/status/status.h"
 #include "common/event/cloudevent.pb.h"
 #include "common/event/event_plane.pb.h"
+#include "strij/common/pure.hh"
 
 namespace strij::nodeagent {
 
@@ -43,6 +42,9 @@ public:
       std::move_only_function<void(absl::Status status, event::DeliveryMode actual_mode)>;
   using EventCallback =
       std::move_only_function<void(const event::CloudEvent& event, std::string_view token)>;
+  // Reports an asynchronous subscription failure after it was reported ready
+  // (for example, the gateway connection carrying it was lost).
+  using ErrorCallback = std::move_only_function<void(absl::Status status)>;
 
   EventBus() = default;
   virtual ~EventBus() = default;
@@ -54,9 +56,12 @@ public:
 
   virtual auto Publish(event::CloudEvent event) -> absl::Status PURE;
   // Returns an immediately usable handle; readiness is reported through
-  // `on_ready`. The bus must invoke `on_ready` exactly once.
+  // `on_ready` only after the gateway edge has accepted the subscription. The
+  // bus must invoke `on_ready` exactly once, and `on_error` at most once for a
+  // subscription that fails after it became ready.
   virtual auto Subscribe(event::EventSubscriptionRequest request, ReadyCallback on_ready,
-                         EventCallback on_event) -> EventSubscriptionPtr PURE;
+                         EventCallback on_event, ErrorCallback on_error = {})
+      -> EventSubscriptionPtr PURE;
 };
 
 } // namespace strij::nodeagent

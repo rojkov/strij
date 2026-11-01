@@ -272,6 +272,53 @@ auto discoverRepeatedEnvFields(google::protobuf::Message* message,
   return absl::OkStatus();
 }
 
+/// Returns whether any environment variable targets a leaf under `descriptor`. Used to
+/// decide whether an absent submessage must be materialized for an env override, without
+/// making every absent message field report presence.
+auto hasEnvOverrideForDescriptor(const google::protobuf::Descriptor* descriptor,
+                                 const std::string& env_prefix, const std::string& upper_prefix)
+    -> bool {
+  for (int i = 0; i < descriptor->field_count(); ++i) {
+    const auto* field = descriptor->field(i);
+    const std::string path =
+        upper_prefix.empty() ? toUpper(field->name()) : upper_prefix + "_" + toUpper(field->name());
+
+    if (field->cpp_type() == google::protobuf::FieldDescriptor::CPPTYPE_MESSAGE) {
+      if (field->is_repeated()) {
+        const auto* sub_descriptor = field->message_type();
+        for (int idx = 0; idx < 16; ++idx) {
+          const std::string idx_prefix = path + "__" + std::to_string(idx) + "__";
+          for (int j = 0; j < sub_descriptor->field_count(); ++j) {
+            const auto* sub_field = sub_descriptor->field(j);
+            if (sub_field->cpp_type() == google::protobuf::FieldDescriptor::CPPTYPE_MESSAGE) {
+              continue;
+            }
+            // NOLINTNEXTLINE(concurrency-mt-unsafe)
+            if (std::getenv(
+                    absl::StrCat(env_prefix, idx_prefix, toUpper(sub_field->name())).c_str()) !=
+                nullptr) {
+              return true;
+            }
+          }
+        }
+        continue;
+      }
+
+      if (hasEnvOverrideForDescriptor(field->message_type(), env_prefix, path)) {
+        return true;
+      }
+      continue;
+    }
+
+    // NOLINTNEXTLINE(concurrency-mt-unsafe)
+    if (std::getenv(absl::StrCat(env_prefix, path).c_str()) != nullptr) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 /// Recursively traverses a protobuf message's fields, discovering and applying environment
 /// variables that match the naming convention (e.g., STRIJ_GATEWAY_FIELD_NAME).
 auto discoverAndApplyEnvVars(google::protobuf::Message* message, const std::string& env_prefix,
@@ -291,6 +338,14 @@ auto discoverAndApplyEnvVars(google::protobuf::Message* message, const std::stri
           return status;
         }
       } else {
+        // Do not materialize an absent submessage just to look for env vars:
+        // that would make a message field report presence even when the
+        // operator never configured it (for example, optional extensions).
+        // Materialize it only when an env override actually targets it.
+        if (!reflection->HasField(*message, field) &&
+            !hasEnvOverrideForDescriptor(field->message_type(), env_prefix, path)) {
+          continue;
+        }
         auto status =
             discoverAndApplyEnvVars(reflection->MutableMessage(message, field), env_prefix, path);
         if (!status.ok()) {

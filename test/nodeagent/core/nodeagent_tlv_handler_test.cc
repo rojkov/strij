@@ -19,6 +19,8 @@
 #include "common/core/io/tlv_frame.hh"
 #include "common/event/event_plane.pb.h"
 #include "common/node/capabilities.pb.h"
+#include "common/task/task.pb.h"
+#include "gtest/gtest.h"
 #include "nodeagent/core/admission_controller.hh"
 #include "nodeagent/core/event_delivery_sink.hh"
 #include "nodeagent/core/gateway_connection_pool.hh"
@@ -27,13 +29,11 @@
 #include "nodeagent/core/nodeagent_tlv_handler.hh"
 #include "nodeagent/core/run_task_service.hh"
 #include "nodeagent/core/task_handler_manager.hh"
-#include "common/task/task.pb.h"
 #include "nodeagent/extensions/schedulers/default/default_local_scheduler.hh"
 #include "nodeagent/extensions/schedulers/push/push_local_scheduler.hh"
+#include "nodeagent/extensions/task_handlers/echo/echo_task_handler.hh"
 #include "strij/extensions/scheduler.hh"
 #include "strij/gateway/result_receiver_storage.hh"
-#include "nodeagent/extensions/task_handlers/echo/echo_task_handler.hh"
-#include "gtest/gtest.h"
 
 namespace strij::nodeagent {
 namespace {
@@ -137,7 +137,8 @@ protected:
     std::vector<NodeagentSchedulerRouter::ChildRoutedScheduler> routed;
     routed.push_back(
         {.scheduler = std::make_unique<nodeagent::schedulers::PushLocalScheduler>(run_task_service),
-         .task_type = "", .local_default = false});
+         .task_type = "",
+         .local_default = false});
     return std::make_unique<NodeagentSchedulerRouter>(std::move(routed));
   }
 
@@ -607,7 +608,6 @@ TEST_F(NodeagentTlvHandlerTest, HandlerWithoutRouterDropsEveryFrame) {
   EXPECT_EQ(ReadWritten(buf), -1);
 }
 
-
 class CapturingDeliverySink final : public EventDeliverySink {
 public:
   void HandleDelivery(const io::TlvFrame& frame) override {
@@ -615,15 +615,23 @@ public:
     type_id = frame.type_id;
   }
 
+  void HandleSubscribeResult(const io::TlvFrame& frame) override {
+    subscribe_result_called = true;
+    subscribe_result_type_id = frame.type_id;
+  }
+
   bool called{false};
   uint8_t type_id{0};
+  bool subscribe_result_called{false};
+  uint8_t subscribe_result_type_id{0};
 };
 
 class NeverCalledScheduler final : public extensions::Scheduler {
 public:
   void Schedule(const task::Task& /*task*/, gateway::ResultReceiverPtr /*receiver*/) override {}
   [[nodiscard]] auto RequiredProtocol() const -> std::string_view override { return {}; }
-  auto HandleFrame(const io::TlvFrame& /*frame*/, io::Connection& /*conn*/) -> absl::Status override {
+  auto HandleFrame(const io::TlvFrame& /*frame*/, io::Connection& /*conn*/)
+      -> absl::Status override {
     called = true;
     return absl::OkStatus();
   }
@@ -641,10 +649,9 @@ TEST_F(NodeagentTlvHandlerTest, EventDeliveryIsRoutedToSinkBeforeScheduler) {
   delivery.set_token("token-1");
   std::string serialized;
   ASSERT_TRUE(delivery.SerializeToString(&serialized));
-  handler.HandleFrame(
-      {.type_id = io::TlvFrame::kEventDelivery,
-       .value = std::as_bytes(std::span(serialized.data(), serialized.size()))},
-      *conn_);
+  handler.HandleFrame({.type_id = io::TlvFrame::kEventDelivery,
+                       .value = std::as_bytes(std::span(serialized.data(), serialized.size()))},
+                      *conn_);
 
   EXPECT_TRUE(sink.called);
   EXPECT_EQ(sink.type_id, io::TlvFrame::kEventDelivery);
@@ -662,10 +669,9 @@ TEST_F(NodeagentTlvHandlerTest, GatewayHelloIsRoutedToRelayService) {
   hello.set_gateway_id("gateway-a");
   std::string serialized;
   ASSERT_TRUE(hello.SerializeToString(&serialized));
-  handler.HandleFrame(
-      {.type_id = io::TlvFrame::kGatewayHello,
-       .value = std::as_bytes(std::span(serialized.data(), serialized.size()))},
-      *conn_);
+  handler.HandleFrame({.type_id = io::TlvFrame::kGatewayHello,
+                       .value = std::as_bytes(std::span(serialized.data(), serialized.size()))},
+                      *conn_);
 
   EXPECT_EQ(pool.Find("gateway-a"), conn_->Mailbox().get());
   EXPECT_FALSE(scheduler.called);

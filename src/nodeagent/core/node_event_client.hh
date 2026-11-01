@@ -31,16 +31,19 @@ public:
 
   auto Publish(event::CloudEvent event) -> absl::Status override;
   auto Subscribe(event::EventSubscriptionRequest request, ReadyCallback on_ready,
-                 EventCallback on_event) -> EventSubscriptionPtr override;
+                 EventCallback on_event, ErrorCallback on_error = {})
+      -> EventSubscriptionPtr override;
 
   // Dispatches an inbound kEventDelivery frame.
   void HandleDelivery(const io::TlvFrame& frame) override;
+  // Dispatches an inbound kEventSubscribeResult frame.
+  void HandleSubscribeResult(const io::TlvFrame& frame) override;
 
 private:
   class Subscription;
   class SubscriptionHandle;
 
-  void removeSubscription(std::string_view subscription_id, bool notify_gateway);
+  void removeSubscription(Subscription& subscription, bool notify_gateway);
 
   GatewayConnectionPool& connections_;
   std::unordered_map<std::string, std::shared_ptr<Subscription>> subscriptions_;

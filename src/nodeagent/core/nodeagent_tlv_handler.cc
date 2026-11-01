@@ -1,9 +1,5 @@
 #include "nodeagent/core/nodeagent_tlv_handler.hh"
 
-#include "nodeagent/core/event_delivery_sink.hh"
-
-#include "nodeagent/core/node_relay_service.hh"
-
 #include <span>
 #include <utility>
 
@@ -12,6 +8,8 @@
 #include "common/core/io/tlv_frame.hh"
 #include "common/core/logging/log.hh"
 #include "common/node/capabilities.pb.h"
+#include "nodeagent/core/event_delivery_sink.hh"
+#include "nodeagent/core/node_relay_service.hh"
 #include "strij/extensions/scheduler.hh"
 
 namespace strij::nodeagent {
@@ -47,6 +45,12 @@ void NodeagentTlvHandler::HandleFrame(io::TlvFrame frame, io::Connection& conn) 
   case io::TlvFrame::kEventDelivery:
     if (delivery_sink_ != nullptr) {
       delivery_sink_->HandleDelivery(frame);
+      return;
+    }
+    break;
+  case io::TlvFrame::kEventSubscribeResult:
+    if (delivery_sink_ != nullptr) {
+      delivery_sink_->HandleSubscribeResult(frame);
       return;
     }
     break;

@@ -242,6 +242,7 @@ strij_cc_library(
     hdrs = ["gateway_connection_pool.hh"],
     visibility = ["//visibility:public"],
     deps = [
+        "//api/common/event:event_plane_cc_proto",
         "//src/common/core/io:outbound_mailbox_lib",
     ],
 )
@@ -257,6 +258,7 @@ strij_cc_library(
         "//src/common/core/io:connection_lib",
         "//src/common/core/io:outbound_mailbox_lib",
         "//src/common/core/io:tlv_frame",
+        "//src/common/core/logging:log_lib",
         "@abseil-cpp//absl/status",
     ],
 )

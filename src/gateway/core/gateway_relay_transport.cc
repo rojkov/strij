@@ -1,11 +1,10 @@
 #include "gateway/core/gateway_relay_transport.hh"
 
-#include <utility>
-
 #include <cstddef>
 #include <span>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include "absl/status/status.h"
@@ -68,6 +67,20 @@ auto GatewayRelayTransport::relay(std::span<const std::string_view> peer_ids,
   return absl::OkStatus();
 }
 
+auto MakeGatewayHelloFrame(std::string_view gateway_id, event::DeliveryMode delivery_mode)
+    -> std::vector<std::byte> {
+  event::GatewayHello hello;
+  hello.set_gateway_id(std::string(gateway_id));
+  hello.set_delivery_mode(delivery_mode);
+
+  std::string serialized;
+  if (!hello.SerializeToString(&serialized)) {
+    return {};
+  }
+
+  return io::SerializeTlvFrame(io::TlvFrame::kGatewayHello, asBytes(serialized));
+}
+
 auto GatewayRelayTransport::HandleFrame(const io::TlvFrame& frame) -> absl::Status {
   if (frame.type_id != io::TlvFrame::kPeerRelayDelivery) {
     return absl::NotFoundError("relay transport does not own this frame type");
@@ -80,7 +93,8 @@ auto GatewayRelayTransport::HandleFrame(const io::TlvFrame& frame) -> absl::Stat
   }
 
   if (receiver_ != nullptr) {
-    receiver_->OnMessage(std::as_bytes(std::span(delivery.payload().data(), delivery.payload().size())));
+    receiver_->OnMessage(
+        std::as_bytes(std::span(delivery.payload().data(), delivery.payload().size())));
   }
 
   return absl::OkStatus();

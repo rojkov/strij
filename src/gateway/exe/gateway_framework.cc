@@ -21,6 +21,7 @@
 #include "common/core/logging/log.hh"
 #include "common/core/logging/logger.hh"
 #include "common/core/utils/task_id.hh"
+#include "common/event/event_plane.pb.h"
 #include "common/loaders/event_plane_loader.hh"
 #include "gateway/core/gateway_event_edge.hh"
 #include "gateway/core/gateway_http_handler.hh"
@@ -124,11 +125,17 @@ auto RunGateway(int argc, char** argv) -> int {
   strij::gateway::SchedulerRouter* scheduler_router_ptr = nullptr;
   strij::gateway::GatewayRelayTransport* relay_transport_ptr = nullptr;
   strij::gateway::GatewayEventEdge* event_edge_ptr = nullptr;
+  std::string gateway_id;
+  strij::event::DeliveryMode delivery_mode = strij::event::DELIVERY_MODE_BEST_EFFORT;
   auto connection_factory = [&storage, &state_tracker, &node_directory_ptr, &scheduler_router_ptr,
-                             &relay_transport_ptr,
-                             &event_edge_ptr](strij::io::Connection& conn)
-      -> strij::io::ProtocolParserPtr {
+                             &relay_transport_ptr, &event_edge_ptr, &gateway_id, &delivery_mode](
+                                strij::io::Connection& conn) -> strij::io::ProtocolParserPtr {
     conn.Mailbox()->SetMaxQueueDepth(1024);
+    // Announce this gateway's identity (and event-plane capability) before any
+    // relay traffic so the node can resolve targeted peer messages.
+    if (!gateway_id.empty()) {
+      conn.Write(strij::gateway::MakeGatewayHelloFrame(gateway_id, delivery_mode));
+    }
     auto handler = std::make_unique<strij::gateway::GatewayTlvHandler>(
         *node_directory_ptr, storage, scheduler_router_ptr, &state_tracker, relay_transport_ptr,
         event_edge_ptr);
@@ -157,13 +164,13 @@ auto RunGateway(int argc, char** argv) -> int {
     relay_transport = std::make_unique<strij::gateway::GatewayRelayTransport>(node_directory);
     event_edge = std::make_unique<strij::gateway::GatewayEventEdge>();
 
-    std::string gateway_id = config.event_plane().gateway_id();
+    gateway_id = config.event_plane().gateway_id();
     if (gateway_id.empty()) {
       gateway_id = "gateway-" + strij::utils::GenerateTaskId();
     }
 
     const strij::extensions::EventPlaneDeps deps(*dispatcher, gateway_id, *relay_transport,
-                                                *event_edge, dispatcher);
+                                                 *event_edge, dispatcher);
     auto plane = strij::loaders::CreateEventPlane(config.event_plane(), factory_context, deps);
     if (!plane.ok()) {
       LOG_ERROR("Event plane config error: {}", plane.status().message());
@@ -171,11 +178,12 @@ auto RunGateway(int argc, char** argv) -> int {
     }
 
     event_plane = std::move(*plane);
+    delivery_mode = event_plane->SupportedDeliveryMode();
     event_edge->SetPlane(event_plane.get());
     relay_transport_ptr = relay_transport.get();
     event_edge_ptr = event_edge.get();
-    LOG_INFO("Event plane '{}' loaded (gateway_id={})",
-             config.event_plane().extension().name(), gateway_id);
+    LOG_INFO("Event plane '{}' loaded (gateway_id={})", config.event_plane().extension().name(),
+             gateway_id);
   }
 
   // Node discovery via extension registry.

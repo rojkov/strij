@@ -80,6 +80,33 @@ void ListenFrame::OnEvent(event::CloudEvent event, std::string token) {
   queued_.push_back(QueuedEvent{.event_ = std::move(event), .token_ = std::move(token)});
 }
 
+void ListenFrame::OnSubscriptionError(absl::Status status) {
+  if (IsTerminal() || !IsActive()) {
+    return;
+  }
+
+  failure_ = ExecutionFailure{.status_ = task::TASK_STATUS_UNAVAILABLE,
+                              .origin_ = nullptr,
+                              .step_ = task_.name_,
+                              .message_ = std::string(status.message()),
+                              .composed_ = false};
+  markFailed();
+}
+
+namespace {
+
+auto isReservedEnvelopeField(std::string_view name) -> bool {
+  for (std::string_view reserved : {"specversion", "id", "source", "type", "subject", "time",
+                                    "datacontenttype", "dataschema", "data"}) {
+    if (name == reserved) {
+      return true;
+    }
+  }
+  return false;
+}
+
+} // namespace
+
 auto ListenFrame::itemBytes(const event::CloudEvent& event) const -> std::string {
   const bool envelope = body_.read_.has_value() && *body_.read_ == "envelope";
   if (!envelope) {
@@ -87,14 +114,41 @@ auto ListenFrame::itemBytes(const event::CloudEvent& event) const -> std::string
   }
 
   std::string json = "{";
-  absl::StrAppend(&json, jsonField("specversion", event.specversion()), ",");
-  absl::StrAppend(&json, jsonField("id", event.id()), ",");
-  absl::StrAppend(&json, jsonField("source", event.source()), ",");
-  absl::StrAppend(&json, jsonField("type", event.type()));
+  bool first = true;
+  const auto field = [&json, &first](std::string_view name, std::string_view value) {
+    if (!first) {
+      json.push_back(',');
+    }
+    first = false;
+    absl::StrAppend(&json, jsonField(name, value));
+  };
+
+  field("specversion", event.specversion());
+  field("id", event.id());
+  field("source", event.source());
+  field("type", event.type());
   if (!event.subject().empty()) {
-    absl::StrAppend(&json, ",", jsonField("subject", event.subject()));
+    field("subject", event.subject());
   }
-  absl::StrAppend(&json, ",\"data\":", jsonValueOrString(event.data()), "}");
+  if (!event.time().empty()) {
+    field("time", event.time());
+  }
+  if (!event.datacontenttype().empty()) {
+    field("datacontenttype", event.datacontenttype());
+  }
+  if (!event.dataschema().empty()) {
+    field("dataschema", event.dataschema());
+  }
+  for (const auto& [name, value] : event.attributes()) {
+    if (!isReservedEnvelopeField(name)) {
+      field(name, value);
+    }
+  }
+
+  if (!first) {
+    json.push_back(',');
+  }
+  absl::StrAppend(&json, "\"data\":", jsonValueOrString(event.data()), "}");
   return json;
 }
 
@@ -177,10 +231,27 @@ auto ListenFrame::fail(task::TaskStatus status, std::string message) -> FrameRes
   return Failed{.failure_ = *failure_};
 }
 
+namespace {
+
+auto listenStatusFromError(const absl::Status& status) -> task::TaskStatus {
+  switch (status.code()) {
+  case absl::StatusCode::kInvalidArgument:
+    return task::TASK_STATUS_MALFORMED_REQUEST;
+  case absl::StatusCode::kUnimplemented:
+    return task::TASK_STATUS_UNIMPLEMENTED;
+  case absl::StatusCode::kUnavailable:
+    return task::TASK_STATUS_UNAVAILABLE;
+  default:
+    return task::TASK_STATUS_INTERNAL;
+  }
+}
+
+} // namespace
+
 auto ListenFrame::start(FrameContext& context) -> std::optional<FrameResult> {
   const absl::Status status = context.StartListen(*this, task_, body_, input_, scope_.get());
   if (!status.ok()) {
-    return fail(task::TASK_STATUS_INTERNAL, std::string(status.message()));
+    return fail(listenStatusFromError(status), std::string(status.message()));
   }
 
   started_ = true;
@@ -200,8 +271,8 @@ auto ListenFrame::process(const QueuedEvent& queued, FrameContext& context)
 
   bool matched = false;
   for (std::size_t index = 0; index < body_.to_.filters_.size(); ++index) {
-    auto match = context.EvaluateListenFilter(task_, body_.to_.filters_[index], queued.event_,
-                                              scope_.get());
+    auto match =
+        context.EvaluateListenFilter(task_, body_.to_.filters_[index], queued.event_, scope_.get());
     if (!match.ok()) {
       if (subscription_ != nullptr) {
         subscription_->Ack(queued.token_);
@@ -339,6 +410,10 @@ auto ListenFrame::Advance(FrameContext& context) -> FrameResult {
   }
 
   if (failure_.has_value()) {
+    if (subscription_ != nullptr) {
+      subscription_->Delete();
+      subscription_.reset();
+    }
     if (IsActive()) {
       markFailed();
     }
@@ -366,7 +441,7 @@ auto ListenFrame::Advance(FrameContext& context) -> FrameResult {
       subscription_->Delete();
       subscription_.reset();
     }
-    return fail(task::TASK_STATUS_UNAVAILABLE, std::string(ready_status_.message()));
+    return fail(listenStatusFromError(ready_status_), std::string(ready_status_.message()));
   }
 
   while (!queued_.empty()) {
@@ -406,8 +481,8 @@ auto ListenFrame::Advance(FrameContext& context) -> FrameResult {
         }
 
         StepDataValue body_output = std::move(std::get<Completed>(result).value_);
-        auto transformed = context.TransformListenForeachOutput(
-            *body_.foreach_, input_, body_output, *foreach_scope_);
+        auto transformed = context.TransformListenForeachOutput(*body_.foreach_, input_,
+                                                                body_output, *foreach_scope_);
         if (!transformed.ok()) {
           foreach_body_.reset();
           foreach_scope_.reset();
@@ -418,8 +493,8 @@ auto ListenFrame::Advance(FrameContext& context) -> FrameResult {
           return fail(task::TASK_STATUS_INTERNAL, std::string(transformed.status().message()));
         }
 
-        const absl::Status exported = context.ExportListenForeach(
-            *body_.foreach_, input_, *transformed, *foreach_scope_);
+        const absl::Status exported =
+            context.ExportListenForeach(*body_.foreach_, input_, *transformed, *foreach_scope_);
         if (!exported.ok()) {
           foreach_body_.reset();
           foreach_scope_.reset();

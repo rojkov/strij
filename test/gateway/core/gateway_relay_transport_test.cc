@@ -54,15 +54,31 @@ auto parseFrame(const std::vector<std::byte>& frame) -> ParsedFrame {
   return parsed;
 }
 
+TEST(GatewayRelayTransportTest, HelloFrameCarriesIdentityAndDeliveryMode) {
+  const std::vector<std::byte> frame =
+      MakeGatewayHelloFrame("gateway-a", event::DELIVERY_MODE_AT_LEAST_ONCE);
+
+  ASSERT_GE(frame.size(), 5U);
+  EXPECT_EQ(std::to_integer<uint8_t>(frame[0]), io::TlvFrame::kGatewayHello);
+  const std::size_t length = (std::to_integer<std::size_t>(frame[1]) << 24) |
+                             (std::to_integer<std::size_t>(frame[2]) << 16) |
+                             (std::to_integer<std::size_t>(frame[3]) << 8) |
+                             std::to_integer<std::size_t>(frame[4]);
+  event::GatewayHello hello;
+  ASSERT_TRUE(hello.ParseFromArray(reinterpret_cast<const char*>(frame.data() + 5),
+                                   static_cast<int>(length)));
+  EXPECT_EQ(hello.gateway_id(), "gateway-a");
+  EXPECT_EQ(hello.delivery_mode(), event::DELIVERY_MODE_AT_LEAST_ONCE);
+}
+
 TEST(GatewayRelayTransportTest, SendCarriesTargetsAndPayload) {
   CapturedMailbox target;
   GatewayRelayTransport transport([&]() -> io::OutboundMailbox* { return target.mailbox.get(); });
 
   const std::string payload = "opaque";
   const std::array<std::string_view, 2> targets{"gateway-b", "gateway-c"};
-  ASSERT_TRUE(transport
-                  .Send(targets, std::as_bytes(std::span(payload.data(), payload.size())))
-                  .ok());
+  ASSERT_TRUE(
+      transport.Send(targets, std::as_bytes(std::span(payload.data(), payload.size()))).ok());
 
   ASSERT_EQ(target.frames.size(), 1U);
   const ParsedFrame frame = parseFrame(target.frames[0]);
@@ -80,8 +96,7 @@ TEST(GatewayRelayTransportTest, BroadcastUsesEmptyTargetList) {
   GatewayRelayTransport transport([&]() -> io::OutboundMailbox* { return target.mailbox.get(); });
 
   const std::string payload = "broadcast";
-  ASSERT_TRUE(
-      transport.Broadcast(std::as_bytes(std::span(payload.data(), payload.size()))).ok());
+  ASSERT_TRUE(transport.Broadcast(std::as_bytes(std::span(payload.data(), payload.size()))).ok());
 
   ASSERT_EQ(target.frames.size(), 1U);
   event::PeerRelay relay;
@@ -96,16 +111,14 @@ TEST(GatewayRelayTransportTest, NoMailboxIsUnavailable) {
   const std::array<std::string_view, 1> targets{"gateway-b"};
   EXPECT_FALSE(
       transport.Send(targets, std::as_bytes(std::span(payload.data(), payload.size()))).ok());
-  EXPECT_FALSE(
-      transport.Broadcast(std::as_bytes(std::span(payload.data(), payload.size()))).ok());
+  EXPECT_FALSE(transport.Broadcast(std::as_bytes(std::span(payload.data(), payload.size()))).ok());
 }
 
 TEST(GatewayRelayTransportTest, OversizedPayloadIsRejected) {
   CapturedMailbox target;
   GatewayRelayTransport transport([&]() -> io::OutboundMailbox* { return target.mailbox.get(); });
   const std::string payload(GatewayRelayTransport::kMaxPayloadSize + 1, 'x');
-  EXPECT_FALSE(
-      transport.Broadcast(std::as_bytes(std::span(payload.data(), payload.size()))).ok());
+  EXPECT_FALSE(transport.Broadcast(std::as_bytes(std::span(payload.data(), payload.size()))).ok());
   EXPECT_TRUE(target.frames.empty());
 }
 

@@ -69,3 +69,14 @@
 - [x] 8.2 Verify the bundled summary mesh reports best-effort through `auto` and rejects an explicit at-least-once request with `UNIMPLEMENTED`; add a test for both outcomes.
 - [x] 8.3 Add a test that reattaches the same stable subscription id and does not create a second independent subscription; verify the fake durable plane observes reattachment.
 - [x] 8.4 Add a follow-up note to `ROADMAP.md` for the v2 durable at-least-once extension (external backbone first, self-hosted replicated log later, lease TTL plus bounded retention); verify the note names the unchanged node edge and interpreter contracts.
+
+## 9. Verification fixes
+
+- [x] 9.1 Send `kGatewayHello` (identity + strongest delivery mode) from the gateway on every node connection; a gateway without an event plane sends no handshake. Verify the handshake frame and the relay integration test resolve gateway ids without seeding the pool directly.
+- [x] 9.2 Make the node event bus capability-aware: publish/subscribe fail with `UNIMPLEMENTED` when live gateways have no event plane, `UNAVAILABLE` when no gateway is live, and use the announced delivery mode. Verify each path with unit tests.
+- [x] 9.3 Defer subscription readiness until the gateway edge accepts it, via `kEventSubscribeResult`, and report the actual delivery mode. Verify the node reports ready only after the result frame and rejects a rejected subscription.
+- [x] 9.4 Watch the gateway connection in the node event bus, fail a ready subscription with `UNAVAILABLE` on connection loss, and delete it. Verify loss before and after readiness plus an interpreter listen failure test.
+- [x] 9.5 Carry acknowledgements end to end with `kEventAck` (node -> gateway edge -> `EventPlane::Ack`) for at-least-once subscriptions. Verify the node emits the frame and the edge forwards the token.
+- [x] 9.6 Emit the full CloudEvent envelope for `read: envelope` (all context attributes and extension attributes) and validate nested `until` strategy shapes before subscribing. Verify both with tests.
+- [x] 9.7 Add the missing emit/listen validation and shaping tests, the node-edge two-gateway/two-node relay integration test, and the gateway `event_plane` present/absent config tests; log relay send/broadcast failures and missing relay targets.
+- [x] 9.8 Preserve config submessage presence when applying env overrides (do not materialize absent optional sections). Verify `event_plane` absence remains distinguishable.

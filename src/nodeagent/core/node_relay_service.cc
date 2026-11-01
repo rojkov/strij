@@ -9,6 +9,7 @@
 #include "absl/status/status.h"
 #include "common/core/io/outbound_mailbox.hh"
 #include "common/core/io/tlv_frame.hh"
+#include "common/core/logging/log.hh"
 #include "common/event/event_plane.pb.h"
 
 namespace strij::nodeagent {
@@ -35,7 +36,7 @@ auto NodeRelayService::HandleFrame(const io::TlvFrame& frame, io::OutboundMailbo
       return absl::InvalidArgumentError("GatewayHello with empty gateway_id");
     }
 
-    connections_.SetGatewayId(&source, hello.gateway_id());
+    connections_.SetGatewayId(&source, hello.gateway_id(), hello.delivery_mode());
     return absl::OkStatus();
   }
   case io::TlvFrame::kPeerRelay: {
@@ -66,7 +67,11 @@ auto NodeRelayService::HandleFrame(const io::TlvFrame& frame, io::OutboundMailbo
 
     for (const std::string& target : relay.target_gateway_ids()) {
       io::OutboundMailbox* mailbox = connections_.Find(target);
-      if (mailbox != nullptr && mailbox != source_mailbox) {
+      if (mailbox == nullptr) {
+        LOG_WARNING("Relay target gateway '{}' has no live connection; dropping that copy", target);
+        continue;
+      }
+      if (mailbox != source_mailbox) {
         mailbox->Enqueue(out);
       }
     }

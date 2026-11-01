@@ -4,9 +4,11 @@
 #include <functional>
 #include <span>
 #include <string_view>
+#include <vector>
 
 #include "absl/status/status.h"
 #include "common/core/io/tlv_frame.hh"
+#include "common/event/event_plane.pb.h"
 #include "strij/extensions/gateway_transport.hh"
 #include "strij/gateway/node_directory.hh"
 
@@ -32,8 +34,8 @@ public:
   GatewayRelayTransport(GatewayRelayTransport&&) noexcept = delete;
   auto operator=(GatewayRelayTransport&&) noexcept -> GatewayRelayTransport& = delete;
 
-  auto Send(std::span<const std::string_view> peer_ids,
-            std::span<const std::byte> payload) -> absl::Status override;
+  auto Send(std::span<const std::string_view> peer_ids, std::span<const std::byte> payload)
+      -> absl::Status override;
   auto Broadcast(std::span<const std::byte> payload) -> absl::Status override;
   // Two-phase wiring: the transport exists before the event-plane extension
   // (the receiver), so the extension attaches itself from its constructor
@@ -56,5 +58,11 @@ private:
   MailboxProvider next_mailbox_;
   extensions::GatewayTransportReceiver* receiver_{nullptr};
 };
+
+// Serializes the identity handshake a gateway writes on every node connection.
+// The delivery mode is the strongest guarantee the gateway's event plane
+// supports; the node uses it to resolve `auto` subscriptions.
+auto MakeGatewayHelloFrame(std::string_view gateway_id, event::DeliveryMode delivery_mode)
+    -> std::vector<std::byte>;
 
 } // namespace strij::gateway

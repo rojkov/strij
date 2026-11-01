@@ -81,8 +81,7 @@ TEST(ListenTest, OneCompletesOnMatchAndAcksNonMatches) {
   ASSERT_EQ(subscription->acked_.size(), 1U);
   EXPECT_EQ(subscription->acked_[0], "t1");
 
-  harness.event_bus_.Deliver("parent/wait/0",
-                             makeEvent("e2", "order.created", R"({"n":1})"), "t2");
+  harness.event_bus_.Deliver("parent/wait/0", makeEvent("e2", "order.created", R"({"n":1})"), "t2");
   ASSERT_EQ(harness.results_.size(), 1U);
   EXPECT_TRUE(utils::IsTaskResultOk(harness.results_[0]));
   EXPECT_EQ(harness.results_[0].body(), R"([{"n":1}])");
@@ -109,12 +108,11 @@ do:
   harness.interpreter_->Start(document, R"({})");
   ASSERT_NE(harness.subscription(), nullptr);
 
-  harness.event_bus_.Deliver("parent/wait/0",
-                             makeEvent("e1", "vitals.temperature", R"({"t":39})"), "t1");
+  harness.event_bus_.Deliver("parent/wait/0", makeEvent("e1", "vitals.temperature", R"({"t":39})"),
+                             "t1");
   EXPECT_TRUE(harness.results_.empty());
 
-  harness.event_bus_.Deliver("parent/wait/0", makeEvent("e2", "vitals.bpm", R"({"b":80})"),
-                             "t2");
+  harness.event_bus_.Deliver("parent/wait/0", makeEvent("e2", "vitals.bpm", R"({"b":80})"), "t2");
   ASSERT_EQ(harness.results_.size(), 1U);
   EXPECT_EQ(harness.results_[0].body(), R"([{"t":39},{"b":80}])");
 }
@@ -152,16 +150,60 @@ TEST(ListenTest, ReadEnvelopeSelectsTheFullEvent) {
   harness.interpreter_->Start(OneDocument("envelope"), R"({})");
   ASSERT_NE(harness.subscription(), nullptr);
 
-  harness.event_bus_.Deliver("parent/wait/0",
-                             makeEvent("e1", "order.created", R"({"n":1})"), "t1");
+  event::CloudEvent event = makeEvent("e1", "order.created", R"({"n":1})");
+  event.set_time("2026-01-01T00:00:00Z");
+  event.set_dataschema("https://example.test/schema");
+  event.set_datacontenttype("application/json");
+  (*event.mutable_attributes())["roomId"] = "r1";
+  (*event.mutable_attributes())["trace"] = "abc";
+  harness.event_bus_.Deliver("parent/wait/0", event, "t1");
 
   ASSERT_EQ(harness.results_.size(), 1U);
   const std::string& body = harness.results_[0].body();
   EXPECT_NE(body.find(R"("id":"e1")"), std::string::npos);
   EXPECT_NE(body.find(R"("type":"order.created")"), std::string::npos);
+  EXPECT_NE(body.find(R"("time":"2026-01-01T00:00:00Z")"), std::string::npos);
+  EXPECT_NE(body.find(R"("dataschema":"https://example.test/schema")"), std::string::npos);
+  EXPECT_NE(body.find(R"("datacontenttype":"application/json")"), std::string::npos);
+  EXPECT_NE(body.find(R"("roomId":"r1")"), std::string::npos);
+  EXPECT_NE(body.find(R"("trace":"abc")"), std::string::npos);
   EXPECT_NE(body.find(R"("data":{"n":1})"), std::string::npos);
 }
 
+TEST(ListenTest, LostSubscriptionFailsWithUnavailable) {
+  Harness harness;
+  harness.interpreter_->Start(OneDocument(), R"({})");
+  ASSERT_NE(harness.subscription(), nullptr);
+
+  harness.event_bus_.DeliverError("parent/wait/0",
+                                  absl::UnavailableError("gateway connection lost"));
+
+  ASSERT_EQ(harness.results_.size(), 1U);
+  EXPECT_EQ(harness.results_[0].status(), task::TASK_STATUS_UNAVAILABLE);
+  EXPECT_TRUE(harness.event_bus_.subscribers_.empty());
+}
+
+TEST(ListenTest, NoEventPlaneListenFailsUnimplemented) {
+  Harness harness;
+  harness.event_bus_.SetReadyStatus(
+      absl::UnimplementedError("the gateway has no event plane configured"));
+  harness.interpreter_->Start(OneDocument(), R"({})");
+
+  ASSERT_EQ(harness.results_.size(), 1U);
+  EXPECT_EQ(harness.results_[0].status(), task::TASK_STATUS_UNIMPLEMENTED);
+  EXPECT_TRUE(harness.event_bus_.subscribers_.empty());
+}
+
+TEST(ListenTest, NoLiveGatewayListenFailsUnavailable) {
+  Harness harness;
+  harness.event_bus_.SetReadyStatus(
+      absl::UnavailableError("no live gateway connection for event subscribe"));
+  harness.interpreter_->Start(OneDocument(), R"({})");
+
+  ASSERT_EQ(harness.results_.size(), 1U);
+  EXPECT_EQ(harness.results_[0].status(), task::TASK_STATUS_UNAVAILABLE);
+  EXPECT_TRUE(harness.event_bus_.subscribers_.empty());
+}
 
 TEST(ListenTest, DataPredicateAndCorrelationAreApplied) {
   Harness harness;
@@ -185,20 +227,20 @@ do:
   harness.interpreter_->Start(document, R"({})");
   ASSERT_NE(harness.subscription(), nullptr);
 
-  event::CloudEvent wrong_room = makeEvent("e1", "vitals.temperature",
-                                           R"({"temperature":39,"roomid":"r1"})");
+  event::CloudEvent wrong_room =
+      makeEvent("e1", "vitals.temperature", R"({"temperature":39,"roomid":"r1"})");
   (*wrong_room.mutable_attributes())["roomId"] = "r2";
   harness.event_bus_.Deliver("parent/wait/0", wrong_room, "t1");
   EXPECT_TRUE(harness.results_.empty());
 
-  event::CloudEvent cold = makeEvent("e2", "vitals.temperature",
-                                     R"({"temperature":37,"roomid":"r1"})");
+  event::CloudEvent cold =
+      makeEvent("e2", "vitals.temperature", R"({"temperature":37,"roomid":"r1"})");
   (*cold.mutable_attributes())["roomId"] = "r1";
   harness.event_bus_.Deliver("parent/wait/0", cold, "t2");
   EXPECT_TRUE(harness.results_.empty());
 
-  event::CloudEvent hot = makeEvent("e3", "vitals.temperature",
-                                    R"({"temperature":39,"roomid":"r1"})");
+  event::CloudEvent hot =
+      makeEvent("e3", "vitals.temperature", R"({"temperature":39,"roomid":"r1"})");
   (*hot.mutable_attributes())["roomId"] = "r1";
   harness.event_bus_.Deliver("parent/wait/0", hot, "t3");
   ASSERT_EQ(harness.results_.size(), 1U);
@@ -233,7 +275,6 @@ do:
   ASSERT_EQ(harness.results_.size(), 1U);
   EXPECT_EQ(harness.results_[0].body(), "[1,1]");
 }
-
 
 TEST(ListenTest, ForeachRunsTheBodyPerConsumedEvent) {
   Harness harness;
@@ -299,7 +340,6 @@ do:
   EXPECT_EQ(harness.results_[0].body(), "[1,2]");
 }
 
-
 TEST(ListenTest, CompetingForkAbandonsTheListenSubscription) {
   Harness harness;
   const std::string document = R"YAML(document:
@@ -344,8 +384,7 @@ TEST(ListenTest, AtLeastOnceModeStillUsesTheAcknowledgementSeam) {
   harness.interpreter_->Start(OneDocument(), R"({})");
   ASSERT_NE(harness.subscription(), nullptr);
 
-  harness.event_bus_.Deliver("parent/wait/0",
-                             makeEvent("e1", "order.created", R"({"n":1})"), "t1");
+  harness.event_bus_.Deliver("parent/wait/0", makeEvent("e1", "order.created", R"({"n":1})"), "t1");
 
   ASSERT_EQ(harness.results_.size(), 1U);
   ASSERT_EQ(harness.event_bus_.acked_tokens_.size(), 1U);
@@ -356,6 +395,104 @@ TEST(ListenTest, AtLeastOnceModeStillUsesTheAcknowledgementSeam) {
 TEST(ListenTest, InvalidReadModeFailsValidation) {
   Harness harness;
   harness.interpreter_->Start(OneDocument("bogus"), R"({})");
+
+  ASSERT_EQ(harness.results_.size(), 1U);
+  EXPECT_EQ(harness.results_[0].status(), task::TASK_STATUS_MALFORMED_REQUEST);
+  EXPECT_TRUE(harness.event_bus_.subscribers_.empty());
+}
+
+TEST(ListenTest, MalformedFilterDataFailsBeforeSubscribing) {
+  Harness harness;
+  const std::string document = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: listen-malformed-filter
+  version: '0.1.0'
+do:
+  - wait:
+      listen:
+        to:
+          one:
+            with:
+              type: tick
+              data: '${ .temperature'
+)YAML";
+  harness.interpreter_->Start(document, R"({})");
+
+  ASSERT_EQ(harness.results_.size(), 1U);
+  EXPECT_EQ(harness.results_[0].status(), task::TASK_STATUS_MALFORMED_REQUEST);
+  EXPECT_TRUE(harness.event_bus_.subscribers_.empty());
+}
+
+TEST(ListenTest, AllRequiresAtLeastOneFilter) {
+  Harness harness;
+  const std::string document = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: listen-empty-all
+  version: '0.1.0'
+do:
+  - wait:
+      listen:
+        to:
+          all: []
+)YAML";
+  harness.interpreter_->Start(document, R"({})");
+
+  ASSERT_EQ(harness.results_.size(), 1U);
+  EXPECT_EQ(harness.results_[0].status(), task::TASK_STATUS_MALFORMED_REQUEST);
+  EXPECT_TRUE(harness.event_bus_.subscribers_.empty());
+}
+
+TEST(ListenTest, InvalidForeachVariablesFailBeforeSubscribing) {
+  Harness harness;
+  const std::string document = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: listen-foreach-names
+  version: '0.1.0'
+do:
+  - wait:
+      listen:
+        to:
+          one:
+            with:
+              type: tick
+      foreach:
+        item: same
+        at: same
+        do:
+          - done:
+              set:
+                value: true
+)YAML";
+  harness.interpreter_->Start(document, R"({})");
+
+  ASSERT_EQ(harness.results_.size(), 1U);
+  EXPECT_EQ(harness.results_[0].status(), task::TASK_STATUS_MALFORMED_REQUEST);
+  EXPECT_TRUE(harness.event_bus_.subscribers_.empty());
+}
+
+TEST(ListenTest, MalformedNestedUntilFailsBeforeSubscribing) {
+  Harness harness;
+  const std::string document = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: listen-bad-until
+  version: '0.1.0'
+do:
+  - wait:
+      listen:
+        to:
+          any:
+            - with:
+                type: tick
+          until:
+            bogus:
+              with:
+                type: stop
+)YAML";
+  harness.interpreter_->Start(document, R"({})");
 
   ASSERT_EQ(harness.results_.size(), 1U);
   EXPECT_EQ(harness.results_[0].status(), task::TASK_STATUS_MALFORMED_REQUEST);
