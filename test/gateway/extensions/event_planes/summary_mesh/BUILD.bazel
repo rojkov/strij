@@ -1,0 +1,17 @@
+load("//bazel:build_system.bzl", "strij_cc_test")
+
+strij_cc_test(
+    name = "summary_mesh_event_plane_test",
+    srcs = ["summary_mesh_event_plane_test.cc"],
+    deps = [
+        "//api/common/event:cloudevent_cc_proto",
+        "//api/common/event:event_plane_cc_proto",
+        "//include/strij/extensions:event_plane_interface",
+        "//include/strij/extensions:gateway_transport_interface",
+        "//src/gateway/extensions/event_planes/summary_mesh:summary_mesh_event_plane_lib",
+        "//test/mocks/event:event_mocks_lib",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/time",
+        "@googletest//:gtest_main",
+    ],
+)
