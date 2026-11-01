@@ -76,8 +76,9 @@ auto ParseEmbeddedDefinition(std::string_view definition) -> absl::StatusOr<Docu
 
 NestedWorkflowRunner::NestedWorkflowRunner(ChildTaskSubmitter& submitter,
                                            config::ExtensionConfig evaluator,
-                                           std::size_t max_depth)
-    : submitter_{submitter}, evaluator_{std::move(evaluator)}, max_depth_{max_depth} {}
+                                           std::size_t max_depth, EventBus* event_bus)
+    : submitter_{submitter}, evaluator_{std::move(evaluator)}, event_bus_{event_bus},
+      max_depth_{max_depth} {}
 
 NestedWorkflowRunner::~NestedWorkflowRunner() = default;
 
@@ -100,7 +101,7 @@ auto NestedWorkflowRunner::Start(std::string definition, std::string_view invoca
 
         finish(key);
       },
-      kDefaultSynchronousIterationBudget, this, depth);
+      kDefaultSynchronousIterationBudget, this, depth, event_bus_);
 
   runs_.insert_or_assign(key, NestedRun{.interpreter_ = interpreter});
   interpreter->Start(std::move(definition), invocation_input);

@@ -75,6 +75,20 @@ private:
   bool removed_{false};
 };
 
+class NodeEventClient::SubscriptionHandle final : public EventSubscription {
+public:
+  explicit SubscriptionHandle(std::shared_ptr<Subscription> subscription)
+      : subscription_{std::move(subscription)} {}
+  ~SubscriptionHandle() override { subscription_->Delete(); }
+
+  void Ack(std::string_view token) override { subscription_->Ack(token); }
+  void Detach() override { subscription_->Detach(); }
+  void Delete() override { subscription_->Delete(); }
+
+private:
+  std::shared_ptr<Subscription> subscription_;
+};
+
 NodeEventClient::~NodeEventClient() = default;
 
 auto NodeEventClient::Publish(event::CloudEvent event) -> absl::Status {
@@ -126,9 +140,9 @@ auto NodeEventClient::Subscribe(event::EventSubscriptionRequest request, ReadyCa
     return std::make_unique<NoopSubscription>();
   }
 
-  auto subscription =
-      std::make_unique<Subscription>(*this, request.subscription_id(), mailbox, std::move(on_event));
-  subscriptions_[request.subscription_id()] = subscription.get();
+  auto subscription = std::make_shared<Subscription>(*this, request.subscription_id(), mailbox,
+                                                     std::move(on_event));
+  subscriptions_[request.subscription_id()] = subscription;
 
   std::string serialized;
   if (!request.SerializeToString(&serialized)) {
@@ -140,7 +154,7 @@ auto NodeEventClient::Subscribe(event::EventSubscriptionRequest request, ReadyCa
 
   mailbox->Enqueue(io::SerializeTlvFrame(io::TlvFrame::kEventSubscribe, asBytes(serialized)));
   std::move(on_ready)(absl::OkStatus(), event::DELIVERY_MODE_BEST_EFFORT);
-  return subscription;
+  return std::make_unique<SubscriptionHandle>(std::move(subscription));
 }
 
 void NodeEventClient::HandleDelivery(const io::TlvFrame& frame) {
@@ -155,7 +169,8 @@ void NodeEventClient::HandleDelivery(const io::TlvFrame& frame) {
     return;
   }
 
-  iter->second->deliver(delivery.event(), delivery.token());
+  std::shared_ptr<Subscription> subscription = iter->second;
+  subscription->deliver(delivery.event(), delivery.token());
 }
 
 void NodeEventClient::removeSubscription(std::string_view subscription_id, bool notify_gateway) {
@@ -164,7 +179,7 @@ void NodeEventClient::removeSubscription(std::string_view subscription_id, bool 
     return;
   }
 
-  Subscription* subscription = iter->second;
+  Subscription* subscription = iter->second.get();
   subscriptions_.erase(iter);
 
   if (!notify_gateway || subscription->mailbox() == nullptr) {
