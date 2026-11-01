@@ -14,6 +14,7 @@
 #include "common/task/task.pb.h"
 #include "gtest/gtest.h"
 #include "nodeagent/extensions/task_handlers/openworkflow/frame.hh"
+#include "nodeagent/extensions/task_handlers/openworkflow/listen_frame.hh"
 #include "openworkflow/document.hh"
 #include "openworkflow/parser/parse.hh"
 #include "openworkflow/task.hh"
@@ -1586,6 +1587,33 @@ TEST(SequenceFrameTest, ARunDispatchFailureFailsTheStep) {
 }
 
 // NOLINTEND(bugprone-unchecked-optional-access)
+
+TEST(ListenFrameBoundTest, PendingQueueDropsBeyondTheLimit) {
+  auto document = ::strij::openworkflow::Parse(R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: listen-bound
+  version: '0.1.0'
+do:
+  - wait:
+      listen:
+        to:
+          one:
+            with:
+              type: tick
+)YAML");
+  ASSERT_TRUE(document.has_value()) << document.error().Message();
+  const NamedTask& task = document->do_[0];
+  const auto& body = std::get<::strij::openworkflow::ListenBody>(task.task_.body_);
+  ListenFrame frame(task, body, nullptr);
+
+  for (int index = 0; index < 1100; ++index) {
+    frame.OnEvent(event::CloudEvent{}, "token");
+  }
+
+  EXPECT_EQ(frame.PendingEventCount(), 1024U);
+}
+
 // NOLINTEND(modernize-use-trailing-return-type)
 
 } // namespace

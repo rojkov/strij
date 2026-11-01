@@ -128,6 +128,7 @@ auto RunGateway(int argc, char** argv) -> int {
                              &relay_transport_ptr,
                              &event_edge_ptr](strij::io::Connection& conn)
       -> strij::io::ProtocolParserPtr {
+    conn.Mailbox()->SetMaxQueueDepth(1024);
     auto handler = std::make_unique<strij::gateway::GatewayTlvHandler>(
         *node_directory_ptr, storage, scheduler_router_ptr, &state_tracker, relay_transport_ptr,
         event_edge_ptr);

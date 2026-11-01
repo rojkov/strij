@@ -9,9 +9,13 @@
 #include "absl/status/status.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
+#include "common/core/io/outbound_mailbox.hh"
+#include "common/core/io/tlv_frame.hh"
 #include "common/event/cloudevent.pb.h"
 #include "common/event/event_plane.pb.h"
 #include "gateway/extensions/event_planes/summary_mesh/summary_mesh_event_plane.hh"
+#include "nodeagent/core/gateway_connection_pool.hh"
+#include "nodeagent/core/node_relay_service.hh"
 #include "gtest/gtest.h"
 #include "strij/extensions/event_plane.hh"
 #include "strij/extensions/gateway_transport.hh"
@@ -222,6 +226,105 @@ TEST_F(SummaryMeshEventPlaneTest, LateSubscriptionMissesAnEarlierEvent) {
 
   ASSERT_EQ(host_b_.deliveries.size(), 1U);
   EXPECT_EQ(host_b_.deliveries[0].first, "b");
+}
+
+
+class RelayTransport final : public extensions::GatewayTransport {
+public:
+  RelayTransport(nodeagent::NodeRelayService& relay, io::OutboundMailbox& source)
+      : relay_{relay}, source_{source} {}
+
+  auto Send(std::span<const std::string_view> peer_ids, std::span<const std::byte> payload)
+      -> absl::Status override {
+    event::PeerRelay relay;
+    for (const std::string_view peer_id : peer_ids) {
+      relay.add_target_gateway_ids(std::string(peer_id));
+    }
+    relay.set_payload(std::string(reinterpret_cast<const char*>(payload.data()), payload.size()));
+    std::string serialized;
+    if (!relay.SerializeToString(&serialized)) {
+      return absl::InternalError("failed to serialize relay");
+    }
+    const io::TlvFrame frame{
+        .type_id = io::TlvFrame::kPeerRelay,
+        .value = std::as_bytes(std::span(serialized.data(), serialized.size()))};
+    return relay_.HandleFrame(frame, source_);
+  }
+
+  auto Broadcast(std::span<const std::byte> payload) -> absl::Status override {
+    return Send({}, payload);
+  }
+
+  void SetReceiver(extensions::GatewayTransportReceiver* new_receiver) override {
+    receiver = new_receiver;
+  }
+
+  [[nodiscard]] auto MaxPayloadSize() const -> std::size_t override { return 1024 * 1024; }
+
+  extensions::GatewayTransportReceiver* receiver{nullptr};
+
+private:
+  nodeagent::NodeRelayService& relay_;
+  io::OutboundMailbox& source_;
+};
+
+struct GatewayMailbox {
+  std::function<void(std::vector<std::byte>)> on_frame;
+  std::shared_ptr<io::OutboundMailbox> mailbox;
+
+  GatewayMailbox() {
+    mailbox = std::make_shared<io::OutboundMailbox>(
+        [this](std::vector<std::byte> frame) { on_frame(std::move(frame)); });
+  }
+};
+
+auto peerRelayPayload(const std::vector<std::byte>& frame) -> std::string {
+  const std::size_t length = (std::to_integer<std::size_t>(frame[1]) << 24) |
+                             (std::to_integer<std::size_t>(frame[2]) << 16) |
+                             (std::to_integer<std::size_t>(frame[3]) << 8) |
+                             std::to_integer<std::size_t>(frame[4]);
+  event::PeerRelayDelivery delivery;
+  delivery.ParseFromArray(reinterpret_cast<const char*>(frame.data() + 5),
+                          static_cast<int>(length));
+  return delivery.payload();
+}
+
+TEST(SummaryMeshRelayIntegrationTest, DeliversAcrossTwoGatewaysThroughTheRelayNode) {
+  nodeagent::GatewayConnectionPool relay_pool;
+  GatewayMailbox gateway_a_mailbox;
+  GatewayMailbox gateway_b_mailbox;
+  relay_pool.Register(gateway_a_mailbox.mailbox);
+  relay_pool.Register(gateway_b_mailbox.mailbox);
+  relay_pool.SetGatewayId(gateway_a_mailbox.mailbox.get(), "gateway-a");
+  relay_pool.SetGatewayId(gateway_b_mailbox.mailbox.get(), "gateway-b");
+  nodeagent::NodeRelayService relay(relay_pool);
+
+  event::MockDispatcher dispatcher;
+  FakeHost host_a;
+  FakeHost host_b;
+  RelayTransport transport_a(relay, *gateway_a_mailbox.mailbox);
+  RelayTransport transport_b(relay, *gateway_b_mailbox.mailbox);
+  extensions::EventPlaneDeps deps_a(dispatcher, "gateway-a", transport_a, host_a, nullptr);
+  extensions::EventPlaneDeps deps_b(dispatcher, "gateway-b", transport_b, host_b, nullptr);
+  SummaryMeshEventPlane plane_a(deps_a, 1000, 5000);
+  SummaryMeshEventPlane plane_b(deps_b, 1000, 5000);
+
+  gateway_a_mailbox.on_frame = [&](const std::vector<std::byte>& frame) {
+    const std::string payload = peerRelayPayload(frame);
+    plane_a.OnMessage(std::as_bytes(std::span(payload.data(), payload.size())));
+  };
+  gateway_b_mailbox.on_frame = [&](const std::vector<std::byte>& frame) {
+    const std::string payload = peerRelayPayload(frame);
+    plane_b.OnMessage(std::as_bytes(std::span(payload.data(), payload.size())));
+  };
+
+  plane_a.AddSubscription("a", makePattern("order.created"));
+  plane_b.AddSubscription("b", makePattern("order.created"));
+  plane_a.Publish(makeEvent("order.created"));
+
+  ASSERT_EQ(host_a.deliveries.size(), 1U);
+  ASSERT_EQ(host_b.deliveries.size(), 1U);
+  EXPECT_EQ(host_b.deliveries[0].first, "b");
 }
 
 // NOLINTEND(modernize-use-trailing-return-type)

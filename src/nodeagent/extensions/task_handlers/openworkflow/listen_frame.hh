@@ -42,6 +42,8 @@ public:
   void SetSubscription(EventSubscriptionPtr subscription);
   void SetReady(absl::Status status, event::DeliveryMode mode);
 
+  [[nodiscard]] auto PendingEventCount() const -> std::size_t { return queued_.size(); }
+
 private:
   struct QueuedEvent {
     event::CloudEvent event_;
