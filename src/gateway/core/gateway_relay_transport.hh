@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstddef>
+#include <functional>
 #include <span>
 #include <string_view>
 
@@ -9,13 +10,21 @@
 #include "strij/extensions/gateway_transport.hh"
 #include "strij/gateway/node_directory.hh"
 
+namespace strij::io {
+class OutboundMailbox;
+} // namespace strij::io
+
 namespace strij::gateway {
 
 // The v1 GatewayTransport: one hop through a live node, which forwards the
 // opaque payload to the target gateway connections.
 class GatewayRelayTransport final : public extensions::GatewayTransport {
 public:
-  explicit GatewayRelayTransport(NodeDirectory& directory) : directory_{directory} {}
+  using MailboxProvider = std::function<io::OutboundMailbox*()>;
+
+  explicit GatewayRelayTransport(NodeDirectory& directory);
+  explicit GatewayRelayTransport(MailboxProvider next_mailbox)
+      : next_mailbox_{std::move(next_mailbox)} {}
   ~GatewayRelayTransport() override = default;
 
   GatewayRelayTransport(const GatewayRelayTransport&) = delete;
@@ -44,7 +53,7 @@ private:
   auto relay(std::span<const std::string_view> peer_ids, std::span<const std::byte> payload)
       -> absl::Status;
 
-  NodeDirectory& directory_;
+  MailboxProvider next_mailbox_;
   extensions::GatewayTransportReceiver* receiver_{nullptr};
 };
 

@@ -1,3 +1,7 @@
+#include <sys/socket.h>
+#include <unistd.h>
+
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -7,7 +11,9 @@
 #include <vector>
 
 #include "absl/status/status.h"
+#include "common/core/io/connection.hh"
 #include "common/core/io/outbound_mailbox.hh"
+#include "common/core/io/protocol_parser.hh"
 #include "common/core/io/tlv_frame.hh"
 #include "common/event/cloudevent.pb.h"
 #include "common/event/event_plane.pb.h"
@@ -15,6 +21,8 @@
 #include "nodeagent/core/gateway_connection_pool.hh"
 #include "nodeagent/core/node_event_client.hh"
 #include "nodeagent/core/node_relay_service.hh"
+#include "test/mocks/common/common_mocks.hh"
+#include "test/mocks/event/mocks.hh"
 
 namespace strij::nodeagent {
 namespace {
@@ -72,6 +80,29 @@ TEST(GatewayConnectionPoolTest, BroadcastExcludesSourceAndTargetsResolve) {
   EXPECT_TRUE(first.frames.empty());
   ASSERT_EQ(second.frames.size(), 1U);
   EXPECT_EQ(second.frames[0], frame);
+}
+
+TEST(GatewayConnectionPoolTest, ClosedConnectionIsPruned) {
+  std::array<int, 2> fds{};
+  ASSERT_EQ(0, socketpair(AF_UNIX, SOCK_STREAM, 0, fds.data()));
+  auto dispatcher = std::make_shared<event::MockDispatcher>();
+  event::DummyOwner owner;
+  EXPECT_CALL(*dispatcher,
+              PrepareRead(::testing::_, ::testing::_, ::testing::_, ::testing::_, ::testing::_))
+      .WillOnce(::testing::Return());
+
+  GatewayConnectionPool pool;
+  {
+    io::Connection conn(
+        fds[0], dispatcher, &owner,
+        [](io::Connection&) -> io::ProtocolParserPtr { return std::make_unique<io::TrivialParser>(); });
+    pool.Register(conn.Mailbox());
+    EXPECT_EQ(pool.LiveCount(), 1U);
+    conn.Close();
+    EXPECT_EQ(pool.LiveCount(), 0U);
+    EXPECT_EQ(pool.Next(), nullptr);
+  }
+  close(fds[1]);
 }
 
 TEST(NodeEventClientTest, PublishSubscribeAndDelivery) {

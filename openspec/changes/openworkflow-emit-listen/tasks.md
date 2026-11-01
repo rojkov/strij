@@ -13,11 +13,11 @@
 ## 2. TLV frames and gateway relay
 
 - [x] 2.1 Add frame constants 11 through 17 to `TlvFrame`; verify a unit test asserts each value and that 0 through 10 are unchanged.
-- [ ] 2.2 Generalize the node's outbound gateway pool into a shared `GatewayConnectionPool` service and make `GatewayClient` a user of it; verify existing child-forward tests still pass and a new test covers pruning a dead connection.
+- [x] 2.2 Generalize the node's outbound gateway pool into a shared `GatewayConnectionPool` service and make `GatewayClient` a user of it; verify existing child-forward tests still pass and a new test covers pruning a dead connection.
 - [x] 2.3 Handle `kGatewayHello` on the node and maintain the gateway-id-to-connection map; verify tests cover identity learning, targeted lookup, and deterministic replacement on a repeated handshake.
 - [x] 2.4 Handle `kPeerRelay` on the node: broadcast with an empty target list, targeted forwarding, source exclusion, missing-target drop, and payload-size rejection; verify each behavior with a unit test.
-- [ ] 2.5 Implement the gateway-side relay transport: choose a live node, write `kPeerRelay`, receive `kPeerRelayDelivery`, and return `Unavailable` when no node is live; verify tests cover successful send, broadcast, no-live-node, and relay-node failure.
-- [ ] 2.6 Add the new frame cases to the gateway and node TLV handlers; verify a test asserts event-plane and relay frames do not reach the scheduler router.
+- [x] 2.5 Implement the gateway-side relay transport: choose a live node, write `kPeerRelay`, receive `kPeerRelayDelivery`, and return `Unavailable` when no node is live; verify tests cover successful send, broadcast, no-live-node, and relay-node failure.
+- [x] 2.6 Add the new frame cases to the gateway and node TLV handlers; verify a test asserts event-plane and relay frames do not reach the scheduler router.
 
 ## 3. Bundled summary-mesh event plane
 

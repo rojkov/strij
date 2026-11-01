@@ -1,5 +1,7 @@
 #include "gateway/core/gateway_relay_transport.hh"
 
+#include <utility>
+
 #include <cstddef>
 #include <span>
 #include <string>
@@ -13,6 +15,15 @@
 #include "gateway/core/node.hh"
 
 namespace strij::gateway {
+
+GatewayRelayTransport::GatewayRelayTransport(NodeDirectory& directory)
+    : next_mailbox_{[&directory]() -> io::OutboundMailbox* {
+        Node* node = directory.GetNextNode();
+        if (node == nullptr || node->GetConnection() == nullptr) {
+          return nullptr;
+        }
+        return node->GetConnection()->Mailbox().get();
+      }} {}
 
 namespace {
 
@@ -37,8 +48,8 @@ auto GatewayRelayTransport::relay(std::span<const std::string_view> peer_ids,
     return absl::InvalidArgumentError("relay payload exceeds the maximum size");
   }
 
-  Node* node = directory_.GetNextNode();
-  if (node == nullptr || node->GetConnection() == nullptr) {
+  io::OutboundMailbox* mailbox = next_mailbox_ ? next_mailbox_() : nullptr;
+  if (mailbox == nullptr) {
     return absl::UnavailableError("no live node available for relay");
   }
 
@@ -53,8 +64,7 @@ auto GatewayRelayTransport::relay(std::span<const std::string_view> peer_ids,
     return absl::InternalError("failed to serialize PeerRelay");
   }
 
-  node->GetConnection()->Mailbox()->Enqueue(
-      io::SerializeTlvFrame(io::TlvFrame::kPeerRelay, asBytes(serialized)));
+  mailbox->Enqueue(io::SerializeTlvFrame(io::TlvFrame::kPeerRelay, asBytes(serialized)));
   return absl::OkStatus();
 }
 
