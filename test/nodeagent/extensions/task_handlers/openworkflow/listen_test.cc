@@ -392,7 +392,6 @@ TEST(ListenTest, AtLeastOnceModeStillUsesTheAcknowledgementSeam) {
   EXPECT_TRUE(harness.event_bus_.subscribers_.empty());
 }
 
-
 TEST(ListenTest, DeferredRejectionResumesTheListen) {
   Harness harness;
   harness.event_bus_.SetDeferReady(true);
@@ -438,6 +437,81 @@ do:
   const std::string& body = harness.results_[0].body();
   EXPECT_NE(body.find(R"("selected":{"n":1})"), std::string::npos);
   EXPECT_NE(body.find(R"("output":{"n":1})"), std::string::npos);
+}
+
+TEST(ListenTest, ForeachAcknowledgesAfterTheIterationCompletes) {
+  Harness harness;
+  const std::string document = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: listen-foreach-ack
+  version: '0.1.0'
+do:
+  - wait:
+      listen:
+        to:
+          one:
+            with:
+              type: tick
+      foreach:
+        item: message
+        do:
+          - fetch:
+              call: strij
+              with:
+                type: echo
+)YAML";
+  harness.interpreter_->Start(document, R"({})");
+  ASSERT_NE(harness.subscription(), nullptr);
+
+  harness.event_bus_.Deliver("parent/wait/0", makeEvent("e1", "tick", "1"), "t1");
+  ASSERT_EQ(harness.submitter_.size(), 1U);
+  EXPECT_TRUE(harness.event_bus_.acked_tokens_.empty());
+
+  test::CompleteSuccess(harness.submitter_, "1");
+  ASSERT_EQ(harness.results_.size(), 1U);
+  ASSERT_EQ(harness.event_bus_.acked_tokens_.size(), 1U);
+  EXPECT_EQ(harness.event_bus_.acked_tokens_[0], "t1");
+}
+
+TEST(ListenTest, OneForeachIgnoresEventsAfterTheFirstMatch) {
+  Harness harness;
+  const std::string document = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: listen-one-foreach-once
+  version: '0.1.0'
+do:
+  - wait:
+      listen:
+        to:
+          one:
+            with:
+              type: tick
+      foreach:
+        item: message
+        do:
+          - fetch:
+              call: strij
+              with:
+                type: echo
+)YAML";
+  harness.interpreter_->Start(document, R"({})");
+  ASSERT_NE(harness.subscription(), nullptr);
+
+  harness.event_bus_.Deliver("parent/wait/0", makeEvent("e1", "tick", "1"), "t1");
+  ASSERT_EQ(harness.submitter_.size(), 1U);
+
+  harness.event_bus_.Deliver("parent/wait/0", makeEvent("e2", "tick", "2"), "t2");
+  EXPECT_TRUE(harness.results_.empty());
+  ASSERT_EQ(harness.event_bus_.acked_tokens_.size(), 1U);
+  EXPECT_EQ(harness.event_bus_.acked_tokens_[0], "t2");
+
+  test::CompleteSuccess(harness.submitter_, "1");
+  ASSERT_EQ(harness.results_.size(), 1U);
+  EXPECT_EQ(harness.results_[0].body(), "[1]");
+  ASSERT_EQ(harness.event_bus_.acked_tokens_.size(), 2U);
+  EXPECT_EQ(harness.event_bus_.acked_tokens_[1], "t1");
 }
 
 TEST(ListenTest, InvalidReadModeFailsValidation) {
