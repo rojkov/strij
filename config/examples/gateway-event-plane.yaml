@@ -8,6 +8,7 @@ node_discovery:
     "@type": "type.googleapis.com/strij.config.StaticNodeDiscoveryConfig"
     addresses:
       - "127.0.0.1:9090"
+      - "127.0.0.1:9091"
 
 # Gateway-to-gateway event plane. Every gateway must be connected to every node
 # (the complete-bipartite v1 invariant). All gateways in a cluster must use the
@@ -23,9 +24,11 @@ event_plane:
 
 schedulers:
   - extension:
-      name: "capability_aware"
+      name: "probe"
       typed_config:
-        "@type": "type.googleapis.com/strij.extensions.schedulers.capability_aware.CapabilityAwareSchedulerConfig"
+        "@type": "type.googleapis.com/strij.extensions.schedulers.probe.ProbeRoleSchedulerConfig"
+        candidate_count: 2
+        probe_deadline_ms: 1000
 
 logging:
   level: "info"
