@@ -189,7 +189,8 @@ auto ListenFrame::startForeachBody(FrameContext& /*context*/) -> std::optional<F
     return std::nullopt;
   }
 
-  event::CloudEvent event = std::move(foreach_pending_.front());
+  event::CloudEvent event = std::move(foreach_pending_.front().event_);
+  const std::string token = std::move(foreach_pending_.front().token_);
   foreach_pending_.pop_front();
   StepDataValue selected = StepDataValue::FromBytes(itemBytes(event));
 
@@ -217,8 +218,16 @@ auto ListenFrame::startForeachBody(FrameContext& /*context*/) -> std::optional<F
   foreach_body_ = std::make_unique<SequenceFrame>(
       body_.foreach_->do_, std::nullopt, kDefaultSynchronousTransitionBudget, foreach_scope_);
   foreach_selected_ = std::move(selected);
+  foreach_token_ = token;
   foreach_body_->Enter(foreach_selected_.Copy());
   return std::nullopt;
+}
+
+void ListenFrame::ackForeachEvent() {
+  if (subscription_ != nullptr && foreach_token_.has_value()) {
+    subscription_->Ack(*foreach_token_);
+  }
+  foreach_token_.reset();
 }
 
 auto ListenFrame::fail(task::TaskStatus status, std::string message) -> FrameResult {
@@ -260,23 +269,33 @@ auto ListenFrame::start(FrameContext& context) -> std::optional<FrameResult> {
 
 auto ListenFrame::process(const QueuedEvent& queued, FrameContext& context)
     -> std::optional<FrameResult> {
-  const std::string key = queued.event_.source() + ":" + queued.event_.id();
-  if (seen_.contains(key)) {
+  const auto ack = [this, &queued]() {
     if (subscription_ != nullptr) {
       subscription_->Ack(queued.token_);
     }
+  };
+
+  const std::string key = queued.event_.source() + ":" + queued.event_.id();
+  if (seen_.contains(key)) {
+    ack();
     return std::nullopt;
   }
   seen_[key] = true;
+
+  // Once the consumption strategy has completed, later deliveries must not
+  // feed another foreach iteration (notably `one`, which stops at the first
+  // matching event). Acknowledge them so a durable plane can advance.
+  if (strategy_complete_) {
+    ack();
+    return std::nullopt;
+  }
 
   bool matched = false;
   for (std::size_t index = 0; index < body_.to_.filters_.size(); ++index) {
     auto match =
         context.EvaluateListenFilter(task_, body_.to_.filters_[index], queued.event_, scope_.get());
     if (!match.ok()) {
-      if (subscription_ != nullptr) {
-        subscription_->Ack(queued.token_);
-      }
+      ack();
       return fail(task::TASK_STATUS_INTERNAL, std::string(match.status().message()));
     }
 
@@ -286,20 +305,18 @@ auto ListenFrame::process(const QueuedEvent& queued, FrameContext& context)
 
     matched = true;
     if (body_.to_.mode_ == EventConsumptionStrategy::Mode::kAll) {
-      all_matches_[index] = queued.event_;
+      all_matches_[index] = queued;
     }
-  }
-
-  if (subscription_ != nullptr) {
-    subscription_->Ack(queued.token_);
   }
 
   if (body_.foreach_.has_value()) {
     switch (body_.to_.mode_) {
     case EventConsumptionStrategy::Mode::kOne:
       if (matched) {
-        foreach_pending_.push_back(queued.event_);
+        foreach_pending_.push_back(queued);
         strategy_complete_ = true;
+      } else {
+        ack();
       }
       break;
     case EventConsumptionStrategy::Mode::kAll: {
@@ -309,6 +326,9 @@ auto ListenFrame::process(const QueuedEvent& queued, FrameContext& context)
           all = false;
           break;
         }
+      }
+      if (!matched) {
+        ack();
       }
       if (all) {
         strategy_complete_ = true;
@@ -322,12 +342,13 @@ auto ListenFrame::process(const QueuedEvent& queued, FrameContext& context)
     case EventConsumptionStrategy::Mode::kAny:
       if (matched) {
         consumed_.push_back(queued.event_);
-        foreach_pending_.push_back(queued.event_);
+        foreach_pending_.push_back(queued);
         if (!body_.to_.until_.has_value()) {
           strategy_complete_ = true;
         } else {
           auto until = context.EvaluateListenUntil(task_, body_, consumed_, scope_.get());
           if (!until.ok()) {
+            ack();
             return fail(task::TASK_STATUS_INTERNAL, std::string(until.status().message()));
           }
           if (*until) {
@@ -339,23 +360,29 @@ auto ListenFrame::process(const QueuedEvent& queued, FrameContext& context)
         candidate.push_back(queued.event_);
         auto until = context.EvaluateListenUntil(task_, body_, candidate, scope_.get());
         if (!until.ok()) {
+          ack();
           return fail(task::TASK_STATUS_INTERNAL, std::string(until.status().message()));
         }
         if (*until) {
           consumed_ = std::move(candidate);
-          foreach_pending_.push_back(queued.event_);
+          foreach_pending_.push_back(queued);
           strategy_complete_ = true;
+        } else {
+          ack();
         }
+      } else {
+        ack();
       }
       break;
     }
     return std::nullopt;
   }
 
+  std::optional<FrameResult> result;
   switch (body_.to_.mode_) {
   case EventConsumptionStrategy::Mode::kOne:
     if (matched) {
-      return completeWith({queued.event_});
+      result = completeWith({queued.event_});
     }
     break;
   case EventConsumptionStrategy::Mode::kAll: {
@@ -366,10 +393,10 @@ auto ListenFrame::process(const QueuedEvent& queued, FrameContext& context)
         all = false;
         break;
       }
-      events.push_back(*slot);
+      events.push_back(slot->event_);
     }
     if (all) {
-      return completeWith(std::move(events));
+      result = completeWith(std::move(events));
     }
     break;
   }
@@ -377,31 +404,34 @@ auto ListenFrame::process(const QueuedEvent& queued, FrameContext& context)
     if (matched) {
       consumed_.push_back(queued.event_);
       if (!body_.to_.until_.has_value()) {
-        return completeWith({queued.event_});
-      }
-
-      auto until = context.EvaluateListenUntil(task_, body_, consumed_, scope_.get());
-      if (!until.ok()) {
-        return fail(task::TASK_STATUS_INTERNAL, std::string(until.status().message()));
-      }
-      if (*until) {
-        return completeWith(consumed_);
+        result = completeWith({queued.event_});
+      } else {
+        auto until = context.EvaluateListenUntil(task_, body_, consumed_, scope_.get());
+        if (!until.ok()) {
+          ack();
+          return fail(task::TASK_STATUS_INTERNAL, std::string(until.status().message()));
+        }
+        if (*until) {
+          result = completeWith(consumed_);
+        }
       }
     } else if (body_.to_.until_.has_value() && !body_.to_.until_->IsString()) {
       std::vector<event::CloudEvent> candidate = consumed_;
       candidate.push_back(queued.event_);
       auto until = context.EvaluateListenUntil(task_, body_, candidate, scope_.get());
       if (!until.ok()) {
+        ack();
         return fail(task::TASK_STATUS_INTERNAL, std::string(until.status().message()));
       }
       if (*until) {
-        return completeWith(std::move(candidate));
+        result = completeWith(std::move(candidate));
       }
     }
     break;
   }
 
-  return std::nullopt;
+  ack();
+  return result;
 }
 
 auto ListenFrame::Advance(FrameContext& context) -> FrameResult {
@@ -464,6 +494,7 @@ auto ListenFrame::Advance(FrameContext& context) -> FrameResult {
           return Suspended{};
         }
         if (auto* ended = std::get_if<Ended>(&result); ended != nullptr) {
+          ackForeachEvent();
           if (subscription_ != nullptr) {
             subscription_->Delete();
             subscription_.reset();
@@ -471,6 +502,7 @@ auto ListenFrame::Advance(FrameContext& context) -> FrameResult {
           return Ended{.value_ = std::move(ended->value_)};
         }
         if (auto* failed = std::get_if<Failed>(&result); failed != nullptr) {
+          ackForeachEvent();
           if (subscription_ != nullptr) {
             subscription_->Delete();
             subscription_.reset();
@@ -484,6 +516,7 @@ auto ListenFrame::Advance(FrameContext& context) -> FrameResult {
         auto transformed = context.TransformListenForeachOutput(*body_.foreach_, foreach_selected_,
                                                                 body_output, *foreach_scope_);
         if (!transformed.ok()) {
+          ackForeachEvent();
           foreach_body_.reset();
           foreach_scope_.reset();
           if (subscription_ != nullptr) {
@@ -493,9 +526,10 @@ auto ListenFrame::Advance(FrameContext& context) -> FrameResult {
           return fail(task::TASK_STATUS_INTERNAL, std::string(transformed.status().message()));
         }
 
-        const absl::Status exported =
-            context.ExportListenForeach(*body_.foreach_, foreach_selected_, *transformed, *foreach_scope_);
+        const absl::Status exported = context.ExportListenForeach(
+            *body_.foreach_, foreach_selected_, *transformed, *foreach_scope_);
         if (!exported.ok()) {
+          ackForeachEvent();
           foreach_body_.reset();
           foreach_scope_.reset();
           if (subscription_ != nullptr) {
@@ -505,6 +539,7 @@ auto ListenFrame::Advance(FrameContext& context) -> FrameResult {
           return fail(task::TASK_STATUS_INTERNAL, std::string(exported.message()));
         }
 
+        ackForeachEvent();
         foreach_results_.push_back(transformed->Bytes());
         foreach_body_.reset();
         foreach_scope_.reset();
@@ -548,6 +583,7 @@ void ListenFrame::Abandon(FrameContext& context) {
     foreach_body_.reset();
   }
 
+  foreach_token_.reset();
   markAbandoned();
 }
 
