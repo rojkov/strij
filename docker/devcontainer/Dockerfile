@@ -27,7 +27,7 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get -y install \
 
 RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
     DEBIAN_FRONTEND=noninteractive apt-get install -y nodejs && \
-    npm install -g opencode-ai @fission-ai/openspec@latest
+    npm install -g @opencode/cli @fission-ai/openspec@latest
 
 RUN ARCH=$(dpkg --print-architecture) && \
     wget -O /tmp/bazelisk.deb https://github.com/bazelbuild/bazelisk/releases/download/v1.29.0/bazelisk-${ARCH}.deb && \
