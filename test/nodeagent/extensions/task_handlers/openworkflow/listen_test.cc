@@ -392,6 +392,54 @@ TEST(ListenTest, AtLeastOnceModeStillUsesTheAcknowledgementSeam) {
   EXPECT_TRUE(harness.event_bus_.subscribers_.empty());
 }
 
+
+TEST(ListenTest, DeferredRejectionResumesTheListen) {
+  Harness harness;
+  harness.event_bus_.SetDeferReady(true);
+  harness.interpreter_->Start(OneDocument(), R"({})");
+  EXPECT_TRUE(harness.results_.empty());
+
+  harness.event_bus_.ResolveSubscription("parent/wait/0",
+                                         absl::UnimplementedError("no event plane"),
+                                         event::DELIVERY_MODE_BEST_EFFORT);
+
+  ASSERT_EQ(harness.results_.size(), 1U);
+  EXPECT_EQ(harness.results_[0].status(), task::TASK_STATUS_UNIMPLEMENTED);
+}
+
+TEST(ListenTest, ForeachOutputUsesTheSelectedEventAsInput) {
+  Harness harness;
+  const std::string document = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: listen-foreach-input
+  version: '0.1.0'
+do:
+  - wait:
+      listen:
+        to:
+          one:
+            with:
+              type: tick
+      foreach:
+        item: message
+        do:
+          - record:
+              set: '${ $message }'
+        output:
+          as: '${ {selected: $input, output: .} }'
+)YAML";
+  harness.interpreter_->Start(document, R"({})");
+  ASSERT_NE(harness.subscription(), nullptr);
+
+  harness.event_bus_.Deliver("parent/wait/0", makeEvent("e1", "tick", R"({"n":1})"), "t1");
+
+  ASSERT_EQ(harness.results_.size(), 1U);
+  const std::string& body = harness.results_[0].body();
+  EXPECT_NE(body.find(R"("selected":{"n":1})"), std::string::npos);
+  EXPECT_NE(body.find(R"("output":{"n":1})"), std::string::npos);
+}
+
 TEST(ListenTest, InvalidReadModeFailsValidation) {
   Harness harness;
   harness.interpreter_->Start(OneDocument("bogus"), R"({})");

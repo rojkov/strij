@@ -481,7 +481,7 @@ auto ListenFrame::Advance(FrameContext& context) -> FrameResult {
         }
 
         StepDataValue body_output = std::move(std::get<Completed>(result).value_);
-        auto transformed = context.TransformListenForeachOutput(*body_.foreach_, input_,
+        auto transformed = context.TransformListenForeachOutput(*body_.foreach_, foreach_selected_,
                                                                 body_output, *foreach_scope_);
         if (!transformed.ok()) {
           foreach_body_.reset();
@@ -494,7 +494,7 @@ auto ListenFrame::Advance(FrameContext& context) -> FrameResult {
         }
 
         const absl::Status exported =
-            context.ExportListenForeach(*body_.foreach_, input_, *transformed, *foreach_scope_);
+            context.ExportListenForeach(*body_.foreach_, foreach_selected_, *transformed, *foreach_scope_);
         if (!exported.ok()) {
           foreach_body_.reset();
           foreach_scope_.reset();

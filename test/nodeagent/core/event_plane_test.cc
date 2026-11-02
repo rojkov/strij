@@ -269,6 +269,31 @@ TEST(NodeEventClientTest, AtLeastOnceSubscriptionAcksWithTheOpaqueToken) {
   EXPECT_EQ(ack.token(), "token-1");
 }
 
+
+TEST(NodeEventClientTest, ExplicitBestEffortOnAtLeastOnceGatewayDoesNotAck) {
+  GatewayConnectionPool connections;
+  CapturedMailbox gateway;
+  connections.Register(gateway.mailbox);
+  connections.SetGatewayId(gateway.mailbox.get(), "gateway-a",
+                           event::DELIVERY_MODE_AT_LEAST_ONCE);
+  NodeEventClient client(connections);
+
+  event::EventSubscriptionRequest request;
+  request.set_subscription_id("sub-1");
+  request.set_delivery_mode(event::DELIVERY_MODE_BEST_EFFORT);
+
+  auto subscription = client.Subscribe(
+      request,
+      [](absl::Status /*status*/, event::DeliveryMode /*mode*/) {},
+      [](const event::CloudEvent& /*event*/, std::string_view /*token*/) {});
+  client.HandleSubscribeResult(
+      makeSubscribeResultFrame("sub-1", true, event::DELIVERY_MODE_BEST_EFFORT));
+
+  const std::size_t before_ack = gateway.frames.size();
+  subscription->Ack("token-1");
+  EXPECT_EQ(gateway.frames.size(), before_ack);
+}
+
 TEST(NodeEventClientTest, RejectedSubscriptionFailsReady) {
   GatewayConnectionPool connections;
   CapturedMailbox gateway;

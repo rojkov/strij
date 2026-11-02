@@ -82,6 +82,7 @@ public:
     }
 
     ready_reported_ = true;
+    mode_ = mode;
     if (on_ready_) {
       on_ready_(std::move(status), mode);
     }

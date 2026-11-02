@@ -1431,8 +1431,8 @@ auto WorkflowInterpreter::StartListen(ListenFrame& frame, const NamedTask& step,
 
   auto subscription = event_bus_->Subscribe(
       request,
-      [&frame, subscription_id = request.subscription_id()](absl::Status status,
-                                                            event::DeliveryMode mode) {
+      [this, &frame, subscription_id = request.subscription_id()](absl::Status status,
+                                                                  event::DeliveryMode mode) {
         if (status.ok()) {
           LOG_INFO("Listen subscription {} ready (mode={})", subscription_id,
                    static_cast<int>(mode));
@@ -1440,6 +1440,7 @@ auto WorkflowInterpreter::StartListen(ListenFrame& frame, const NamedTask& step,
           LOG_WARNING("Listen subscription {} failed: {}", subscription_id, status.message());
         }
         frame.SetReady(std::move(status), mode);
+        drive();
       },
       [this, &frame](const event::CloudEvent& event, std::string_view token) {
         frame.OnEvent(event, std::string(token));
