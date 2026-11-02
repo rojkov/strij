@@ -21,6 +21,19 @@ bazel test //test/nodeagent/extensions/task_handlers/openworkflow:all
 bazel test //test/openworkflow:value_jv_test
 ```
 
+The event-plane coverage lives outside that package:
+
+```bash
+bazel test \
+  //test/common/core/io:event_plane_frames_test \
+  //test/common/core/io:outbound_mailbox_test \
+  //test/common/loaders:event_plane_loader_test \
+  //test/gateway/core:gateway_event_edge_test \
+  //test/gateway/core:gateway_relay_transport_test \
+  //test/gateway/extensions/event_planes/summary_mesh:summary_mesh_event_plane_test \
+  //test/nodeagent/core:event_plane_test
+```
+
 What each target covers:
 
 | Target | Covers |
@@ -33,6 +46,15 @@ What each target covers:
 | `interpreter_test` | The frame tree, resumable step loop, reentrancy, stale results, the validation/execution split, fork entry/join (join-all, compete, nested), fail-fast branch failures, seeding from the invocation body, `if` short-circuiting, the `input.from` pipeline, `for` iteration and loop variables, task/document `output.as`, `export.as` context updates (merge/replace, skipped/failed steps, composite tasks, opaque/non-object failures, and the fork-branch rejection), and the embedded `run.workflow` profile (awaited/detached execution, inline completion, cancellation, abandonment, recursive validation, nesting limits, and unsupported shapes). |
 | `openworkflow_task_handler_test` | The handler/factory, function reference resolution and artifact loading, failure-status classification, connection teardown, and the nested-workflow runner (start/completion, cancel, detached ownership, recursive embedding, depth limit, and detached runs outliving a reaped parent). |
 | `openworkflow_e2e_test` | The full path through the **real** `piped_executable` handler, driving the child process with a mock dispatcher, with the document loaded from a file and input supplied in the body. Includes join-all, competing fork, `input.from` + `if` + `output.as` pipeline scenarios, an `export.as` value read by a later `if` and the document output, a nested `for` that accumulates results across real child processes, and embedded `run.workflow` subflows (awaited input/output shaping, detached continuation, awaited failure propagation, and ignored detached failure). |
+| `emit_test` | CloudEvent construction and defaults, literal context attributes, `data` expression evaluation, publish success and failure, for-body and fork-branch placement, skipped emits, and emit's transformed-input raw output. |
+| `listen_test` | Subscription readiness and suspension, `one`/`all`/`any`, expression and nested `until`, `foreach` with per-iteration output/export, `read: data|envelope`, context/data filters, correlation, acknowledgement of non-matching events, duplicate suppression by `(source, id)`, fork abandonment, cancellation, and at-least-once acknowledgement seams. |
+| `event_plane_frames_test` | CloudEvent, gateway hello, relay, subscription, and delivery protobuf round-trips, plus the append-only event-plane TLV type ids. |
+| `event_plane_test` | The node gateway-connection pool, gateway hello/relay handling, peer relay forwarding (targeted, broadcast, source exclusion, missing targets, size limit), and the node event client (publish, subscribe, inbound delivery, no-gateway failure). |
+| `gateway_relay_transport_test` | The gateway-side relay transport: targeted send, broadcast, no-live-node failure, oversized payload rejection, and inbound relay delivery. |
+| `gateway_event_edge_test` | Event-plane edge lifecycle: subscribe/attach, publish forwarding, delivery framing, unsubscribe, connection-close detach, no-plane rejection, and stable-id reattachment. |
+| `summary_mesh_event_plane_test` | Summary computation and routing, local and peer delivery, match-all, epoch ordering, TTL expiry, late-subscription misses, and the two-gateway relay-node integration path. |
+| `event_plane_loader_test` | `GatewayConfig.event_plane` resolution: a valid `summary_mesh` config, an unknown extension, and a bad typed config. |
+| `outbound_mailbox_test` | The outbound write queue, including the queue-depth probe and drop bound used for event/relay backpressure. |
 
 `openworkflow_e2e_test` includes `ScriptedTwoStepWorkflowChainsChildOutputs`,
 which runs the exact two-step workflow in section 3 through `piped_executable`
@@ -863,7 +885,157 @@ the interpreter first, so the response may vary.
 - **Empty competing fork.** A fork with `compete: true` and `branches: []` is
   rejected by validation before any child is submitted (HTTP `400`).
 
-## 5. Failure responses
+## 5. Manual Emit and Listen
+
+Emit and listen use the gateway event plane. The v1 bundled plane is
+`summary_mesh`: best-effort, at-most-once, and ephemeral. Start the listener
+before the emitter, because an event published before the listener subscribes is
+lost. In a multi-gateway deployment every gateway must use the same
+`event_plane` extension, and the v1 relay assumes every gateway is connected to
+every node.
+
+Start the nodeagent as in section 3, and start the gateway with the event-plane
+example:
+
+```bash
+./bazel-bin/src/gateway/exe/gateway --config_file=config/examples/gateway-event-plane.yaml
+```
+
+The event-plane section in that example selects `summary_mesh` and gives the
+gateway an identity:
+
+```yaml
+event_plane:
+  extension:
+    name: "summary_mesh"
+    typed_config:
+      "@type": "type.googleapis.com/strij.extensions.event_planes.summary_mesh.SummaryMeshConfig"
+      refresh_interval_ms: 1000
+      peer_ttl_ms: 5000
+  gateway_id: "gateway-a"
+```
+
+### 5.1 Listen
+
+A listen workflow's HTTP request stays open until the consumption strategy
+completes. Save this listener, submit it, and leave the request running:
+
+```bash
+cat > /tmp/openworkflow-listen.yaml <<'EOF'
+document:
+  dsl: '1.0.3'
+  namespace: docs
+  name: listen-order
+  version: '0.1.0'
+do:
+  - wait:
+      listen:
+        to:
+          one:
+            with:
+              type: com.example.order.created
+      output:
+        as: '${ .[0] }'
+EOF
+
+curl -sS -X POST http://127.0.0.1:8081/tasks/openworkflow \
+  -H 'x-strij-function: /tmp/openworkflow-listen.yaml' \
+  --data-binary ''
+```
+
+The listen step's raw output is an array of consumed items in arrival order
+(`all` orders them by filter declaration). `read` defaults to `data`, so each
+item is the event's `data` payload; `${ .[0] }` extracts the first item for this
+`one` example. Use `read: envelope` to consume the full CloudEvent instead.
+
+### 5.2 Emit
+
+In a second terminal, submit a workflow whose `emit` publishes the matching
+event. The invocation body is the workflow's input; emit's raw output is that
+transformed input, so this emitter returns `{"ok":true}`:
+
+```bash
+cat > /tmp/openworkflow-emit.yaml <<'EOF'
+document:
+  dsl: '1.0.3'
+  namespace: docs
+  name: emit-order
+  version: '0.1.0'
+do:
+  - publish:
+      emit:
+        event:
+          with:
+            source: https://example.test/docs
+            type: com.example.order.created
+            data:
+              orderId: 7
+              customer: alice
+EOF
+
+curl -sS -X POST http://127.0.0.1:8081/tasks/openworkflow \
+  -H 'content-type: application/json' \
+  -H 'x-strij-function: /tmp/openworkflow-emit.yaml' \
+  --data-binary '{"ok":true}'
+```
+
+The listener's blocked request then returns:
+
+```json
+{"orderId":7,"customer":"alice"}
+```
+
+Emit supplies the CloudEvents defaults the document omits: `specversion` is
+`1.0`, `id` is generated, `time` is the emission time, and JSON `data` gets
+`datacontenttype: application/json`. `source`, `type`, `subject`, `time`,
+`datacontenttype`, and `dataschema` are literal strings; only the `data` value is
+evaluated as a strict-mode value tree.
+
+### 5.3 Filters, strategies, and foreach
+
+A listener filter may match context attributes and event data, and may correlate
+an event attribute with the data:
+
+```yaml
+      listen:
+        to:
+          one:
+            with:
+              type: com.example.order.created
+              data: '${ .orderId == 7 }'
+            correlate:
+              roomId:
+                from: .roomId
+```
+
+- `all` waits for at least one event per declared filter and returns the
+  consumed events in filter declaration order.
+- `any` completes on the first matching event, or, with `until`, keeps consuming
+  until an expression over the accumulated array is true or a nested strategy
+  such as `until: { one: { with: { type: ... } } }` matches. Nested strategies
+  are supported for type/source filters.
+- `foreach` runs its `do` body once per consumed event, binds `item`/`at`
+  (defaults `item`/`index`), and applies `output.as`/`export.as` per iteration.
+  The listen task's raw output is the array of iteration results.
+- Events that match the subscription but fail the full filter are acknowledged
+  and skipped. Duplicate `(source, id)` deliveries are processed once.
+
+### 5.4 Best-effort behavior and failures
+
+The v1 plane has no retention or replay. A listener that subscribes after an
+event is emitted misses it; a peer or node failure can drop events; there is no
+cross-publisher ordering guarantee. Use the event plane for smoke tests and
+workflows that tolerate best-effort delivery; the durable at-least-once plane is
+a follow-up.
+
+If `GatewayConfig.event_plane` is absent, the gateway rejects event-plane
+operations. The bundled gateway binary already links the `summary_mesh`
+extension; a custom gateway must add
+`//src/gateway/extensions/event_planes/summary_mesh:summary_mesh_event_plane_lib`
+to its extension list. Emit and listen are not available without an event plane.
+
+## 6. Failure responses
+
 
 Workflow failures ride the final `TaskResult.status`, and the gateway maps it to
 an HTTP status:
@@ -902,7 +1074,7 @@ curl -sS -o /dev/null -w '%{http_code}\n' -X POST http://127.0.0.1:8081/tasks/op
 # 501
 ```
 
-## 6. Notes and troubleshooting
+## 7. Notes and troubleshooting
 
 - **The definition is a function artifact.** The nodeagent loads the workflow
   document from the path named by the task's `function` parameter (populated
@@ -950,3 +1122,8 @@ curl -sS -o /dev/null -w '%{http_code}\n' -X POST http://127.0.0.1:8081/tasks/op
   nodeagent, add `//src/common/extensions/evaluators/jq:jq_evaluator_lib` to its
   extensions. Otherwise every step fails with
   `Evaluator 'jq' is not registered. Registered: ` (HTTP 400).
+
+- **Emit and listen need the event plane.** Start the gateway with
+  `config/examples/gateway-event-plane.yaml` (or configure `event_plane`
+  yourself). The v1 `summary_mesh` plane is best-effort, so start listeners
+  before emitters; see section 5.
