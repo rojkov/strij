@@ -4,6 +4,7 @@ llvm-project-build
 toolchain/clang
 toolchain/abs_path.bzl
 hacks
+.opencode
 
 # Nested external-module smoke-test workspace output
 test/consumer/bazel-*
