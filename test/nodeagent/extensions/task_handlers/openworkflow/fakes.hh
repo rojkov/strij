@@ -139,6 +139,7 @@ public:
   struct Subscriber {
     event::EventSubscriptionRequest request_;
     FakeSubscription* subscription_{nullptr};
+    ReadyCallback on_ready_;
     EventCallback on_event_;
     ErrorCallback on_error_;
   };
@@ -157,13 +158,17 @@ public:
     auto subscription = std::make_unique<FakeSubscription>(*this, id);
     subscribers_[id] = std::make_shared<Subscriber>(Subscriber{.request_ = std::move(request),
                                                                .subscription_ = subscription.get(),
+                                                               .on_ready_ = std::move(on_ready),
                                                                .on_event_ = std::move(on_event),
                                                                .on_error_ = std::move(on_error)});
-    if (!ready_status_.ok()) {
-      std::move(on_ready)(ready_status_, delivery_mode_);
+    if (defer_ready_) {
       return subscription;
     }
-    std::move(on_ready)(absl::OkStatus(), delivery_mode_);
+
+    auto subscriber = subscribers_.at(id);
+    const absl::Status ready_status =
+        ready_status_.ok() ? absl::OkStatus() : ready_status_;
+    std::move(subscriber->on_ready_)(ready_status, delivery_mode_);
     return subscription;
   }
 
@@ -193,6 +198,19 @@ public:
   void SetPublishStatus(absl::Status status) { publish_status_ = std::move(status); }
   void SetReadyStatus(absl::Status status) { ready_status_ = std::move(status); }
   void SetDeliveryMode(event::DeliveryMode mode) { delivery_mode_ = mode; }
+  void SetDeferReady(bool defer_ready) { defer_ready_ = defer_ready; }
+
+  void ResolveSubscription(std::string_view subscription_id, absl::Status status,
+                           event::DeliveryMode mode) {
+    auto iter = subscribers_.find(std::string(subscription_id));
+    if (iter == subscribers_.end()) {
+      return;
+    }
+    std::shared_ptr<Subscriber> subscriber = iter->second;
+    if (subscriber->on_ready_) {
+      std::move(subscriber->on_ready_)(std::move(status), mode);
+    }
+  }
 
   std::vector<event::CloudEvent> published_;
   std::vector<std::string> acked_tokens_;
@@ -202,6 +220,7 @@ private:
   absl::Status publish_status_;
   absl::Status ready_status_;
   event::DeliveryMode delivery_mode_{event::DELIVERY_MODE_BEST_EFFORT};
+  bool defer_ready_{false};
 };
 
 // The bundled jq evaluator selection used by the tests.
