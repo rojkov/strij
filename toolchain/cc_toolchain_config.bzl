@@ -2,7 +2,7 @@ load("@bazel_tools//tools/build_defs/cc:action_names.bzl", "ACTION_NAMES")
 load("@bazel_tools//tools/cpp:cc_toolchain_config_lib.bzl", "feature", "flag_group", "flag_set", "tool_path")
 load("@rules_cc//cc/common:cc_common.bzl", "cc_common")
 load("@rules_cc//cc/toolchains:cc_toolchain_config_info.bzl", "CcToolchainConfigInfo")
-load("//toolchain:abs_path.bzl", "module_abs_path")
+load("//toolchain:abs_path.bzl", "clang_abs_path")
 
 all_link_actions = [
     ACTION_NAMES.cpp_link_executable,
@@ -11,11 +11,11 @@ all_link_actions = [
 ]
 
 def _impl(ctx):
-    clang_path = module_abs_path + "/toolchain/clang"
+    clang_path = clang_abs_path
     tool_paths = [
         tool_path(
             name = "gcc",  # Compiler is referenced by the name "gcc" for historic reasons.
-            path = clang_path + "/bin/clang++",
+            path = clang_path + "/bin/clang",
         ),
         tool_path(
             name = "ld",
@@ -49,7 +49,7 @@ def _impl(ctx):
 
     features = [
         feature(
-            name = "default_compiler_flags",
+            name = "libstdcxx",
             enabled = True,
             flag_sets = [
                 flag_set(
@@ -57,7 +57,17 @@ def _impl(ctx):
                     flag_groups = ([
                         flag_group(
                             flags = [
-                                "-stdlib=libc++",
+                                "-stdlib=libstdc++",
+                            ],
+                        ),
+                    ]),
+                ),
+                flag_set(
+                    actions = all_link_actions,
+                    flag_groups = ([
+                        flag_group(
+                            flags = [
+                                "-lstdc++",
                             ],
                         ),
                     ]),
@@ -70,19 +80,9 @@ def _impl(ctx):
             flag_sets = [
                 flag_set(
                     actions = all_link_actions,
-                    flag_groups = ([
-                        flag_group(
-                            flags = [
-                                "-fuse-ld=lld",
-                                "-lc++",
-                            ],
-                        ),
-                        # Make libc++ runtime available when running tests.
-                        flag_group(
-                            expand_if_true = "is_cc_test",
-                            flags = ["-Wl,-rpath=" + clang_path + "/lib/x86_64-unknown-linux-gnu"],
-                        ),
-                    ]),
+                    flag_groups = [
+                        flag_group(flags = ["-fuse-ld=lld"]),
+                    ],
                 ),
             ],
         ),
@@ -147,11 +147,12 @@ def _impl(ctx):
         ctx = ctx,
         features = features,
         cxx_builtin_include_directories = [
-            clang_path + "/include/x86_64-unknown-linux-gnu/c++/v1",
-            clang_path + "/include/c++/v1",
+            clang_path + "/lib/clang/23/include",
             clang_path + "/lib/clang/22/include",
+            "/usr/include/x86_64-linux-gnu",
             "/usr/include",
             # Needed for ASAN's asan_ignorelist.txt
+            clang_path + "/lib/clang/23/share",
             clang_path + "/lib/clang/22/share",
         ],
         toolchain_identifier = "k8-clang-toolchain",

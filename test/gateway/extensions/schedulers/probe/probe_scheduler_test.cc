@@ -72,17 +72,25 @@ struct Written {
   std::vector<std::byte> bytes;
 };
 
+struct ParsedFrame {
+  uint8_t type_id;
+  std::vector<std::byte> value;
+};
+
 // Extracts the single TLV frame carried by one Write() submission.
-auto SingleFrame(const std::vector<std::byte>& bytes) -> io::TlvFrame {
-  std::vector<io::TlvFrame> out;
-  io::TlvParser parser([&out](io::TlvFrame frame) { out.push_back(std::move(frame)); });
+auto SingleFrame(const std::vector<std::byte>& bytes) -> ParsedFrame {
+  ParsedFrame out{};
+  io::TlvParser parser([&out](io::TlvFrame frame) {
+    out.type_id = frame.type_id;
+    out.value.assign(frame.value.begin(), frame.value.end());
+  });
   auto buffer = parser.GetReadBuffer();
   std::memcpy(buffer.data(), bytes.data(), bytes.size());
   parser.OnData(bytes.size());
-  return out.front();
+  return out;
 }
 
-auto ProbeId(const io::TlvFrame& frame) -> std::string {
+auto ProbeId(const ParsedFrame& frame) -> std::string {
   task::TaskProbe probe;
   probe.ParseFromArray(std::bit_cast<const char*>(frame.value.data()),
                        static_cast<int>(frame.value.size()));
@@ -192,7 +200,7 @@ TEST_F(ProbeSchedulerTest, ProbeCarriesTaskDeps) {
   scheduler.Schedule(task, std::move(receiver.first));
 
   ASSERT_EQ(writes.size(), 1U);
-  const io::TlvFrame frame = SingleFrame(writes[0].bytes);
+  const auto frame = SingleFrame(writes[0].bytes);
   EXPECT_EQ(frame.type_id, io::TlvFrame::kTaskProbe);
 
   task::TaskProbe probe;
@@ -216,7 +224,7 @@ TEST_F(ProbeSchedulerTest, ClampsCandidatesToAvailableNodes) {
   scheduler.Schedule(MakeTask("1", "echo"), std::move(receiver.first));
 
   ASSERT_EQ(writes.size(), 1U);
-  const io::TlvFrame frame = SingleFrame(writes[0].bytes);
+  const auto frame = SingleFrame(writes[0].bytes);
   EXPECT_EQ(frame.type_id, io::TlvFrame::kTaskProbe);
   EXPECT_EQ(ProbeId(frame), "1");
   EXPECT_EQ(storage_.Get("1"), nullptr);

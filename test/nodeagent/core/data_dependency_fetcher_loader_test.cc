@@ -60,10 +60,8 @@ TEST_F(DataDependencyFetcherLoaderTest, BuildInstantiatesFetcherFromConfig) {
                            const nodeagent::DataDependencyFetcherDeps& /*deps*/) {
         return std::move(fetcher);
       });
-  // The singleton registry owns the factory for the program lifetime.
-  ::testing::Mock::AllowLeak(factory.get());
   extensions::Registry<nodeagent::DataDependencyFetcherFactory>::instance().RegisterFactory(
-      "mock_fetcher", factory.release());
+      "mock_fetcher", std::move(factory));
 
   ::google::protobuf::RepeatedPtrField<config::ExtensionConfig> configs;
   auto* ext = configs.Add();
@@ -96,9 +94,8 @@ TEST_F(DataDependencyFetcherLoaderTest, DuplicateSchemeAcrossFetchersFailsRouter
                   .Times(0);
               return fetcher;
             });
-    ::testing::Mock::AllowLeak(factory.get());
     extensions::Registry<nodeagent::DataDependencyFetcherFactory>::instance().RegisterFactory(
-        name, factory.release());
+        name, std::move(factory));
   };
   register_factory("dup_fetcher_a");
   register_factory("dup_fetcher_b");

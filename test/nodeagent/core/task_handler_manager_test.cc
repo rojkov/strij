@@ -19,10 +19,21 @@
 namespace strij::nodeagent {
 namespace {
 
-using ::testing::_;
-using ::testing::Return;
-
 // NOLINTBEGIN(modernize-use-trailing-return-type)
+
+class StubTaskHandlerFactory final : public TaskHandlerFactory {
+public:
+  auto Name() const -> std::string override { return "mock"; }
+
+  auto CreateEmptyConfigProto() -> MessagePtr override {
+    return std::make_unique<extensions::task_handlers::echo::EchoTaskHandlerConfig>();
+  }
+
+  auto Create(const ::google::protobuf::Message& /*config*/,
+              const TaskHandlerDeps& /*deps*/) -> TaskHandlerPtr override {
+    return std::make_unique<extensions::MockTaskHandler>();
+  }
+};
 
 TEST(TaskHandlerManagerTest, GetHandlerReturnsRegisteredHandler) {
   TaskHandlerManager manager;
@@ -78,16 +89,8 @@ TEST_F(TaskHandlerManagerLoaderTest, UnknownHandlerNameReturnsError) {
 }
 
 TEST_F(TaskHandlerManagerLoaderTest, BuildInstantiatesHandlerFromConfig) {
-  auto factory = std::make_unique<extensions::MockTaskHandlerFactory>();
-  EXPECT_CALL(*factory, Name()).WillRepeatedly(Return("mock"));
-  EXPECT_CALL(*factory, CreateEmptyConfigProto())
-      .WillOnce(Return(std::make_unique<extensions::task_handlers::echo::EchoTaskHandlerConfig>()));
-  EXPECT_CALL(*factory, Create(_, _))
-      .WillOnce(Return(std::make_unique<extensions::MockTaskHandler>()));
-  // The singleton registry owns the factory for the program lifetime.
-  ::testing::Mock::AllowLeak(factory.get());
   extensions::Registry<nodeagent::TaskHandlerFactory>::instance().RegisterFactory(
-      "mock", factory.release());
+      "mock", std::make_unique<StubTaskHandlerFactory>());
 
   TaskHandlerManager manager;
   ::google::protobuf::RepeatedPtrField<config::ExtensionConfig> configs;

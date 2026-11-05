@@ -36,19 +36,29 @@ By default the host compiler is used which is *gcc* usually. If you want to buil
 with the custom local *clang* toolchain add the following option to your build command:
 `--extra_toolchains=//toolchain:cc_toolchain_for_linux_x86_64` or edit `.bazelrc`.
 
-But first you need to get the toolchain. Two options:
+But first you need to get the toolchain. Options:
 
   1. unpack a binary distribution of clang and llvm tools to `./toolchain/clang`;
-  2. clone the sources of the LLVM project somewhere and enter:
+  2. build LLVM from source by cloning the LLVM project and running:
 
 ```bash
 $ make llvm-toolchain LLVM_PROJECT_PATH=/path/to/repo/with/llvm-project
 ```
 
+  3. install LLVM 23 from the official apt.llvm.org repository (the GitHub Actions
+     ASan/TSan setup) on Ubuntu 24.04:
+
+```bash
+$ curl --fail --location https://apt.llvm.org/llvm.sh --output /tmp/llvm.sh
+$ sudo bash /tmp/llvm.sh 23 all
+$ ln -s /usr/lib/llvm-23 toolchain/clang
+```
+
 By default `LLVM_PROJECT_PATH` is set to `/path/to/this/repo/../llvm-project`.
 
 With the clang toolchain available you can run tests with address and thread
-sanitizers enabled:
+sanitizers enabled. These targets set the sanitizer symbolizer path automatically:
+they use libc++ with Clang.
 
 ```bash
 $ make test_asan

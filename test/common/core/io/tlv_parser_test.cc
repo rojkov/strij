@@ -1,6 +1,7 @@
 #include <arpa/inet.h>
 
 #include <array>
+#include <cstdint>
 #include <cstring>
 #include <vector>
 
@@ -24,8 +25,16 @@ auto make_wire_frame(uint8_t type, std::span<const std::byte> value) -> std::vec
 
 class TlvParserTest : public ::testing::Test {
 protected:
-  std::vector<TlvFrame> received_;
-  TlvParser parser_{[this](TlvFrame frame) -> void { received_.push_back(frame); }};
+  struct ReceivedFrame {
+    uint8_t type_id;
+    std::vector<std::byte> value;
+  };
+
+  std::vector<ReceivedFrame> received_;
+  TlvParser parser_{[this](TlvFrame frame) -> void {
+    received_.push_back({.type_id = frame.type_id,
+                         .value = std::vector<std::byte>(frame.value.begin(), frame.value.end())});
+  }};
 
   void feed(std::span<const std::byte> data) {
     size_t offset = 0;

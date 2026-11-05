@@ -60,7 +60,7 @@ public:
                       nodeagent::AdmissionControllerSharedPtr admission,
                       nodeagent::DataDependencyFetcherRouter& router, event::Dispatcher& dispatcher,
                       size_t queue_capacity, size_t max_concurrent_preallocations);
-  ~ProbeLocalScheduler() override = default;
+  ~ProbeLocalScheduler() override;
 
   ProbeLocalScheduler(const ProbeLocalScheduler&) = delete;
   auto operator=(const ProbeLocalScheduler&) -> ProbeLocalScheduler& = delete;

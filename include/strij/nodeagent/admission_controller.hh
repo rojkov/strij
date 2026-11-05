@@ -39,9 +39,9 @@ public:
 
   // Registers `observer` to receive CAPACITY_RELEASED commands (a pure wakeup,
   // args_ == nullptr) on the event loop whenever this controller releases
-  // capacity. Called once at scheduler construction; schedulers and the
-  // controller are process-lifetime objects, so registration is never undone.
+  // capacity. Pair with UnregisterCapacityObserver before the observer is destroyed.
   virtual void RegisterCapacityObserver(event::CommandHandler* observer) PURE;
+  virtual void UnregisterCapacityObserver(event::CommandHandler* observer) PURE;
 
   // Builds the current kNodeState snapshot. `seq` is caller-owned (monotonic).
   [[nodiscard]] virtual auto BuildStateSnapshot(std::string node_id, uint64_t seq) const

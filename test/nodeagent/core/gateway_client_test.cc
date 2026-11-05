@@ -132,6 +132,18 @@ TEST(GatewayClientTest, ForwardWithoutLiveConnectionReturnsError) {
   EXPECT_EQ(status.code(), absl::StatusCode::kUnavailable);
 }
 
+TEST(GatewayClientTest, DestructionReleasesRegisteredMailbox) {
+  std::weak_ptr<io::OutboundMailbox> weak_mailbox;
+  {
+    GatewayClient client;
+    auto mailbox = std::make_shared<io::OutboundMailbox>([](std::vector<std::byte>) {});
+    weak_mailbox = mailbox;
+    client.RegisterConnection(std::move(mailbox));
+  }
+
+  EXPECT_TRUE(weak_mailbox.expired());
+}
+
 TEST(GatewayClientTest, ClosedConnectionIsPruned) {
   GatewayClient client;
   {

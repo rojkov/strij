@@ -60,6 +60,7 @@ auto isIntegerLiteral(const char* literal) -> std::pair<bool, std::int64_t> {
 }
 
 auto jvToValue(jv value) -> Value {
+  auto owned = utils::Acquire(value);
   switch (jv_get_kind(value)) {
     case JV_KIND_FALSE:
       return Value{false};
@@ -111,9 +112,7 @@ auto ValueToJv(const Value& value) -> utils::Jv { return utils::Acquire(valueToJ
 
 auto JvToValue(const utils::Jv& value) -> Value {
   jv raw = utils::JvRawCopy(value);
-  Value result = jvToValue(raw);
-  jv_free(raw);
-  return result;
+  return jvToValue(raw);
 }
 
 } // namespace strij::openworkflow
