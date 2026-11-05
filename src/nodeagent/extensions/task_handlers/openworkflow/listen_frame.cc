@@ -42,6 +42,17 @@ auto jsonValueOrString(std::string_view value) -> std::string {
   return absl::StrCat("\"", absl::CEscape(value), "\"");
 }
 
+// Renders an opaque CloudEvent `data` payload as a JSON value. An absent
+// payload becomes `null`; a JSON payload is preserved; any other payload is a
+// JSON string so the listen output (and a foreach selected value) stays valid
+// JSON. Filters and `until` already treat absent data as null.
+auto eventDataJson(std::string_view data) -> std::string {
+  if (data.empty()) {
+    return "null";
+  }
+  return jsonValueOrString(data);
+}
+
 } // namespace
 
 ListenFrame::ListenFrame(const NamedTask& task, const ListenBody& body,
@@ -110,7 +121,7 @@ auto isReservedEnvelopeField(std::string_view name) -> bool {
 auto ListenFrame::itemBytes(const event::CloudEvent& event) const -> std::string {
   const bool envelope = body_.read_.has_value() && *body_.read_ == "envelope";
   if (!envelope) {
-    return event.data();
+    return eventDataJson(event.data());
   }
 
   std::string json = "{";
@@ -148,8 +159,22 @@ auto ListenFrame::itemBytes(const event::CloudEvent& event) const -> std::string
   if (!first) {
     json.push_back(',');
   }
-  absl::StrAppend(&json, "\"data\":", jsonValueOrString(event.data()), "}");
+  absl::StrAppend(&json, "\"data\":", eventDataJson(event.data()), "}");
   return json;
+}
+
+auto ListenFrame::rememberEvent(const std::string& key) -> bool {
+  if (!seen_.insert(key).second) {
+    return false;
+  }
+
+  seen_order_.push_back(key);
+  while (seen_order_.size() > kMaxTrackedEventIds) {
+    seen_.erase(seen_order_.front());
+    seen_order_.pop_front();
+  }
+
+  return true;
 }
 
 auto ListenFrame::completeWith(std::vector<event::CloudEvent> events) -> FrameResult {
@@ -276,11 +301,10 @@ auto ListenFrame::process(const QueuedEvent& queued, FrameContext& context)
   };
 
   const std::string key = queued.event_.source() + ":" + queued.event_.id();
-  if (seen_.contains(key)) {
+  if (!rememberEvent(key)) {
     ack();
     return std::nullopt;
   }
-  seen_[key] = true;
 
   // Once the consumption strategy has completed, later deliveries must not
   // feed another foreach iteration (notably `one`, which stops at the first

@@ -2,9 +2,9 @@
 
 #include <cstddef>
 #include <deque>
-#include <map>
 #include <memory>
 #include <optional>
+#include <set>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -24,6 +24,11 @@ namespace strij::nodeagent::task_handlers::openworkflow {
 // consumed events as its raw output.
 class ListenFrame final : public Frame {
 public:
+  // Bounds the event ids retained for duplicate tolerance. A duplicate older
+  // than this window may be processed again; v1 delivery is best-effort and
+  // at-most-once, so the window only needs to cover near-term redelivery.
+  static constexpr std::size_t kMaxTrackedEventIds = 4096;
+
   ListenFrame(const ::strij::openworkflow::NamedTask& task,
               const ::strij::openworkflow::ListenBody& body,
               std::shared_ptr<const LexicalScope> scope);
@@ -46,6 +51,8 @@ public:
   void SetReady(absl::Status status, event::DeliveryMode mode);
 
   [[nodiscard]] auto PendingEventCount() const -> std::size_t { return queued_.size(); }
+  // Test hook: number of event ids currently retained for duplicate tolerance.
+  [[nodiscard]] auto TrackedEventCount() const -> std::size_t { return seen_.size(); }
 
 private:
   struct QueuedEvent {
@@ -56,6 +63,9 @@ private:
   [[nodiscard]] auto start(FrameContext& context) -> std::optional<FrameResult>;
   [[nodiscard]] auto process(const QueuedEvent& queued, FrameContext& context)
       -> std::optional<FrameResult>;
+  // Records an event id for duplicate tolerance. Returns false when the id is
+  // already inside the bounded recent-event window.
+  [[nodiscard]] auto rememberEvent(const std::string& key) -> bool;
   [[nodiscard]] auto completeWith(std::vector<event::CloudEvent> events) -> FrameResult;
   [[nodiscard]] auto completeForeach() -> FrameResult;
   [[nodiscard]] auto startForeachBody(FrameContext& context) -> std::optional<FrameResult>;
@@ -85,7 +95,8 @@ private:
   StepDataValue foreach_selected_;
   std::optional<std::string> foreach_token_;
   bool strategy_complete_{false};
-  std::map<std::string, bool> seen_;
+  std::set<std::string> seen_;
+  std::deque<std::string> seen_order_;
   std::optional<ExecutionFailure> failure_;
   bool complete_{false};
   StepDataValue result_;

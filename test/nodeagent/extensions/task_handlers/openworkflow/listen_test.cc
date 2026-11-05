@@ -198,6 +198,63 @@ TEST(ListenTest, ReadEnvelopeSelectsTheFullEvent) {
   EXPECT_NE(body.find(R"("data":{"n":1})"), std::string::npos);
 }
 
+TEST(ListenTest, ReadDataQuotesANonJsonPayload) {
+  Harness harness;
+  harness.interpreter_->Start(OneDocument(), R"({})");
+  ASSERT_NE(harness.subscription(), nullptr);
+
+  harness.event_bus_.Deliver("parent/wait/0", makeEvent("e1", "order.created", "hello"), "t1");
+
+  ASSERT_EQ(harness.results_.size(), 1U);
+  EXPECT_TRUE(utils::IsTaskResultOk(harness.results_[0]));
+  EXPECT_EQ(harness.results_[0].body(), R"(["hello"])");
+}
+
+TEST(ListenTest, ReadDataTreatsAnEmptyPayloadAsNull) {
+  Harness harness;
+  harness.interpreter_->Start(OneDocument(), R"({})");
+  ASSERT_NE(harness.subscription(), nullptr);
+
+  harness.event_bus_.Deliver("parent/wait/0", makeEvent("e1", "order.created", ""), "t1");
+
+  ASSERT_EQ(harness.results_.size(), 1U);
+  EXPECT_TRUE(utils::IsTaskResultOk(harness.results_[0]));
+  EXPECT_EQ(harness.results_[0].body(), "[null]");
+}
+
+TEST(ListenTest, ForeachReadsANonJsonPayloadAsAString) {
+  Harness harness;
+  const std::string document = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: listen-foreach-text
+  version: '0.1.0'
+do:
+  - wait:
+      listen:
+        to:
+          one:
+            with:
+              type: tick
+      foreach:
+        item: message
+        do:
+          - record:
+              set:
+                seen: '${ $message }'
+        output:
+          as: '${ {value: .} }'
+)YAML";
+  harness.interpreter_->Start(document, R"({})");
+  ASSERT_NE(harness.subscription(), nullptr);
+
+  harness.event_bus_.Deliver("parent/wait/0", makeEvent("e1", "tick", "hello"), "t1");
+
+  ASSERT_EQ(harness.results_.size(), 1U);
+  EXPECT_TRUE(utils::IsTaskResultOk(harness.results_[0]));
+  EXPECT_EQ(harness.results_[0].body(), R"([{"value":{"seen":"hello"}}])");
+}
+
 TEST(ListenTest, LostSubscriptionFailsWithUnavailable) {
   Harness harness;
   harness.interpreter_->Start(OneDocument(), R"({})");
