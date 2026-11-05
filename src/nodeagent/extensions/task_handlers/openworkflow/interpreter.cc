@@ -1623,6 +1623,10 @@ auto WorkflowInterpreter::EvaluateListenUntil(const NamedTask& /*step*/, const L
     if (index > 0) {
       array.push_back(',');
     }
+    if (consumed[index].data().empty()) {
+      array.append("null");
+      continue;
+    }
     auto parsed = utils::Jv::Parse(consumed[index].data());
     if (parsed.ok()) {
       array.append(consumed[index].data());

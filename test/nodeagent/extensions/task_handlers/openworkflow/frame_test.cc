@@ -11,6 +11,7 @@
 #include <variant>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "common/task/task.pb.h"
 #include "gtest/gtest.h"
 #include "nodeagent/extensions/task_handlers/openworkflow/frame.hh"
@@ -1612,6 +1613,40 @@ do:
   }
 
   EXPECT_EQ(frame.PendingEventCount(), 1024U);
+}
+
+TEST(ListenFrameBoundTest, DedupWindowIsBounded) {
+  auto document = ::strij::openworkflow::Parse(R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: listen-dedup-bound
+  version: '0.1.0'
+do:
+  - wait:
+      listen:
+        to:
+          one:
+            with:
+              type: tick
+)YAML");
+  ASSERT_TRUE(document.has_value()) << document.error().Message();
+  const NamedTask& task = document->do_[0];
+  const auto& body = std::get<::strij::openworkflow::ListenBody>(task.task_.body_);
+  ListenFrame frame(task, body, nullptr);
+  frame.Enter(StepDataValue::FromBytes("null"));
+  frame.SetReady(absl::OkStatus(), event::DELIVERY_MODE_BEST_EFFORT);
+  frame.SetSubscription(EventSubscriptionPtr{});
+  FakeFrameContext context;
+
+  for (std::size_t index = 0; index <= ListenFrame::kMaxTrackedEventIds; ++index) {
+    event::CloudEvent event;
+    event.set_source("tests");
+    event.set_id(std::to_string(index));
+    frame.OnEvent(event, "token");
+    (void)frame.Advance(context);
+  }
+
+  EXPECT_EQ(frame.TrackedEventCount(), ListenFrame::kMaxTrackedEventIds);
 }
 
 // NOLINTEND(modernize-use-trailing-return-type)
