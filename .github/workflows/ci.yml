@@ -1,0 +1,106 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  linux:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 60
+    env:
+      BAZEL_FLAGS: --disk_cache=~/.cache/bazel-disk-cache
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v5
+
+      - name: Install Bazelisk
+        run: |
+          curl --fail --location --silent --show-error \
+            https://github.com/bazelbuild/bazelisk/releases/download/v1.28.1/bazelisk-linux-amd64 \
+            --output /tmp/bazelisk
+          sudo install /tmp/bazelisk /usr/local/bin/bazel
+
+      - name: Prepare toolchain configuration
+        run: make toolchain/abs_path.bzl
+
+      - name: Detect compiler version
+        id: compiler
+        run: echo "version=$(g++ -dumpfullversion)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Bazel disk cache
+        uses: actions/cache@v5
+        with:
+          path: ~/.cache/bazel-disk-cache
+          key: bazel-${{ runner.os }}-${{ runner.arch }}-ubuntu-26.04-gcc-${{ steps.compiler.outputs.version }}-${{ hashFiles('.bazelversion') }}-${{ github.sha }}
+          restore-keys: |
+            bazel-${{ runner.os }}-${{ runner.arch }}-ubuntu-26.04-gcc-${{ steps.compiler.outputs.version }}-${{ hashFiles('.bazelversion') }}-
+
+      - name: Check io_uring availability
+        run: bazel run $BAZEL_FLAGS //test/ci:io_uring_smoke
+
+      - name: Check repository conventions
+        run: make check
+
+      - name: Build
+        run: make build
+
+      - name: Test
+        run: make test
+
+  sanitizers:
+    name: ${{ matrix.sanitizer }}
+    runs-on: ubuntu-26.04
+    strategy:
+      fail-fast: false
+      matrix:
+        sanitizer: [asan, tsan]
+    timeout-minutes: 120
+    env:
+      BAZEL_FLAGS: --disk_cache=~/.cache/bazel-disk-cache
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v5
+
+      - name: Install LLVM 23 toolchain
+        run: |
+          curl --fail --location --silent --show-error \
+            https://apt.llvm.org/llvm.sh \
+            --output /tmp/llvm.sh
+          sudo bash /tmp/llvm.sh 23 all
+          ln -s /usr/lib/llvm-23 toolchain/clang
+          test -x toolchain/clang/bin/clang
+          test -x toolchain/clang/bin/llvm-symbolizer
+          echo "::group::Probe toolchain/clang/bin/clang++ with libstdc++"
+          printf '#include <functional>\nint main() { std::move_only_function<void()> f; }\n' \
+            | toolchain/clang/bin/clang++ -stdlib=libstdc++ -std=c++23 -x c++ -fsyntax-only -
+          echo "toolchain/clang/bin/clang++ libstdc++ probe passed"
+          echo "::endgroup::"
+
+      - name: Install Bazelisk
+        run: |
+          curl --fail --location --silent --show-error \
+            https://github.com/bazelbuild/bazelisk/releases/download/v1.28.1/bazelisk-linux-amd64 \
+            --output /tmp/bazelisk
+          sudo install /tmp/bazelisk /usr/local/bin/bazel
+
+      - name: Prepare toolchain configuration
+        run: make toolchain/abs_path.bzl
+
+      - name: Cache Bazel disk cache
+        uses: actions/cache@v5
+        with:
+          path: ~/.cache/bazel-disk-cache
+          key: bazel-${{ runner.os }}-${{ runner.arch }}-ubuntu-26.04-llvm-23-${{ matrix.sanitizer }}-${{ hashFiles('.bazelversion') }}-${{ github.sha }}
+          restore-keys: |
+            bazel-${{ runner.os }}-${{ runner.arch }}-ubuntu-26.04-llvm-23-${{ matrix.sanitizer }}-${{ hashFiles('.bazelversion') }}-
+
+      - name: Test with ${{ matrix.sanitizer }}
+        run: make test_${{ matrix.sanitizer }}
