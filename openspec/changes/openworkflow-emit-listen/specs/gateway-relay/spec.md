@@ -94,7 +94,7 @@ The gateway SHALL provide a pure-abstract gateway transport contract with send, 
 
 ### Requirement: Relay node selection and failure
 
-The gateway-side relay transport SHALL select a relay node from the gateway's live node directory for each outgoing relay operation. The selection policy SHALL spread load across live nodes and SHALL be deterministic enough to preserve per-publisher ordering when the same publisher and key are used. With no live node, the transport SHALL return an unavailable error and the event plane SHALL drop the best-effort delivery. A relay-node failure SHALL NOT invalidate the event plane or block local delivery.
+The gateway-side relay transport SHALL select a relay node from the gateway's live node directory for each outgoing relay operation. The selection policy SHALL spread load across live nodes. Sender- or key-based relay affinity is NOT required by v1: the transport provides best-effort, at-most-once delivery with no ordering guarantee, and per-publisher ordering affinity is a follow-up. With no live node, the transport SHALL return an unavailable error and the event plane SHALL drop the best-effort delivery. A relay-node failure SHALL NOT invalidate the event plane or block local delivery.
 
 #### Scenario: No live node yields an error
 

@@ -78,6 +78,26 @@ TEST(EmitTest, PublishFailureFailsTheStep) {
   EXPECT_NE(harness.results_[0].body().find("publish"), std::string::npos);
 }
 
+TEST(EmitTest, NonPublishRuntimeFailureIsInternal) {
+  Harness harness;
+  harness.event_bus_.SetPublishStatus(absl::InvalidArgumentError("gateway rejected the event"));
+  harness.interpreter_->Start(EmitDocument("            data: true\n"), R"({})");
+
+  ASSERT_EQ(harness.results_.size(), 1U);
+  EXPECT_EQ(harness.results_[0].status(), task::TASK_STATUS_INTERNAL);
+  EXPECT_TRUE(harness.event_bus_.published_.empty());
+}
+
+TEST(EmitTest, NonJsonInputSubjectIsInternal) {
+  Harness harness;
+  harness.interpreter_->Start(
+      EmitDocument("            data:\n              id: '${ .orderId }'\n"), "not-json");
+
+  ASSERT_EQ(harness.results_.size(), 1U);
+  EXPECT_EQ(harness.results_[0].status(), task::TASK_STATUS_INTERNAL);
+  EXPECT_TRUE(harness.event_bus_.published_.empty());
+}
+
 TEST(EmitTest, SkippedEmitDoesNotPublish) {
   Harness harness;
   harness.interpreter_->Start(EmitDocument("            data: true\n", "      if: '${ false }'\n"),
