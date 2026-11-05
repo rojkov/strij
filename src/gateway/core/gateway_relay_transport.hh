@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <functional>
+#include <optional>
 #include <span>
 #include <string_view>
 #include <vector>
@@ -64,5 +65,15 @@ private:
 // supports; the node uses it to resolve `auto` subscriptions.
 auto MakeGatewayHelloFrame(std::string_view gateway_id, event::DeliveryMode delivery_mode)
     -> std::vector<std::byte>;
+
+// Resolves the identity the gateway announces in the relay handshake. An empty
+// configured id yields a generated, process-unique `gateway-<id>`.
+auto ResolveGatewayId(std::string_view configured) -> std::string;
+
+// Builds the handshake written on an accepted node connection. A gateway with
+// no event plane has an empty id and returns `nullopt`, so the node treats the
+// connection as event-incapable.
+auto BuildGatewayHello(std::string_view gateway_id, event::DeliveryMode delivery_mode)
+    -> std::optional<std::vector<std::byte>>;
 
 } // namespace strij::gateway

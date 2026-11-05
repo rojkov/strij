@@ -151,6 +151,29 @@ TEST_F(GatewayEventEdgeTest, SubscribeRegistersWithThePlane) {
   EXPECT_EQ(result.delivery_mode(), event::DELIVERY_MODE_BEST_EFFORT);
 }
 
+TEST_F(GatewayEventEdgeTest, RejectsADuplicateActiveSubscription) {
+  FakeEventPlane plane;
+  GatewayEventEdge edge;
+  edge.SetPlane(&plane);
+
+  ASSERT_TRUE(edge.HandleSubscribeFrame(makeSubscribeFrame("sub-1"), conn_->Mailbox()).ok());
+  EXPECT_FALSE(edge.HandleSubscribeFrame(makeSubscribeFrame("sub-1"), conn_->Mailbox()).ok());
+
+  EXPECT_EQ(edge.SubscriptionCount(), 1U);
+  ASSERT_EQ(plane.added.size(), 1U);
+  ASSERT_EQ(writes_.size(), 2U);
+  event::EventSubscriptionResult rejected;
+  ASSERT_TRUE(rejected.ParseFromString(parseFrameValue(writes_[1])));
+  EXPECT_FALSE(rejected.accepted());
+  EXPECT_EQ(rejected.subscription_id(), "sub-1");
+
+  writes_.clear();
+  event::CloudEvent event;
+  event.set_id("evt-1");
+  edge.Deliver("sub-1", event, "token-1");
+  EXPECT_EQ(writes_.size(), 1U);
+}
+
 TEST_F(GatewayEventEdgeTest, DeliverWritesAnEventDeliveryFrame) {
   FakeEventPlane plane;
   GatewayEventEdge edge;
