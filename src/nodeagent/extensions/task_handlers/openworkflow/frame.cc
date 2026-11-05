@@ -335,10 +335,13 @@ auto SequenceFrame::advanceRun(const NamedTask& step, FrameContext& context)
 
 namespace {
 
-auto taskStatusFromStatus(const absl::Status& status) -> task::TaskStatus {
+// Emit runtime failures map to the statuses the spec reserves for execution:
+// a missing event path is UNAVAILABLE, an absent event plane is UNIMPLEMENTED,
+// and every other publish or data-processing failure is INTERNAL. Malformed
+// documents and expressions are rejected by the pre-execution validation pass,
+// so they never reach this mapping.
+auto emitFailureStatus(const absl::Status& status) -> task::TaskStatus {
   switch (status.code()) {
-  case absl::StatusCode::kInvalidArgument:
-    return task::TASK_STATUS_MALFORMED_REQUEST;
   case absl::StatusCode::kUnimplemented:
     return task::TASK_STATUS_UNIMPLEMENTED;
   case absl::StatusCode::kUnavailable:
@@ -356,7 +359,7 @@ auto SequenceFrame::advanceEmit(const NamedTask& step, FrameContext& context)
 
   const absl::Status status = context.ExecuteEmit(*this, step, *step_input_, scope_.get());
   if (!status.ok()) {
-    return failStep(taskStatusFromStatus(status), step, std::string(status.message()));
+    return failStep(emitFailureStatus(status), step, std::string(status.message()));
   }
 
   return applyCompletedStep(step, step_input_->Copy(), context, stepThen(step));
