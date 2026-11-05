@@ -13,10 +13,20 @@
 
 namespace strij::nodeagent {
 
+GatewayClient::~GatewayClient() {
+  for (auto& registration : live_mailboxes_) {
+    if (registration.mailbox_ != nullptr) {
+      registration.mailbox_->UnregisterOnClose(registration.close_token_);
+    }
+  }
+}
+
 auto GatewayClient::Forward(const task::Task& task) -> absl::Status {
   // Remove dead mailboxes (those whose connections have closed).
   live_mailboxes_.erase(std::remove_if(live_mailboxes_.begin(), live_mailboxes_.end(),
-                                       [](io::OutboundMailbox* mbox) { return mbox == nullptr; }),
+                                       [](const MailboxRegistration& registration) {
+                                         return registration.mailbox_ == nullptr;
+                                       }),
                         live_mailboxes_.end());
 
   if (live_mailboxes_.empty()) {
@@ -24,7 +34,8 @@ auto GatewayClient::Forward(const task::Task& task) -> absl::Status {
                                   "'");
   }
 
-  io::OutboundMailbox* mailbox = live_mailboxes_[next_index_ % live_mailboxes_.size()];
+  io::OutboundMailbox* mailbox =
+      live_mailboxes_[next_index_ % live_mailboxes_.size()].mailbox_.get();
   next_index_ = (next_index_ + 1) % live_mailboxes_.size();
 
   std::string serialized;
@@ -40,19 +51,24 @@ auto GatewayClient::Forward(const task::Task& task) -> absl::Status {
 }
 
 void GatewayClient::RegisterConnection(std::shared_ptr<io::OutboundMailbox> mailbox) {
-  live_mailboxes_.push_back(mailbox.get());
-  // Register a close callback to null out the pointer when the connection tears down.
-  mailbox->RegisterOnClose([this, mbox = std::move(mailbox)]() {
-    auto iter = std::find(live_mailboxes_.begin(), live_mailboxes_.end(), mbox.get());
+  live_mailboxes_.push_back({.mailbox_ = std::move(mailbox), .close_token_ = 0});
+  auto& registration = live_mailboxes_.back();
+  io::OutboundMailbox* registered_mailbox = registration.mailbox_.get();
+  registration.close_token_ = registration.mailbox_->RegisterOnClose([this, registered_mailbox]() {
+    auto iter = std::find_if(live_mailboxes_.begin(), live_mailboxes_.end(),
+                             [registered_mailbox](const MailboxRegistration& entry) {
+                               return entry.mailbox_.get() == registered_mailbox;
+                             });
     if (iter != live_mailboxes_.end()) {
-      *iter = nullptr;
+      iter->mailbox_.reset();
     }
   });
 }
 
 auto GatewayClient::LiveCount() const -> size_t {
-  return std::count_if(live_mailboxes_.begin(), live_mailboxes_.end(),
-                       [](io::OutboundMailbox* m) { return m != nullptr; });
+  return std::count_if(
+      live_mailboxes_.begin(), live_mailboxes_.end(),
+      [](const MailboxRegistration& registration) { return registration.mailbox_ != nullptr; });
 }
 
 } // namespace strij::nodeagent

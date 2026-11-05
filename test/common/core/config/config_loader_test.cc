@@ -69,6 +69,10 @@ logging:
 }
 
 TEST(ConfigLoaderTest, GatewaySchedulerExtensionYaml) {
+  // Ensure the generated descriptor is linked and registered for Any parsing.
+  ASSERT_NE(extensions::schedulers::capability_aware::CapabilityAwareSchedulerConfig::descriptor(),
+            nullptr);
+
   std::string yaml = R"(
 http_listener:
   address: "0.0.0.0"

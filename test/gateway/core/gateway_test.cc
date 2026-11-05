@@ -2,6 +2,7 @@
 #include <unistd.h>
 
 #include <array>
+#include <bit>
 #include <cstddef>
 #include <cstring>
 #include <map>
@@ -819,7 +820,7 @@ TEST(HttpResultReceiverTest, FailureAfterResponseBeganKeepsStatusLineAndLogsTask
   ASSERT_EQ(written.size(), 2U);
   conn.HandleCompletion(1 /*kWrite*/, static_cast<int>(written[1].size()), 0);
 
-  std::string header_before(written[0].begin(), written[0].end());
+  std::string header_before(std::bit_cast<const char*>(written[0].data()), written[0].size());
 
   const std::string log =
       captureStderr([&] { receiver.DeliverError("handler exploded", task::TASK_STATUS_INTERNAL); });
@@ -827,7 +828,7 @@ TEST(HttpResultReceiverTest, FailureAfterResponseBeganKeepsStatusLineAndLogsTask
   // The status line written at the first result is never revised, and no
   // further frames reach the wire.
   EXPECT_EQ(written.size(), 2U);
-  std::string header_now(written[0].begin(), written[0].end());
+  std::string header_now(std::bit_cast<const char*>(written[0].data()), written[0].size());
   EXPECT_EQ(header_now, header_before);
   EXPECT_NE(header_now.find("HTTP/1.1 200 OK"), std::string::npos);
 

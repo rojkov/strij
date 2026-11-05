@@ -179,6 +179,17 @@ TEST_F(AdmissionControllerTest, UnknownPoolReportsZeroSharedFree) {
   EXPECT_EQ(controller.SharedFree("nope"), 0U);
 }
 
+TEST_F(AdmissionControllerTest, UnregisterCapacityObserverStopsNotifications) {
+  RecordingCommandHandler observer;
+  ASSERT_TRUE(controller_.Admit("echo", {}).ok());
+  controller_.RegisterCapacityObserver(&observer);
+  controller_.UnregisterCapacityObserver(&observer);
+
+  EXPECT_CALL(dispatcher_, SubmitCommand(::testing::_)).Times(0);
+  controller_.Release("echo", {});
+  EXPECT_TRUE(observer.commands_.empty());
+}
+
 // NOLINTBEGIN(modernize-use-trailing-return-type)
 
 TEST_F(AdmissionControllerTest, ScopeReleasesOnDestruction) {

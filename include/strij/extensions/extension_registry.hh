@@ -1,7 +1,9 @@
 #pragma once
 
+#include <memory>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 namespace strij::extensions {
@@ -13,13 +15,18 @@ public:
     return registry;
   }
 
+  void RegisterFactory(const std::string& name, std::unique_ptr<FactoryInterface> factory) {
+    factories_[name] = std::move(factory);
+  }
+
+  // Takes ownership of the factory.
   void RegisterFactory(const std::string& name, FactoryInterface* factory) {
-    factories_[name] = factory;
+    RegisterFactory(name, std::unique_ptr<FactoryInterface>(factory));
   }
 
   auto GetFactory(const std::string& name) const -> FactoryInterface* {
     auto iter = factories_.find(name);
-    return iter != factories_.end() ? iter->second : nullptr;
+    return iter != factories_.end() ? iter->second.get() : nullptr;
   }
 
   auto GetRegisteredNames() const -> std::vector<std::string> {
@@ -33,7 +40,7 @@ public:
 
 private:
   Registry() = default;
-  std::unordered_map<std::string, FactoryInterface*> factories_;
+  std::unordered_map<std::string, std::unique_ptr<FactoryInterface>> factories_;
 };
 
 } // namespace strij::extensions
@@ -50,7 +57,7 @@ private:
   namespace {                                                                                      \
   static void do_register_##FactoryClass() {                                                       \
     ::strij::extensions::Registry<FactoryInterface>::instance().RegisterFactory(                   \
-        FactoryClass().Name(), new FactoryClass());                                                \
+        FactoryClass().Name(), std::make_unique<FactoryClass>());                                  \
   }                                                                                                \
   static const bool registered_##FactoryClass = (do_register_##FactoryClass(), true);              \
   }
@@ -69,7 +76,7 @@ private:
   namespace {                                                                                      \
   static void do_register_##RegistrarName() {                                                      \
     ::strij::extensions::Registry<FactoryInterface>::instance().RegisterFactory(                   \
-        FactoryClass().Name(), new FactoryClass());                                                \
+        FactoryClass().Name(), std::make_unique<FactoryClass>());                                  \
   }                                                                                                \
   static const bool registered_##RegistrarName = (do_register_##RegistrarName(), true);            \
   }

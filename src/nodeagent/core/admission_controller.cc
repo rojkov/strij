@@ -1,5 +1,6 @@
 #include "nodeagent/core/admission_controller.hh"
 
+#include <algorithm>
 #include <chrono>
 #include <utility>
 
@@ -91,6 +92,10 @@ void AdmissionControllerImpl::Release(std::string_view task_type,
 
 void AdmissionControllerImpl::RegisterCapacityObserver(event::CommandHandler* observer) {
   capacity_observers_.push_back(observer);
+}
+
+void AdmissionControllerImpl::UnregisterCapacityObserver(event::CommandHandler* observer) {
+  std::erase(capacity_observers_, observer);
 }
 
 void AdmissionControllerImpl::notifyCapacityReleased() {

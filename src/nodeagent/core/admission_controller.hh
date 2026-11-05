@@ -37,6 +37,7 @@ public:
   [[nodiscard]] auto SharedFree(std::string_view pool) const -> uint64_t override;
   [[nodiscard]] auto InFlight(std::string_view task_type) const -> uint64_t override;
   void RegisterCapacityObserver(event::CommandHandler* observer) override;
+  void UnregisterCapacityObserver(event::CommandHandler* observer) override;
 
 private:
   event::Dispatcher& dispatcher_;

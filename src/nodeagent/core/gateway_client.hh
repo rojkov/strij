@@ -20,7 +20,7 @@ namespace strij::nodeagent {
 class GatewayClient final : public ChildTaskForwarder {
 public:
   GatewayClient() = default;
-  ~GatewayClient() override = default;
+  ~GatewayClient() override;
   GatewayClient(const GatewayClient&) = delete;
   auto operator=(const GatewayClient&) -> GatewayClient& = delete;
   GatewayClient(GatewayClient&&) noexcept = delete;
@@ -38,7 +38,12 @@ public:
   [[nodiscard]] auto LiveCount() const -> size_t;
 
 private:
-  std::vector<io::OutboundMailbox*> live_mailboxes_;
+  struct MailboxRegistration {
+    std::shared_ptr<io::OutboundMailbox> mailbox_;
+    std::size_t close_token_;
+  };
+
+  std::vector<MailboxRegistration> live_mailboxes_;
   size_t next_index_{0};
 };
 

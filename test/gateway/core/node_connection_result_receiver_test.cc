@@ -31,9 +31,17 @@ auto MakeReceiver(const std::string& task_id, std::vector<std::vector<std::byte>
   return std::make_unique<NodeConnectionResultReceiver>(task_id, mailbox);
 }
 
-auto ParseFrames(const std::vector<std::byte>& wire) -> std::vector<io::TlvFrame> {
-  std::vector<io::TlvFrame> frames;
-  io::TlvParser parser([&frames](io::TlvFrame frm) { frames.push_back(frm); });
+struct ParsedFrame {
+  uint8_t type_id;
+  std::vector<std::byte> value;
+};
+
+auto ParseFrames(const std::vector<std::byte>& wire) -> std::vector<ParsedFrame> {
+  std::vector<ParsedFrame> frames;
+  io::TlvParser parser([&frames](io::TlvFrame frame) {
+    frames.push_back({frame.type_id,
+                      std::vector<std::byte>(frame.value.begin(), frame.value.end())});
+  });
   auto buf = parser.GetReadBuffer();
   std::memcpy(buf.data(), wire.data(), wire.size());
   parser.OnData(wire.size());

@@ -3,41 +3,43 @@ MAKEFILE_DIR := $(dir $(abspath $(lastword $(MAKEFILE_LIST))))
 BASENAME = $(shell basename ${MAKEFILE_DIR})
 LLVM_PROJECT_PATH ?= $(shell realpath ${MAKEFILE_DIR}/../llvm-project)
 LLVM_PATH = ${MAKEFILE_DIR}toolchain/clang
+SANITIZER_SYMBOLIZER_FLAG = --test_env=ASAN_SYMBOLIZER_PATH=${LLVM_PATH}/bin/llvm-symbolizer
 BAZELISK_VERSION = 1.28.1
 BAZELISK_URL = https://github.com/bazelbuild/bazelisk/releases/download/v${BAZELISK_VERSION}/bazelisk-amd64.deb
+BAZEL_FLAGS ?=
 
 build:
-	bazel build //...
+	bazel build $(BAZEL_FLAGS) //...
 
 compiledb: build
-	bazel run @hedron_compile_commands//:refresh_all
-	bazel build //...
+	bazel run $(BAZEL_FLAGS) @hedron_compile_commands//:refresh_all
+	bazel build $(BAZEL_FLAGS) //...
 
 coverage:
-	bazel coverage --instrumentation_filter="//src/..." \
+	bazel coverage $(BAZEL_FLAGS) --instrumentation_filter="//src/..." \
 		--per_file_copt='external/protobuf\+.*@-DSTRIJ_COVERAGE' //...
 	./tools/generate_coverage.sh bazel-out/_coverage/_coverage_report.dat
 
 test: test_consumer
-	bazel test //...
+	bazel test $(BAZEL_FLAGS) //...
 
 # Smoke-test consumability from a fresh external repo (test/consumer flips @strij
 # into a real external module via MODULE.bazel + local_path_override). Must run
 # before the root `bazel test //...` because root bazel owns the root workspace.
 test_consumer:
-	cd ${MAKEFILE_DIR}test/consumer && bazel build //... && bazel test //...
+	cd ${MAKEFILE_DIR}test/consumer && bazel build $(BAZEL_FLAGS) //... && bazel test $(BAZEL_FLAGS) //...
 
 build_consumer:
-	cd ${MAKEFILE_DIR}test/consumer && bazel build //...
+	cd ${MAKEFILE_DIR}test/consumer && bazel build $(BAZEL_FLAGS) //...
 
 toolchain/abs_path.bzl:
-	echo "module_abs_path = \"${MAKEFILE_DIR}\"" > $@
+	echo "clang_abs_path = \"$(realpath ${LLVM_PATH})\"" > $@
 
 test_asan: toolchain/abs_path.bzl
-	bazel test --config=asan //test/...
+	bazel test $(BAZEL_FLAGS) $(SANITIZER_SYMBOLIZER_FLAG) --test_output=errors --config=asan //test/...
 
 test_tsan: toolchain/abs_path.bzl
-	bazel test -s --config=tsan //test/...
+	bazel test $(BAZEL_FLAGS) $(SANITIZER_SYMBOLIZER_FLAG) --test_output=errors -s --config=tsan //test/...
 
 clang-tidy: toolchain/abs_path.bzl
 	./tools/run-clang-tidy.py \

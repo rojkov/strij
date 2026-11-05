@@ -48,6 +48,8 @@ ProbeLocalScheduler::ProbeLocalScheduler(nodeagent::RunTaskService& run_task_ser
   admission_->RegisterCapacityObserver(this);
 }
 
+ProbeLocalScheduler::~ProbeLocalScheduler() { admission_->UnregisterCapacityObserver(this); }
+
 void ProbeLocalScheduler::Schedule(const task::Task& task, gateway::ResultReceiverPtr receiver) {
   // The probe entry is a pure wire-protocol counterpart: it never runs
   // locally-originated children (that is the bundled "default" scheduler's
