@@ -25,7 +25,7 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get -y install \
     less \
     iproute2
 
-RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
+RUN curl -fsSL https://deb.nodesource.com/setup_26.x | bash - && \
     DEBIAN_FRONTEND=noninteractive apt-get install -y nodejs && \
     npm install -g @opencode/cli @fission-ai/openspec@latest
 
