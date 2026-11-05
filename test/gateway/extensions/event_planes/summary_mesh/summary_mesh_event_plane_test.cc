@@ -52,6 +52,10 @@ public:
     sent_targets.push_back(std::move(ids));
     ++send_count;
 
+    if (!send_status.ok()) {
+      return send_status;
+    }
+
     if (peer != nullptr && peer->receiver != nullptr) {
       peer->receiver->OnMessage(payload);
     }
@@ -60,6 +64,11 @@ public:
 
   auto Broadcast(std::span<const std::byte> payload) -> absl::Status override {
     ++broadcast_count;
+
+    if (!broadcast_status.ok()) {
+      return broadcast_status;
+    }
+
     if (peer != nullptr && peer->receiver != nullptr) {
       peer->receiver->OnMessage(payload);
     }
@@ -75,6 +84,8 @@ public:
   FakeTransport* peer{nullptr};
   extensions::GatewayTransportReceiver* receiver{nullptr};
   std::vector<std::vector<std::string>> sent_targets;
+  absl::Status send_status{absl::OkStatus()};
+  absl::Status broadcast_status{absl::OkStatus()};
   int send_count{0};
   int broadcast_count{0};
 };
@@ -154,6 +165,34 @@ TEST_F(SummaryMeshEventPlaneTest, UnrelatedPeerIsSkipped) {
   EXPECT_EQ(host_a_.deliveries.size(), 1U);
   EXPECT_TRUE(host_b_.deliveries.empty());
   EXPECT_TRUE(transport_a_.sent_targets.empty());
+}
+
+TEST_F(SummaryMeshEventPlaneTest, PeerFailureDoesNotStopLocalDelivery) {
+  plane_a_->AddSubscription("a", makePattern("order.created"));
+  plane_b_->AddSubscription("b", makePattern("order.created"));
+  transport_a_.send_status = absl::UnavailableError("peer unreachable");
+
+  plane_a_->Publish(makeEvent("order.created"));
+
+  ASSERT_EQ(host_a_.deliveries.size(), 1U);
+  EXPECT_EQ(host_a_.deliveries[0].first, "a");
+  EXPECT_TRUE(host_b_.deliveries.empty());
+  EXPECT_EQ(transport_a_.send_count, 1);
+}
+
+TEST_F(SummaryMeshEventPlaneTest, PartitionStillMakesLocalProgress) {
+  plane_a_->AddSubscription("a", makePattern("order.created"));
+  plane_b_->AddSubscription("b", makePattern("order.created"));
+  transport_a_.send_status = absl::UnavailableError("partitioned");
+  transport_b_.send_status = absl::UnavailableError("partitioned");
+
+  plane_a_->Publish(makeEvent("order.created"));
+  plane_b_->Publish(makeEvent("order.created"));
+
+  ASSERT_EQ(host_a_.deliveries.size(), 1U);
+  EXPECT_EQ(host_a_.deliveries[0].first, "a");
+  ASSERT_EQ(host_b_.deliveries.size(), 1U);
+  EXPECT_EQ(host_b_.deliveries[0].first, "b");
 }
 
 TEST_F(SummaryMeshEventPlaneTest, MatchAllSubscriptionReceivesEveryType) {

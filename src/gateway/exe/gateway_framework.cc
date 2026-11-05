@@ -20,7 +20,6 @@
 #include "common/core/io/tlv_parser.hh"
 #include "common/core/logging/log.hh"
 #include "common/core/logging/logger.hh"
-#include "common/core/utils/task_id.hh"
 #include "common/event/event_plane.pb.h"
 #include "common/loaders/event_plane_loader.hh"
 #include "gateway/core/gateway_event_edge.hh"
@@ -132,9 +131,11 @@ auto RunGateway(int argc, char** argv) -> int {
                                 strij::io::Connection& conn) -> strij::io::ProtocolParserPtr {
     conn.Mailbox()->SetMaxQueueDepth(1024);
     // Announce this gateway's identity (and event-plane capability) before any
-    // relay traffic so the node can resolve targeted peer messages.
-    if (!gateway_id.empty()) {
-      conn.Write(strij::gateway::MakeGatewayHelloFrame(gateway_id, delivery_mode));
+    // relay traffic so the node can resolve targeted peer messages. A gateway
+    // without an event plane has no identity and sends no handshake.
+    if (auto hello = strij::gateway::BuildGatewayHello(gateway_id, delivery_mode);
+        hello.has_value()) {
+      conn.Write(*hello);
     }
     auto handler = std::make_unique<strij::gateway::GatewayTlvHandler>(
         *node_directory_ptr, storage, scheduler_router_ptr, &state_tracker, relay_transport_ptr,
@@ -164,10 +165,7 @@ auto RunGateway(int argc, char** argv) -> int {
     relay_transport = std::make_unique<strij::gateway::GatewayRelayTransport>(node_directory);
     event_edge = std::make_unique<strij::gateway::GatewayEventEdge>();
 
-    gateway_id = config.event_plane().gateway_id();
-    if (gateway_id.empty()) {
-      gateway_id = "gateway-" + strij::utils::GenerateTaskId();
-    }
+    gateway_id = strij::gateway::ResolveGatewayId(config.event_plane().gateway_id());
 
     const strij::extensions::EventPlaneDeps deps(*dispatcher, gateway_id, *relay_transport,
                                                  *event_edge, dispatcher);

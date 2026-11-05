@@ -98,6 +98,7 @@ strij_cc_test(
         "//src/common/extensions/evaluators/jq:jq_evaluator_lib",
         "//src/nodeagent/core:function_resolver_lib",
         "//src/nodeagent/extensions/task_handlers/openworkflow:openworkflow_task_handler_lib",
+        "//test/mocks/event:event_mocks_lib",
         "@googletest//:gtest_main",
     ],
 )

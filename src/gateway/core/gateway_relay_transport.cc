@@ -1,6 +1,7 @@
 #include "gateway/core/gateway_relay_transport.hh"
 
 #include <cstddef>
+#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
@@ -10,6 +11,7 @@
 #include "absl/status/status.h"
 #include "common/core/io/connection.hh"
 #include "common/core/io/outbound_mailbox.hh"
+#include "common/core/utils/task_id.hh"
 #include "common/event/event_plane.pb.h"
 #include "gateway/core/node.hh"
 
@@ -79,6 +81,28 @@ auto MakeGatewayHelloFrame(std::string_view gateway_id, event::DeliveryMode deli
   }
 
   return io::SerializeTlvFrame(io::TlvFrame::kGatewayHello, asBytes(serialized));
+}
+
+auto ResolveGatewayId(std::string_view configured) -> std::string {
+  if (!configured.empty()) {
+    return std::string(configured);
+  }
+
+  return "gateway-" + utils::GenerateTaskId();
+}
+
+auto BuildGatewayHello(std::string_view gateway_id, event::DeliveryMode delivery_mode)
+    -> std::optional<std::vector<std::byte>> {
+  if (gateway_id.empty()) {
+    return std::nullopt;
+  }
+
+  std::vector<std::byte> frame = MakeGatewayHelloFrame(gateway_id, delivery_mode);
+  if (frame.empty()) {
+    return std::nullopt;
+  }
+
+  return frame;
 }
 
 auto GatewayRelayTransport::HandleFrame(const io::TlvFrame& frame) -> absl::Status {

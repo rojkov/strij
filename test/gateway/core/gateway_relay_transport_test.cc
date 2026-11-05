@@ -71,6 +71,47 @@ TEST(GatewayRelayTransportTest, HelloFrameCarriesIdentityAndDeliveryMode) {
   EXPECT_EQ(hello.delivery_mode(), event::DELIVERY_MODE_AT_LEAST_ONCE);
 }
 
+TEST(GatewayRelayTransportTest, ConfiguredGatewayIdIsUsed) {
+  EXPECT_EQ(ResolveGatewayId("gateway-a"), "gateway-a");
+}
+
+TEST(GatewayRelayTransportTest, EmptyGatewayIdGeneratesAnIdentity) {
+  const std::string generated = ResolveGatewayId("");
+
+  EXPECT_FALSE(generated.empty());
+  EXPECT_EQ(generated.rfind("gateway-", 0), 0U);
+  EXPECT_GT(generated.size(), std::string("gateway-").size());
+}
+
+TEST(GatewayRelayTransportTest, GatewayWithoutEventPlaneSendsNoHandshake) {
+  EXPECT_FALSE(BuildGatewayHello("", event::DELIVERY_MODE_BEST_EFFORT).has_value());
+
+  const auto hello = BuildGatewayHello("gateway-a", event::DELIVERY_MODE_AT_LEAST_ONCE);
+  ASSERT_TRUE(hello.has_value());
+  ASSERT_GE(hello->size(), 5U);
+  EXPECT_EQ(std::to_integer<uint8_t>((*hello)[0]), io::TlvFrame::kGatewayHello);
+}
+
+TEST(GatewayRelayTransportTest, EachRelayOperationSelectsANode) {
+  CapturedMailbox first;
+  CapturedMailbox second;
+  const std::array<io::OutboundMailbox*, 2> mailboxes{first.mailbox.get(), second.mailbox.get()};
+  std::size_t selections = 0;
+  GatewayRelayTransport transport(
+      [&]() -> io::OutboundMailbox* { return mailboxes[selections++ % mailboxes.size()]; });
+
+  const std::string payload = "opaque";
+  const std::array<std::string_view, 1> targets{"gateway-b"};
+  ASSERT_TRUE(
+      transport.Send(targets, std::as_bytes(std::span(payload.data(), payload.size()))).ok());
+  ASSERT_TRUE(
+      transport.Send(targets, std::as_bytes(std::span(payload.data(), payload.size()))).ok());
+
+  EXPECT_EQ(selections, 2U);
+  EXPECT_EQ(first.frames.size(), 1U);
+  EXPECT_EQ(second.frames.size(), 1U);
+}
+
 TEST(GatewayRelayTransportTest, SendCarriesTargetsAndPayload) {
   CapturedMailbox target;
   GatewayRelayTransport transport([&]() -> io::OutboundMailbox* { return target.mailbox.get(); });

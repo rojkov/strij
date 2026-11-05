@@ -9,6 +9,7 @@
 #include <system_error>
 #include <utility>
 
+#include "test/mocks/event/mocks.hh"
 #include "test/nodeagent/extensions/task_handlers/openworkflow/fakes.hh"
 
 #include "common/task/task.pb.h"
@@ -180,6 +181,41 @@ protected:
   std::filesystem::path dir_;
   LocalFunctionResolver resolver_;
 };
+
+TEST_F(OpenWorkflowTaskHandlerTest, FactoryCreateRetrievesTheEventBus) {
+  const std::string document = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: factory-emit
+  version: '0.1.0'
+do:
+  - publish:
+      emit:
+        event:
+          with:
+            source: https://example.test
+            type: order.created
+            data: true
+)YAML";
+
+  event::MockDispatcher dispatcher;
+  test::FakeChildTaskSubmitter submitter;
+  test::FakeEventBus event_bus;
+  const TaskHandlerDeps deps(dispatcher, resolver_, submitter, event_bus);
+
+  OpenWorkflowTaskHandlerFactory factory;
+  extensions::task_handlers::openworkflow::OpenWorkflowTaskHandlerConfig config;
+  auto handler = factory.Create(config, deps);
+  ASSERT_NE(handler, nullptr);
+
+  auto state = std::make_shared<test::TestSender::State>();
+  handler->HandleTask(MakeTask("factory-emit", WriteArtifact("factory-emit.yaml", document)),
+                      std::make_unique<test::TestSender>(state));
+
+  ASSERT_EQ(state->sent_.size(), 1U);
+  ASSERT_EQ(event_bus.published_.size(), 1U);
+  EXPECT_EQ(event_bus.published_[0].type(), "order.created");
+}
 
 TEST_F(OpenWorkflowTaskHandlerTest, ProjectsDeclaredTypeParametersAndRequirements) {
   test::FakeChildTaskSubmitter submitter;

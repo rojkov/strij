@@ -88,6 +88,34 @@ TEST(ListenTest, OneCompletesOnMatchAndAcksNonMatches) {
   EXPECT_TRUE(harness.event_bus_.subscribers_.empty());
 }
 
+TEST(ListenTest, AnyCompletesOnFirstMatch) {
+  Harness harness;
+  const std::string document = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: listen-any-simple
+  version: '0.1.0'
+do:
+  - wait:
+      listen:
+        to:
+          any:
+            - with:
+                type: tick
+)YAML";
+  harness.interpreter_->Start(document, R"({})");
+  ASSERT_NE(harness.subscription(), nullptr);
+
+  harness.event_bus_.Deliver("parent/wait/0", makeEvent("e1", "other", "0"), "t1");
+  EXPECT_TRUE(harness.results_.empty());
+
+  harness.event_bus_.Deliver("parent/wait/0", makeEvent("e2", "tick", R"({"n":1})"), "t2");
+  ASSERT_EQ(harness.results_.size(), 1U);
+  EXPECT_TRUE(utils::IsTaskResultOk(harness.results_[0]));
+  EXPECT_EQ(harness.results_[0].body(), R"([{"n":1}])");
+  EXPECT_TRUE(harness.event_bus_.subscribers_.empty());
+}
+
 TEST(ListenTest, AllWaitsForEveryFilterInDeclarationOrder) {
   Harness harness;
   const std::string document = R"YAML(document:
@@ -613,6 +641,34 @@ do:
             bogus:
               with:
                 type: stop
+)YAML";
+  harness.interpreter_->Start(document, R"({})");
+
+  ASSERT_EQ(harness.results_.size(), 1U);
+  EXPECT_EQ(harness.results_[0].status(), task::TASK_STATUS_MALFORMED_REQUEST);
+  EXPECT_TRUE(harness.event_bus_.subscribers_.empty());
+}
+
+TEST(ListenTest, MalformedListenInsideANestedBodyFailsBeforeExecution) {
+  Harness harness;
+  const std::string document = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: listen-nested-malformed
+  version: '0.1.0'
+do:
+  - race:
+      fork:
+        branches:
+          - branch:
+              do:
+                - wait:
+                    listen:
+                      to:
+                        one:
+                          with:
+                            type: tick
+                            data: '${ .n >'
 )YAML";
   harness.interpreter_->Start(document, R"({})");
 

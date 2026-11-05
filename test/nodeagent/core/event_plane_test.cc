@@ -197,6 +197,36 @@ TEST(NodeEventClientTest, PublishSubscribeAndDelivery) {
   EXPECT_EQ(parseFrame(gateway.frames[2]).type_id, io::TlvFrame::kEventUnsubscribe);
 }
 
+TEST(NodeEventClientTest, DuplicateActiveSubscriptionFailsReady) {
+  GatewayConnectionPool connections;
+  CapturedMailbox gateway;
+  connections.Register(gateway.mailbox);
+  connections.SetGatewayId(gateway.mailbox.get(), "gateway-a", event::DELIVERY_MODE_BEST_EFFORT);
+  NodeEventClient client(connections);
+
+  event::EventSubscriptionRequest request;
+  request.set_subscription_id("sub-1");
+  request.mutable_pattern()->set_type("order.created");
+  request.set_delivery_mode(event::DELIVERY_MODE_AUTO);
+  auto first = client.Subscribe(
+      request, [](absl::Status, event::DeliveryMode) {},
+      [](const event::CloudEvent&, std::string_view) {});
+  ASSERT_NE(first, nullptr);
+  ASSERT_EQ(gateway.frames.size(), 1U);
+
+  absl::Status duplicate_status = absl::OkStatus();
+  auto duplicate = client.Subscribe(
+      request,
+      [&](absl::Status status, event::DeliveryMode /*mode*/) {
+        duplicate_status = std::move(status);
+      },
+      [](const event::CloudEvent&, std::string_view) {});
+
+  EXPECT_EQ(duplicate_status.code(), absl::StatusCode::kAlreadyExists);
+  EXPECT_NE(duplicate, nullptr);
+  EXPECT_EQ(gateway.frames.size(), 1U) << "a duplicate must not write a second subscribe frame";
+}
+
 TEST(NodeEventClientTest, SubscribeWithoutGatewayFailsReady) {
   GatewayConnectionPool connections;
   NodeEventClient client(connections);
