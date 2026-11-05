@@ -1,0 +1,7 @@
+load("//bazel:build_system.bzl", "strij_cc_binary")
+
+strij_cc_binary(
+    name = "io_uring_smoke",
+    srcs = ["io_uring_smoke.cc"],
+    deps = ["//:liburing"],
+)
