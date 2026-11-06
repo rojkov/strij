@@ -187,9 +187,8 @@ auto RunNodeagent(int argc, char** argv) -> int {
   const utils::SignalMonitor signal_monitor(dispatcher);
 
   logging::Logger& logger = logging::Logger::GetInstance();
-  logger.Run();
-
   LOG_REGISTER_THREAD();
+  logger.Run();
 
   // The state reporter broadcasts periodic kNodeState snapshots to every
   // established connection at heartbeat_interval.
