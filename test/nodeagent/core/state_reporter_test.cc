@@ -16,9 +16,9 @@
 #include "common/core/io/tlv_frame.hh"
 #include "common/core/io/tlv_parser.hh"
 #include "common/node/capabilities.pb.h"
+#include "gtest/gtest.h"
 #include "nodeagent/core/admission_controller.hh"
 #include "nodeagent/core/state_reporter.hh"
-#include "gtest/gtest.h"
 
 namespace strij::nodeagent {
 namespace {

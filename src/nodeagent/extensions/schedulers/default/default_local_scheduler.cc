@@ -117,8 +117,8 @@ auto DefaultLocalScheduler::handleResultFrame(const io::TlvFrame& frame) -> absl
     // and the entry goes so no later result resurrects the child.
     receiver->DeliverError(body, result.status());
     storage_.Erase(result.id());
-    LOG_WARNING("Child {} failed (status={}): {}", result.id(),
-                static_cast<int>(result.status()), body);
+    LOG_WARNING("Child {} failed (status={}): {}", result.id(), static_cast<int>(result.status()),
+                body);
     return absl::OkStatus();
   }
 

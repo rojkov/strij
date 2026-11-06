@@ -1,7 +1,7 @@
 #include <string>
 
-#include "gateway/core/exact_state_tracker.hh"
 #include "common/node/capabilities.pb.h"
+#include "gateway/core/exact_state_tracker.hh"
 #include "gtest/gtest.h"
 
 namespace strij::gateway {

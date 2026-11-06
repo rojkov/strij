@@ -3,9 +3,9 @@
 #include "test/mocks/extensions/extensions_mocks.hh"
 
 #include "common/task/task.pb.h"
-#include "nodeagent/extensions/task_handlers/echo/echo_task_handler.hh"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
+#include "nodeagent/extensions/task_handlers/echo/echo_task_handler.hh"
 
 namespace strij::nodeagent::task_handlers {
 namespace {

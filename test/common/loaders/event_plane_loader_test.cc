@@ -2,16 +2,17 @@
 #include <span>
 #include <string_view>
 
+#include "test/mocks/event/mocks.hh"
+#include "test/mocks/extensions/extensions_mocks.hh"
+
 #include "absl/status/status.h"
-#include "gateway/config/gateway.pb.h"
-#include "gateway/extensions/event_planes/summary_mesh/summary_mesh.pb.h"
 #include "common/event/cloudevent.pb.h"
 #include "common/loaders/event_plane_loader.hh"
+#include "gateway/config/gateway.pb.h"
+#include "gateway/extensions/event_planes/summary_mesh/summary_mesh.pb.h"
 #include "gtest/gtest.h"
 #include "strij/extensions/event_plane.hh"
 #include "strij/extensions/gateway_transport.hh"
-#include "test/mocks/event/mocks.hh"
-#include "test/mocks/extensions/extensions_mocks.hh"
 
 namespace strij::loaders {
 namespace {
@@ -20,8 +21,8 @@ namespace {
 
 class FakeTransport final : public extensions::GatewayTransport {
 public:
-  auto Send(std::span<const std::string_view> /*peer_ids*/,
-            std::span<const std::byte> /*payload*/) -> absl::Status override {
+  auto Send(std::span<const std::string_view> /*peer_ids*/, std::span<const std::byte> /*payload*/)
+      -> absl::Status override {
     return absl::OkStatus();
   }
   auto Broadcast(std::span<const std::byte> /*payload*/) -> absl::Status override {

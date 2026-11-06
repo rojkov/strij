@@ -1,14 +1,14 @@
 #pragma once
 
+#include <sys/socket.h>
+
 #include <cstdint>
 #include <memory>
 #include <span>
 
-#include <sys/socket.h>
-
 #include "strij/common/pure.hh"
-#include "strij/event/completable.hh"
 #include "strij/event/command.hh"
+#include "strij/event/completable.hh"
 
 namespace strij::event {
 
@@ -29,10 +29,10 @@ public:
   virtual void PrepareAcceptMultishot(Completable* io, uint8_t tag, int fd) PURE;
   virtual void PrepareRead(Completable* io, uint8_t tag, int fd, std::span<std::byte> buf,
                            off_t offset) PURE;
-  virtual void PrepareWrite(Completable* io, uint8_t tag, int fd,
-                            std::span<const std::byte> buf, off_t offset) PURE;
-  virtual void PrepareConnect(Completable* io, uint8_t tag, int fd,
-                              const struct sockaddr* addr, socklen_t addrlen) PURE;
+  virtual void PrepareWrite(Completable* io, uint8_t tag, int fd, std::span<const std::byte> buf,
+                            off_t offset) PURE;
+  virtual void PrepareConnect(Completable* io, uint8_t tag, int fd, const struct sockaddr* addr,
+                              socklen_t addrlen) PURE;
   virtual void PreparePoll(Completable* io, uint8_t tag, int fd, uint32_t poll_mask) PURE;
 };
 

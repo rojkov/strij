@@ -1,5 +1,3 @@
-#include "openworkflow/value_jv.hh"
-
 #include <cstdint>
 #include <limits>
 #include <string>
@@ -9,6 +7,7 @@
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "openworkflow/value.hh"
+#include "openworkflow/value_jv.hh"
 
 namespace strij::openworkflow {
 namespace {

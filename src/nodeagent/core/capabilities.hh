@@ -4,8 +4,8 @@
 #include <string_view>
 
 #include "absl/status/statusor.h"
-#include "nodeagent/config/nodeagent.pb.h"
 #include "common/node/capabilities.pb.h"
+#include "nodeagent/config/nodeagent.pb.h"
 
 namespace strij::nodeagent {
 

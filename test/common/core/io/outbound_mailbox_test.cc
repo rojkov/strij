@@ -109,12 +109,11 @@ TEST_F(OutboundMailboxTest, RegisterOnClosedMailboxFiresImmediately) {
   EXPECT_EQ(fired, 1);
 }
 
-
 TEST(OutboundMailboxBackpressureTest, QueueDepthBoundDropsFrames) {
   std::size_t writes = 0;
   std::size_t depth = 0;
-  auto mailbox = std::make_shared<OutboundMailbox>(
-      [&](std::vector<std::byte> /*frame*/) { ++writes; });
+  auto mailbox =
+      std::make_shared<OutboundMailbox>([&](std::vector<std::byte> /*frame*/) { ++writes; });
   mailbox->SetQueueDepthProbe([&] { return depth; });
   mailbox->SetMaxQueueDepth(2);
 

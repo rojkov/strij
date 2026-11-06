@@ -466,10 +466,9 @@ TEST(NestedWorkflowRunnerTest, StartsAndCompletesAwaitedRuns) {
   NestedWorkflowRunner runner(submitter, test::JqEvaluatorConfig());
   std::vector<task::TaskResult> results;
 
-  auto status = runner.Start(std::string(kRunnerChild), R"({"v":1})", "waited", 1,
-                             [&results](task::TaskResult result) {
-                               results.push_back(std::move(result));
-                             });
+  auto status =
+      runner.Start(std::string(kRunnerChild), R"({"v":1})", "waited", 1,
+                   [&results](task::TaskResult result) { results.push_back(std::move(result)); });
 
   ASSERT_TRUE(status.ok());
   EXPECT_EQ(runner.Size(), 1U);
@@ -519,10 +518,9 @@ TEST(NestedWorkflowRunnerTest, SupportsRecursiveEmbedding) {
   NestedWorkflowRunner runner(submitter, test::JqEvaluatorConfig());
   std::vector<task::TaskResult> results;
 
-  auto status = runner.Start(std::string(kRunnerRecursive), R"({"v":1})", "outer", 1,
-                             [&results](task::TaskResult result) {
-                               results.push_back(std::move(result));
-                             });
+  auto status =
+      runner.Start(std::string(kRunnerRecursive), R"({"v":1})", "outer", 1,
+                   [&results](task::TaskResult result) { results.push_back(std::move(result)); });
 
   ASSERT_TRUE(status.ok());
   ASSERT_EQ(submitter.size(), 1U);
@@ -704,8 +702,7 @@ TEST_F(OpenWorkflowTaskHandlerTest, ADetachedSubflowSurvivesConnectionClose) {
   test::FakeChildTaskSubmitter submitter;
   OpenWorkflowTaskHandler handler(submitter, resolver_, test::JqEvaluatorConfig());
   auto state = std::make_shared<test::TestSender::State>();
-  const std::string document =
-      WriteArtifact("detached-close.yaml", kEmbeddedDetachedWithBlocker);
+  const std::string document = WriteArtifact("detached-close.yaml", kEmbeddedDetachedWithBlocker);
 
   handler.HandleTask(MakeTask("wf", document, R"({"v":1})"),
                      std::make_unique<test::TestSender>(state));
@@ -726,9 +723,9 @@ TEST_F(OpenWorkflowTaskHandlerTest, ADetachedSubflowSurvivesConnectionClose) {
 
   // The runner remains usable for the next top-level run.
   auto second = std::make_shared<test::TestSender::State>();
-  handler.HandleTask(MakeTask("wf2", WriteArtifact("detached-next.yaml", kEmbeddedDetachedParent),
-                              R"({"v":2})"),
-                     std::make_unique<test::TestSender>(second));
+  handler.HandleTask(
+      MakeTask("wf2", WriteArtifact("detached-next.yaml", kEmbeddedDetachedParent), R"({"v":2})"),
+      std::make_unique<test::TestSender>(second));
   ASSERT_EQ(second->sent_.size(), 1U);
   EXPECT_EQ(second->sent_[0].body(), R"({"v":2})");
 }

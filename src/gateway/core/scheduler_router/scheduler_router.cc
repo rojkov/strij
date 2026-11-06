@@ -120,8 +120,9 @@ void SchedulerRouter::Schedule(const task::Task& task, gateway::ResultReceiverPt
   extensions::Scheduler* scheduler = findSchedulerFor(task);
   if (scheduler == nullptr) {
     // No scheduler claims the type: an unusable request, not a server fault.
-    receiver->DeliverError(absl::StrCat("no scheduler configured for task type '", task.type(), "'"),
-                           task::TASK_STATUS_MALFORMED_REQUEST);
+    receiver->DeliverError(
+        absl::StrCat("no scheduler configured for task type '", task.type(), "'"),
+        task::TASK_STATUS_MALFORMED_REQUEST);
 
     return;
   }
@@ -161,8 +162,9 @@ auto SchedulerRouter::handleChildTaskSubmission(const io::TlvFrame& frame, io::C
   extensions::Scheduler* scheduler = findSchedulerFor(task);
   if (scheduler == nullptr) {
     if (gateway::ResultReceiver* receiver = storage_.Get(task.id()); receiver != nullptr) {
-      receiver->DeliverError(absl::StrCat("no scheduler configured for task type '", task.type(), "'"),
-                             task::TASK_STATUS_MALFORMED_REQUEST);
+      receiver->DeliverError(
+          absl::StrCat("no scheduler configured for task type '", task.type(), "'"),
+          task::TASK_STATUS_MALFORMED_REQUEST);
     }
     storage_.Erase(task.id());
     return absl::OkStatus();

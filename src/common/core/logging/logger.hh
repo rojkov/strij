@@ -5,8 +5,8 @@
 
 #include "absl/base/thread_annotations.h"
 #include "absl/synchronization/mutex.h"
-#include "strij/event/dispatcher.hh"
 #include "common/core/logging/log_frontend.hh"
+#include "strij/event/dispatcher.hh"
 
 namespace strij::logging {
 

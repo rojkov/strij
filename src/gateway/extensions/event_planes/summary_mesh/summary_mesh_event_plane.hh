@@ -31,8 +31,8 @@ namespace strij::gateway::event_planes {
 // publisher forwards an event only to peers whose summary matches.
 class SummaryMeshEventPlane final : public extensions::EventPlane {
 public:
-  SummaryMeshEventPlane(const extensions::EventPlaneDeps& deps,
-                        std::uint64_t refresh_interval_ms, std::uint64_t peer_ttl_ms);
+  SummaryMeshEventPlane(const extensions::EventPlaneDeps& deps, std::uint64_t refresh_interval_ms,
+                        std::uint64_t peer_ttl_ms);
   ~SummaryMeshEventPlane() override;
 
   SummaryMeshEventPlane(const SummaryMeshEventPlane&) = delete;
@@ -73,8 +73,8 @@ private:
   [[nodiscard]] auto buildSummary() const -> event::RouteSummary;
   [[nodiscard]] static auto patternMatches(const event::EventPattern& pattern,
                                            const event::CloudEvent& event) -> bool;
-  [[nodiscard]] static auto peerMatches(const PeerSummary& peer,
-                                        const event::CloudEvent& event) -> bool;
+  [[nodiscard]] static auto peerMatches(const PeerSummary& peer, const event::CloudEvent& event)
+      -> bool;
 
   std::string gateway_id_;
   extensions::GatewayTransport& transport_;
@@ -91,9 +91,8 @@ class SummaryMeshEventPlaneFactory final : public extensions::EventPlaneFactory 
 public:
   [[nodiscard]] auto Name() const -> std::string override;
   auto CreateEmptyConfigProto() -> MessagePtr override;
-  auto Create(const ::google::protobuf::Message& config,
-              extensions::GatewayFactoryContext& context, const extensions::EventPlaneDeps& deps)
-      -> extensions::EventPlanePtr override;
+  auto Create(const ::google::protobuf::Message& config, extensions::GatewayFactoryContext& context,
+              const extensions::EventPlaneDeps& deps) -> extensions::EventPlanePtr override;
 };
 
 } // namespace strij::gateway::event_planes

@@ -1,7 +1,7 @@
 #include <string>
 
-#include "common/task/probe.pb.h"
 #include "common/node/capabilities.pb.h"
+#include "common/task/probe.pb.h"
 #include "gtest/gtest.h"
 
 namespace strij::task {

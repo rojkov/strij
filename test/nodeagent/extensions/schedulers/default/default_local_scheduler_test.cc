@@ -330,8 +330,8 @@ TEST_F(DefaultLocalSchedulerTest, LocalChildFailureReportsErrorAndErasesEntry) {
   auto manager = std::make_shared<TaskHandlerManager>();
   manager->AddHandler("failing", std::make_unique<FailingTaskHandler>());
   run_task_service_ = std::make_unique<RunTaskServiceImpl>(manager, admission_);
-  scheduler_ = std::make_unique<nodeagent::schedulers::DefaultLocalScheduler>(
-      *run_task_service_, admission_, nullptr);
+  scheduler_ = std::make_unique<nodeagent::schedulers::DefaultLocalScheduler>(*run_task_service_,
+                                                                              admission_, nullptr);
 
   auto receiver = std::make_unique<RecordingReceiver>();
   auto log = receiver->log;

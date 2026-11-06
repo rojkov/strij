@@ -4,10 +4,10 @@
 
 #include <vector>
 
+#include "liburing.h"
 #include "strij/event/command_handler.hh"
 #include "strij/event/completable.hh"
 #include "strij/event/dispatcher.hh"
-#include "liburing.h"
 
 namespace strij::event {
 
