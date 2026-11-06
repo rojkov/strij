@@ -65,4 +65,5 @@ strij_cc_library(
 strij_nodeagent_binary(
     name = "nodeagent",
     extensions = [":bundled_extensions"],
+    visibility = ["//visibility:public"],
 )

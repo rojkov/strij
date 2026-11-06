@@ -66,6 +66,45 @@ fork procedures in section 4, and
 an `if` skip, and `output.as` over the real child process. The two-step test is
 the verified reference for the manual procedure below.
 
+### Real-process cluster harness (`test/e2e`)
+
+The tests above are hermetic and in-process. `test/e2e` boots the **real**
+`gateway` and `nodeagent` binaries and drives them only through HTTP:
+
+```bash
+make test_e2e
+# or, for a focused run:
+bazel test //test/e2e/...
+```
+
+The suite is also part of `make test`/`bazel test //...`. What it proves:
+
+- `cluster_lifecycle_test`: a 2-node, 2-gateway cluster reaches readiness, shuts
+  down with status 0, releases every listener port, leaves no descendant
+  running, escalates when a process ignores the graceful signal, and reports a
+  node's startup error (with its log) when the generated configuration omits its
+  resource pool.
+- `task_fanout_test`: every gateway serves tasks from every node, 40 concurrent
+  requests through both gateways each return their own body, and a one-unit
+  shared pool per node admits exactly one request per node while the rest get
+  `429 CAPACITY_REFUSED`.
+- `process_test` / `config_generation_test` / `environment_guard_test`: the
+  process supervisor, the YAML generator round-tripping through the real
+  `LoadConfig`, and the `io_uring` probe.
+
+**Two-phase boot invariant.** Nodes are spawned and each listener is confirmed
+accepting before any gateway is launched. This is deliberate: a gateway that
+fails its first connection to a node never re-dials it, so it would report
+`429` for that node for the rest of its lifetime. Readiness is then asserted
+through the data path — marker tasks submitted through every gateway until every
+node marker has been observed at that gateway.
+
+**Skip condition.** Both binaries build their `io_uring` dispatcher before any
+configuration short-circuit. If `io_uring_setup` is denied (for example in a
+sandbox), `RequireIoUring()` calls `GTEST_SKIP()` with a message naming the
+facility; no process is spawned. Run on a host that permits `io_uring`, or use
+the manual gateway + nodeagent procedure below, which remains the fallback.
+
 ## 2. The test function
 
 `piped_executable` resolves its `function` parameter through the node's
