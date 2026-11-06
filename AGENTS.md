@@ -21,6 +21,8 @@ Use `io_uring` as much as possible. Synchronous calls (e.g. `write(2)`) are acce
 | `make check_includes` | `tools/check_include_purity.py`: `include/` headers may reference only `include/`, absl, protobuf, std |
 | `make check_namespaces` | `tools/check_namespace_coherence.py`: namespace↔directory doctrine check |
 | `make check` | both checks above |
+| `make format` | `tools/format_cpp.py`: clang-format all C++ files in place |
+| `make check_format` | `tools/format_cpp.py --check`: report unformatted files, change nothing |
 
 ## Build system
 
