@@ -8,20 +8,19 @@
 #include <utility>
 
 #include "absl/status/status.h"
-#include "common/core/io/connection.hh"
 #include "common/core/io/outbound_mailbox.hh"
 #include "common/core/io/tlv_frame.hh"
 #include "common/core/logging/log.hh"
 #include "common/event/cloudevent.pb.h"
 #include "common/event/event_plane.pb.h"
-#include "strij/extensions/event_plane.hh"
+#include "strij/gateway/event_plane.hh"
 
 namespace strij::gateway {
 
 GatewayEventEdge::~GatewayEventEdge() {
   for (const auto& [mailbox, watch] : close_watches_) {
     (void)mailbox;
-    watch.mailbox->UnregisterOnClose(watch.token);
+    watch.mailbox_->UnregisterOnClose(watch.token_);
   }
 }
 
@@ -80,7 +79,7 @@ auto GatewayEventEdge::HandleSubscribeFrame(const io::TlvFrame& frame,
   }
 
   subscriptions_.emplace(subscription_id,
-                         Entry{.subscription_id = subscription_id, .mailbox = mailbox});
+                         Entry{.subscription_id_ = subscription_id, .mailbox_ = mailbox});
   ensureCloseWatched(mailbox);
 
   plane_->AddSubscription(subscription_id, request.pattern());
@@ -121,6 +120,7 @@ auto GatewayEventEdge::HandleAckFrame(const io::TlvFrame& frame) -> absl::Status
   }
 
   plane_->Ack(ack.subscription_id(), ack.token());
+
   return absl::OkStatus();
 }
 
@@ -142,13 +142,14 @@ auto GatewayEventEdge::HandleUnsubscribeFrame(const io::TlvFrame& frame) -> absl
 
   plane_->RemoveSubscription(unsubscribe.subscription_id());
   subscriptions_.erase(iter);
+
   return absl::OkStatus();
 }
 
 void GatewayEventEdge::Deliver(std::string_view subscription_id, const event::CloudEvent& event,
                                std::string_view token) {
   auto iter = subscriptions_.find(std::string(subscription_id));
-  if (iter == subscriptions_.end() || iter->second.mailbox == nullptr) {
+  if (iter == subscriptions_.end() || iter->second.mailbox_ == nullptr) {
     return;
   }
 
@@ -162,7 +163,7 @@ void GatewayEventEdge::Deliver(std::string_view subscription_id, const event::Cl
     return;
   }
 
-  iter->second.mailbox->Enqueue(
+  iter->second.mailbox_->Enqueue(
       io::SerializeTlvFrame(io::TlvFrame::kEventDelivery, asBytes(serialized)));
 }
 
@@ -173,14 +174,14 @@ void GatewayEventEdge::ensureCloseWatched(const std::shared_ptr<io::OutboundMail
 
   const std::size_t token =
       mailbox->RegisterOnClose([this, raw = mailbox.get()]() { onConnectionClosed(raw); });
-  close_watches_.emplace(mailbox.get(), CloseWatch{.mailbox = mailbox, .token = token});
+  close_watches_.emplace(mailbox.get(), CloseWatch{.mailbox_ = mailbox, .token_ = token});
 }
 
 void GatewayEventEdge::onConnectionClosed(io::OutboundMailbox* mailbox) {
   close_watches_.erase(mailbox);
 
   for (auto iter = subscriptions_.begin(); iter != subscriptions_.end();) {
-    if (iter->second.mailbox.get() == mailbox) {
+    if (iter->second.mailbox_.get() == mailbox) {
       if (plane_ != nullptr) {
         plane_->DetachSubscription(iter->first);
       }

@@ -1564,28 +1564,35 @@ auto WorkflowInterpreter::EvaluateListenUntil(const NamedTask& /*step*/, const L
       if (!filter.IsObject()) {
         return false;
       }
+
       const auto& filter_object = filter.AsObject();
+
       auto with = filter_object.find("with");
       if (with == filter_object.end() || !with->second.IsObject()) {
         return false;
       }
+
       const auto& with_object = with->second.AsObject();
       std::string type;
       std::string source;
+
       auto type_iter = with_object.find("type");
       if (type_iter != with_object.end() && type_iter->second.IsString()) {
         type = type_iter->second.AsString();
       }
+
       auto source_iter = with_object.find("source");
       if (source_iter != with_object.end() && source_iter->second.IsString()) {
         source = source_iter->second.AsString();
       }
+
       for (const auto& event : consumed) {
         if ((type.empty() || event.type() == type) &&
             (source.empty() || event.source() == source)) {
           return true;
         }
       }
+
       return false;
     };
 
@@ -1594,6 +1601,7 @@ auto WorkflowInterpreter::EvaluateListenUntil(const NamedTask& /*step*/, const L
     if (one != until_object.end()) {
       return matchesFilter(one->second);
     }
+
     auto any = until_object.find("any");
     if (any != until_object.end()) {
       if (any->second.IsArray()) {
@@ -1602,10 +1610,13 @@ auto WorkflowInterpreter::EvaluateListenUntil(const NamedTask& /*step*/, const L
             return true;
           }
         }
+
         return false;
       }
+
       return matchesFilter(any->second);
     }
+
     auto all = until_object.find("all");
     if (all != until_object.end() && all->second.IsArray()) {
       for (const auto& filter : all->second.AsArray()) {
@@ -1613,8 +1624,10 @@ auto WorkflowInterpreter::EvaluateListenUntil(const NamedTask& /*step*/, const L
           return false;
         }
       }
+
       return true;
     }
+
     return absl::InvalidArgumentError("unknown nested until strategy");
   }
 
@@ -1623,10 +1636,12 @@ auto WorkflowInterpreter::EvaluateListenUntil(const NamedTask& /*step*/, const L
     if (index > 0) {
       array.push_back(',');
     }
+
     if (consumed[index].data().empty()) {
       array.append("null");
       continue;
     }
+
     auto parsed = utils::Jv::Parse(consumed[index].data());
     if (parsed.ok()) {
       array.append(consumed[index].data());
@@ -1634,6 +1649,7 @@ auto WorkflowInterpreter::EvaluateListenUntil(const NamedTask& /*step*/, const L
       absl::StrAppend(&array, "\"", absl::CEscape(consumed[index].data()), "\"");
     }
   }
+
   array.push_back(']');
 
   auto subject = utils::Jv::Parse(array);

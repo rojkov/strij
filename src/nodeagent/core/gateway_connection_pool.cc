@@ -96,6 +96,7 @@ void GatewayConnectionPool::SetGatewayId(io::OutboundMailbox* mailbox, std::stri
     if (entry->live_ && entry->mailbox_.get() == mailbox) {
       entry->gateway_id_ = std::move(gateway_id);
       entry->delivery_mode_ = delivery_mode;
+
       return;
     }
   }

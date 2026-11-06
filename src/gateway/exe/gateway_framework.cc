@@ -33,8 +33,8 @@
 #include "gateway/extensions/node_discovery/node_discovery.hh"
 #include "gateway_factory_context.hh"
 #include "strij/event/dispatcher.hh"
-#include "strij/extensions/event_plane.hh"
 #include "strij/extensions/extension_registry.hh"
+#include "strij/gateway/event_plane.hh"
 
 // Generated protobuf headers
 #include "gateway/config/gateway.pb.h"
@@ -51,6 +51,12 @@ ABSL_FLAG(std::string, log_format, "", "Override log format (text|json)");
 
 namespace strij::gateway {
 
+namespace {
+
+const size_t kMaxMailboxQueueDepth = 1024;
+
+} // namespace
+
 auto RunGateway(int argc, char** argv) -> int {
   // Suppress SIGPIPE. Within a single io_uring CQE batch a write SQE can be
   // queued (e.g. delivering a task result to an HTTP connection) and then the
@@ -63,15 +69,14 @@ auto RunGateway(int argc, char** argv) -> int {
   absl::ParseCommandLine(argc, argv);
 
   // Load configuration
-  auto config_result =
-      strij::config::LoadConfig<strij::config::GatewayConfig>(absl::GetFlag(FLAGS_config_file));
+  auto config_result = config::LoadConfig<config::GatewayConfig>(absl::GetFlag(FLAGS_config_file));
 
   if (!config_result.ok()) {
     LOG_ERROR("Config error: {}", config_result.status().message());
     return 1;
   }
 
-  strij::config::GatewayConfig config = config_result.value();
+  config::GatewayConfig config = config_result.value();
 
   // Validate node_discovery extension is configured
   if (!config.has_node_discovery()) {
@@ -100,11 +105,10 @@ auto RunGateway(int argc, char** argv) -> int {
     config.mutable_logging()->set_format(absl::GetFlag(FLAGS_log_format));
   }
 
-  const strij::event::DispatcherSharedPtr dispatcher =
-      std::make_shared<strij::event::DispatcherImpl>();
-  const strij::utils::SignalMonitor signal_monitor(dispatcher);
+  const event::DispatcherSharedPtr dispatcher = std::make_shared<event::DispatcherImpl>();
+  const utils::SignalMonitor signal_monitor(dispatcher);
 
-  strij::logging::Logger& logger = strij::logging::Logger::GetInstance();
+  logging::Logger& logger = logging::Logger::GetInstance();
   LOG_REGISTER_THREAD();
   logger.Run();
 
@@ -113,36 +117,36 @@ auto RunGateway(int argc, char** argv) -> int {
 
   // TODO: check why so many components are aware of state_tracker. I assumed it's needed for
   // centralized schedulers only.
-  strij::gateway::ExactStateTracker state_tracker;
-  strij::gateway::ResultReceiverStorageImpl storage{&state_tracker};
+  ExactStateTracker state_tracker;
+  ResultReceiverStorageImpl storage{&state_tracker};
 
+  // TODO: these back-pointers (most of them) smell bad. Get rid of them.
   // The connection factory needs the NodeDirectory and the scheduler router,
   // both of which are constructed after it, so back-pointers are filled in
   // once the objects exist. Connections are only accepted during Run(), by
   // which time both pointers are set.
-  strij::gateway::NodeDirectoryImpl* node_directory_ptr = nullptr;
-  strij::gateway::SchedulerRouter* scheduler_router_ptr = nullptr;
-  strij::gateway::GatewayRelayTransport* relay_transport_ptr = nullptr;
-  strij::gateway::GatewayEventEdge* event_edge_ptr = nullptr;
+  NodeDirectoryImpl* node_directory_ptr{nullptr};
+  SchedulerRouter* scheduler_router_ptr{nullptr};
+  GatewayRelayTransport* relay_transport_ptr{nullptr};
+  GatewayEventEdge* event_edge_ptr{nullptr};
   std::string gateway_id;
-  strij::event::DeliveryMode delivery_mode = strij::event::DELIVERY_MODE_BEST_EFFORT;
+  event::DeliveryMode delivery_mode = event::DELIVERY_MODE_BEST_EFFORT;
   auto connection_factory = [&storage, &state_tracker, &node_directory_ptr, &scheduler_router_ptr,
-                             &relay_transport_ptr, &event_edge_ptr, &gateway_id, &delivery_mode](
-                                strij::io::Connection& conn) -> strij::io::ProtocolParserPtr {
-    conn.Mailbox()->SetMaxQueueDepth(1024);
+                             &relay_transport_ptr, &event_edge_ptr, &gateway_id,
+                             &delivery_mode](io::Connection& conn) -> io::ProtocolParserPtr {
+    conn.Mailbox()->SetMaxQueueDepth(kMaxMailboxQueueDepth);
     // Announce this gateway's identity (and event-plane capability) before any
     // relay traffic so the node can resolve targeted peer messages. A gateway
     // without an event plane has no identity and sends no handshake.
-    if (auto hello = strij::gateway::BuildGatewayHello(gateway_id, delivery_mode);
-        hello.has_value()) {
+    if (auto hello = BuildGatewayHello(gateway_id, delivery_mode); hello.has_value()) {
       conn.Write(*hello);
     }
-    auto handler = std::make_unique<strij::gateway::GatewayTlvHandler>(
-        *node_directory_ptr, storage, scheduler_router_ptr, &state_tracker, relay_transport_ptr,
-        event_edge_ptr);
+    auto handler =
+        std::make_unique<GatewayTlvHandler>(*node_directory_ptr, storage, scheduler_router_ptr,
+                                            &state_tracker, relay_transport_ptr, event_edge_ptr);
     // Move the handler into the parser's callback via a named capture.
-    return std::make_unique<strij::io::TlvParser>(
-        [hdl = std::move(handler), &conn](strij::io::TlvFrame frame) -> void {
+    return std::make_unique<io::TlvParser>(
+        [hdl = std::move(handler), &conn](io::TlvFrame frame) -> void {
           const absl::Status status = hdl->HandleFrame(frame, conn);
           if (!status.ok()) {
             LOG_WARNING("frame dropped: {}", status.message());
@@ -150,26 +154,24 @@ auto RunGateway(int argc, char** argv) -> int {
         });
   };
 
-  strij::gateway::NodeDirectoryImpl node_directory{dispatcher, std::move(connection_factory),
-                                                   storage};
+  NodeDirectoryImpl node_directory{dispatcher, std::move(connection_factory), storage};
   node_directory_ptr = &node_directory;
 
-  strij::gateway::GatewayFactoryContextImpl factory_context(dispatcher, node_directory, storage);
+  GatewayFactoryContextImpl factory_context(dispatcher, node_directory, storage);
 
   // Optional event plane. The relay and edge must outlive the TLV handlers,
   // which run only during Dispatcher::Run().
-  std::unique_ptr<strij::gateway::GatewayRelayTransport> relay_transport;
-  std::unique_ptr<strij::gateway::GatewayEventEdge> event_edge;
-  strij::extensions::EventPlanePtr event_plane;
+  std::unique_ptr<GatewayRelayTransport> relay_transport;
+  std::unique_ptr<GatewayEventEdge> event_edge;
+  EventPlanePtr event_plane;
   if (config.has_event_plane()) {
-    relay_transport = std::make_unique<strij::gateway::GatewayRelayTransport>(node_directory);
-    event_edge = std::make_unique<strij::gateway::GatewayEventEdge>();
+    relay_transport = std::make_unique<GatewayRelayTransport>(node_directory);
+    event_edge = std::make_unique<GatewayEventEdge>();
 
-    gateway_id = strij::gateway::ResolveGatewayId(config.event_plane().gateway_id());
+    gateway_id = ResolveGatewayId(config.event_plane().gateway_id());
 
-    const strij::extensions::EventPlaneDeps deps(*dispatcher, gateway_id, *relay_transport,
-                                                 *event_edge, dispatcher);
-    auto plane = strij::loaders::CreateEventPlane(config.event_plane(), factory_context, deps);
+    const EventPlaneDeps deps(*dispatcher, gateway_id, *relay_transport, *event_edge, dispatcher);
+    auto plane = loaders::CreateEventPlane(config.event_plane(), factory_context, deps);
     if (!plane.ok()) {
       LOG_ERROR("Event plane config error: {}", plane.status().message());
       return 1;
@@ -185,11 +187,9 @@ auto RunGateway(int argc, char** argv) -> int {
   }
 
   // Node discovery via extension registry.
-  std::unique_ptr<strij::gateway::NodeDiscovery> node_discovery;
+  std::unique_ptr<NodeDiscovery> node_discovery;
   const auto& ext = config.node_discovery();
-  auto* factory =
-      strij::extensions::Registry<strij::gateway::NodeDiscoveryFactory>::instance().GetFactory(
-          ext.name());
+  auto* factory = extensions::Registry<NodeDiscoveryFactory>::instance().GetFactory(ext.name());
   if (factory == nullptr) {
     LOG_ERROR("Node discovery extension '{}' not found. "
               "Ensure the extension library is linked and the name matches a "
@@ -213,7 +213,7 @@ auto RunGateway(int argc, char** argv) -> int {
   // Schedulers via extension registry: required (at least one), no silent
   // default. The router validates names and task_type bindings, so an unknown
   // scheduler or an empty list fails startup (and --validate_only).
-  auto router_result = strij::gateway::BuildSchedulerRouter(config, factory_context);
+  auto router_result = BuildSchedulerRouter(config, factory_context);
   if (!router_result.ok()) {
     LOG_ERROR("Config error: {}", router_result.status().message());
     return 1;
@@ -230,23 +230,21 @@ auto RunGateway(int argc, char** argv) -> int {
     return 0;
   }
 
-  node_discovery->Start(
-      [&node_directory](const std::vector<strij::gateway::NodeInfo>& nodes) -> void {
-        node_directory.Reconcile(nodes);
-      });
+  node_discovery->Start([&node_directory](const std::vector<NodeInfo>& nodes) -> void {
+    node_directory.Reconcile(nodes);
+  });
 
-  const strij::io::TcpListener http_listener{
+  const io::TcpListener http_listener{
       dispatcher, config.http_listener().port(),
-      [&](strij::io::Connection& conn) -> std::unique_ptr<strij::io::ProtocolParser> {
-        auto handler = std::make_unique<strij::gateway::GatewayHttpHandler>(
+      [&](io::Connection& conn) -> std::unique_ptr<io::ProtocolParser> {
+        auto handler = std::make_unique<GatewayHttpHandler>(
             storage,
-            [](strij::io::Connection& conn,
-               std::string_view task_id) -> strij::gateway::ResultReceiverPtr {
-              return std::make_unique<strij::gateway::HttpResultReceiver>(conn, task_id);
+            [](io::Connection& conn, std::string_view task_id) -> ResultReceiverPtr {
+              return std::make_unique<HttpResultReceiver>(conn, task_id);
             },
             *scheduler_router);
-        return std::make_unique<strij::io::LlhttpParser>(
-            [hdl = std::move(handler), &conn](const strij::io::HttpRequest& request) -> void {
+        return std::make_unique<io::LlhttpParser>(
+            [hdl = std::move(handler), &conn](const io::HttpRequest& request) -> void {
               hdl->HandleMessage(request, conn);
             });
       }};

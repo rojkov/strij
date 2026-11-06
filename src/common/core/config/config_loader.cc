@@ -283,36 +283,39 @@ auto hasEnvOverrideForDescriptor(const google::protobuf::Descriptor* descriptor,
     const std::string path =
         upper_prefix.empty() ? toUpper(field->name()) : upper_prefix + "_" + toUpper(field->name());
 
-    if (field->cpp_type() == google::protobuf::FieldDescriptor::CPPTYPE_MESSAGE) {
-      if (field->is_repeated()) {
-        const auto* sub_descriptor = field->message_type();
-        for (int idx = 0; idx < 16; ++idx) {
-          const std::string idx_prefix = path + "__" + std::to_string(idx) + "__";
-          for (int j = 0; j < sub_descriptor->field_count(); ++j) {
-            const auto* sub_field = sub_descriptor->field(j);
-            if (sub_field->cpp_type() == google::protobuf::FieldDescriptor::CPPTYPE_MESSAGE) {
-              continue;
-            }
-            // NOLINTNEXTLINE(concurrency-mt-unsafe)
-            if (std::getenv(
-                    absl::StrCat(env_prefix, idx_prefix, toUpper(sub_field->name())).c_str()) !=
-                nullptr) {
-              return true;
-            }
-          }
-        }
-        continue;
-      }
-
-      if (hasEnvOverrideForDescriptor(field->message_type(), env_prefix, path)) {
+    if (field->cpp_type() != google::protobuf::FieldDescriptor::CPPTYPE_MESSAGE) {
+      // NOLINTNEXTLINE(concurrency-mt-unsafe)
+      if (std::getenv(absl::StrCat(env_prefix, path).c_str()) != nullptr) {
         return true;
       }
+
       continue;
     }
 
-    // NOLINTNEXTLINE(concurrency-mt-unsafe)
-    if (std::getenv(absl::StrCat(env_prefix, path).c_str()) != nullptr) {
-      return true;
+    if (!field->is_repeated()) {
+      if (hasEnvOverrideForDescriptor(field->message_type(), env_prefix, path)) {
+        return true;
+      }
+
+      continue;
+    }
+
+    const auto* sub_descriptor = field->message_type();
+
+    constexpr int kMaxItemsInList = 16;
+
+    for (int idx = 0; idx < kMaxItemsInList; ++idx) {
+      const std::string idx_prefix = path + "__" + std::to_string(idx) + "__";
+
+      for (int j = 0; j < sub_descriptor->field_count(); ++j) {
+        const auto* sub_field = sub_descriptor->field(j);
+        if (sub_field->cpp_type() != google::protobuf::FieldDescriptor::CPPTYPE_MESSAGE &&
+            // NOLINTNEXTLINE(concurrency-mt-unsafe)
+            std::getenv(absl::StrCat(env_prefix, idx_prefix, toUpper(sub_field->name())).c_str()) !=
+                nullptr) {
+          return true;
+        }
+      }
     }
   }
 
@@ -346,6 +349,7 @@ auto discoverAndApplyEnvVars(google::protobuf::Message* message, const std::stri
             !hasEnvOverrideForDescriptor(field->message_type(), env_prefix, path)) {
           continue;
         }
+
         auto status =
             discoverAndApplyEnvVars(reflection->MutableMessage(message, field), env_prefix, path);
         if (!status.ok()) {

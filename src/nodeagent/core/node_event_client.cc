@@ -154,6 +154,11 @@ public:
       : subscription_{std::move(subscription)} {}
   ~SubscriptionHandle() override { subscription_->Delete(); }
 
+  SubscriptionHandle(const SubscriptionHandle&) = delete;
+  auto operator=(const SubscriptionHandle&) -> SubscriptionHandle& = delete;
+  SubscriptionHandle(SubscriptionHandle&&) noexcept = delete;
+  auto operator=(SubscriptionHandle&&) noexcept -> SubscriptionHandle& = delete;
+
   void Ack(std::string_view token) override { subscription_->Ack(token); }
   void Detach() override { subscription_->Detach(); }
   void Delete() override { subscription_->Delete(); }
@@ -221,7 +226,7 @@ auto NodeEventClient::Subscribe(event::EventSubscriptionRequest request, ReadyCa
     return std::make_unique<NoopSubscription>();
   }
 
-  const std::string subscription_id = request.subscription_id();
+  const std::string& subscription_id = request.subscription_id();
   auto subscription =
       std::make_shared<Subscription>(*this, subscription_id, mailbox, mode, std::move(on_ready),
                                      std::move(on_event), std::move(on_error));

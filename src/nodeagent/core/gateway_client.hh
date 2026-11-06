@@ -21,7 +21,9 @@ class GatewayClient final : public ChildTaskForwarder {
 public:
   GatewayClient() : connections_{owned_connections_} {}
   explicit GatewayClient(GatewayConnectionPool& connections) : connections_{connections} {}
+
   ~GatewayClient() override = default;
+
   GatewayClient(const GatewayClient&) = delete;
   auto operator=(const GatewayClient&) -> GatewayClient& = delete;
   GatewayClient(GatewayClient&&) noexcept = delete;

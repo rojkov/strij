@@ -6,7 +6,6 @@
 #include <optional>
 #include <set>
 #include <string>
-#include <string_view>
 #include <vector>
 
 #include "absl/status/status.h"
@@ -46,7 +45,7 @@ public:
   void OnEvent(event::CloudEvent event, std::string token);
   // An asynchronous subscription failure after it became ready (for example,
   // the gateway connection was lost). Fails the step with UNAVAILABLE.
-  void OnSubscriptionError(absl::Status status);
+  void OnSubscriptionError(const absl::Status& status);
   void SetSubscription(EventSubscriptionPtr subscription);
   void SetReady(absl::Status status, event::DeliveryMode mode);
 

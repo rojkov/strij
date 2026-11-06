@@ -15,13 +15,12 @@ auto Logger::GetInstance() -> Logger& {
 
 void Logger::RegisterThread() {
   auto ctx = std::make_unique<LogFrontend>(dispatcher_);
-  auto* local_context = ctx.get();
+  local_context_ = ctx.get();
 
   {
     absl::MutexLock lock(worker_queues_mtx_);
     worker_queues_.push_back(std::move(ctx));
   }
-  local_context_ = local_context;
 }
 
 void Logger::Run() {
@@ -29,13 +28,14 @@ void Logger::Run() {
 }
 
 void Logger::Stop() {
-  printf("Shutting down logger...\n");
   dispatcher_->Shutdown();
+
   if (thread_.joinable()) {
     thread_.join();
-    printf("Logger stopped.\n");
   }
+
   local_context_ = nullptr;
+
   {
     absl::MutexLock lock(worker_queues_mtx_);
     worker_queues_.clear();

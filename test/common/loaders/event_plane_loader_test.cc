@@ -11,15 +11,15 @@
 #include "gateway/config/gateway.pb.h"
 #include "gateway/extensions/event_planes/summary_mesh/summary_mesh.pb.h"
 #include "gtest/gtest.h"
-#include "strij/extensions/event_plane.hh"
-#include "strij/extensions/gateway_transport.hh"
+#include "strij/gateway/event_plane.hh"
+#include "strij/gateway/gateway_transport.hh"
 
 namespace strij::loaders {
 namespace {
 
 // NOLINTBEGIN(modernize-use-trailing-return-type)
 
-class FakeTransport final : public extensions::GatewayTransport {
+class FakeTransport final : public gateway::GatewayTransport {
 public:
   auto Send(std::span<const std::string_view> /*peer_ids*/, std::span<const std::byte> /*payload*/)
       -> absl::Status override {
@@ -28,16 +28,14 @@ public:
   auto Broadcast(std::span<const std::byte> /*payload*/) -> absl::Status override {
     return absl::OkStatus();
   }
-  void SetReceiver(extensions::GatewayTransportReceiver* receiver) override {
-    receiver_ = receiver;
-  }
+  void SetReceiver(gateway::GatewayTransportReceiver* receiver) override { receiver_ = receiver; }
   [[nodiscard]] auto MaxPayloadSize() const -> std::size_t override { return 1024 * 1024; }
 
 private:
-  extensions::GatewayTransportReceiver* receiver_{nullptr};
+  gateway::GatewayTransportReceiver* receiver_{nullptr};
 };
 
-class FakeHost final : public extensions::EventPlaneHost {
+class FakeHost final : public gateway::EventPlaneHost {
 public:
   void Deliver(std::string_view /*subscription_id*/, const event::CloudEvent& /*event*/,
                std::string_view /*token*/) override {}
@@ -48,7 +46,7 @@ TEST(EventPlaneLoaderTest, LoadsRegisteredSummaryMesh) {
   FakeTransport transport;
   FakeHost host;
   extensions::MockGatewayFactoryContext context;
-  extensions::EventPlaneDeps deps(dispatcher, "gateway-a", transport, host, nullptr);
+  gateway::EventPlaneDeps deps(dispatcher, "gateway-a", transport, host, nullptr);
 
   config::EventPlaneConfig config;
   config.mutable_extension()->set_name("summary_mesh");
@@ -65,7 +63,7 @@ TEST(EventPlaneLoaderTest, UnknownExtensionFails) {
   FakeTransport transport;
   FakeHost host;
   extensions::MockGatewayFactoryContext context;
-  extensions::EventPlaneDeps deps(dispatcher, "gateway-a", transport, host, nullptr);
+  gateway::EventPlaneDeps deps(dispatcher, "gateway-a", transport, host, nullptr);
 
   config::EventPlaneConfig config;
   config.mutable_extension()->set_name("does_not_exist");
@@ -77,7 +75,7 @@ TEST(EventPlaneLoaderTest, BadTypedConfigFails) {
   FakeTransport transport;
   FakeHost host;
   extensions::MockGatewayFactoryContext context;
-  extensions::EventPlaneDeps deps(dispatcher, "gateway-a", transport, host, nullptr);
+  gateway::EventPlaneDeps deps(dispatcher, "gateway-a", transport, host, nullptr);
 
   config::EventPlaneConfig config;
   config.mutable_extension()->set_name("summary_mesh");

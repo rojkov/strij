@@ -22,15 +22,15 @@
 #include "nodeagent/core/gateway_connection_pool.hh"
 #include "nodeagent/core/node_event_client.hh"
 #include "nodeagent/core/node_relay_service.hh"
-#include "strij/extensions/event_plane.hh"
-#include "strij/extensions/gateway_transport.hh"
+#include "strij/gateway/event_plane.hh"
+#include "strij/gateway/gateway_transport.hh"
 
 namespace strij::gateway::event_planes {
 namespace {
 
 // NOLINTBEGIN(modernize-use-trailing-return-type)
 
-class FakeHost final : public extensions::EventPlaneHost {
+class FakeHost final : public EventPlaneHost {
 public:
   void Deliver(std::string_view subscription_id, const event::CloudEvent& event,
                std::string_view /*token*/) override {
@@ -40,7 +40,7 @@ public:
   std::vector<std::pair<std::string, std::string>> deliveries;
 };
 
-class FakeTransport final : public extensions::GatewayTransport {
+class FakeTransport final : public GatewayTransport {
 public:
   auto Send(std::span<const std::string_view> peer_ids, std::span<const std::byte> payload)
       -> absl::Status override {
@@ -75,14 +75,12 @@ public:
     return absl::OkStatus();
   }
 
-  void SetReceiver(extensions::GatewayTransportReceiver* new_receiver) override {
-    receiver = new_receiver;
-  }
+  void SetReceiver(GatewayTransportReceiver* new_receiver) override { receiver = new_receiver; }
 
   [[nodiscard]] auto MaxPayloadSize() const -> std::size_t override { return 1024 * 1024; }
 
   FakeTransport* peer{nullptr};
-  extensions::GatewayTransportReceiver* receiver{nullptr};
+  GatewayTransportReceiver* receiver{nullptr};
   std::vector<std::vector<std::string>> sent_targets;
   absl::Status send_status{absl::OkStatus()};
   absl::Status broadcast_status{absl::OkStatus()};
@@ -109,10 +107,10 @@ class SummaryMeshEventPlaneTest : public ::testing::Test {
 protected:
   void SetUp() override {
     dispatcher_ = std::make_shared<event::MockDispatcher>();
-    deps_a_ = std::make_unique<extensions::EventPlaneDeps>(*dispatcher_, "gateway-a", transport_a_,
-                                                           host_a_, nullptr);
-    deps_b_ = std::make_unique<extensions::EventPlaneDeps>(*dispatcher_, "gateway-b", transport_b_,
-                                                           host_b_, nullptr);
+    deps_a_ =
+        std::make_unique<EventPlaneDeps>(*dispatcher_, "gateway-a", transport_a_, host_a_, nullptr);
+    deps_b_ =
+        std::make_unique<EventPlaneDeps>(*dispatcher_, "gateway-b", transport_b_, host_b_, nullptr);
     plane_a_ = std::make_unique<SummaryMeshEventPlane>(*deps_a_, 1000, 5000);
     plane_b_ = std::make_unique<SummaryMeshEventPlane>(*deps_b_, 1000, 5000);
     transport_a_.peer = &transport_b_;
@@ -124,8 +122,8 @@ protected:
   FakeTransport transport_b_;
   FakeHost host_a_;
   FakeHost host_b_;
-  std::unique_ptr<extensions::EventPlaneDeps> deps_a_;
-  std::unique_ptr<extensions::EventPlaneDeps> deps_b_;
+  std::unique_ptr<EventPlaneDeps> deps_a_;
+  std::unique_ptr<EventPlaneDeps> deps_b_;
   std::unique_ptr<SummaryMeshEventPlane> plane_a_;
   std::unique_ptr<SummaryMeshEventPlane> plane_b_;
 };
@@ -134,7 +132,7 @@ TEST(SummaryMeshEventPlaneDeliveryModeTest, AutoResolvesBestEffort) {
   event::MockDispatcher dispatcher;
   FakeTransport transport;
   FakeHost host;
-  extensions::EventPlaneDeps deps(dispatcher, "gateway-a", transport, host, nullptr);
+  EventPlaneDeps deps(dispatcher, "gateway-a", transport, host, nullptr);
   SummaryMeshEventPlane plane(deps, 1000, 5000);
 
   EXPECT_EQ(plane.SupportedDeliveryMode(), event::DELIVERY_MODE_BEST_EFFORT);
@@ -270,7 +268,7 @@ TEST_F(SummaryMeshEventPlaneTest, LateSubscriptionMissesAnEarlierEvent) {
   EXPECT_EQ(host_b_.deliveries[0].first, "b");
 }
 
-class RelayTransport final : public extensions::GatewayTransport {
+class RelayTransport final : public GatewayTransport {
 public:
   RelayTransport(nodeagent::NodeRelayService& relay, io::OutboundMailbox& source)
       : relay_{relay}, source_{source} {}
@@ -296,13 +294,11 @@ public:
     return Send({}, payload);
   }
 
-  void SetReceiver(extensions::GatewayTransportReceiver* new_receiver) override {
-    receiver = new_receiver;
-  }
+  void SetReceiver(GatewayTransportReceiver* new_receiver) override { receiver = new_receiver; }
 
   [[nodiscard]] auto MaxPayloadSize() const -> std::size_t override { return 1024 * 1024; }
 
-  extensions::GatewayTransportReceiver* receiver{nullptr};
+  GatewayTransportReceiver* receiver{nullptr};
 
 private:
   nodeagent::NodeRelayService& relay_;
@@ -357,8 +353,8 @@ TEST(SummaryMeshRelayIntegrationTest, DeliversAcrossTwoGatewaysThroughTheRelayNo
   FakeHost host_b;
   RelayTransport transport_a(relay, *gateway_a_mailbox.mailbox);
   RelayTransport transport_b(relay, *gateway_b_mailbox.mailbox);
-  extensions::EventPlaneDeps deps_a(dispatcher, "gateway-a", transport_a, host_a, nullptr);
-  extensions::EventPlaneDeps deps_b(dispatcher, "gateway-b", transport_b, host_b, nullptr);
+  EventPlaneDeps deps_a(dispatcher, "gateway-a", transport_a, host_a, nullptr);
+  EventPlaneDeps deps_b(dispatcher, "gateway-b", transport_b, host_b, nullptr);
   SummaryMeshEventPlane plane_a(deps_a, 1000, 5000);
   SummaryMeshEventPlane plane_b(deps_b, 1000, 5000);
 
@@ -417,8 +413,8 @@ TEST(SummaryMeshNodeRelayIntegrationTest, EmitAndListenAcrossTwoGatewaysAndNodes
   gateway::GatewayEventEdge edge_b;
   RelayTransport transport_a(relay, *gateway_a.mailbox);
   RelayTransport transport_b(relay, *gateway_b.mailbox);
-  extensions::EventPlaneDeps deps_a(dispatcher_a, "gateway-a", transport_a, edge_a, nullptr);
-  extensions::EventPlaneDeps deps_b(dispatcher_b, "gateway-b", transport_b, edge_b, nullptr);
+  EventPlaneDeps deps_a(dispatcher_a, "gateway-a", transport_a, edge_a, nullptr);
+  EventPlaneDeps deps_b(dispatcher_b, "gateway-b", transport_b, edge_b, nullptr);
   SummaryMeshEventPlane plane_a(deps_a, 1000, 5000);
   SummaryMeshEventPlane plane_b(deps_b, 1000, 5000);
   edge_a.SetPlane(&plane_a);

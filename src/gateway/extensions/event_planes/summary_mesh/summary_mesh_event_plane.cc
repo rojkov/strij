@@ -34,7 +34,7 @@ auto asBytes(std::string_view text) -> std::span<const std::byte> {
 
 } // namespace
 
-SummaryMeshEventPlane::SummaryMeshEventPlane(const extensions::EventPlaneDeps& deps,
+SummaryMeshEventPlane::SummaryMeshEventPlane(const EventPlaneDeps& deps,
                                              std::uint64_t refresh_interval_ms,
                                              std::uint64_t peer_ttl_ms)
     : gateway_id_{deps.gateway_id_}, transport_{deps.transport_}, host_{deps.host_},
@@ -43,7 +43,8 @@ SummaryMeshEventPlane::SummaryMeshEventPlane(const extensions::EventPlaneDeps& d
   transport_.SetReceiver(this);
 
   if (deps.shared_dispatcher_ != nullptr) {
-    timer_ = std::make_unique<io::PeriodicTimer>(deps.shared_dispatcher_, [this]() { tick(); });
+    timer_ =
+        std::make_unique<io::PeriodicTimer>(deps.shared_dispatcher_, [this]() -> void { tick(); });
     timer_->Start(absl::Milliseconds(refresh_interval_ms_));
   }
 }
@@ -55,24 +56,29 @@ auto SummaryMeshEventPlane::patternMatches(const event::EventPattern& pattern,
   if (!pattern.type().empty() && pattern.type() != event.type()) {
     return false;
   }
+
   if (!pattern.source().empty() && pattern.source() != event.source()) {
     return false;
   }
+
   if (!pattern.subject().empty() && pattern.subject() != event.subject()) {
     return false;
   }
+
   return true;
 }
 
 auto SummaryMeshEventPlane::peerMatches(const PeerSummary& peer, const event::CloudEvent& event)
     -> bool {
-  if (peer.match_all) {
+  if (peer.match_all_) {
     return true;
   }
-  if (peer.types.contains(event.type())) {
+
+  if (peer.types_.contains(event.type())) {
     return true;
   }
-  return peer.sources.contains(event.source());
+
+  return peer.sources_.contains(event.source());
 }
 
 auto SummaryMeshEventPlane::localSubscriptionsFor(const event::CloudEvent& event) const
@@ -83,6 +89,7 @@ auto SummaryMeshEventPlane::localSubscriptionsFor(const event::CloudEvent& event
       matches.push_back(subscription_id);
     }
   }
+
   return matches;
 }
 
@@ -163,17 +170,21 @@ auto SummaryMeshEventPlane::buildSummary() const -> event::RouteSummary {
   event::RouteSummary summary;
   for (const auto& [subscription_id, pattern] : subscriptions_) {
     (void)subscription_id;
+
     if (pattern.type().empty() && pattern.source().empty()) {
       summary.set_match_all(true);
       continue;
     }
+
     if (!pattern.type().empty()) {
       summary.add_types(pattern.type());
     }
+
     if (!pattern.source().empty()) {
       summary.add_sources(pattern.source());
     }
   }
+
   return summary;
 }
 
@@ -196,7 +207,7 @@ void SummaryMeshEventPlane::broadcastSummary() {
 void SummaryMeshEventPlane::ExpirePeers(absl::Time now) {
   const absl::Duration ttl = absl::Milliseconds(peer_ttl_ms_);
   for (auto iter = peers_.begin(); iter != peers_.end();) {
-    if (now - iter->second.last_seen > ttl) {
+    if (now - iter->second.last_seen_ > ttl) {
       iter = peers_.erase(iter);
     } else {
       ++iter;
@@ -222,21 +233,25 @@ void SummaryMeshEventPlane::OnMessage(std::span<const std::byte> payload) {
 
   if (message.has_summary()) {
     auto iter = peers_.find(message.sender_id());
-    if (iter != peers_.end() && message.epoch() < iter->second.epoch) {
+    if (iter != peers_.end() && message.epoch() < iter->second.epoch_) {
       return;
     }
 
     PeerSummary peer;
-    peer.match_all = message.summary().match_all();
+    peer.match_all_ = message.summary().match_all();
+
     for (const std::string& type : message.summary().types()) {
-      peer.types.insert(type);
+      peer.types_.insert(type);
     }
+
     for (const std::string& source : message.summary().sources()) {
-      peer.sources.insert(source);
+      peer.sources_.insert(source);
     }
-    peer.epoch = message.epoch();
-    peer.last_seen = absl::Now();
+
+    peer.epoch_ = message.epoch();
+    peer.last_seen_ = absl::Now();
     peers_.insert_or_assign(message.sender_id(), std::move(peer));
+
     return;
   }
 
@@ -253,8 +268,7 @@ auto SummaryMeshEventPlaneFactory::CreateEmptyConfigProto() -> MessagePtr {
 
 auto SummaryMeshEventPlaneFactory::Create(const ::google::protobuf::Message& config,
                                           extensions::GatewayFactoryContext& /*context*/,
-                                          const extensions::EventPlaneDeps& deps)
-    -> extensions::EventPlanePtr {
+                                          const EventPlaneDeps& deps) -> EventPlanePtr {
   std::uint64_t refresh_ms = kDefaultRefreshMs;
   std::uint64_t ttl_ms = kDefaultTtlMs;
   if (const auto* mesh_config =
@@ -270,5 +284,5 @@ auto SummaryMeshEventPlaneFactory::Create(const ::google::protobuf::Message& con
 } // namespace strij::gateway::event_planes
 
 REGISTER_FACTORY_FULLY_QUALIFIED(strij::gateway::event_planes::SummaryMeshEventPlaneFactory,
-                                 strij::extensions::EventPlaneFactory,
+                                 strij::gateway::EventPlaneFactory,
                                  summary_mesh_event_plane_registrar)

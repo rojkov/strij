@@ -40,10 +40,12 @@ public:
   auto RegisterOnClose(CloseCallback close_cb) -> std::size_t;
   void UnregisterOnClose(std::size_t token);
 
+  // TODO: these setters are used at init-time only. Consider moving them to ctor.
   // Optional backpressure: a probe reports the peer connection's current
   // write-queue depth. A non-zero max drops frames once the depth is reached.
   void SetQueueDepthProbe(std::function<std::size_t()> probe);
   void SetMaxQueueDepth(std::size_t max_depth);
+
   [[nodiscard]] auto DroppedFrames() const -> std::size_t { return dropped_frames_; }
 
 private:
