@@ -1,13 +1,10 @@
 #pragma once
 
-#include <cstddef>
 #include <memory>
 #include <string>
-#include <string_view>
 #include <unordered_map>
 
 #include "absl/status/status.h"
-#include "common/core/io/connection.hh"
 #include "common/core/io/tlv_frame.hh"
 #include "common/event/cloudevent.pb.h"
 #include "common/event/event_plane.pb.h"
@@ -29,11 +26,13 @@ public:
   NodeEventClient(NodeEventClient&&) noexcept = delete;
   auto operator=(NodeEventClient&&) noexcept -> NodeEventClient& = delete;
 
+  // EventBus
   auto Publish(event::CloudEvent event) -> absl::Status override;
   auto Subscribe(event::EventSubscriptionRequest request, ReadyCallback on_ready,
                  EventCallback on_event, ErrorCallback on_error = {})
       -> EventSubscriptionPtr override;
 
+  // EventDeliverySink
   // Dispatches an inbound kEventDelivery frame.
   void HandleDelivery(const io::TlvFrame& frame) override;
   // Dispatches an inbound kEventSubscribeResult frame.

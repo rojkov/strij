@@ -1322,7 +1322,7 @@ TEST(GatewayReceiverLifecycleTest, NodeDropDeliversErrorWhileHttpAlive) {
   EXPECT_EQ(errors->at(0), "node disconnected");
 }
 
-class CapturingTransportReceiver final : public extensions::GatewayTransportReceiver {
+class CapturingTransportReceiver final : public GatewayTransportReceiver {
 public:
   void OnMessage(std::span<const std::byte> payload) override {
     payload_.assign(reinterpret_cast<const char*>(payload.data()), payload.size());

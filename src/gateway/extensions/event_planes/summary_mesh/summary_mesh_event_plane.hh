@@ -14,8 +14,8 @@
 #include "absl/time/time.h"
 #include "common/event/cloudevent.pb.h"
 #include "common/event/event_plane.pb.h"
-#include "strij/extensions/event_plane.hh"
-#include "strij/extensions/gateway_transport.hh"
+#include "strij/gateway/event_plane.hh"
+#include "strij/gateway/gateway_transport.hh"
 
 namespace strij::event {
 class Dispatcher;
@@ -29,9 +29,9 @@ namespace strij::gateway::event_planes {
 // The bundled best-effort event plane. Each gateway advertises a compact
 // summary of the event types and sources its local listeners can consume; a
 // publisher forwards an event only to peers whose summary matches.
-class SummaryMeshEventPlane final : public extensions::EventPlane {
+class SummaryMeshEventPlane final : public EventPlane {
 public:
-  SummaryMeshEventPlane(const extensions::EventPlaneDeps& deps, std::uint64_t refresh_interval_ms,
+  SummaryMeshEventPlane(const EventPlaneDeps& deps, std::uint64_t refresh_interval_ms,
                         std::uint64_t peer_ttl_ms);
   ~SummaryMeshEventPlane() override;
 
@@ -58,11 +58,11 @@ public:
 
 private:
   struct PeerSummary {
-    std::set<std::string> types;
-    std::set<std::string> sources;
-    bool match_all{false};
-    std::uint64_t epoch{0};
-    absl::Time last_seen;
+    std::set<std::string> types_;
+    std::set<std::string> sources_;
+    bool match_all_{false};
+    std::uint64_t epoch_{0};
+    absl::Time last_seen_;
   };
 
   void broadcastSummary();
@@ -77,8 +77,8 @@ private:
       -> bool;
 
   std::string gateway_id_;
-  extensions::GatewayTransport& transport_;
-  extensions::EventPlaneHost& host_;
+  GatewayTransport& transport_;
+  EventPlaneHost& host_;
   std::unique_ptr<io::PeriodicTimer> timer_;
   std::uint64_t refresh_interval_ms_;
   std::uint64_t peer_ttl_ms_;
@@ -87,12 +87,12 @@ private:
   std::map<std::string, PeerSummary> peers_;
 };
 
-class SummaryMeshEventPlaneFactory final : public extensions::EventPlaneFactory {
+class SummaryMeshEventPlaneFactory final : public EventPlaneFactory {
 public:
   [[nodiscard]] auto Name() const -> std::string override;
   auto CreateEmptyConfigProto() -> MessagePtr override;
   auto Create(const ::google::protobuf::Message& config, extensions::GatewayFactoryContext& context,
-              const extensions::EventPlaneDeps& deps) -> extensions::EventPlanePtr override;
+              const EventPlaneDeps& deps) -> EventPlanePtr override;
 };
 
 } // namespace strij::gateway::event_planes

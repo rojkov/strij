@@ -145,7 +145,7 @@ strij_cc_library(
     deps = [
         ":node_lib",
         "//api/common/event:event_plane_cc_proto",
-        "//include/strij/extensions:gateway_transport_interface",
+        "//include/strij/gateway:gateway_transport_interface",
         "//include/strij/gateway:node_directory_interface",
         "//src/common/core/io:connection_lib",
         "//src/common/core/io:outbound_mailbox_lib",
@@ -164,7 +164,7 @@ strij_cc_library(
     deps = [
         "//api/common/event:cloudevent_cc_proto",
         "//api/common/event:event_plane_cc_proto",
-        "//include/strij/extensions:event_plane_interface",
+        "//include/strij/gateway:event_plane_interface",
         "//src/common/core/io:connection_lib",
         "//src/common/core/io:outbound_mailbox_lib",
         "//src/common/core/io:tlv_frame",

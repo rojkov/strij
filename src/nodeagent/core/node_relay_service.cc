@@ -37,8 +37,10 @@ auto NodeRelayService::HandleFrame(const io::TlvFrame& frame, io::OutboundMailbo
     }
 
     connections_.SetGatewayId(&source, hello.gateway_id(), hello.delivery_mode());
+
     return absl::OkStatus();
   }
+
   case io::TlvFrame::kPeerRelay: {
     event::PeerRelay relay;
     if (!relay.ParseFromArray(std::bit_cast<const char*>(frame.value.data()),
@@ -71,6 +73,7 @@ auto NodeRelayService::HandleFrame(const io::TlvFrame& frame, io::OutboundMailbo
         LOG_WARNING("Relay target gateway '{}' has no live connection; dropping that copy", target);
         continue;
       }
+
       if (mailbox != source_mailbox) {
         mailbox->Enqueue(out);
       }

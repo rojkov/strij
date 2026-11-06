@@ -6,8 +6,8 @@ strij_cc_test(
     deps = [
         "//api/common/event:cloudevent_cc_proto",
         "//api/common/event:event_plane_cc_proto",
-        "//include/strij/extensions:event_plane_interface",
-        "//include/strij/extensions:gateway_transport_interface",
+        "//include/strij/gateway:event_plane_interface",
+        "//include/strij/gateway:gateway_transport_interface",
         "//src/common/core/io:outbound_mailbox_lib",
         "//src/common/core/io:tlv_frame",
         "//src/gateway/core:gateway_event_edge_lib",

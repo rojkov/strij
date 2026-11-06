@@ -7,7 +7,7 @@
 #include "absl/status/status.h"
 #include "strij/common/pure.hh"
 
-namespace strij::extensions {
+namespace strij::gateway {
 
 class GatewayTransportReceiver {
 public:
@@ -37,8 +37,9 @@ public:
   virtual auto Send(std::span<const std::string_view> peer_ids, std::span<const std::byte> payload)
       -> absl::Status PURE;
   virtual auto Broadcast(std::span<const std::byte> payload) -> absl::Status PURE;
+  // TODO: this smells like there's a circular dependency at init-time. Try to get rid of it.
   virtual void SetReceiver(GatewayTransportReceiver* receiver) PURE;
   [[nodiscard]] virtual auto MaxPayloadSize() const -> std::size_t PURE;
 };
 
-} // namespace strij::extensions
+} // namespace strij::gateway

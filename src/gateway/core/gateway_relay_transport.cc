@@ -5,7 +5,6 @@
 #include <span>
 #include <string>
 #include <string_view>
-#include <utility>
 #include <vector>
 
 #include "absl/status/status.h"
@@ -58,7 +57,8 @@ auto GatewayRelayTransport::relay(std::span<const std::string_view> peer_ids,
   for (const std::string_view peer_id : peer_ids) {
     relay.add_target_gateway_ids(std::string(peer_id));
   }
-  relay.set_payload(std::string(reinterpret_cast<const char*>(payload.data()), payload.size()));
+
+  relay.set_payload(std::string(std::bit_cast<const char*>(payload.data()), payload.size()));
 
   std::string serialized;
   if (!relay.SerializeToString(&serialized)) {
@@ -66,6 +66,7 @@ auto GatewayRelayTransport::relay(std::span<const std::string_view> peer_ids,
   }
 
   mailbox->Enqueue(io::SerializeTlvFrame(io::TlvFrame::kPeerRelay, asBytes(serialized)));
+
   return absl::OkStatus();
 }
 

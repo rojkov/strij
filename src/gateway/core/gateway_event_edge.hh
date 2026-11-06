@@ -7,18 +7,17 @@
 #include <unordered_map>
 
 #include "absl/status/status.h"
-#include "common/core/io/connection.hh"
 #include "common/core/io/outbound_mailbox.hh"
 #include "common/core/io/tlv_frame.hh"
 #include "common/event/cloudevent.pb.h"
-#include "strij/extensions/event_plane.hh"
+#include "strij/gateway/event_plane.hh"
 
 namespace strij::gateway {
 
 // The gateway edge between node TLV frames and the configured event-plane
 // extension. It owns the subscription-id-to-node mapping and implements the
 // extension's local-delivery callback.
-class GatewayEventEdge final : public extensions::EventPlaneHost {
+class GatewayEventEdge final : public EventPlaneHost {
 public:
   GatewayEventEdge() = default;
   ~GatewayEventEdge() override;
@@ -28,8 +27,9 @@ public:
   GatewayEventEdge(GatewayEventEdge&&) noexcept = delete;
   auto operator=(GatewayEventEdge&&) noexcept -> GatewayEventEdge& = delete;
 
-  void SetPlane(extensions::EventPlane* plane) { plane_ = plane; }
-  [[nodiscard]] auto Plane() const -> extensions::EventPlane* { return plane_; }
+  // TODO: smells like we have circular dependencies at init-time. Try to get rid of it.
+  void SetPlane(EventPlane* plane) { plane_ = plane; }
+  [[nodiscard]] auto Plane() const -> EventPlane* { return plane_; }
 
   auto HandlePublishFrame(const io::TlvFrame& frame) -> absl::Status;
   auto HandleSubscribeFrame(const io::TlvFrame& frame,
@@ -37,7 +37,7 @@ public:
   auto HandleUnsubscribeFrame(const io::TlvFrame& frame) -> absl::Status;
   auto HandleAckFrame(const io::TlvFrame& frame) -> absl::Status;
 
-  // extensions::EventPlaneHost
+  // EventPlaneHost
   void Deliver(std::string_view subscription_id, const event::CloudEvent& event,
                std::string_view token) override;
 
@@ -45,8 +45,8 @@ public:
 
 private:
   struct Entry {
-    std::string subscription_id;
-    std::shared_ptr<io::OutboundMailbox> mailbox;
+    std::string subscription_id_;
+    std::shared_ptr<io::OutboundMailbox> mailbox_;
   };
 
   void ensureCloseWatched(const std::shared_ptr<io::OutboundMailbox>& mailbox);
@@ -56,13 +56,13 @@ private:
                                      std::string_view reason, event::DeliveryMode delivery_mode);
 
   struct CloseWatch {
-    std::shared_ptr<io::OutboundMailbox> mailbox;
-    std::size_t token;
+    std::shared_ptr<io::OutboundMailbox> mailbox_;
+    std::size_t token_;
   };
 
   std::unordered_map<std::string, Entry> subscriptions_;
   std::unordered_map<io::OutboundMailbox*, CloseWatch> close_watches_;
-  extensions::EventPlane* plane_{nullptr};
+  EventPlane* plane_{nullptr};
 };
 
 } // namespace strij::gateway

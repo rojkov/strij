@@ -91,7 +91,7 @@ void ListenFrame::OnEvent(event::CloudEvent event, std::string token) {
   queued_.push_back(QueuedEvent{.event_ = std::move(event), .token_ = std::move(token)});
 }
 
-void ListenFrame::OnSubscriptionError(absl::Status status) {
+void ListenFrame::OnSubscriptionError(const absl::Status& status) {
   if (IsTerminal() || !IsActive()) {
     return;
   }
@@ -294,7 +294,7 @@ auto ListenFrame::start(FrameContext& context) -> std::optional<FrameResult> {
 
 auto ListenFrame::process(const QueuedEvent& queued, FrameContext& context)
     -> std::optional<FrameResult> {
-  const auto ack = [this, &queued]() {
+  const auto ack = [this, &queued]() -> void {
     if (subscription_ != nullptr) {
       subscription_->Ack(queued.token_);
     }
