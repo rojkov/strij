@@ -16,6 +16,7 @@
 #include "google/protobuf/any.pb.h"
 #include "gtest/gtest.h"
 #include "nodeagent/config/nodeagent.pb.h"
+#include "nodeagent/extensions/task_handlers/piped_executable/piped_executable.pb.h"
 
 namespace strij::e2e {
 namespace {
@@ -54,6 +55,9 @@ TEST(ConfigGenerationTest, DefaultSpecHasTheFanoutTopology) {
 }
 
 TEST(ConfigGenerationTest, GeneratedConfigsRoundTripAndDescribeTheTopology) {
+  ASSERT_NE(strij::extensions::task_handlers::piped_executable::PipedExecutableTaskHandlerConfig::
+                descriptor(),
+            nullptr);
   ClusterSpec spec = DefaultFanoutSpec();
   PortAllocator ports;
   assignPorts(spec, ports);
@@ -106,6 +110,9 @@ TEST(ConfigGenerationTest, GeneratedConfigsRoundTripAndDescribeTheTopology) {
 }
 
 TEST(ConfigGenerationTest, MissingPoolIsGeneratedAsWritten) {
+  ASSERT_NE(strij::extensions::task_handlers::piped_executable::PipedExecutableTaskHandlerConfig::
+                descriptor(),
+            nullptr);
   ClusterSpec spec = DefaultFanoutSpec();
   spec.nodes[0].include_pool = false;
   PortAllocator ports;

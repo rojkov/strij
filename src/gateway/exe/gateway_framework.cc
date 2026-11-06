@@ -105,8 +105,8 @@ auto RunGateway(int argc, char** argv) -> int {
   const strij::utils::SignalMonitor signal_monitor(dispatcher);
 
   strij::logging::Logger& logger = strij::logging::Logger::GetInstance();
-  logger.Run();
   LOG_REGISTER_THREAD();
+  logger.Run();
 
   // Set log level from config
   // Note: Logger::GetInstance().SetLogLevel(config.logging().level());  // if available

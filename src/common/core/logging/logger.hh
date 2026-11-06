@@ -17,6 +17,7 @@ public:
 
   static thread_local LogFrontend* local_context_;
 
+  // Call before Run(); registering a frontend queues a read on the logger dispatcher.
   void RegisterThread();
   void Run();
   void Stop();
