@@ -1,0 +1,89 @@
+load("//bazel:build_system.bzl", "strij_cc_binary", "strij_cc_test_library", "strij_e2e_test")
+
+strij_cc_test_library(
+    name = "e2e_support_lib",
+    srcs = [
+        "support/cluster.cc",
+        "support/cluster_spec.cc",
+        "support/environment.cc",
+        "support/http_client.cc",
+        "support/process.cc",
+    ],
+    hdrs = [
+        "support/cluster.hh",
+        "support/cluster_spec.hh",
+        "support/environment.hh",
+        "support/http_client.hh",
+        "support/process.hh",
+    ],
+    deps = [
+        "//:liburing",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+    ],
+)
+
+# A plain TCP listener used by process_test to prove WaitForPort observes a
+# spawned process. It binds and listens, then sleeps until signalled.
+strij_cc_binary(
+    name = "test_port_listener",
+    srcs = ["support/test_port_listener.cc"],
+    visibility = ["//visibility:private"],
+)
+
+strij_e2e_test(
+    name = "environment_guard_test",
+    srcs = ["environment_guard_test.cc"],
+    deps = [
+        ":e2e_support_lib",
+        "@googletest//:gtest_main",
+    ],
+)
+
+strij_e2e_test(
+    name = "process_test",
+    srcs = ["process_test.cc"],
+    data = [":test_port_listener"],
+    deps = [
+        ":e2e_support_lib",
+        "@abseil-cpp//absl/status",
+        "@googletest//:gtest_main",
+    ],
+)
+
+strij_e2e_test(
+    name = "config_generation_test",
+    srcs = ["config_generation_test.cc"],
+    deps = [
+        ":e2e_support_lib",
+        "//api/gateway/config:gateway_config_cc_proto",
+        "//api/gateway/extensions/node_discovery/static:static_node_discovery_cc_proto",
+        "//api/nodeagent/config:nodeagent_config_cc_proto",
+        "//api/nodeagent/extensions/task_handlers/piped_executable:piped_executable_cc_proto",
+        "//src/common/core/config:config_loader_lib",
+        "@googletest//:gtest_main",
+        "@protobuf",
+    ],
+)
+
+strij_e2e_test(
+    name = "cluster_lifecycle_test",
+    srcs = ["cluster_lifecycle_test.cc"],
+    deps = [
+        ":e2e_support_lib",
+        "@googletest//:gtest_main",
+    ],
+)
+
+strij_e2e_test(
+    name = "task_fanout_test",
+    srcs = ["task_fanout_test.cc"],
+    deps = [
+        ":e2e_support_lib",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@googletest//:gtest_main",
+    ],
+)

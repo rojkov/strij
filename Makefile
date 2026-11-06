@@ -23,6 +23,11 @@ coverage:
 test: test_consumer
 	bazel test $(BAZEL_FLAGS) //...
 
+# End-to-end tests that start real gateway/nodeagent processes. They skip when
+# the host denies io_uring_setup. Included in `make test` via //...
+test_e2e:
+	bazel test $(BAZEL_FLAGS) //test/e2e/...
+
 # Smoke-test consumability from a fresh external repo (test/consumer flips @strij
 # into a real external module via MODULE.bazel + local_path_override). Must run
 # before the root `bazel test //...` because root bazel owns the root workspace.
@@ -74,4 +79,4 @@ env: docker/artifacts/bazelisk-amd64.deb
 llvm-toolchain:
 	./tools/build-llvm-project.sh ${LLVM_PROJECT_PATH}
 
-.PHONY: build compiledb coverage test test_consumer build_consumer test_asan test_tsan clang-tidy format check_format check check_includes check_namespaces env
+.PHONY: build compiledb coverage test test_e2e test_consumer build_consumer test_asan test_tsan clang-tidy format check_format check check_includes check_namespaces env

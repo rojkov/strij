@@ -57,4 +57,5 @@ strij_gateway_binary(
         "//src/gateway/extensions/schedulers/probe:probe_scheduler_lib",
         "//src/gateway/extensions/schedulers/round_robin:round_robin_scheduler_lib",
     ],
+    visibility = ["//visibility:public"],
 )
