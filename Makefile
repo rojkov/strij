@@ -50,6 +50,12 @@ clang-tidy: toolchain/abs_path.bzl
 		-clang-apply-replacements-binary=${LLVM_PATH}/bin/clang-apply-replacements \
 		-use-color
 
+format:
+	python3 tools/format_cpp.py
+
+check_format:
+	python3 tools/format_cpp.py --check
+
 check_includes:
 	python3 tools/check_include_purity.py
 
@@ -68,4 +74,4 @@ env: docker/artifacts/bazelisk-amd64.deb
 llvm-toolchain:
 	./tools/build-llvm-project.sh ${LLVM_PROJECT_PATH}
 
-.PHONY: build compiledb coverage test test_consumer build_consumer test_asan test_tsan clang-tidy check check_includes check_namespaces env
+.PHONY: build compiledb coverage test test_consumer build_consumer test_asan test_tsan clang-tidy format check_format check check_includes check_namespaces env
