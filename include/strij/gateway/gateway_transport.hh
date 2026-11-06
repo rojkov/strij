@@ -7,7 +7,7 @@
 #include "absl/status/status.h"
 #include "strij/common/pure.hh"
 
-namespace strij::extensions {
+namespace strij::gateway {
 
 class GatewayTransportReceiver {
 public:
@@ -41,4 +41,4 @@ public:
   [[nodiscard]] virtual auto MaxPayloadSize() const -> std::size_t PURE;
 };
 
-} // namespace strij::extensions
+} // namespace strij::gateway

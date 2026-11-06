@@ -28,7 +28,7 @@ struct CapturedMailbox {
   }
 };
 
-class CapturingReceiver final : public extensions::GatewayTransportReceiver {
+class CapturingReceiver final : public GatewayTransportReceiver {
 public:
   void OnMessage(std::span<const std::byte> payload) override {
     payload_.assign(reinterpret_cast<const char*>(payload.data()), payload.size());

@@ -49,7 +49,7 @@ strij_cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//api/gateway/config:gateway_config_cc_proto",
-        "//include/strij/extensions:event_plane_interface",
+        "//include/strij/gateway:event_plane_interface",
         "//include/strij/extensions:extension_registry_lib",
         "@abseil-cpp//absl/status",
         "@abseil-cpp//absl/status:statusor",

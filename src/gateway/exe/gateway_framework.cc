@@ -33,8 +33,8 @@
 #include "gateway/extensions/node_discovery/node_discovery.hh"
 #include "gateway_factory_context.hh"
 #include "strij/event/dispatcher.hh"
-#include "strij/extensions/event_plane.hh"
 #include "strij/extensions/extension_registry.hh"
+#include "strij/gateway/event_plane.hh"
 
 // Generated protobuf headers
 #include "gateway/config/gateway.pb.h"
@@ -160,15 +160,15 @@ auto RunGateway(int argc, char** argv) -> int {
   // which run only during Dispatcher::Run().
   std::unique_ptr<strij::gateway::GatewayRelayTransport> relay_transport;
   std::unique_ptr<strij::gateway::GatewayEventEdge> event_edge;
-  strij::extensions::EventPlanePtr event_plane;
+  strij::gateway::EventPlanePtr event_plane;
   if (config.has_event_plane()) {
     relay_transport = std::make_unique<strij::gateway::GatewayRelayTransport>(node_directory);
     event_edge = std::make_unique<strij::gateway::GatewayEventEdge>();
 
     gateway_id = strij::gateway::ResolveGatewayId(config.event_plane().gateway_id());
 
-    const strij::extensions::EventPlaneDeps deps(*dispatcher, gateway_id, *relay_transport,
-                                                 *event_edge, dispatcher);
+    const strij::gateway::EventPlaneDeps deps(*dispatcher, gateway_id, *relay_transport,
+                                              *event_edge, dispatcher);
     auto plane = strij::loaders::CreateEventPlane(config.event_plane(), factory_context, deps);
     if (!plane.ok()) {
       LOG_ERROR("Event plane config error: {}", plane.status().message());

@@ -24,14 +24,14 @@
 #include "common/event/event_plane.pb.h"
 #include "gateway/core/gateway_event_edge.hh"
 #include "gtest/gtest.h"
-#include "strij/extensions/event_plane.hh"
+#include "strij/gateway/event_plane.hh"
 
 namespace strij::gateway {
 namespace {
 
 // NOLINTBEGIN(modernize-use-trailing-return-type)
 
-class FakeEventPlane final : public extensions::EventPlane {
+class FakeEventPlane final : public EventPlane {
 public:
   void Publish(event::CloudEvent event) override { published.push_back(std::move(event)); }
   void AddSubscription(std::string subscription_id, event::EventPattern pattern) override {

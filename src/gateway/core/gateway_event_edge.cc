@@ -14,7 +14,7 @@
 #include "common/core/logging/log.hh"
 #include "common/event/cloudevent.pb.h"
 #include "common/event/event_plane.pb.h"
-#include "strij/extensions/event_plane.hh"
+#include "strij/gateway/event_plane.hh"
 
 namespace strij::gateway {
 

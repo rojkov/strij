@@ -5,7 +5,6 @@
 #include <string_view>
 #include <utility>
 
-#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "common/event/cloudevent.pb.h"
 #include "common/event/event_plane.pb.h"
@@ -13,9 +12,9 @@
 #include "strij/common/pure.hh"
 #include "strij/event/dispatcher.hh"
 #include "strij/extensions/factory_context.hh"
-#include "strij/extensions/gateway_transport.hh"
+#include "strij/gateway/gateway_transport.hh"
 
-namespace strij::extensions {
+namespace strij::gateway {
 
 // The gateway edge's callback for a local subscription.
 class EventPlaneHost {
@@ -96,8 +95,9 @@ public:
 
   [[nodiscard]] virtual auto Name() const -> std::string PURE;
   virtual auto CreateEmptyConfigProto() -> MessagePtr PURE;
-  virtual auto Create(const ::google::protobuf::Message& config, GatewayFactoryContext& context,
-                      const EventPlaneDeps& deps) -> EventPlanePtr PURE;
+  virtual auto Create(const ::google::protobuf::Message& config,
+                      extensions::GatewayFactoryContext& context, const EventPlaneDeps& deps)
+      -> EventPlanePtr PURE;
 };
 
-} // namespace strij::extensions
+} // namespace strij::gateway

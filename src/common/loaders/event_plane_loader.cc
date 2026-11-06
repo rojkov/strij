@@ -8,20 +8,20 @@
 #include "absl/strings/str_cat.h"
 #include "google/protobuf/any.pb.h"
 #include "google/protobuf/message.h"
-#include "strij/extensions/event_plane.hh"
 #include "strij/extensions/extension_registry.hh"
+#include "strij/gateway/event_plane.hh"
 
 namespace strij::loaders {
 
 auto CreateEventPlane(const config::EventPlaneConfig& config,
                       extensions::GatewayFactoryContext& context,
-                      const extensions::EventPlaneDeps& deps)
-    -> absl::StatusOr<extensions::EventPlanePtr> {
+                      const gateway::EventPlaneDeps& deps)
+    -> absl::StatusOr<gateway::EventPlanePtr> {
   if (!config.has_extension() || config.extension().name().empty()) {
     return absl::InvalidArgumentError("event_plane.extension.name is required");
   }
 
-  auto* factory = extensions::Registry<extensions::EventPlaneFactory>::instance().GetFactory(
+  auto* factory = extensions::Registry<gateway::EventPlaneFactory>::instance().GetFactory(
       config.extension().name());
   if (factory == nullptr) {
     return absl::InvalidArgumentError(

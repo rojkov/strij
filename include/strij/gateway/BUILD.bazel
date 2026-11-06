@@ -18,3 +18,30 @@ strij_cc_library(
         "//include/strij/common:pure_lib",
     ],
 )
+
+strij_cc_library(
+    name = "gateway_transport_interface",
+    hdrs = ["gateway_transport.hh"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//include/strij/common:pure_lib",
+        "@abseil-cpp//absl/status",
+    ],
+)
+
+strij_cc_library(
+    name = "event_plane_interface",
+    hdrs = ["event_plane.hh"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//api/common/event:cloudevent_cc_proto",
+        "//api/common/event:event_plane_cc_proto",
+        "//include/strij/common:pure_lib",
+        "//include/strij/event:dispatcher_interface",
+        "//include/strij/extensions:factory_context_interface",
+        "//include/strij/gateway:gateway_transport_interface",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@protobuf",
+    ],
+)

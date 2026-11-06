@@ -34,7 +34,7 @@ auto asBytes(std::string_view text) -> std::span<const std::byte> {
 
 } // namespace
 
-SummaryMeshEventPlane::SummaryMeshEventPlane(const extensions::EventPlaneDeps& deps,
+SummaryMeshEventPlane::SummaryMeshEventPlane(const EventPlaneDeps& deps,
                                              std::uint64_t refresh_interval_ms,
                                              std::uint64_t peer_ttl_ms)
     : gateway_id_{deps.gateway_id_}, transport_{deps.transport_}, host_{deps.host_},
@@ -253,8 +253,7 @@ auto SummaryMeshEventPlaneFactory::CreateEmptyConfigProto() -> MessagePtr {
 
 auto SummaryMeshEventPlaneFactory::Create(const ::google::protobuf::Message& config,
                                           extensions::GatewayFactoryContext& /*context*/,
-                                          const extensions::EventPlaneDeps& deps)
-    -> extensions::EventPlanePtr {
+                                          const EventPlaneDeps& deps) -> EventPlanePtr {
   std::uint64_t refresh_ms = kDefaultRefreshMs;
   std::uint64_t ttl_ms = kDefaultTtlMs;
   if (const auto* mesh_config =
@@ -270,5 +269,5 @@ auto SummaryMeshEventPlaneFactory::Create(const ::google::protobuf::Message& con
 } // namespace strij::gateway::event_planes
 
 REGISTER_FACTORY_FULLY_QUALIFIED(strij::gateway::event_planes::SummaryMeshEventPlaneFactory,
-                                 strij::extensions::EventPlaneFactory,
+                                 strij::gateway::EventPlaneFactory,
                                  summary_mesh_event_plane_registrar)
