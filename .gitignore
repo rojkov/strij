@@ -5,6 +5,7 @@ toolchain/clang
 toolchain/abs_path.bzl
 hacks
 .opencode
+.dsh
 
 # Nested external-module smoke-test workspace output
 test/consumer/bazel-*
