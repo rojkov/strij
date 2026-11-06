@@ -1429,18 +1429,16 @@ auto EmbeddedInputBlock(std::string_view child) -> std::string {
 }
 
 auto RunParentDocument(std::string_view input_block, std::string_view run_extra = {},
-                       std::string_view task_extra = {},
-                       std::string_view name_space = "embedded",
-                       std::string_view run_name = "child",
-                       std::string_view run_version = "0.1.0") -> std::string {
-  std::string document =
-      "document:\n"
-      "  dsl: '1.0.3'\n"
-      "  namespace: test\n"
-      "  name: run-parent\n"
-      "  version: '0.1.0'\n"
-      "do:\n"
-      "  - subflow:\n";
+                       std::string_view task_extra = {}, std::string_view name_space = "embedded",
+                       std::string_view run_name = "child", std::string_view run_version = "0.1.0")
+    -> std::string {
+  std::string document = "document:\n"
+                         "  dsl: '1.0.3'\n"
+                         "  namespace: test\n"
+                         "  name: run-parent\n"
+                         "  version: '0.1.0'\n"
+                         "do:\n"
+                         "  - subflow:\n";
   document.append(task_extra);
   document.append("      run:\n");
   document.append(run_extra);
@@ -1475,8 +1473,7 @@ struct Harness {
 TEST(InterpreterRunTest, AwaitedSubflowSuspendsAndFeedsItsResultIntoThePipeline) {
   Harness harness;
   const std::string document = RunParentDocument(
-      EmbeddedInputBlock(kChildCall), {},
-      "      output:\n        as: '${ {wrapped: .} }'\n");
+      EmbeddedInputBlock(kChildCall), {}, "      output:\n        as: '${ {wrapped: .} }'\n");
 
   harness.interpreter_->Start(document, R"({"v":1})");
 
@@ -1501,20 +1498,18 @@ TEST(InterpreterRunTest, AwaitedSubflowSuspendsAndFeedsItsResultIntoThePipeline)
 
 TEST(InterpreterRunTest, AwaitedSubflowCompletingInlineStillAdvancesOnce) {
   Harness harness;
-  harness.submitter_.SetOnSubmit(
-      [](const task::Task& child, gateway::ResultReceiver& receiver) {
-        if (child.type() != "inner") {
-          return;
-        }
+  harness.submitter_.SetOnSubmit([](const task::Task& child, gateway::ResultReceiver& receiver) {
+    if (child.type() != "inner") {
+      return;
+    }
 
-        const std::string body = R"({"inline":true})";
-        const auto data = std::as_bytes(std::span(body.data(), body.size()));
-        receiver.Deliver(data, true);
-      });
+    const std::string body = R"({"inline":true})";
+    const auto data = std::as_bytes(std::span(body.data(), body.size()));
+    receiver.Deliver(data, true);
+  });
 
   const std::string document = RunParentDocument(
-      EmbeddedInputBlock(kChildCall), {},
-      "      output:\n        as: '${ {wrapped: .} }'\n");
+      EmbeddedInputBlock(kChildCall), {}, "      output:\n        as: '${ {wrapped: .} }'\n");
   harness.interpreter_->Start(document, R"({"v":1})");
 
   ASSERT_EQ(harness.submitter_.size(), 2U);
@@ -1534,8 +1529,7 @@ TEST(InterpreterRunTest, AwaitedSubflowFailurePropagatesItsStatus) {
   harness.interpreter_->Start(document, R"({"v":1})");
   ASSERT_EQ(harness.submitter_.size(), 1U);
 
-  test::CompleteErrorAt(harness.submitter_, 0, "nested boom",
-                        task::TASK_STATUS_CAPACITY_REFUSED);
+  test::CompleteErrorAt(harness.submitter_, 0, "nested boom", task::TASK_STATUS_CAPACITY_REFUSED);
 
   ASSERT_EQ(harness.results_.size(), 1U);
   EXPECT_EQ(harness.results_[0].status(), task::TASK_STATUS_CAPACITY_REFUSED);
@@ -1559,8 +1553,7 @@ TEST(InterpreterRunTest, DetachedSubflowContinuesWithTheTransformedInput) {
   EXPECT_EQ(harness.submitter_.at(1)->task_.body(), R"({"seen":{"v":1}})");
   EXPECT_TRUE(harness.results_.empty());
 
-  test::CompleteErrorAt(harness.submitter_, 0, "detached boom",
-                        task::TASK_STATUS_CAPACITY_REFUSED);
+  test::CompleteErrorAt(harness.submitter_, 0, "detached boom", task::TASK_STATUS_CAPACITY_REFUSED);
   EXPECT_TRUE(harness.results_.empty());
   EXPECT_EQ(harness.runner_->Size(), 0U);
 
@@ -4386,8 +4379,8 @@ TEST(RunWorkflowHelpersTest, AcceptsTheEmbeddedProfile) {
 }
 
 TEST(RunWorkflowHelpersTest, AcceptsInertNameAndVersion) {
-  const std::string document = RunParentDocument(EmbeddedInputBlock(kChildCall), {}, {},
-                                                 "embedded", "declared-name", "9.9.9");
+  const std::string document = RunParentDocument(EmbeddedInputBlock(kChildCall), {}, {}, "embedded",
+                                                 "declared-name", "9.9.9");
   Harness harness;
 
   harness.interpreter_->Start(document);
@@ -4426,11 +4419,10 @@ TEST(InterpreterRunValidationTest, DeclaredReturnIsUnimplemented) {
 }
 
 TEST(InterpreterRunValidationTest, MissingOrNonStringInputIsMalformed) {
-  for (const std::string_view input_block : {std::string_view{},
-                                             std::string_view{"          input: {a: 1}\n"},
-                                             std::string_view{"          input: [1, 2]\n"},
-                                             std::string_view{"          input: 7\n"},
-                                             std::string_view{"          input: true\n"}}) {
+  for (const std::string_view input_block :
+       {std::string_view{}, std::string_view{"          input: {a: 1}\n"},
+        std::string_view{"          input: [1, 2]\n"}, std::string_view{"          input: 7\n"},
+        std::string_view{"          input: true\n"}}) {
     SCOPED_TRACE(input_block);
     Harness harness;
     harness.interpreter_->Start(RunParentDocument(input_block));
@@ -4443,8 +4435,7 @@ TEST(InterpreterRunValidationTest, MissingOrNonStringInputIsMalformed) {
 
 TEST(InterpreterRunValidationTest, MalformedEmbeddedDocumentIsMalformed) {
   Harness harness;
-  harness.interpreter_->Start(
-      RunParentDocument(EmbeddedInputBlock("document: [unterminated")));
+  harness.interpreter_->Start(RunParentDocument(EmbeddedInputBlock("document: [unterminated")));
 
   ASSERT_EQ(harness.results_.size(), 1U);
   EXPECT_EQ(harness.results_[0].status(), task::TASK_STATUS_MALFORMED_REQUEST);
@@ -4454,8 +4445,7 @@ TEST(InterpreterRunValidationTest, MalformedEmbeddedDocumentIsMalformed) {
 }
 
 TEST(InterpreterRunValidationTest, MalformedGrandchildIsMalformed) {
-  const std::string grandchild =
-      RunParentDocument(EmbeddedInputBlock("document: [unterminated"));
+  const std::string grandchild = RunParentDocument(EmbeddedInputBlock("document: [unterminated"));
   Harness harness;
   harness.interpreter_->Start(RunParentDocument(EmbeddedInputBlock(grandchild)));
 
@@ -4511,15 +4501,14 @@ TEST(InterpreterRunValidationTest, SkippedAndNonAwaitedStepsAreStillValidated) {
 }
 
 TEST(InterpreterRunValidationTest, ExcessiveEmbeddedNestingIsUnimplemented) {
-  std::string nested =
-      "document:\n"
-      "  dsl: '1.0.3'\n"
-      "  namespace: leaf\n"
-      "  name: leaf\n"
-      "  version: '0.1.0'\n"
-      "do:\n"
-      "  - leaf:\n"
-      "      set: {a: 1}\n";
+  std::string nested = "document:\n"
+                       "  dsl: '1.0.3'\n"
+                       "  namespace: leaf\n"
+                       "  name: leaf\n"
+                       "  version: '0.1.0'\n"
+                       "do:\n"
+                       "  - leaf:\n"
+                       "      set: {a: 1}\n";
   for (std::size_t depth = 0; depth < kDefaultEmbeddedNestingLimit + 1; ++depth) {
     nested = RunParentDocument(EmbeddedInputBlock(nested));
   }

@@ -9,14 +9,14 @@
 #include "test/mocks/common/common_mocks.hh"
 #include "test/mocks/event/mocks.hh"
 
+#include "absl/status/status.h"
 #include "common/core/io/connection.hh"
 #include "common/core/io/outbound_mailbox.hh"
 #include "common/core/io/tlv_frame.hh"
 #include "common/core/io/tlv_parser.hh"
 #include "common/task/task.pb.h"
-#include "nodeagent/core/gateway_client.hh"
-#include "absl/status/status.h"
 #include "gtest/gtest.h"
+#include "nodeagent/core/gateway_client.hh"
 
 namespace strij::nodeagent {
 namespace {
@@ -58,10 +58,10 @@ public:
     EXPECT_CALL(*tc->dispatcher,
                 PrepareRead(::testing::_, ::testing::_, ::testing::_, ::testing::_, ::testing::_))
         .WillRepeatedly(::testing::Return());
-    tc->conn = std::make_unique<io::Connection>(
-        fds[0], tc->dispatcher, &tc->owner, [](io::Connection&) -> io::ProtocolParserPtr {
-          return std::make_unique<io::TrivialParser>();
-        });
+    tc->conn = std::make_unique<io::Connection>(fds[0], tc->dispatcher, &tc->owner,
+                                                [](io::Connection&) -> io::ProtocolParserPtr {
+                                                  return std::make_unique<io::TrivialParser>();
+                                                });
     return tc;
   }
 

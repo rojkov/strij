@@ -11,18 +11,18 @@
 #include "test/mocks/event/mocks.hh"
 #include "test/mocks/extensions/extensions_mocks.hh"
 
-#include "strij/extensions/extension_registry.hh"
-#include "gateway/core/node_directory.hh"
-#include "gateway/core/result_receiver_storage.hh"
 #include "common/core/io/connection.hh"
 #include "common/core/io/protocol_parser.hh"
 #include "common/core/io/tlv_frame.hh"
 #include "common/core/io/tlv_parser.hh"
 #include "common/node/capabilities.pb.h"
 #include "common/task/task.pb.h"
+#include "gateway/core/node_directory.hh"
+#include "gateway/core/result_receiver_storage.hh"
 #include "gateway/extensions/schedulers/round_robin/round_robin_scheduler.hh"
-#include "strij/extensions/scheduler.hh"
 #include "gtest/gtest.h"
+#include "strij/extensions/extension_registry.hh"
+#include "strij/extensions/scheduler.hh"
 
 namespace strij::gateway::schedulers {
 namespace {
@@ -51,7 +51,8 @@ public:
   std::shared_ptr<std::vector<task::TaskStatus>> statuses_;
 };
 
-auto MakeReceiver() -> std::pair<gateway::ResultReceiverPtr, std::shared_ptr<std::vector<std::string>>> {
+auto MakeReceiver()
+    -> std::pair<gateway::ResultReceiverPtr, std::shared_ptr<std::vector<std::string>>> {
   auto errors = std::make_shared<std::vector<std::string>>();
   auto receiver = std::make_unique<RecordingReceiver>(errors);
   return {std::move(receiver), std::move(errors)};
@@ -192,8 +193,8 @@ TEST_F(RoundRobinSchedulerTest, ExcludesNodesNotAdvertisingRequiredProtocol) {
 }
 
 TEST_F(RoundRobinSchedulerTest, FactoryIsRegisteredAndCreatesScheduler) {
-  auto* factory = extensions::Registry<gateway::GatewaySchedulerFactory>::instance()
-                      .GetFactory("round_robin");
+  auto* factory =
+      extensions::Registry<gateway::GatewaySchedulerFactory>::instance().GetFactory("round_robin");
   ASSERT_NE(factory, nullptr);
   EXPECT_EQ(factory->Name(), "round_robin");
 

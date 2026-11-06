@@ -12,10 +12,10 @@
 #include "test/mocks/common/common_mocks.hh"
 #include "test/mocks/event/mocks.hh"
 
-#include "gateway/core/node_directory.hh"
-#include "gateway/core/result_receiver_storage.hh"
 #include "common/core/io/protocol_parser.hh"
 #include "common/node/capabilities.pb.h"
+#include "gateway/core/node_directory.hh"
+#include "gateway/core/result_receiver_storage.hh"
 #include "gateway/extensions/node_discovery/node_discovery.hh"
 #include "gtest/gtest.h"
 

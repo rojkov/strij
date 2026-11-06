@@ -10,10 +10,9 @@
 #include <variant>
 #include <vector>
 
-#include "common/event/cloudevent.pb.h"
-
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "common/event/cloudevent.pb.h"
 #include "common/task/task.pb.h"
 #include "nodeagent/extensions/task_handlers/openworkflow/expression.hh"
 #include "nodeagent/extensions/task_handlers/openworkflow/step_data_value.hh"
@@ -180,10 +179,10 @@ public:
       -> absl::StatusOr<bool> PURE;
 
   // Applies a `listen.foreach` iteration's output transformation.
-  virtual auto TransformListenForeachOutput(
-      const ::strij::openworkflow::SubscriptionIterator& iterator,
-      const StepDataValue& selected, const StepDataValue& body_output, const LexicalScope& scope)
-      -> absl::StatusOr<StepDataValue> PURE;
+  virtual auto
+  TransformListenForeachOutput(const ::strij::openworkflow::SubscriptionIterator& iterator,
+                               const StepDataValue& selected, const StepDataValue& body_output,
+                               const LexicalScope& scope) -> absl::StatusOr<StepDataValue> PURE;
 
   // Applies a `listen.foreach` iteration's export transformation.
   virtual auto ExportListenForeach(const ::strij::openworkflow::SubscriptionIterator& iterator,
@@ -347,8 +346,8 @@ private:
   [[nodiscard]] auto terminalResult() -> std::optional<FrameResult>;
   [[nodiscard]] auto advanceCall(const ::strij::openworkflow::NamedTask& step,
                                  FrameContext& context) -> std::optional<FrameResult>;
-  [[nodiscard]] auto advanceRun(const ::strij::openworkflow::NamedTask& step,
-                                FrameContext& context) -> std::optional<FrameResult>;
+  [[nodiscard]] auto advanceRun(const ::strij::openworkflow::NamedTask& step, FrameContext& context)
+      -> std::optional<FrameResult>;
   [[nodiscard]] auto advanceEmit(const ::strij::openworkflow::NamedTask& step,
                                  FrameContext& context) -> std::optional<FrameResult>;
   [[nodiscard]] auto advanceContainer(FrameContext& context) -> std::optional<FrameResult>;

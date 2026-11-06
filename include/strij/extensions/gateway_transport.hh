@@ -4,9 +4,8 @@
 #include <span>
 #include <string_view>
 
-#include "strij/common/pure.hh"
-
 #include "absl/status/status.h"
+#include "strij/common/pure.hh"
 
 namespace strij::extensions {
 
@@ -35,8 +34,8 @@ public:
   GatewayTransport(GatewayTransport&&) noexcept = delete;
   auto operator=(GatewayTransport&&) noexcept -> GatewayTransport& = delete;
 
-  virtual auto Send(std::span<const std::string_view> peer_ids,
-                    std::span<const std::byte> payload) -> absl::Status PURE;
+  virtual auto Send(std::span<const std::string_view> peer_ids, std::span<const std::byte> payload)
+      -> absl::Status PURE;
   virtual auto Broadcast(std::span<const std::byte> payload) -> absl::Status PURE;
   virtual void SetReceiver(GatewayTransportReceiver* receiver) PURE;
   [[nodiscard]] virtual auto MaxPayloadSize() const -> std::size_t PURE;

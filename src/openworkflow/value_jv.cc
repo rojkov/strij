@@ -62,47 +62,47 @@ auto isIntegerLiteral(const char* literal) -> std::pair<bool, std::int64_t> {
 auto jvToValue(jv value) -> Value {
   auto owned = utils::Acquire(value);
   switch (jv_get_kind(value)) {
-    case JV_KIND_FALSE:
-      return Value{false};
-    case JV_KIND_TRUE:
-      return Value{true};
-    case JV_KIND_NUMBER: {
-      if (jv_number_has_literal(value) != 0) {
-        const auto [is_integer, parsed] = isIntegerLiteral(jv_number_get_literal(value));
-        if (is_integer) {
-          return Value{parsed};
-        }
+  case JV_KIND_FALSE:
+    return Value{false};
+  case JV_KIND_TRUE:
+    return Value{true};
+  case JV_KIND_NUMBER: {
+    if (jv_number_has_literal(value) != 0) {
+      const auto [is_integer, parsed] = isIntegerLiteral(jv_number_get_literal(value));
+      if (is_integer) {
+        return Value{parsed};
       }
-      return Value{jv_number_value(value)};
     }
-    case JV_KIND_STRING: {
-      const int length = jv_string_length_bytes(jv_copy(value));
-      return Value{std::string(jv_string_value(value), static_cast<std::size_t>(length))};
+    return Value{jv_number_value(value)};
+  }
+  case JV_KIND_STRING: {
+    const int length = jv_string_length_bytes(jv_copy(value));
+    return Value{std::string(jv_string_value(value), static_cast<std::size_t>(length))};
+  }
+  case JV_KIND_ARRAY: {
+    Value::Array array;
+    const int length = jv_array_length(jv_copy(value));
+    array.reserve(static_cast<std::size_t>(length));
+    for (int index = 0; index < length; ++index) {
+      array.push_back(jvToValue(jv_array_get(jv_copy(value), index)));
     }
-    case JV_KIND_ARRAY: {
-      Value::Array array;
-      const int length = jv_array_length(jv_copy(value));
-      array.reserve(static_cast<std::size_t>(length));
-      for (int index = 0; index < length; ++index) {
-        array.push_back(jvToValue(jv_array_get(jv_copy(value), index)));
-      }
-      return Value{std::move(array)};
+    return Value{std::move(array)};
+  }
+  case JV_KIND_OBJECT: {
+    Value::Object object;
+    for (int iter = jv_object_iter(value); jv_object_iter_valid(value, iter);
+         iter = jv_object_iter_next(value, iter)) {
+      jv key = jv_object_iter_key(value, iter);
+      const int key_length = jv_string_length_bytes(jv_copy(key));
+      std::string key_text(jv_string_value(key), static_cast<std::size_t>(key_length));
+      jv_free(key);
+      object.emplace(std::move(key_text), jvToValue(jv_object_iter_value(value, iter)));
     }
-    case JV_KIND_OBJECT: {
-      Value::Object object;
-      for (int iter = jv_object_iter(value); jv_object_iter_valid(value, iter);
-           iter = jv_object_iter_next(value, iter)) {
-        jv key = jv_object_iter_key(value, iter);
-        const int key_length = jv_string_length_bytes(jv_copy(key));
-        std::string key_text(jv_string_value(key), static_cast<std::size_t>(key_length));
-        jv_free(key);
-        object.emplace(std::move(key_text), jvToValue(jv_object_iter_value(value, iter)));
-      }
-      return Value{std::move(object)};
-    }
-    case JV_KIND_NULL:
-    default:
-      return Value{};
+    return Value{std::move(object)};
+  }
+  case JV_KIND_NULL:
+  default:
+    return Value{};
   }
 }
 

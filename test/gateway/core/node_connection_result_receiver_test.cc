@@ -39,8 +39,8 @@ struct ParsedFrame {
 auto ParseFrames(const std::vector<std::byte>& wire) -> std::vector<ParsedFrame> {
   std::vector<ParsedFrame> frames;
   io::TlvParser parser([&frames](io::TlvFrame frame) {
-    frames.push_back({frame.type_id,
-                      std::vector<std::byte>(frame.value.begin(), frame.value.end())});
+    frames.push_back(
+        {frame.type_id, std::vector<std::byte>(frame.value.begin(), frame.value.end())});
   });
   auto buf = parser.GetReadBuffer();
   std::memcpy(buf.data(), wire.data(), wire.size());

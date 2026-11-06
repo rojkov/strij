@@ -3,8 +3,8 @@
 #include <array>
 #include <cstddef>
 
-#include "strij/event/command_handler.hh"
 #include "common/core/io/protocol_parser.hh"
+#include "strij/event/command_handler.hh"
 
 namespace strij::io {
 

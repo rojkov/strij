@@ -7,13 +7,13 @@
 
 #include "absl/status/status.h"
 #include "common/config/extensions.pb.h"
+#include "common/core/io/protocol_parser.hh"
+#include "common/loaders/scheduler_loader.hh"
 #include "gateway/core/node_directory.hh"
 #include "gateway/core/result_receiver_storage.hh"
-#include "common/core/io/protocol_parser.hh"
 #include "gateway/extensions/schedulers/round_robin/round_robin.pb.h"
-#include "strij/extensions/scheduler.hh"
-#include "common/loaders/scheduler_loader.hh"
 #include "gtest/gtest.h"
+#include "strij/extensions/scheduler.hh"
 
 namespace strij::gateway::schedulers {
 namespace {
@@ -25,12 +25,11 @@ class SchedulerFactoryTest : public ::testing::Test {
 protected:
   std::shared_ptr<event::MockDispatcher> dispatcher_{std::make_shared<event::MockDispatcher>()};
   gateway::ResultReceiverStorageImpl storage_;
-  gateway::NodeDirectoryImpl directory_{
-      dispatcher_,
-      [](io::Connection&) -> io::ProtocolParserPtr {
-        return std::make_unique<io::TrivialParser>();
-      },
-      storage_};
+  gateway::NodeDirectoryImpl directory_{dispatcher_,
+                                        [](io::Connection&) -> io::ProtocolParserPtr {
+                                          return std::make_unique<io::TrivialParser>();
+                                        },
+                                        storage_};
   extensions::MockGatewayFactoryContext context_;
 
   void SetUp() override {

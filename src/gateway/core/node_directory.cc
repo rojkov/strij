@@ -11,8 +11,8 @@
 
 namespace strij::gateway {
 
-NodeDirectoryImpl::NodeDirectoryImpl(event::DispatcherSharedPtr dispatcher, io::ConnectionFactory factory,
-                             ResultReceiverStorage& storage)
+NodeDirectoryImpl::NodeDirectoryImpl(event::DispatcherSharedPtr dispatcher,
+                                     io::ConnectionFactory factory, ResultReceiverStorage& storage)
     : dispatcher_{std::move(dispatcher)}, factory_{std::move(factory)}, storage_{storage} {}
 
 void NodeDirectoryImpl::AddNode(const std::string& node_id, const std::string& address) {
@@ -155,8 +155,9 @@ auto NodeDirectoryImpl::GetCandidates(std::string_view protocol) -> std::vector<
 auto NodeDirectoryImpl::GetNodeCount() const -> size_t { return nodes_.size(); }
 
 auto NodeDirectoryImpl::GetAvailableCount() const -> size_t {
-  return static_cast<size_t>(std::count_if(
-      nodes_.begin(), nodes_.end(), [](const auto& entry) -> bool { return entry.second->IsAvailable(); }));
+  return static_cast<size_t>(
+      std::count_if(nodes_.begin(), nodes_.end(),
+                    [](const auto& entry) -> bool { return entry.second->IsAvailable(); }));
 }
 
 } // namespace strij::gateway
