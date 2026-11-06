@@ -4,6 +4,8 @@
 
 #include <vector>
 
+#include "absl/base/thread_annotations.h"
+#include "absl/synchronization/mutex.h"
 #include "liburing.h"
 #include "strij/event/command_handler.hh"
 #include "strij/event/completable.hh"
@@ -38,7 +40,8 @@ private:
   struct io_uring ring_{};
   std::vector<Command> command_queue_;
   bool is_finishing_{false};
-  int event_fd_{-1}; //  for waking up the event loop
+  absl::Mutex event_fd_mtx_;
+  int event_fd_ ABSL_GUARDED_BY(event_fd_mtx_){-1}; // for waking up the event loop
   uint64_t event_fd_val_{0};
 };
 

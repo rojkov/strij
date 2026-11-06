@@ -1,5 +1,6 @@
 #pragma once
 
+#include <memory>
 #include <thread>
 #include <vector>
 
@@ -24,7 +25,7 @@ private:
   Logger();
 
   absl::Mutex worker_queues_mtx_;
-  std::vector<LogFrontend*> worker_queues_ ABSL_GUARDED_BY(worker_queues_mtx_);
+  std::vector<std::unique_ptr<LogFrontend>> worker_queues_ ABSL_GUARDED_BY(worker_queues_mtx_);
   event::DispatcherSharedPtr dispatcher_;
   std::thread thread_;
 };

@@ -66,6 +66,7 @@ void DispatcherImpl::Run() {
 }
 
 void DispatcherImpl::Shutdown() {
+  absl::MutexLock lock(event_fd_mtx_);
   uint64_t val = 1;
   write(event_fd_, &val, sizeof(val));
 }
@@ -76,7 +77,9 @@ void DispatcherImpl::HandleCompletion([[maybe_unused]] uint8_t tag, [[maybe_unus
                                       [[maybe_unused]] uint32_t flags) {
   is_finishing_ = true;
   // We don't re-arm this event_fd_ after this point -> closing.
+  absl::MutexLock lock(event_fd_mtx_);
   close(event_fd_);
+  event_fd_ = -1;
 }
 
 void DispatcherImpl::ProcessCommand(Command cmd) {
