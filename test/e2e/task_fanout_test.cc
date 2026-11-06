@@ -40,11 +40,14 @@ TEST(TaskFanoutTest, EveryGatewayServesEveryNode) {
   ASSERT_TRUE(start.ok()) << start.message();
 
   const auto& observed = cluster.ObservedMarkers();
-  ASSERT_EQ(observed.size(), 2U);
+  ASSERT_EQ(observed.size(), 2U) << cluster.Diagnose();
   for (std::size_t gateway_index = 0; gateway_index < observed.size(); ++gateway_index) {
-    EXPECT_EQ(observed[gateway_index].size(), 2U) << "gateway" << gateway_index;
-    EXPECT_TRUE(observed[gateway_index].contains("n0")) << "gateway" << gateway_index;
-    EXPECT_TRUE(observed[gateway_index].contains("n1")) << "gateway" << gateway_index;
+    EXPECT_EQ(observed[gateway_index].size(), 2U) << "gateway" << gateway_index << "\n"
+                                                  << cluster.Diagnose();
+    EXPECT_TRUE(observed[gateway_index].contains("n0")) << "gateway" << gateway_index << "\n"
+                                                        << cluster.Diagnose();
+    EXPECT_TRUE(observed[gateway_index].contains("n1")) << "gateway" << gateway_index << "\n"
+                                                        << cluster.Diagnose();
   }
 
   const auto stop = cluster.Stop();
@@ -82,10 +85,14 @@ TEST(TaskFanoutTest, ConcurrentRequestsThroughBothGatewaysMatchTheirOwnBodies) {
 
   for (std::size_t index = 0; index < kRequestCount; ++index) {
     ASSERT_TRUE(responses[index].ok())
-        << "request " << index << ": " << responses[index].status().message();
+        << "request " << index << ": " << responses[index].status().message() << "\n"
+        << cluster.Diagnose();
     EXPECT_EQ(responses[index]->status_code, 200)
-        << "request " << index << ": " << responses[index]->body;
-    EXPECT_EQ(responses[index]->body, "body-" + std::to_string(index)) << "request " << index;
+        << "request " << index << ": " << responses[index]->body << "\n"
+        << cluster.Diagnose();
+    EXPECT_EQ(responses[index]->body, "body-" + std::to_string(index))
+        << "request " << index << "\n"
+        << cluster.Diagnose();
   }
 
   const auto stop = cluster.Stop();
@@ -131,7 +138,8 @@ TEST(TaskFanoutTest, PerNodeCapacityAdmitsOneUnitPerNode) {
   std::set<std::string> served_markers;
   for (std::size_t index = 0; index < kRequestCount; ++index) {
     ASSERT_TRUE(responses[index].ok())
-        << "request " << index << ": " << responses[index].status().message();
+        << "request " << index << ": " << responses[index].status().message() << "\n"
+        << cluster.Diagnose();
     if (responses[index]->status_code == 200) {
       ++successes;
       served_markers.insert(responses[index]->body);
@@ -139,14 +147,17 @@ TEST(TaskFanoutTest, PerNodeCapacityAdmitsOneUnitPerNode) {
       ++refusals;
     } else {
       ADD_FAILURE() << "request " << index << " returned HTTP " << responses[index]->status_code
-                    << ": " << responses[index]->body;
+                    << ": " << responses[index]->body << "\n"
+                    << cluster.Diagnose();
     }
   }
 
-  EXPECT_EQ(successes, 2U);
-  EXPECT_EQ(refusals, 2U);
-  EXPECT_TRUE(served_markers.contains(markerBody("n0"))) << "no success from node n0";
-  EXPECT_TRUE(served_markers.contains(markerBody("n1"))) << "no success from node n1";
+  EXPECT_EQ(successes, 2U) << cluster.Diagnose();
+  EXPECT_EQ(refusals, 2U) << cluster.Diagnose();
+  EXPECT_TRUE(served_markers.contains(markerBody("n0"))) << "no success from node n0\n"
+                                                         << cluster.Diagnose();
+  EXPECT_TRUE(served_markers.contains(markerBody("n1"))) << "no success from node n1\n"
+                                                         << cluster.Diagnose();
 
   const auto stop = cluster.Stop();
   EXPECT_TRUE(stop.ok()) << stop.message();

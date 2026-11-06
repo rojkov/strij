@@ -72,6 +72,9 @@ strij_e2e_test(
     srcs = ["cluster_lifecycle_test.cc"],
     deps = [
         ":e2e_support_lib",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
         "@googletest//:gtest_main",
     ],
 )

@@ -49,7 +49,7 @@ None. No runtime requirement in an existing spec changes; the harness observes c
 
 ## Impact
 
-- **New code:** `test/e2e/` (harness library plus four test targets). No production code changes.
+- **New code:** `test/e2e/` (harness library plus five test targets). No production code changes.
 - **Build:** new `strij_e2e_test` macro in `bazel/build_system.bzl`; new `BUILD.bazel` packages under
   `test/e2e/`; the gateway and nodeagent binaries become test `data` dependencies.
 - **Developer workflow:** `make test_e2e`; `make test` now also runs `//test/e2e`.
