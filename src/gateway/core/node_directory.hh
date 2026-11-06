@@ -7,8 +7,8 @@
 #include <unordered_map>
 #include <vector>
 
-#include "gateway/core/node.hh"
 #include "common/core/io/connection.hh"
+#include "gateway/core/node.hh"
 #include "gateway/extensions/node_discovery/node_discovery.hh"
 #include "strij/event/dispatcher.hh"
 #include "strij/gateway/node_directory.hh"

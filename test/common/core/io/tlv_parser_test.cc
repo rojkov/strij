@@ -72,11 +72,9 @@ TEST_F(TlvParserTest, MultipleFramesInOneRead) {
   feed(combined);
   ASSERT_EQ(received_.size(), 2U);
   EXPECT_EQ(received_[0].type_id, 0x01);
-  EXPECT_TRUE(
-      std::equal(received_[0].value.begin(), received_[0].value.end(), value1.begin()));
+  EXPECT_TRUE(std::equal(received_[0].value.begin(), received_[0].value.end(), value1.begin()));
   EXPECT_EQ(received_[1].type_id, 0x02);
-  EXPECT_TRUE(
-      std::equal(received_[1].value.begin(), received_[1].value.end(), value2.begin()));
+  EXPECT_TRUE(std::equal(received_[1].value.begin(), received_[1].value.end(), value2.begin()));
 }
 
 TEST_F(TlvParserTest, ZeroLengthValue) {
@@ -98,8 +96,7 @@ TEST_F(TlvParserTest, LengthFieldSplitAcrossReads) {
   feed(std::span<const std::byte>(std::next(frame.data(), 3), frame.size() - 3));
   ASSERT_EQ(received_.size(), 1U);
   EXPECT_EQ(received_[0].type_id, 0x01);
-  EXPECT_TRUE(
-      std::equal(received_[0].value.begin(), received_[0].value.end(), value.begin()));
+  EXPECT_TRUE(std::equal(received_[0].value.begin(), received_[0].value.end(), value.begin()));
 }
 
 TEST_F(TlvParserTest, PartialLengthFieldThreeBytes) {
@@ -114,8 +111,7 @@ TEST_F(TlvParserTest, PartialLengthFieldThreeBytes) {
   feed(std::span<const std::byte>(std::next(frame.data(), 4), frame.size() - 4));
   ASSERT_EQ(received_.size(), 1U);
   EXPECT_EQ(received_[0].type_id, 0x01);
-  EXPECT_TRUE(
-      std::equal(received_[0].value.begin(), received_[0].value.end(), value.begin()));
+  EXPECT_TRUE(std::equal(received_[0].value.begin(), received_[0].value.end(), value.begin()));
 }
 
 TEST_F(TlvParserTest, LengthFieldByteByByte) {
@@ -136,8 +132,7 @@ TEST_F(TlvParserTest, LengthFieldByteByByte) {
   feed(std::span<const std::byte>(std::next(frame.data(), 4), frame.size() - 4));
   ASSERT_EQ(received_.size(), 1U);
   EXPECT_EQ(received_[0].type_id, 0x01);
-  EXPECT_TRUE(
-      std::equal(received_[0].value.begin(), received_[0].value.end(), value.begin()));
+  EXPECT_TRUE(std::equal(received_[0].value.begin(), received_[0].value.end(), value.begin()));
 }
 
 TEST_F(TlvParserTest, ValueSplitAcrossReads) {
@@ -153,8 +148,7 @@ TEST_F(TlvParserTest, ValueSplitAcrossReads) {
   feed(std::span<const std::byte>(std::next(frame.data(), 7), 3));
   ASSERT_EQ(received_.size(), 1U);
   EXPECT_EQ(received_[0].type_id, 0x01);
-  EXPECT_TRUE(
-      std::equal(received_[0].value.begin(), received_[0].value.end(), value.begin()));
+  EXPECT_TRUE(std::equal(received_[0].value.begin(), received_[0].value.end(), value.begin()));
 }
 
 TEST_F(TlvParserTest, SingleByteValue) {
@@ -169,8 +163,7 @@ TEST_F(TlvParserTest, SingleByteValue) {
   feed(std::span<const std::byte>(std::next(frame.data(), 5), 1));
   ASSERT_EQ(received_.size(), 1U);
   EXPECT_EQ(received_[0].type_id, 0x01);
-  EXPECT_TRUE(
-      std::equal(received_[0].value.begin(), received_[0].value.end(), value.begin()));
+  EXPECT_TRUE(std::equal(received_[0].value.begin(), received_[0].value.end(), value.begin()));
 }
 
 TEST_F(TlvParserTest, FrameByteByByte) {
@@ -185,8 +178,7 @@ TEST_F(TlvParserTest, FrameByteByByte) {
                                   1));
   ASSERT_EQ(received_.size(), 1U);
   EXPECT_EQ(received_[0].type_id, 0x01);
-  EXPECT_TRUE(
-      std::equal(received_[0].value.begin(), received_[0].value.end(), value.begin()));
+  EXPECT_TRUE(std::equal(received_[0].value.begin(), received_[0].value.end(), value.begin()));
 }
 
 TEST_F(TlvParserTest, BufferCompaction) {
@@ -200,8 +192,7 @@ TEST_F(TlvParserTest, BufferCompaction) {
   feed(frame1);
   ASSERT_EQ(received_.size(), 1U);
   EXPECT_EQ(received_[0].type_id, 0x01);
-  EXPECT_TRUE(
-      std::equal(received_[0].value.begin(), received_[0].value.end(), big_value.begin()));
+  EXPECT_TRUE(std::equal(received_[0].value.begin(), received_[0].value.end(), big_value.begin()));
 
   // Second frame: send type + 1 byte of length (fills to buffer end)
   // This triggers compaction in type_read (read_cursor_ + 4 >= 4096)
@@ -215,8 +206,7 @@ TEST_F(TlvParserTest, BufferCompaction) {
   feed(std::span<const std::byte>(std::next(frame2.data(), 2), frame2.size() - 2));
   ASSERT_EQ(received_.size(), 2U);
   EXPECT_EQ(received_[1].type_id, 0x02);
-  EXPECT_TRUE(
-      std::equal(received_[1].value.begin(), received_[1].value.end(), value2.begin()));
+  EXPECT_TRUE(std::equal(received_[1].value.begin(), received_[1].value.end(), value2.begin()));
 }
 
 TEST_F(TlvParserTest, ValueOverflowToVector) {
@@ -235,8 +225,7 @@ TEST_F(TlvParserTest, ValueOverflowToVector) {
   feed(std::span<const std::byte>(std::next(frame.data(), 105), frame.size() - 105));
   ASSERT_EQ(received_.size(), 1U);
   EXPECT_EQ(received_[0].type_id, 0x01);
-  EXPECT_TRUE(
-      std::equal(received_[0].value.begin(), received_[0].value.end(), value.begin()));
+  EXPECT_TRUE(std::equal(received_[0].value.begin(), received_[0].value.end(), value.begin()));
 }
 
 TEST_F(TlvParserTest, LargeValueMultipleReads) {
@@ -256,8 +245,7 @@ TEST_F(TlvParserTest, LargeValueMultipleReads) {
   feed(std::span<const std::byte>(std::next(frame.data(), 4105), frame.size() - 4105));
   ASSERT_EQ(received_.size(), 1U);
   EXPECT_EQ(received_[0].type_id, 0x01);
-  EXPECT_TRUE(
-      std::equal(received_[0].value.begin(), received_[0].value.end(), value.begin()));
+  EXPECT_TRUE(std::equal(received_[0].value.begin(), received_[0].value.end(), value.begin()));
 }
 
 TEST_F(TlvParserTest, MultipleFramesByteByByte) {
@@ -276,11 +264,9 @@ TEST_F(TlvParserTest, MultipleFramesByteByByte) {
   feed(std::span<const std::byte>(std::next(all.data(), static_cast<ssize_t>(all.size() - 1)), 1));
   ASSERT_EQ(received_.size(), 2U);
   EXPECT_EQ(received_[0].type_id, 0x10);
-  EXPECT_TRUE(
-      std::equal(received_[0].value.begin(), received_[0].value.end(), value1.begin()));
+  EXPECT_TRUE(std::equal(received_[0].value.begin(), received_[0].value.end(), value1.begin()));
   EXPECT_EQ(received_[1].type_id, 0x20);
-  EXPECT_TRUE(
-      std::equal(received_[1].value.begin(), received_[1].value.end(), value2.begin()));
+  EXPECT_TRUE(std::equal(received_[1].value.begin(), received_[1].value.end(), value2.begin()));
 }
 // NOLINTEND(modernize-use-trailing-return-type)
 

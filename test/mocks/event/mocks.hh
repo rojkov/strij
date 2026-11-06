@@ -1,8 +1,8 @@
 #pragma once
 
+#include "gmock/gmock.h"
 #include "strij/event/completable.hh"
 #include "strij/event/dispatcher.hh"
-#include "gmock/gmock.h"
 
 namespace strij::event {
 
@@ -16,8 +16,7 @@ public:
               (Completable * io, uint8_t tag, int fd, std::span<std::byte> buf, off_t offset),
               (override));
   MOCK_METHOD(void, PrepareWrite,
-              (Completable * io, uint8_t tag, int fd, std::span<const std::byte> buf,
-               off_t offset),
+              (Completable * io, uint8_t tag, int fd, std::span<const std::byte> buf, off_t offset),
               (override));
   MOCK_METHOD(void, PrepareConnect,
               (Completable * io, uint8_t tag, int fd, const struct sockaddr* addr,

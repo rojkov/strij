@@ -3,4 +3,5 @@ syntax = "proto3";
 package strij.extensions.schedulers.round_robin;
 
 // Empty placeholder: the round_robin policy has no tunables in v1.
-message RoundRobinSchedulerConfig {}
+message RoundRobinSchedulerConfig {
+}

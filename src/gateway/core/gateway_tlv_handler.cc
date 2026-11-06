@@ -8,6 +8,8 @@
 #include "common/core/logging/log.hh"
 #include "common/core/utils/task_status.hh"
 #include "common/node/capabilities.pb.h"
+#include "gateway/core/gateway_event_edge.hh"
+#include "gateway/core/gateway_relay_transport.hh"
 #include "strij/extensions/scheduler.hh"
 #include "strij/gateway/result_receiver_storage.hh"
 
@@ -31,6 +33,23 @@ auto GatewayTlvHandler::HandleFrame(const io::TlvFrame& frame, io::Connection& c
   case io::TlvFrame::kHeartbeat:
     LOG_DEBUG("Received heartbeat");
     return absl::OkStatus();
+  case io::TlvFrame::kPeerRelayDelivery:
+    if (relay_transport_ != nullptr) {
+      return relay_transport_->HandleFrame(frame);
+    }
+    return absl::InvalidArgumentError("no event-plane relay transport configured");
+  case io::TlvFrame::kEventPublish:
+    return event_edge_ != nullptr ? event_edge_->HandlePublishFrame(frame)
+                                  : absl::UnimplementedError("event plane is not configured");
+  case io::TlvFrame::kEventSubscribe:
+    return event_edge_ != nullptr ? event_edge_->HandleSubscribeFrame(frame, conn.Mailbox())
+                                  : absl::UnimplementedError("event plane is not configured");
+  case io::TlvFrame::kEventUnsubscribe:
+    return event_edge_ != nullptr ? event_edge_->HandleUnsubscribeFrame(frame)
+                                  : absl::UnimplementedError("event plane is not configured");
+  case io::TlvFrame::kEventAck:
+    return event_edge_ != nullptr ? event_edge_->HandleAckFrame(frame)
+                                  : absl::UnimplementedError("event plane is not configured");
   default:
     // Frame-routing seam: a frame type the built-in cases don't own is the
     // scheduler's to handle. The scheduler returns the Status — the router
@@ -150,8 +169,8 @@ auto GatewayTlvHandler::handleTaskResultFrame(const io::TlvFrame& frame, io::Con
       state_tracker_->RecordCompletion(result.id());
     }
 
-    LOG_WARNING("Task {} failed (status={}): {}", result.id(),
-                static_cast<int>(result.status()), result.body());
+    LOG_WARNING("Task {} failed (status={}): {}", result.id(), static_cast<int>(result.status()),
+                result.body());
     return absl::OkStatus();
   }
 

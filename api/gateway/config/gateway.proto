@@ -13,6 +13,8 @@ message GatewayConfig {
   // Required (at least one): the scheduling policies this gateway routes with.
   // The gateway fails to start when unset or when a name is not registered.
   repeated SchedulerConfig schedulers = 5 [(strij.config.required) = true];
+  // Optional event-plane extension. Absent = no event plane.
+  EventPlaneConfig event_plane = 6;
 }
 
 // One configured scheduler instance. `task_type` binds the scheduler to a
@@ -27,19 +29,30 @@ message SchedulerConfig {
 
 message HttpListener {
   string address = 1;
-  uint32 port = 2 [(strij.config.required) = true,
-                   (strij.config.range_min) = "1",
-                   (strij.config.range_max) = "65535"];
+  uint32 port = 2 [
+    (strij.config.required) = true,
+    (strij.config.range_min) = "1",
+    (strij.config.range_max) = "65535"
+  ];
   // RESERVED for future (v2+)
   // uint32 max_connections = 3;
   // bool reuse_port = 4;
 }
 
 message NodeConnection {
-  string address = 1 [(strij.config.required) = true,
-                      (strij.config.pattern) = "^[^:]+:\\d+$"];
+  string address = 1 [(strij.config.required) = true, (strij.config.pattern) = "^[^:]+:\\d+$"];
   // RESERVED for future (v2+): NodeDirectory doesn't use these yet
   // uint32 connect_timeout_ms = 2;
   // uint32 max_reconnect_attempts = 3;
   // uint32 reconnect_backoff_ms = 4;
+}
+
+// Optional event-plane extension. When absent the gateway runs without an
+// event plane; task execution and node management are unaffected, while
+// emit/listen workflow steps fail with an unsupported-capability status.
+message EventPlaneConfig {
+  ExtensionConfig extension = 1;
+  // Identity announced in the gateway relay handshake. Empty = generated at
+  // startup. Operators should keep configured ids unique across the cluster.
+  string gateway_id = 2;
 }

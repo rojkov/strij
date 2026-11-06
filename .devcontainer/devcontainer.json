@@ -8,7 +8,8 @@
     }
   },
   "runArgs": [
-    "--cap-add=SYS_PTRACE"
+    "--cap-add=SYS_PTRACE",
+    "--security-opt=seccomp=unconfined"
   ],
   "containerEnv": {
     "TEST_VAR": "test value"
@@ -18,7 +19,6 @@
   ],
   "remoteUser": "${localEnv:USER}",
   "updateRemoteUserUID": true,
-  "postStartCommand": "bash -c 'setsid -f opencode serve --port 4096 --hostname 0.0.0.0 > /tmp/opencode.log 2>&1 < /dev/null'",
   "forwardPorts": [
     4096
   ],

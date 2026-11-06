@@ -1,0 +1,37 @@
+http_listener:
+  address: "0.0.0.0"
+  port: 8081
+
+node_discovery:
+  name: "static"
+  typed_config:
+    "@type": "type.googleapis.com/strij.config.StaticNodeDiscoveryConfig"
+    addresses:
+      - "127.0.0.1:9090"
+      - "127.0.0.1:9091"
+
+# Gateway-to-gateway event plane. Every gateway must be connected to every node
+# (the complete-bipartite v1 invariant). All gateways in a cluster must use the
+# same event-plane extension.
+event_plane:
+  extension:
+    name: "summary_mesh"
+    typed_config:
+      "@type": "type.googleapis.com/strij.extensions.event_planes.summary_mesh.SummaryMeshConfig"
+      refresh_interval_ms: 1000
+      peer_ttl_ms: 5000
+  gateway_id: "gateway-a"
+
+schedulers:
+  - extension:
+      name: "probe"
+      typed_config:
+        "@type": "type.googleapis.com/strij.extensions.schedulers.probe.ProbeRoleSchedulerConfig"
+        candidate_count: 2
+        probe_deadline_ms: 1000
+
+logging:
+  level: "info"
+  format: "text"
+  output: "stdout"
+  include_source_location: false

@@ -29,8 +29,8 @@ public:
     return std::make_unique<extensions::task_handlers::echo::EchoTaskHandlerConfig>();
   }
 
-  auto Create(const ::google::protobuf::Message& /*config*/,
-              const TaskHandlerDeps& /*deps*/) -> TaskHandlerPtr override {
+  auto Create(const ::google::protobuf::Message& /*config*/, const TaskHandlerDeps& /*deps*/)
+      -> TaskHandlerPtr override {
     return std::make_unique<extensions::MockTaskHandler>();
   }
 };

@@ -2,7 +2,6 @@ name: CI
 
 on:
   pull_request:
-  push:
 
 permissions:
   contents: read
@@ -12,6 +11,35 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  clang-format:
+    name: clang-format
+    runs-on: ubuntu-26.04
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Install clang-format
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends --yes clang-format
+
+      - name: Check changed C++ and protobuf files
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          mapfile -d '' files < <(
+            git diff --name-only --diff-filter=ACMR -z \
+              "$BASE_SHA...$HEAD_SHA" -- '*.cc' '*.hh' '*.proto'
+          )
+          if ((${#files[@]} == 0)); then
+            echo "No C++ or protobuf files changed."
+            exit 0
+          fi
+          clang-format --dry-run --Werror "${files[@]}"
+
   linux:
     runs-on: ubuntu-26.04
     timeout-minutes: 60
@@ -57,6 +85,7 @@ jobs:
 
   sanitizers:
     name: ${{ matrix.sanitizer }}
+    needs: [linux, clang-format]
     runs-on: ubuntu-26.04
     strategy:
       fail-fast: false

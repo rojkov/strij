@@ -7,11 +7,11 @@ package strij.node;
 // periodic state snapshots (kNodeState).
 message NodeCapabilities {
   string node_id = 1;
-  string address = 2;                    // where the gateway connects (outbound)
-  repeated ResourcePool pools = 3;       // named, shared, schedulable capacity
+  string address = 2;                        // where the gateway connects (outbound)
+  repeated ResourcePool pools = 3;           // named, shared, schedulable capacity
   repeated PoolReservation reservations = 4; // handler-pinned, excluded from shared
   repeated HandlerCapability handlers = 5;
-  repeated UpdateChannel update_channels = 6;       // v1: [heartbeat]
+  repeated UpdateChannel update_channels = 6;           // v1: [heartbeat]
   repeated SchedulingProtocol scheduling_protocols = 7; // v1: [push]
   uint32 capability_version = 8;
 }
@@ -27,7 +27,7 @@ message ResourcePool {
 message PoolReservation {
   string task_type = 1;
   string pool = 2;
-  uint64 amount = 3;                     // permanently pinned to this handler
+  uint64 amount = 3; // permanently pinned to this handler
 }
 
 // Per-type handler capability. `concurrency` of 0 (or omitted) means no
@@ -74,11 +74,11 @@ message FunctionRef {
 // Periodic node state snapshot (kNodeState).
 message NodeState {
   string node_id = 1;
-  uint64 seq = 2;                        // monotonic, for coalescing
+  uint64 seq = 2; // monotonic, for coalescing
   uint64 timestamp = 3;
-  repeated PoolUsage pools = 4;          // {pool, in_use}
-  uint64 in_flight = 5;                  // node-wide
-  repeated TypeUsage type_usage = 6;     // {task_type, in_flight}
+  repeated PoolUsage pools = 4;      // {pool, in_use}
+  uint64 in_flight = 5;              // node-wide
+  repeated TypeUsage type_usage = 6; // {task_type, in_flight}
 }
 
 message PoolUsage {

@@ -6,10 +6,10 @@
 #include <utility>
 
 #include "common/task/task.pb.h"
+#include "gtest/gtest.h"
 #include "nodeagent/core/local_result_receiver_storage.hh"
 #include "nodeagent/core/storage_result_sender.hh"
 #include "strij/gateway/result_receiver_storage.hh"
-#include "gtest/gtest.h"
 
 namespace strij::nodeagent {
 namespace {
@@ -143,8 +143,7 @@ TEST(StorageResultSenderTest, LifecycleHooksRoundTrip) {
   LocalResultReceiverStorage storage;
   StorageResultSender sender(storage, "child-1");
   bool closed = false;
-  const std::size_t token =
-      sender.RegisterOnClose([&closed]() { closed = true; });
+  const std::size_t token = sender.RegisterOnClose([&closed]() { closed = true; });
   sender.UnregisterOnClose(token);
   // Hooks never fire on their own (there is no connection to tear down).
   EXPECT_FALSE(closed);

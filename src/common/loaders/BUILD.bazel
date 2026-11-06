@@ -41,3 +41,19 @@ strij_cc_library(
         "@protobuf",
     ],
 )
+
+strij_cc_library(
+    name = "event_plane_loader_lib",
+    srcs = ["event_plane_loader.cc"],
+    hdrs = ["event_plane_loader.hh"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//api/gateway/config:gateway_config_cc_proto",
+        "//include/strij/gateway:event_plane_interface",
+        "//include/strij/extensions:extension_registry_lib",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@protobuf",
+    ],
+)

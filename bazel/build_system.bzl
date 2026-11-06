@@ -73,3 +73,30 @@ def strij_cc_test(
         deps = ["@googletest//:gtest"] + deps,
         visibility = ["//visibility:private"],
     )
+
+def strij_e2e_test(
+        name,
+        srcs = [],
+        deps = [],
+        data = [],
+        size = "small"):
+    """A test that drives the real gateway and nodeagent binaries.
+
+    `strij_cc_test` accepts neither `tags` nor `timeout`, so end-to-end tests get
+    their own sibling macro. The two binaries are always added as `data`
+    dependencies (resolved through runfiles by the harness), and the network tag
+    documents that the suite binds loopback listeners.
+    """
+    cc_test(
+        name = name,
+        srcs = srcs,
+        data = data + [
+            "//src/gateway/exe:gateway",
+            "//src/nodeagent/exe:nodeagent",
+        ],
+        deps = ["@googletest//:gtest"] + deps,
+        tags = ["requires-network"],
+        timeout = "short",
+        size = size,
+        visibility = ["//visibility:private"],
+    )

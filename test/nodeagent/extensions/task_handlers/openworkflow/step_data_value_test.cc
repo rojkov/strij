@@ -1,8 +1,7 @@
-#include "nodeagent/extensions/task_handlers/openworkflow/step_data_value.hh"
-
 #include <string>
 
 #include "gtest/gtest.h"
+#include "nodeagent/extensions/task_handlers/openworkflow/step_data_value.hh"
 
 namespace strij::nodeagent::task_handlers::openworkflow {
 namespace {

@@ -122,6 +122,8 @@ strij_cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":exact_state_tracker_lib",
+        ":gateway_event_edge_lib",
+        ":gateway_relay_transport_lib",
         ":node_directory_lib",
         ":result_receiver_storage",
         "//api/common/node:node_cc_proto",
@@ -131,5 +133,41 @@ strij_cc_library(
         "//src/common/core/io:tlv_frame",
         "//src/common/core/logging:log_lib",
         "//src/common/core/utils:task_status_lib",
+    ],
+)
+
+
+strij_cc_library(
+    name = "gateway_relay_transport_lib",
+    srcs = ["gateway_relay_transport.cc"],
+    hdrs = ["gateway_relay_transport.hh"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":node_lib",
+        "//api/common/event:event_plane_cc_proto",
+        "//include/strij/gateway:gateway_transport_interface",
+        "//include/strij/gateway:node_directory_interface",
+        "//src/common/core/io:connection_lib",
+        "//src/common/core/io:outbound_mailbox_lib",
+        "//src/common/core/io:tlv_frame",
+        "//src/common/core/utils:task_id_lib",
+        "@abseil-cpp//absl/status",
+    ],
+)
+
+
+strij_cc_library(
+    name = "gateway_event_edge_lib",
+    srcs = ["gateway_event_edge.cc"],
+    hdrs = ["gateway_event_edge.hh"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//api/common/event:cloudevent_cc_proto",
+        "//api/common/event:event_plane_cc_proto",
+        "//include/strij/gateway:event_plane_interface",
+        "//src/common/core/io:connection_lib",
+        "//src/common/core/io:outbound_mailbox_lib",
+        "//src/common/core/io:tlv_frame",
+        "@abseil-cpp//absl/status",
     ],
 )

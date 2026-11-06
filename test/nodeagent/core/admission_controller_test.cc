@@ -1,12 +1,13 @@
 #include <string>
 #include <vector>
 
+#include "test/mocks/event/mocks.hh"
+
 #include "common/node/capabilities.pb.h"
+#include "gtest/gtest.h"
 #include "nodeagent/core/admission_controller.hh"
 #include "strij/event/command.hh"
 #include "strij/event/command_handler.hh"
-#include "gtest/gtest.h"
-#include "test/mocks/event/mocks.hh"
 
 namespace strij::nodeagent {
 namespace {

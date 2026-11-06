@@ -9,16 +9,16 @@
 #include "test/mocks/event/mocks.hh"
 #include "test/mocks/extensions/extensions_mocks.hh"
 
-#include "strij/extensions/extension_registry.hh"
-#include "gateway/core/node_directory.hh"
-#include "gateway/core/result_receiver_storage.hh"
 #include "common/core/io/connection.hh"
 #include "common/core/io/protocol_parser.hh"
 #include "common/node/capabilities.pb.h"
 #include "common/task/task.pb.h"
+#include "gateway/core/node_directory.hh"
+#include "gateway/core/result_receiver_storage.hh"
 #include "gateway/extensions/schedulers/capability_aware/capability_aware_scheduler.hh"
-#include "strij/extensions/scheduler.hh"
 #include "gtest/gtest.h"
+#include "strij/extensions/extension_registry.hh"
+#include "strij/extensions/scheduler.hh"
 
 namespace strij::gateway::schedulers {
 namespace {
@@ -47,7 +47,8 @@ public:
   std::shared_ptr<std::vector<task::TaskStatus>> statuses_;
 };
 
-auto MakeReceiver() -> std::pair<gateway::ResultReceiverPtr, std::shared_ptr<std::vector<std::string>>> {
+auto MakeReceiver()
+    -> std::pair<gateway::ResultReceiverPtr, std::shared_ptr<std::vector<std::string>>> {
   auto errors = std::make_shared<std::vector<std::string>>();
   auto receiver = std::make_unique<RecordingReceiver>(errors);
   return {std::move(receiver), std::move(errors)};
@@ -104,8 +105,9 @@ protected:
     state.set_in_flight(in_flight);
   }
 
-  static auto MakePinnedTask(const std::string& id, const std::string& type,
-                             std::initializer_list<std::pair<const std::string, uint64_t>> resources)
+  static auto
+  MakePinnedTask(const std::string& id, const std::string& type,
+                 std::initializer_list<std::pair<const std::string, uint64_t>> resources)
       -> task::Task {
     task::Task task;
     task.set_id(id);
@@ -139,8 +141,7 @@ TEST_F(CapabilityAwareSchedulerTest, ExcludesNodeWithoutRequiredPoolCapacity) {
   EXPECT_CALL(*dispatcher_, PrepareWrite(_, _, _, _, _))
       .WillOnce(DoAll(SaveArg<0>(&written_to), Return()));
 
-  scheduler.Schedule(MakePinnedTask("1", "echo", {{"cpu", 4}}),
-                     MakeReceiver().first);
+  scheduler.Schedule(MakePinnedTask("1", "echo", {{"cpu", 4}}), MakeReceiver().first);
   EXPECT_EQ(written_to, static_cast<event::Completable*>(expected_conn));
 }
 
@@ -261,8 +262,8 @@ TEST_F(CapabilityAwareSchedulerTest, DeliversErrorWhenNoEligibleNode) {
 }
 
 TEST_F(CapabilityAwareSchedulerTest, FactoryIsRegisteredAndCreatesScheduler) {
-  auto* factory = extensions::Registry<gateway::GatewaySchedulerFactory>::instance()
-                      .GetFactory("capability_aware");
+  auto* factory = extensions::Registry<gateway::GatewaySchedulerFactory>::instance().GetFactory(
+      "capability_aware");
   ASSERT_NE(factory, nullptr);
   EXPECT_EQ(factory->Name(), "capability_aware");
 

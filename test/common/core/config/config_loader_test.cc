@@ -507,6 +507,50 @@ schedulers:
   std::filesystem::remove(path);
 }
 
+TEST(ConfigLoaderTest, EventPlaneSectionLoads) {
+  std::string yaml = R"(
+http_listener:
+  address: "0.0.0.0"
+  port: 8081
+schedulers:
+  - extension:
+      name: "round_robin"
+event_plane:
+  extension:
+    name: "summary_mesh"
+  gateway_id: "gateway-a"
+)";
+  std::string path = createTempFile(yaml);
+  ASSERT_FALSE(path.empty());
+
+  auto result = LoadConfig<GatewayConfig>(path);
+  ASSERT_TRUE(result.ok()) << result.status().message();
+  ASSERT_TRUE(result->has_event_plane());
+  EXPECT_EQ(result->event_plane().extension().name(), "summary_mesh");
+  EXPECT_EQ(result->event_plane().gateway_id(), "gateway-a");
+
+  std::filesystem::remove(path);
+}
+
+TEST(ConfigLoaderTest, AbsentEventPlaneIsValid) {
+  std::string yaml = R"(
+http_listener:
+  address: "0.0.0.0"
+  port: 8081
+schedulers:
+  - extension:
+      name: "round_robin"
+)";
+  std::string path = createTempFile(yaml);
+  ASSERT_FALSE(path.empty());
+
+  auto result = LoadConfig<GatewayConfig>(path);
+  ASSERT_TRUE(result.ok()) << result.status().message();
+  EXPECT_FALSE(result->has_event_plane());
+
+  std::filesystem::remove(path);
+}
+
 TEST(ConfigLoaderTest, GetDefaultConfig) {
   auto config = GetDefaultConfig<GatewayConfig>();
   EXPECT_EQ(config.http_listener().port(), 0U);

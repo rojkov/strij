@@ -389,8 +389,7 @@ TEST_F(SchedulerRouterTest, InboundChildSubmissionErrorOnConstituentReject) {
   auto status = router->HandleFrame(frame, *conn);
   EXPECT_TRUE(status.ok());
   ASSERT_EQ(echo->held_receivers_.size(), 1U);
-  echo->held_receivers_[0]->DeliverError("capacity exhausted",
-                                                task::TASK_STATUS_CAPACITY_REFUSED);
+  echo->held_receivers_[0]->DeliverError("capacity exhausted", task::TASK_STATUS_CAPACITY_REFUSED);
 
   EXPECT_EQ(storage_.Get("child-1"), nullptr);
 

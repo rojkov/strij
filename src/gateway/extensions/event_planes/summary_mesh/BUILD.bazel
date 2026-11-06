@@ -1,0 +1,27 @@
+load("//bazel:build_system.bzl", "strij_cc_library")
+
+strij_cc_library(
+    name = "summary_mesh_event_plane_lib",
+    srcs = ["summary_mesh_event_plane.cc"],
+    hdrs = ["summary_mesh_event_plane.hh"],
+    visibility = [
+        "//src/gateway/exe:__pkg__",
+        "//test:__subpackages__",
+    ],
+    deps = [
+        "//api/common/event:cloudevent_cc_proto",
+        "//api/common/event:event_plane_cc_proto",
+        "//api/gateway/extensions/event_planes/summary_mesh:summary_mesh_cc_proto",
+        "//include/strij/event:dispatcher_interface",
+        "//include/strij/gateway:event_plane_interface",
+        "//include/strij/extensions:extension_registry_lib",
+        "//include/strij/gateway:gateway_transport_interface",
+        "//src/common/core/io:periodic_timer_lib",
+        "//src/common/core/logging:log_lib",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/time",
+        "@protobuf",
+    ],
+    alwayslink = True,
+)

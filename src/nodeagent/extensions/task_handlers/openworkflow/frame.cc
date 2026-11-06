@@ -12,6 +12,7 @@
 
 #include "absl/strings/str_cat.h"
 #include "common/task/task.pb.h"
+#include "nodeagent/extensions/task_handlers/openworkflow/listen_frame.hh"
 #include "nodeagent/extensions/task_handlers/openworkflow/step_data_value.hh"
 #include "openworkflow/document.hh"
 #include "openworkflow/task.hh"
@@ -20,8 +21,10 @@ namespace strij::nodeagent::task_handlers::openworkflow {
 
 using ::strij::openworkflow::CallBody;
 using ::strij::openworkflow::DoBody;
+using ::strij::openworkflow::EmitBody;
 using ::strij::openworkflow::ForBody;
 using ::strij::openworkflow::ForkBody;
+using ::strij::openworkflow::ListenBody;
 using ::strij::openworkflow::NamedTask;
 using ::strij::openworkflow::RunBody;
 using ::strij::openworkflow::SetBody;
@@ -159,6 +162,8 @@ void SequenceFrame::materializeChild() {
                                          fork_body->compete_, scope_, for_iteration_budget_);
   } else if (const auto* for_body = std::get_if<ForBody>(&task.body_)) {
     child_ = std::make_unique<ForFrame>(steps_[cursor_], *for_body, scope_, for_iteration_budget_);
+  } else if (const auto* listen_body = std::get_if<ListenBody>(&task.body_)) {
+    child_ = std::make_unique<ListenFrame>(steps_[cursor_], *listen_body, scope_);
   } else {
     assert(false);
 
@@ -328,6 +333,38 @@ auto SequenceFrame::advanceRun(const NamedTask& step, FrameContext& context)
   return applyCompletedStep(step, step_input_->Copy(), context, stepThen(step));
 }
 
+namespace {
+
+// Emit runtime failures map to the statuses the spec reserves for execution:
+// a missing event path is UNAVAILABLE, an absent event plane is UNIMPLEMENTED,
+// and every other publish or data-processing failure is INTERNAL. Malformed
+// documents and expressions are rejected by the pre-execution validation pass,
+// so they never reach this mapping.
+auto emitFailureStatus(const absl::Status& status) -> task::TaskStatus {
+  switch (status.code()) {
+  case absl::StatusCode::kUnimplemented:
+    return task::TASK_STATUS_UNIMPLEMENTED;
+  case absl::StatusCode::kUnavailable:
+    return task::TASK_STATUS_UNAVAILABLE;
+  default:
+    return task::TASK_STATUS_INTERNAL;
+  }
+}
+
+} // namespace
+
+auto SequenceFrame::advanceEmit(const NamedTask& step, FrameContext& context)
+    -> std::optional<FrameResult> {
+  assert(step_input_.has_value());
+
+  const absl::Status status = context.ExecuteEmit(*this, step, *step_input_, scope_.get());
+  if (!status.ok()) {
+    return failStep(emitFailureStatus(status), step, std::string(status.message()));
+  }
+
+  return applyCompletedStep(step, step_input_->Copy(), context, stepThen(step));
+}
+
 auto SequenceFrame::advanceContainer(FrameContext& context) -> std::optional<FrameResult> {
   if (child_ == nullptr) {
     materializeChild();
@@ -452,11 +489,14 @@ auto SequenceFrame::Advance(FrameContext& context) -> FrameResult {
     std::optional<FrameResult> step_result;
     if (std::holds_alternative<CallBody>(task.body_)) {
       step_result = advanceCall(step, context);
+    } else if (std::holds_alternative<EmitBody>(task.body_)) {
+      step_result = advanceEmit(step, context);
     } else if (std::holds_alternative<RunBody>(task.body_)) {
       step_result = advanceRun(step, context);
     } else if (std::holds_alternative<DoBody>(task.body_) ||
                std::holds_alternative<ForkBody>(task.body_) ||
-               std::holds_alternative<ForBody>(task.body_)) {
+               std::holds_alternative<ForBody>(task.body_) ||
+               std::holds_alternative<ListenBody>(task.body_)) {
       step_result = advanceContainer(context);
     } else if (std::holds_alternative<SetBody>(task.body_)) {
       auto set_value = context.EvaluateSet(step, *step_input_, scope_.get());

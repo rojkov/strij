@@ -11,8 +11,20 @@ void OutboundMailbox::Enqueue(std::vector<std::byte> frame) {
     return;
   }
 
+  if (max_queue_depth_ != 0 && queue_depth_probe_ != nullptr &&
+      queue_depth_probe_() >= max_queue_depth_) {
+    ++dropped_frames_;
+    return;
+  }
+
   write_fn_(std::move(frame));
 }
+
+void OutboundMailbox::SetQueueDepthProbe(std::function<std::size_t()> probe) {
+  queue_depth_probe_ = std::move(probe);
+}
+
+void OutboundMailbox::SetMaxQueueDepth(std::size_t max_depth) { max_queue_depth_ = max_depth; }
 
 auto OutboundMailbox::RegisterOnClose(CloseCallback close_cb) -> std::size_t {
   const std::size_t token = next_token_++;

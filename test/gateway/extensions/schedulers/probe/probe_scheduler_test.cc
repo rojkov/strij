@@ -13,9 +13,6 @@
 #include "test/mocks/event/mocks.hh"
 #include "test/mocks/extensions/extensions_mocks.hh"
 
-#include "strij/extensions/extension_registry.hh"
-#include "gateway/core/node_directory.hh"
-#include "gateway/core/result_receiver_storage.hh"
 #include "common/core/io/connection.hh"
 #include "common/core/io/protocol_parser.hh"
 #include "common/core/io/tlv_frame.hh"
@@ -23,10 +20,13 @@
 #include "common/node/capabilities.pb.h"
 #include "common/task/probe.pb.h"
 #include "common/task/task.pb.h"
+#include "gateway/core/node_directory.hh"
+#include "gateway/core/result_receiver_storage.hh"
 #include "gateway/extensions/schedulers/probe/probe.pb.h"
 #include "gateway/extensions/schedulers/probe/probe_scheduler.hh"
-#include "strij/extensions/scheduler.hh"
 #include "gtest/gtest.h"
+#include "strij/extensions/extension_registry.hh"
+#include "strij/extensions/scheduler.hh"
 
 namespace strij::gateway::schedulers::probe {
 namespace {
@@ -107,7 +107,9 @@ class FakeClock {
 public:
   auto Now() -> std::chrono::steady_clock::time_point { return now_; }
   void Advance(std::chrono::milliseconds ms) { now_ += ms; }
-  auto AsClock() const -> ProbeScheduler::Clock { return [this] { return now_; }; }
+  auto AsClock() const -> ProbeScheduler::Clock {
+    return [this] { return now_; };
+  }
 
 private:
   std::chrono::steady_clock::time_point now_{std::chrono::steady_clock::now()};
@@ -147,8 +149,7 @@ protected:
 
   // Simulate io_uring write completions on a connection so that its write queue
   // drains and the next Write() call triggers a fresh PrepareWrite.
-  static void SimulateDrainedWrites(gateway::NodeDirectory& dir,
-                                    const std::string& node_id) {
+  static void SimulateDrainedWrites(gateway::NodeDirectory& dir, const std::string& node_id) {
     auto* conn = dir.GetNode(node_id)->GetConnection();
     conn->HandleCompletion(1 /*kWrite*/, 65536, 0);
   }
@@ -307,8 +308,9 @@ TEST_F(ProbeSchedulerTest, FirstPullWinsAndLoserIsCancelled) {
 
   // Node A pulls first: it wins the grant; B is cancelled.
   ASSERT_TRUE(
-      scheduler.HandleFrame({.type_id = io::TlvFrame::kTaskPull, .value = MakeRawPullPayload("1")},
-                            *a_conn)
+      scheduler
+          .HandleFrame({.type_id = io::TlvFrame::kTaskPull, .value = MakeRawPullPayload("1")},
+                       *a_conn)
           .ok());
 
   ASSERT_GE(writes.size(), 4U);
@@ -324,8 +326,9 @@ TEST_F(ProbeSchedulerTest, FirstPullWinsAndLoserIsCancelled) {
   SimulateDrainedWrites(*directory, "B");
   const size_t before = writes.size();
   ASSERT_TRUE(
-      scheduler.HandleFrame({.type_id = io::TlvFrame::kTaskPull, .value = MakeRawPullPayload("1")},
-                            *b_conn)
+      scheduler
+          .HandleFrame({.type_id = io::TlvFrame::kTaskPull, .value = MakeRawPullPayload("1")},
+                       *b_conn)
           .ok());
   ASSERT_EQ(writes.size(), before + 1U);
   EXPECT_EQ(SingleFrame(writes.back().bytes).type_id, io::TlvFrame::kTaskProbeCancel);
@@ -351,13 +354,12 @@ TEST_F(ProbeSchedulerTest, PullFromUnprobedNodeIsRevoked) {
 
   // Identify which node was NOT probed (the one whose connection has no writes).
   io::Connection* unprobed_conn = (writes[0].conn == a_conn) ? b_conn : a_conn;
-  SimulateDrainedWrites(*directory,
-                        (writes[0].conn == a_conn) ? "A" : "B");
+  SimulateDrainedWrites(*directory, (writes[0].conn == a_conn) ? "A" : "B");
 
   ASSERT_TRUE(
-      scheduler.HandleFrame(
-          {.type_id = io::TlvFrame::kTaskPull, .value = MakeRawPullPayload("1")},
-          *unprobed_conn)
+      scheduler
+          .HandleFrame({.type_id = io::TlvFrame::kTaskPull, .value = MakeRawPullPayload("1")},
+                       *unprobed_conn)
           .ok());
 
   ASSERT_EQ(writes.size(), 2U);
@@ -385,20 +387,20 @@ TEST_F(ProbeSchedulerTest, AllDeclinesErrorReceiversImmediately) {
 
   io::Connection* a_conn = directory->GetNode("A")->GetConnection();
   io::Connection* b_conn = directory->GetNode("B")->GetConnection();
-  ASSERT_TRUE(
-      scheduler.HandleFrame({.type_id = io::TlvFrame::kTaskDecline,
-                             .value = MakeRawDeclinePayload("1", "busy")},
-                            *a_conn)
-          .ok());
+  ASSERT_TRUE(scheduler
+                  .HandleFrame({.type_id = io::TlvFrame::kTaskDecline,
+                                .value = MakeRawDeclinePayload("1", "busy")},
+                               *a_conn)
+                  .ok());
   // A refusal another node may still absorb is not reported to the client.
   EXPECT_TRUE(errors->empty());
   EXPECT_TRUE(statuses->empty());
 
-  ASSERT_TRUE(
-      scheduler.HandleFrame({.type_id = io::TlvFrame::kTaskDecline,
-                             .value = MakeRawDeclinePayload("1", "busy")},
-                            *b_conn)
-          .ok());
+  ASSERT_TRUE(scheduler
+                  .HandleFrame({.type_id = io::TlvFrame::kTaskDecline,
+                                .value = MakeRawDeclinePayload("1", "busy")},
+                               *b_conn)
+                  .ok());
   ASSERT_EQ(errors->size(), 1U);
   EXPECT_NE(errors->at(0).find("busy"), std::string::npos);
   // Every option is exhausted: the refusal reaches the client with its code.
@@ -423,19 +425,20 @@ TEST_F(ProbeSchedulerTest, DeclinesAfterResolutionAreIgnored) {
 
   io::Connection* a_conn = directory->GetNode("A")->GetConnection();
   ASSERT_TRUE(
-      scheduler.HandleFrame({.type_id = io::TlvFrame::kTaskPull, .value = MakeRawPullPayload("1")},
-                            *a_conn)
+      scheduler
+          .HandleFrame({.type_id = io::TlvFrame::kTaskPull, .value = MakeRawPullPayload("1")},
+                       *a_conn)
           .ok());
 
   // Drain the grant write before sending the decline.
   SimulateDrainedWrites(*directory, "A");
 
   const size_t before = writes.size();
-  ASSERT_TRUE(
-      scheduler.HandleFrame({.type_id = io::TlvFrame::kTaskDecline,
-                             .value = MakeRawDeclinePayload("1", "late")},
-                            *a_conn)
-          .ok());
+  ASSERT_TRUE(scheduler
+                  .HandleFrame({.type_id = io::TlvFrame::kTaskDecline,
+                                .value = MakeRawDeclinePayload("1", "late")},
+                               *a_conn)
+                  .ok());
   EXPECT_EQ(writes.size(), before);
 }
 
@@ -468,8 +471,8 @@ TEST_F(ProbeSchedulerTest, DeadlineExpiryErrorsAndCancelsOutstanding) {
   EXPECT_EQ(statuses->at(0), task::TASK_STATUS_DEADLINE_EXCEEDED);
   EXPECT_EQ(storage_.Get("1"), nullptr);
 
-  const size_t cancels = static_cast<size_t>(std::count_if(
-      writes.begin(), writes.end(), [](const Written& w) {
+  const size_t cancels =
+      static_cast<size_t>(std::count_if(writes.begin(), writes.end(), [](const Written& w) {
         return SingleFrame(w.bytes).type_id == io::TlvFrame::kTaskProbeCancel;
       }));
   EXPECT_EQ(cancels, 2U);
@@ -498,8 +501,9 @@ TEST_F(ProbeSchedulerTest, ReceiversResolveOnlyOnceAcrossAllPaths) {
   // A pull arriving after resolution revokes but must not re-run resolution.
   io::Connection* a_conn = directory->GetNode("A")->GetConnection();
   ASSERT_TRUE(
-      scheduler.HandleFrame({.type_id = io::TlvFrame::kTaskPull, .value = MakeRawPullPayload("1")},
-                            *a_conn)
+      scheduler
+          .HandleFrame({.type_id = io::TlvFrame::kTaskPull, .value = MakeRawPullPayload("1")},
+                       *a_conn)
           .ok());
   EXPECT_EQ(receiver.second->size(), 1U);
 }

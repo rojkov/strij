@@ -138,6 +138,9 @@ The `2026-08-19-node-capabilities-and-scheduling` change landed runtime node dis
 
 ## Phase 4 — Protocol & observability
 
+- [ ] **Durable event plane (v2)**
+  - The v1 `summary_mesh` event plane is best-effort and ephemeral. Add a durable at-least-once `EventPlane` extension: an external clustered backbone (e.g. NATS JetStream) first, with a self-hosted replicated log remaining possible later. Use lease TTL plus bounded time/size retention. The node edge, `EventBus`, and openworkflow interpreter contracts are designed to remain unchanged.
+
 - [ ] **Supported-type advertisement and `GET /tasks` listing**
   - Nodeagents advertise supported task types; gateway validates unknown task types; optional `GET /tasks` endpoint.
   - Source: `openspec/changes/archive/2026-07-31-structured-tasks-protobuf/proposal.md`. Nodeagent handler capabilities are now advertised via `HandlerCapability` (`kNodeAdvertisement`), so this reduces to gateway-side validation + the listing endpoint.

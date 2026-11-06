@@ -7,6 +7,7 @@ strij_cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//:liburing",
+        "@abseil-cpp//absl/synchronization",
         "//include/strij/event:command_handler_interface",
         "//include/strij/event:completable_interface",
         "//include/strij/event:dispatcher_interface",

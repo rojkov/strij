@@ -8,6 +8,7 @@
 #include <string_view>
 #include <unordered_map>
 #include <variant>
+#include <vector>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -21,6 +22,7 @@
 #include "openworkflow/document.hh"
 #include "openworkflow/task.hh"
 #include "strij/nodeagent/child_task_submitter.hh"
+#include "strij/nodeagent/event_bus.hh"
 
 namespace strij::nodeagent::task_handlers::openworkflow {
 
@@ -50,7 +52,8 @@ public:
   WorkflowInterpreter(ChildTaskSubmitter& submitter, config::ExtensionConfig evaluator,
                       std::string parent_id, Completion on_complete,
                       std::size_t for_iteration_budget = kDefaultSynchronousIterationBudget,
-                      NestedWorkflowRunner* runner = nullptr, std::size_t depth = 0);
+                      NestedWorkflowRunner* runner = nullptr, std::size_t depth = 0,
+                      EventBus* event_bus = nullptr);
   ~WorkflowInterpreter() = default;
 
   WorkflowInterpreter(const WorkflowInterpreter&) = delete;
@@ -119,6 +122,26 @@ private:
                    const StepDataValue& input, const LexicalScope* scope) -> absl::Status override;
   auto ExecuteRun(SequenceFrame& owner, const ::strij::openworkflow::NamedTask& step,
                   const StepDataValue& input, const LexicalScope* scope) -> absl::Status override;
+  auto ExecuteEmit(SequenceFrame& owner, const ::strij::openworkflow::NamedTask& step,
+                   const StepDataValue& input, const LexicalScope* scope) -> absl::Status override;
+  auto StartListen(ListenFrame& frame, const ::strij::openworkflow::NamedTask& step,
+                   const ::strij::openworkflow::ListenBody& body, const StepDataValue& input,
+                   const LexicalScope* scope) -> absl::Status override;
+  auto EvaluateListenFilter(const ::strij::openworkflow::NamedTask& step,
+                            const ::strij::openworkflow::EventFilter& filter,
+                            const event::CloudEvent& event, const LexicalScope* scope)
+      -> absl::StatusOr<bool> override;
+  auto EvaluateListenUntil(const ::strij::openworkflow::NamedTask& step,
+                           const ::strij::openworkflow::ListenBody& body,
+                           const std::vector<event::CloudEvent>& consumed,
+                           const LexicalScope* scope) -> absl::StatusOr<bool> override;
+  auto TransformListenForeachOutput(const ::strij::openworkflow::SubscriptionIterator& iterator,
+                                    const StepDataValue& selected, const StepDataValue& body_output,
+                                    const LexicalScope& scope)
+      -> absl::StatusOr<StepDataValue> override;
+  auto ExportListenForeach(const ::strij::openworkflow::SubscriptionIterator& iterator,
+                           const StepDataValue& selected, const StepDataValue& transformed_output,
+                           const LexicalScope& scope) -> absl::Status override;
   auto EvaluateForIn(const ::strij::openworkflow::NamedTask& step, const StepDataValue& input,
                      const LexicalScope* scope) -> absl::StatusOr<StepDataValue> override;
   auto EvaluateForWhile(const ::strij::openworkflow::NamedTask& step,
@@ -137,6 +160,7 @@ private:
 
   ChildTaskSubmitter& submitter_;
   ExpressionEngine engine_;
+  EventBus* event_bus_{nullptr};
   NestedWorkflowRunner* runner_{nullptr};
   std::size_t depth_{0};
   // The workflow-scope `$context`, seeded as `{}` at start and replaced only by
@@ -145,6 +169,7 @@ private:
   std::string parent_id_;
   Completion on_complete_;
   std::size_t for_iteration_budget_{kDefaultSynchronousIterationBudget};
+  std::size_t listen_activation_{0};
 
   std::optional<::strij::openworkflow::Document> document_;
   std::unique_ptr<SequenceFrame> root_;

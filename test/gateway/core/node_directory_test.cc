@@ -12,10 +12,10 @@
 #include "test/mocks/common/common_mocks.hh"
 #include "test/mocks/event/mocks.hh"
 
-#include "gateway/core/node_directory.hh"
-#include "gateway/core/result_receiver_storage.hh"
 #include "common/core/io/protocol_parser.hh"
 #include "common/node/capabilities.pb.h"
+#include "gateway/core/node_directory.hh"
+#include "gateway/core/result_receiver_storage.hh"
 #include "gateway/extensions/node_discovery/node_discovery.hh"
 #include "gtest/gtest.h"
 
@@ -220,6 +220,26 @@ TEST_F(NodeDirectoryTest, GetNextNodeReturnsConnectedNode) {
 
   EXPECT_EQ(directory.GetNextNode(), directory.GetNode("n1"));
   EXPECT_EQ(directory.GetAvailableCount(), 1U);
+}
+
+TEST_F(NodeDirectoryTest, GetNextNodeRoundRobinsAcrossLiveNodes) {
+  NodeDirectoryImpl directory(dispatcher_, MakeTrivialFactory(), storage_);
+
+  EXPECT_CALL(*dispatcher_, PrepareConnect(_, _, _, _, _))
+      .Times(2)
+      .WillRepeatedly(::testing::Return());
+  directory.AddNode("n1", "10.0.0.1:9090");
+  directory.AddNode("n2", "10.0.0.2:9090");
+  directory.GetNode("n1")->HandleCompletion(0, 0, 0);
+  directory.GetNode("n2")->HandleCompletion(0, 0, 0);
+
+  Node* first = directory.GetNextNode();
+  Node* second = directory.GetNextNode();
+
+  ASSERT_NE(first, nullptr);
+  ASSERT_NE(second, nullptr);
+  EXPECT_NE(first, second);
+  EXPECT_EQ(directory.GetNextNode(), first);
 }
 
 TEST_F(NodeDirectoryTest, ReconcileResolvesRekeyedPlaceholderIdentity) {

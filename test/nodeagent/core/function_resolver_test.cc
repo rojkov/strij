@@ -1,5 +1,5 @@
-#include "nodeagent/core/function_resolver.hh"
 #include "gtest/gtest.h"
+#include "nodeagent/core/function_resolver.hh"
 
 namespace strij::nodeagent {
 namespace {

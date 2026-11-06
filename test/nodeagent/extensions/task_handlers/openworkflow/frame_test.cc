@@ -11,9 +11,11 @@
 #include <variant>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "common/task/task.pb.h"
 #include "gtest/gtest.h"
 #include "nodeagent/extensions/task_handlers/openworkflow/frame.hh"
+#include "nodeagent/extensions/task_handlers/openworkflow/listen_frame.hh"
 #include "openworkflow/document.hh"
 #include "openworkflow/parser/parse.hh"
 #include "openworkflow/task.hh"
@@ -634,6 +636,48 @@ public:
     return applyNextEffect(owner);
   }
 
+  auto ExecuteEmit(SequenceFrame& /*owner*/, const NamedTask& step, const StepDataValue& /*input*/,
+                   const LexicalScope* /*scope*/) -> absl::Status override {
+    emits_.push_back(step.name_);
+    return absl::OkStatus();
+  }
+
+  auto StartListen(ListenFrame& /*frame*/, const NamedTask& step,
+                   const ::strij::openworkflow::ListenBody& /*body*/,
+                   const StepDataValue& /*input*/, const LexicalScope* /*scope*/)
+      -> absl::Status override {
+    listens_.push_back(step.name_);
+    return absl::OkStatus();
+  }
+
+  auto EvaluateListenFilter(const NamedTask& /*step*/,
+                            const ::strij::openworkflow::EventFilter& /*filter*/,
+                            const event::CloudEvent& /*event*/, const LexicalScope* /*scope*/)
+      -> absl::StatusOr<bool> override {
+    return false;
+  }
+
+  auto EvaluateListenUntil(const NamedTask& /*step*/,
+                           const ::strij::openworkflow::ListenBody& /*body*/,
+                           const std::vector<event::CloudEvent>& /*consumed*/,
+                           const LexicalScope* /*scope*/) -> absl::StatusOr<bool> override {
+    return false;
+  }
+
+  auto TransformListenForeachOutput(const ::strij::openworkflow::SubscriptionIterator& /*iterator*/,
+                                    const StepDataValue& /*selected*/,
+                                    const StepDataValue& body_output, const LexicalScope& /*scope*/)
+      -> absl::StatusOr<StepDataValue> override {
+    return body_output.Copy();
+  }
+
+  auto ExportListenForeach(const ::strij::openworkflow::SubscriptionIterator& /*iterator*/,
+                           const StepDataValue& /*selected*/,
+                           const StepDataValue& /*transformed_output*/,
+                           const LexicalScope& /*scope*/) -> absl::Status override {
+    return absl::OkStatus();
+  }
+
   auto ExecuteRun(SequenceFrame& owner, const NamedTask& step, const StepDataValue& /*input*/,
                   const LexicalScope* /*scope*/) -> absl::Status override {
     runs_.push_back(step.name_);
@@ -712,6 +756,8 @@ private:
 
   std::deque<Effect> effects_;
   std::vector<std::string> calls_;
+  std::vector<std::string> emits_;
+  std::vector<std::string> listens_;
   std::vector<std::string> runs_;
   std::vector<std::string> forgotten_;
   std::vector<ExportRecord> exports_;
@@ -1530,8 +1576,8 @@ TEST(SequenceFrameTest, ARunDispatchFailureFailsTheStep) {
   auto root = MakeRoot(*parsed);
 
   FakeFrameContext context;
-  context.Script(FakeFrameContext::Effect{
-      .kind_ = FakeFrameContext::EffectKind::kLocalError, .message_ = "cannot start"});
+  context.Script(FakeFrameContext::Effect{.kind_ = FakeFrameContext::EffectKind::kLocalError,
+                                          .message_ = "cannot start"});
 
   auto result = root->Advance(context);
   auto* failed = std::get_if<Failed>(&result);
@@ -1542,6 +1588,67 @@ TEST(SequenceFrameTest, ARunDispatchFailureFailsTheStep) {
 }
 
 // NOLINTEND(bugprone-unchecked-optional-access)
+
+TEST(ListenFrameBoundTest, PendingQueueDropsBeyondTheLimit) {
+  auto document = ::strij::openworkflow::Parse(R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: listen-bound
+  version: '0.1.0'
+do:
+  - wait:
+      listen:
+        to:
+          one:
+            with:
+              type: tick
+)YAML");
+  ASSERT_TRUE(document.has_value()) << document.error().Message();
+  const NamedTask& task = document->do_[0];
+  const auto& body = std::get<::strij::openworkflow::ListenBody>(task.task_.body_);
+  ListenFrame frame(task, body, nullptr);
+
+  for (int index = 0; index < 1100; ++index) {
+    frame.OnEvent(event::CloudEvent{}, "token");
+  }
+
+  EXPECT_EQ(frame.PendingEventCount(), 1024U);
+}
+
+TEST(ListenFrameBoundTest, DedupWindowIsBounded) {
+  auto document = ::strij::openworkflow::Parse(R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: listen-dedup-bound
+  version: '0.1.0'
+do:
+  - wait:
+      listen:
+        to:
+          one:
+            with:
+              type: tick
+)YAML");
+  ASSERT_TRUE(document.has_value()) << document.error().Message();
+  const NamedTask& task = document->do_[0];
+  const auto& body = std::get<::strij::openworkflow::ListenBody>(task.task_.body_);
+  ListenFrame frame(task, body, nullptr);
+  frame.Enter(StepDataValue::FromBytes("null"));
+  frame.SetReady(absl::OkStatus(), event::DELIVERY_MODE_BEST_EFFORT);
+  frame.SetSubscription(EventSubscriptionPtr{});
+  FakeFrameContext context;
+
+  for (std::size_t index = 0; index <= ListenFrame::kMaxTrackedEventIds; ++index) {
+    event::CloudEvent event;
+    event.set_source("tests");
+    event.set_id(std::to_string(index));
+    frame.OnEvent(event, "token");
+    (void)frame.Advance(context);
+  }
+
+  EXPECT_EQ(frame.TrackedEventCount(), ListenFrame::kMaxTrackedEventIds);
+}
+
 // NOLINTEND(modernize-use-trailing-return-type)
 
 } // namespace

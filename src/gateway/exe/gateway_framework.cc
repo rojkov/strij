@@ -20,7 +20,11 @@
 #include "common/core/io/tlv_parser.hh"
 #include "common/core/logging/log.hh"
 #include "common/core/logging/logger.hh"
+#include "common/event/event_plane.pb.h"
+#include "common/loaders/event_plane_loader.hh"
+#include "gateway/core/gateway_event_edge.hh"
 #include "gateway/core/gateway_http_handler.hh"
+#include "gateway/core/gateway_relay_transport.hh"
 #include "gateway/core/gateway_tlv_handler.hh"
 #include "gateway/core/http_result_receiver.hh"
 #include "gateway/core/node_directory.hh"
@@ -30,6 +34,7 @@
 #include "gateway_factory_context.hh"
 #include "strij/event/dispatcher.hh"
 #include "strij/extensions/extension_registry.hh"
+#include "strij/gateway/event_plane.hh"
 
 // Generated protobuf headers
 #include "gateway/config/gateway.pb.h"
@@ -45,6 +50,12 @@ ABSL_FLAG(std::string, log_format, "", "Override log format (text|json)");
 // NOLINTEND
 
 namespace strij::gateway {
+
+namespace {
+
+const size_t kMaxMailboxQueueDepth = 1024;
+
+} // namespace
 
 auto RunGateway(int argc, char** argv) -> int {
   // Suppress SIGPIPE. Within a single io_uring CQE batch a write SQE can be
@@ -100,8 +111,8 @@ auto RunGateway(int argc, char** argv) -> int {
   const strij::utils::SignalMonitor signal_monitor(dispatcher);
 
   strij::logging::Logger& logger = strij::logging::Logger::GetInstance();
-  logger.Run();
   LOG_REGISTER_THREAD();
+  logger.Run();
 
   // Set log level from config
   // Note: Logger::GetInstance().SetLogLevel(config.logging().level());  // if available
@@ -115,12 +126,26 @@ auto RunGateway(int argc, char** argv) -> int {
   // both of which are constructed after it, so back-pointers are filled in
   // once the objects exist. Connections are only accepted during Run(), by
   // which time both pointers are set.
-  strij::gateway::NodeDirectoryImpl* node_directory_ptr = nullptr;
-  strij::gateway::SchedulerRouter* scheduler_router_ptr = nullptr;
-  auto connection_factory = [&storage, &state_tracker, &node_directory_ptr, &scheduler_router_ptr](
+  strij::gateway::NodeDirectoryImpl* node_directory_ptr{nullptr};
+  strij::gateway::SchedulerRouter* scheduler_router_ptr{nullptr};
+  strij::gateway::GatewayRelayTransport* relay_transport_ptr{nullptr};
+  strij::gateway::GatewayEventEdge* event_edge_ptr{nullptr};
+  std::string gateway_id;
+  strij::event::DeliveryMode delivery_mode = strij::event::DELIVERY_MODE_BEST_EFFORT;
+  auto connection_factory = [&storage, &state_tracker, &node_directory_ptr, &scheduler_router_ptr,
+                             &relay_transport_ptr, &event_edge_ptr, &gateway_id, &delivery_mode](
                                 strij::io::Connection& conn) -> strij::io::ProtocolParserPtr {
+    conn.Mailbox()->SetMaxQueueDepth(kMaxMailboxQueueDepth);
+    // Announce this gateway's identity (and event-plane capability) before any
+    // relay traffic so the node can resolve targeted peer messages. A gateway
+    // without an event plane has no identity and sends no handshake.
+    if (auto hello = strij::gateway::BuildGatewayHello(gateway_id, delivery_mode);
+        hello.has_value()) {
+      conn.Write(*hello);
+    }
     auto handler = std::make_unique<strij::gateway::GatewayTlvHandler>(
-        *node_directory_ptr, storage, scheduler_router_ptr, &state_tracker);
+        *node_directory_ptr, storage, scheduler_router_ptr, &state_tracker, relay_transport_ptr,
+        event_edge_ptr);
     // Move the handler into the parser's callback via a named capture.
     return std::make_unique<strij::io::TlvParser>(
         [hdl = std::move(handler), &conn](strij::io::TlvFrame frame) -> void {
@@ -136,6 +161,34 @@ auto RunGateway(int argc, char** argv) -> int {
   node_directory_ptr = &node_directory;
 
   strij::gateway::GatewayFactoryContextImpl factory_context(dispatcher, node_directory, storage);
+
+  // Optional event plane. The relay and edge must outlive the TLV handlers,
+  // which run only during Dispatcher::Run().
+  std::unique_ptr<strij::gateway::GatewayRelayTransport> relay_transport;
+  std::unique_ptr<strij::gateway::GatewayEventEdge> event_edge;
+  strij::gateway::EventPlanePtr event_plane;
+  if (config.has_event_plane()) {
+    relay_transport = std::make_unique<strij::gateway::GatewayRelayTransport>(node_directory);
+    event_edge = std::make_unique<strij::gateway::GatewayEventEdge>();
+
+    gateway_id = strij::gateway::ResolveGatewayId(config.event_plane().gateway_id());
+
+    const strij::gateway::EventPlaneDeps deps(*dispatcher, gateway_id, *relay_transport,
+                                              *event_edge, dispatcher);
+    auto plane = strij::loaders::CreateEventPlane(config.event_plane(), factory_context, deps);
+    if (!plane.ok()) {
+      LOG_ERROR("Event plane config error: {}", plane.status().message());
+      return 1;
+    }
+
+    event_plane = std::move(*plane);
+    delivery_mode = event_plane->SupportedDeliveryMode();
+    event_edge->SetPlane(event_plane.get());
+    relay_transport_ptr = relay_transport.get();
+    event_edge_ptr = event_edge.get();
+    LOG_INFO("Event plane '{}' loaded (gateway_id={})", config.event_plane().extension().name(),
+             gateway_id);
+  }
 
   // Node discovery via extension registry.
   std::unique_ptr<strij::gateway::NodeDiscovery> node_discovery;

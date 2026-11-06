@@ -15,20 +15,21 @@
 #include "test/mocks/event/mocks.hh"
 
 #include "absl/status/status.h"
-
+#include "common/core/io/connection.hh"
+#include "common/core/io/protocol_parser.hh"
+#include "common/core/io/tlv_frame.hh"
+#include "common/core/io/tlv_parser.hh"
+#include "common/core/logging/logger.hh"
+#include "common/event/event_plane.pb.h"
+#include "common/node/capabilities.pb.h"
+#include "common/task/task.pb.h"
 #include "gateway/core/exact_state_tracker.hh"
 #include "gateway/core/gateway_http_handler.hh"
+#include "gateway/core/gateway_relay_transport.hh"
 #include "gateway/core/gateway_tlv_handler.hh"
 #include "gateway/core/http_result_receiver.hh"
 #include "gateway/core/requirements_resolver.hh"
 #include "gateway/core/result_receiver_storage.hh"
-#include "common/core/io/connection.hh"
-#include "common/core/logging/logger.hh"
-#include "common/core/io/protocol_parser.hh"
-#include "common/core/io/tlv_frame.hh"
-#include "common/core/io/tlv_parser.hh"
-#include "common/node/capabilities.pb.h"
-#include "common/task/task.pb.h"
 #include "gateway/extensions/schedulers/round_robin/round_robin_scheduler.hh"
 #include "google/protobuf/map.h"
 #include "gtest/gtest.h"
@@ -101,9 +102,9 @@ public:
 
     std::string serialized;
     task.SerializeToString(&serialized);
-    auto frame = io::SerializeTlvFrame(
-        io::TlvFrame::kTaskSubmission,
-        std::as_bytes(std::span(serialized.data(), serialized.size())));
+    auto frame =
+        io::SerializeTlvFrame(io::TlvFrame::kTaskSubmission,
+                              std::as_bytes(std::span(serialized.data(), serialized.size())));
     node_->GetConnection()->Write(frame);
   }
 
@@ -199,8 +200,7 @@ protected:
   auto HandleResult(const task::TaskResult& result) -> absl::Status {
     auto serialized = SerializeTaskResult(result);
     auto wire = io::SerializeTlvFrame(
-        io::TlvFrame::kResult,
-        std::as_bytes(std::span(serialized.data(), serialized.size())));
+        io::TlvFrame::kResult, std::as_bytes(std::span(serialized.data(), serialized.size())));
 
     std::array<int, 2> fds{};
     EXPECT_EQ(0, socketpair(AF_UNIX, SOCK_STREAM, 0, fds.data()));
@@ -209,10 +209,9 @@ protected:
     EXPECT_CALL(*dispatcher,
                 PrepareRead(::testing::_, ::testing::_, ::testing::_, ::testing::_, ::testing::_))
         .WillOnce(::testing::Return());
-    io::Connection conn(fds[0], dispatcher, &owner,
-                        [](io::Connection&) -> io::ProtocolParserPtr {
-                          return std::make_unique<io::TrivialParser>();
-                        });
+    io::Connection conn(fds[0], dispatcher, &owner, [](io::Connection&) -> io::ProtocolParserPtr {
+      return std::make_unique<io::TrivialParser>();
+    });
 
     std::vector<io::TlvFrame> received_frames;
     io::TlvParser parser(
@@ -553,8 +552,7 @@ TEST(HttpResponseFramerTest, ErrorResponseMapsStatusCodeToStatusLine) {
 
 TEST(HttpResponseFramerTest, ErrorResponseUnknownCodeYields500) {
   HttpResponseFramer framer;
-  auto frames =
-      framer.ErrorResponse("unmapped code", static_cast<task::TaskStatus>(42));
+  auto frames = framer.ErrorResponse("unmapped code", static_cast<task::TaskStatus>(42));
 
   ASSERT_EQ(frames.size(), 1U);
   std::string response(std::bit_cast<const char*>(frames[0].data()), frames[0].size());
@@ -764,12 +762,9 @@ TEST(HttpResultReceiverTest, SuccessfulFirstResultWritesMappedOkStatus) {
               PrepareRead(::testing::_, ::testing::_, ::testing::_, ::testing::_, ::testing::_))
       .WillOnce(::testing::Return());
   std::vector<std::vector<std::byte>> written;
-  EXPECT_CALL(*dispatcher,
-              PrepareWrite(::testing::_, ::testing::_, ::testing::_, ::testing::_, 0))
-      .WillRepeatedly([&written](event::Completable*, uint8_t, int,
-                                 std::span<const std::byte> buf, off_t) {
-        written.emplace_back(buf.begin(), buf.end());
-      });
+  EXPECT_CALL(*dispatcher, PrepareWrite(::testing::_, ::testing::_, ::testing::_, ::testing::_, 0))
+      .WillRepeatedly([&written](event::Completable*, uint8_t, int, std::span<const std::byte> buf,
+                                 off_t) { written.emplace_back(buf.begin(), buf.end()); });
   io::Connection conn(fds[0], dispatcher, &owner, [](io::Connection&) -> io::ProtocolParserPtr {
     return std::make_unique<io::TrivialParser>();
   });
@@ -799,12 +794,9 @@ TEST(HttpResultReceiverTest, FailureAfterResponseBeganKeepsStatusLineAndLogsTask
               PrepareRead(::testing::_, ::testing::_, ::testing::_, ::testing::_, ::testing::_))
       .WillOnce(::testing::Return());
   std::vector<std::vector<std::byte>> written;
-  EXPECT_CALL(*dispatcher,
-              PrepareWrite(::testing::_, ::testing::_, ::testing::_, ::testing::_, 0))
-      .WillRepeatedly([&written](event::Completable*, uint8_t, int,
-                                 std::span<const std::byte> buf, off_t) {
-        written.emplace_back(buf.begin(), buf.end());
-      });
+  EXPECT_CALL(*dispatcher, PrepareWrite(::testing::_, ::testing::_, ::testing::_, ::testing::_, 0))
+      .WillRepeatedly([&written](event::Completable*, uint8_t, int, std::span<const std::byte> buf,
+                                 off_t) { written.emplace_back(buf.begin(), buf.end()); });
   io::Connection conn(fds[0], dispatcher, &owner, [](io::Connection&) -> io::ProtocolParserPtr {
     return std::make_unique<io::TrivialParser>();
   });
@@ -1328,6 +1320,45 @@ TEST(GatewayReceiverLifecycleTest, NodeDropDeliversErrorWhileHttpAlive) {
   EXPECT_EQ(storage.Get("t1"), nullptr);
   ASSERT_EQ(errors->size(), 1U);
   EXPECT_EQ(errors->at(0), "node disconnected");
+}
+
+class CapturingTransportReceiver final : public GatewayTransportReceiver {
+public:
+  void OnMessage(std::span<const std::byte> payload) override {
+    payload_.assign(reinterpret_cast<const char*>(payload.data()), payload.size());
+  }
+
+  std::string payload_;
+};
+
+TEST_F(GatewayTlvHandlerTest, PeerRelayDeliveryIsRoutedToTransport) {
+  CapturingTransportReceiver receiver;
+  GatewayRelayTransport transport([]() -> io::OutboundMailbox* { return nullptr; });
+  transport.SetReceiver(&receiver);
+  GatewayTlvHandler handler(directory_, storage_, nullptr, nullptr, &transport);
+
+  std::array<int, 2> fds{};
+  EXPECT_EQ(0, socketpair(AF_UNIX, SOCK_STREAM, 0, fds.data()));
+  auto dispatcher = std::make_shared<event::MockDispatcher>();
+  event::DummyOwner owner;
+  EXPECT_CALL(*dispatcher,
+              PrepareRead(::testing::_, ::testing::_, ::testing::_, ::testing::_, ::testing::_))
+      .WillOnce(::testing::Return());
+  io::Connection conn(fds[0], dispatcher, &owner, [](io::Connection&) -> io::ProtocolParserPtr {
+    return std::make_unique<io::TrivialParser>();
+  });
+
+  event::PeerRelayDelivery delivery;
+  delivery.set_payload("relayed");
+  std::string serialized;
+  ASSERT_TRUE(delivery.SerializeToString(&serialized));
+  const io::TlvFrame frame{.type_id = io::TlvFrame::kPeerRelayDelivery,
+                           .value = std::as_bytes(std::span(serialized.data(), serialized.size()))};
+  ASSERT_TRUE(handler.HandleFrame(frame, conn).ok());
+  EXPECT_EQ(receiver.payload_, "relayed");
+
+  close(fds[0]);
+  close(fds[1]);
 }
 
 // NOLINTEND(modernize-use-trailing-return-type)

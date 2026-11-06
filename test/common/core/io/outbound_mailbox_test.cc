@@ -109,6 +109,23 @@ TEST_F(OutboundMailboxTest, RegisterOnClosedMailboxFiresImmediately) {
   EXPECT_EQ(fired, 1);
 }
 
+TEST(OutboundMailboxBackpressureTest, QueueDepthBoundDropsFrames) {
+  std::size_t writes = 0;
+  std::size_t depth = 0;
+  auto mailbox =
+      std::make_shared<OutboundMailbox>([&](std::vector<std::byte> /*frame*/) { ++writes; });
+  mailbox->SetQueueDepthProbe([&] { return depth; });
+  mailbox->SetMaxQueueDepth(2);
+
+  depth = 0;
+  mailbox->Enqueue(std::vector<std::byte>{std::byte{0x01}});
+  depth = 2;
+  mailbox->Enqueue(std::vector<std::byte>{std::byte{0x02}});
+
+  EXPECT_EQ(writes, 1U);
+  EXPECT_EQ(mailbox->DroppedFrames(), 1U);
+}
+
 // NOLINTEND(modernize-use-trailing-return-type)
 
 } // namespace

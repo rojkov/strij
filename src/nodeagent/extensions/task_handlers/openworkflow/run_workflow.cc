@@ -34,9 +34,8 @@ auto ExtractEmbeddedWorkflow(const ::strij::openworkflow::RunBody& body)
   }
 
   if (body.return_.has_value()) {
-    return absl::UnimplementedError(
-        absl::StrCat("run.workflow '", workflow->name_,
-                     "' return is recognized but not supported"));
+    return absl::UnimplementedError(absl::StrCat("run.workflow '", workflow->name_,
+                                                 "' return is recognized but not supported"));
   }
 
   if (!workflow->input_.has_value() || !workflow->input_->IsString()) {
@@ -75,9 +74,10 @@ auto ParseEmbeddedDefinition(std::string_view definition) -> absl::StatusOr<Docu
 }
 
 NestedWorkflowRunner::NestedWorkflowRunner(ChildTaskSubmitter& submitter,
-                                           config::ExtensionConfig evaluator,
-                                           std::size_t max_depth)
-    : submitter_{submitter}, evaluator_{std::move(evaluator)}, max_depth_{max_depth} {}
+                                           config::ExtensionConfig evaluator, std::size_t max_depth,
+                                           EventBus* event_bus)
+    : submitter_{submitter}, evaluator_{std::move(evaluator)}, event_bus_{event_bus},
+      max_depth_{max_depth} {}
 
 NestedWorkflowRunner::~NestedWorkflowRunner() = default;
 
@@ -85,9 +85,8 @@ auto NestedWorkflowRunner::Start(std::string definition, std::string_view invoca
                                  std::string child_id, std::size_t depth, Completion on_done)
     -> absl::Status {
   if (depth > max_depth_) {
-    return absl::UnimplementedError(
-        absl::StrCat("embedded workflow nesting depth ", depth, " exceeds the limit of ",
-                     max_depth_));
+    return absl::UnimplementedError(absl::StrCat("embedded workflow nesting depth ", depth,
+                                                 " exceeds the limit of ", max_depth_));
   }
 
   const std::string key = child_id.empty() ? utils::GenerateTaskId() : std::move(child_id);
@@ -100,7 +99,7 @@ auto NestedWorkflowRunner::Start(std::string definition, std::string_view invoca
 
         finish(key);
       },
-      kDefaultSynchronousIterationBudget, this, depth);
+      kDefaultSynchronousIterationBudget, this, depth, event_bus_);
 
   runs_.insert_or_assign(key, NestedRun{.interpreter_ = interpreter});
   interpreter->Start(std::move(definition), invocation_input);

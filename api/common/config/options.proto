@@ -6,15 +6,15 @@ import "google/protobuf/descriptor.proto";
 
 // Shared logging configuration message
 message Logging {
-  string level = 1 [(strij.config.enum_values) = "trace",
-                    (strij.config.enum_values) = "debug",
-                    (strij.config.enum_values) = "info",
-                    (strij.config.enum_values) = "warn",
-                    (strij.config.enum_values) = "error"];
-  string format = 2 [(strij.config.enum_values) = "text",
-                     (strij.config.enum_values) = "json"];
-  string output = 3 [(strij.config.enum_values) = "stdout",
-                     (strij.config.enum_values) = "stderr"];
+  string level = 1 [
+    (strij.config.enum_values) = "trace",
+    (strij.config.enum_values) = "debug",
+    (strij.config.enum_values) = "info",
+    (strij.config.enum_values) = "warn",
+    (strij.config.enum_values) = "error"
+  ];
+  string format = 2 [(strij.config.enum_values) = "text", (strij.config.enum_values) = "json"];
+  string output = 3 [(strij.config.enum_values) = "stdout", (strij.config.enum_values) = "stderr"];
   // RESERVED for future: string file_path = 4;  // Required if output="file" (future)
   bool include_source_location = 5;
 }

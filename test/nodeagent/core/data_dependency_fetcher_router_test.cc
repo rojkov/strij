@@ -1,5 +1,3 @@
-#include "nodeagent/core/data_dependency_fetcher_router.hh"
-
 #include <memory>
 #include <span>
 #include <string>
@@ -7,12 +5,14 @@
 #include <utility>
 #include <vector>
 
+#include "test/mocks/common/common_mocks.hh"
+#include "test/mocks/event/mocks.hh"
+
 #include "absl/status/status.h"
 #include "common/task/task.pb.h"
-#include "nodeagent/core/object_cache.hh"
-#include "test/mocks/event/mocks.hh"
-#include "test/mocks/common/common_mocks.hh"
 #include "gtest/gtest.h"
+#include "nodeagent/core/data_dependency_fetcher_router.hh"
+#include "nodeagent/core/object_cache.hh"
 
 namespace strij::nodeagent {
 namespace {
@@ -47,9 +47,7 @@ public:
     calls_.push_back(FetchCall{.source = ref.source(), .key = ref.key(), .task_id = task_id});
   }
 
-  auto HandledSourceTypes() const -> std::span<const std::string_view> override {
-    return schemes_;
-  }
+  auto HandledSourceTypes() const -> std::span<const std::string_view> override { return schemes_; }
 
   std::vector<std::string_view> schemes_;
   std::vector<FetchCall> calls_;
@@ -58,10 +56,10 @@ public:
 TEST(DataDependencyFetcherRouterTest, BuildFailsOnDuplicateScheme) {
   InMemoryObjectCache cache;
   std::vector<extensions::DataDependencyFetcherPtr> fetchers;
-  fetchers.push_back(std::make_unique<RecordingFetcher>(
-      std::initializer_list<std::string_view>{"ray", "http"}));
-  fetchers.push_back(std::make_unique<RecordingFetcher>(
-      std::initializer_list<std::string_view>{"http"}));
+  fetchers.push_back(
+      std::make_unique<RecordingFetcher>(std::initializer_list<std::string_view>{"ray", "http"}));
+  fetchers.push_back(
+      std::make_unique<RecordingFetcher>(std::initializer_list<std::string_view>{"http"}));
 
   auto result = DataDependencyFetcherRouter::Build(cache, std::move(fetchers));
 
@@ -145,8 +143,8 @@ TEST(DataDependencyFetcherRouterTest, AllCachedReflectsObjectCache) {
   *mixed_deps.Add() = MakeRef("ray", "obj_not_cached");
 
   std::vector<extensions::DataDependencyFetcherPtr> fetchers;
-  fetchers.push_back(std::make_unique<RecordingFetcher>(
-      std::initializer_list<std::string_view>{"ray"}));
+  fetchers.push_back(
+      std::make_unique<RecordingFetcher>(std::initializer_list<std::string_view>{"ray"}));
   auto router = DataDependencyFetcherRouter::Build(cache, std::move(fetchers));
 
   ASSERT_TRUE(router.ok());
