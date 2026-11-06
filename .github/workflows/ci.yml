@@ -85,6 +85,7 @@ jobs:
 
   sanitizers:
     name: ${{ matrix.sanitizer }}
+    needs: [linux, clang-format]
     runs-on: ubuntu-26.04
     strategy:
       fail-fast: false
