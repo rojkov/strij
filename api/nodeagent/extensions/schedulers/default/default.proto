@@ -7,4 +7,5 @@ package strij.extensions.schedulers.default_scheduler;
 // parent receiver -> admit-on-capacity -> run locally, else forward upstream)
 // and the kResult / kTaskRejected child-outcome frames routed back to the node.
 // Carries no tunables today.
-message DefaultSchedulerConfig {}
+message DefaultSchedulerConfig {
+}
