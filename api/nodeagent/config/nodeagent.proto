@@ -49,9 +49,11 @@ message ObjectCacheConfig {
 
 message TlvListener {
   string address = 1;
-  uint32 port = 2 [(strij.config.required) = true,
-                   (strij.config.range_min) = "1",
-                   (strij.config.range_max) = "65535"];
+  uint32 port = 2 [
+    (strij.config.required) = true,
+    (strij.config.range_min) = "1",
+    (strij.config.range_max) = "65535"
+  ];
   // RESERVED for future (v2+)
   // uint32 max_connections = 3;
   // bool reuse_port = 4;
@@ -65,8 +67,8 @@ message TlvListener {
 // counterpart).
 message NodeSchedulerConfig {
   ExtensionConfig extension = 1;
-  string task_type = 2;     // optional local authority over this type
-  bool local_default = 3;   // at most one entry; fallback for locally-originated tasks
+  string task_type = 2;   // optional local authority over this type
+  bool local_default = 3; // at most one entry; fallback for locally-originated tasks
 }
 
 // Outbound gateway endpoints for the child-forward path.

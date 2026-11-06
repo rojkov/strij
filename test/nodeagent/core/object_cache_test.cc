@@ -1,6 +1,6 @@
 #include "common/task/task.pb.h"
-#include "nodeagent/core/object_cache.hh"
 #include "gtest/gtest.h"
+#include "nodeagent/core/object_cache.hh"
 
 namespace strij::nodeagent {
 namespace {

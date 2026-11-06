@@ -664,10 +664,10 @@ public:
     return false;
   }
 
-  auto TransformListenForeachOutput(
-      const ::strij::openworkflow::SubscriptionIterator& /*iterator*/,
-      const StepDataValue& /*selected*/, const StepDataValue& body_output,
-      const LexicalScope& /*scope*/) -> absl::StatusOr<StepDataValue> override {
+  auto TransformListenForeachOutput(const ::strij::openworkflow::SubscriptionIterator& /*iterator*/,
+                                    const StepDataValue& /*selected*/,
+                                    const StepDataValue& body_output, const LexicalScope& /*scope*/)
+      -> absl::StatusOr<StepDataValue> override {
     return body_output.Copy();
   }
 
@@ -1576,8 +1576,8 @@ TEST(SequenceFrameTest, ARunDispatchFailureFailsTheStep) {
   auto root = MakeRoot(*parsed);
 
   FakeFrameContext context;
-  context.Script(FakeFrameContext::Effect{
-      .kind_ = FakeFrameContext::EffectKind::kLocalError, .message_ = "cannot start"});
+  context.Script(FakeFrameContext::Effect{.kind_ = FakeFrameContext::EffectKind::kLocalError,
+                                          .message_ = "cannot start"});
 
   auto result = root->Advance(context);
   auto* failed = std::get_if<Failed>(&result);

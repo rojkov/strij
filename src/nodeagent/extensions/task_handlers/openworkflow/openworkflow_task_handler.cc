@@ -45,7 +45,8 @@ OpenWorkflowTaskHandler::OpenWorkflowTaskHandler(ChildTaskSubmitter& submitter,
                                                  config::ExtensionConfig evaluator,
                                                  EventBus* event_bus)
     : submitter_{submitter}, resolver_{resolver}, evaluator_{std::move(evaluator)},
-      event_bus_{event_bus}, runner_{submitter_, evaluator_, kDefaultEmbeddedNestingLimit, event_bus_} {}
+      event_bus_{event_bus},
+      runner_{submitter_, evaluator_, kDefaultEmbeddedNestingLimit, event_bus_} {}
 
 void OpenWorkflowTaskHandler::HandleTask(const task::Task& task, ResultSenderPtr sender) {
   const std::string& task_id = task.id();
@@ -178,9 +179,8 @@ auto OpenWorkflowTaskHandlerFactory::Create(const ::google::protobuf::Message& c
     evaluator.set_name("jq");
   }
 
-  return std::make_unique<OpenWorkflowTaskHandler>(deps.child_task_submitter_,
-                                                   deps.function_resolver_, std::move(evaluator),
-                                                   deps.event_bus_);
+  return std::make_unique<OpenWorkflowTaskHandler>(
+      deps.child_task_submitter_, deps.function_resolver_, std::move(evaluator), deps.event_bus_);
 }
 
 auto OpenWorkflowTaskHandlerFactory::ParseConfig(const ::google::protobuf::Message& config)

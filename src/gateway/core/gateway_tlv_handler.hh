@@ -1,10 +1,10 @@
 #pragma once
 
+#include "common/core/io/connection.hh"
+#include "common/core/io/tlv_frame.hh"
 #include "gateway/core/exact_state_tracker.hh"
 #include "gateway/core/node_directory.hh"
 #include "gateway/core/result_receiver_storage.hh"
-#include "common/core/io/connection.hh"
-#include "common/core/io/tlv_frame.hh"
 
 namespace strij::extensions {
 

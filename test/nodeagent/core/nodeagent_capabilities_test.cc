@@ -1,10 +1,10 @@
 #include <string>
 
-#include "nodeagent/config/nodeagent.pb.h"
 #include "common/node/capabilities.pb.h"
+#include "gtest/gtest.h"
+#include "nodeagent/config/nodeagent.pb.h"
 #include "nodeagent/core/capabilities.hh"
 #include "nodeagent/extensions/task_handlers/echo/echo_task_handler.pb.h"
-#include "gtest/gtest.h"
 
 namespace strij::nodeagent {
 namespace {
@@ -15,7 +15,7 @@ protected:
     config::NodeAgentConfig config;
     config.mutable_tlv_listener()->set_address("127.0.0.1");
     config.mutable_tlv_listener()->set_port(9090);
-config.add_schedulers()->mutable_extension()->set_name("push");
+    config.add_schedulers()->mutable_extension()->set_name("push");
     auto* pool = config.add_pools();
     pool->set_name("cpu");
     pool->set_total(16);

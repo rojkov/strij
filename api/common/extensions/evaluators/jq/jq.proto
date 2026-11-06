@@ -2,4 +2,5 @@ syntax = "proto3";
 
 package strij.extensions.evaluators.jq;
 
-message JqEvaluatorConfig {}
+message JqEvaluatorConfig {
+}

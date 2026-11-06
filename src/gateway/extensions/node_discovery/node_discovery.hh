@@ -5,9 +5,9 @@
 #include <string>
 #include <vector>
 
-#include "strij/extensions/factory_context.hh"
 #include "google/protobuf/message.h"
 #include "strij/common/pure.hh"
+#include "strij/extensions/factory_context.hh"
 
 namespace strij::gateway {
 
@@ -46,7 +46,8 @@ public:
 
   [[nodiscard]] virtual auto Name() const -> std::string PURE;
   virtual auto CreateEmptyConfigProto() -> MessagePtr PURE;
-  virtual auto Create(const ::google::protobuf::Message& config, extensions::GatewayFactoryContext& context)
+  virtual auto Create(const ::google::protobuf::Message& config,
+                      extensions::GatewayFactoryContext& context)
       -> std::unique_ptr<NodeDiscovery> PURE;
 };
 

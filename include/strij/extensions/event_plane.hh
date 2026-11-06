@@ -96,9 +96,8 @@ public:
 
   [[nodiscard]] virtual auto Name() const -> std::string PURE;
   virtual auto CreateEmptyConfigProto() -> MessagePtr PURE;
-  virtual auto Create(const ::google::protobuf::Message& config,
-                      GatewayFactoryContext& context, const EventPlaneDeps& deps)
-      -> EventPlanePtr PURE;
+  virtual auto Create(const ::google::protobuf::Message& config, GatewayFactoryContext& context,
+                      const EventPlaneDeps& deps) -> EventPlanePtr PURE;
 };
 
 } // namespace strij::extensions

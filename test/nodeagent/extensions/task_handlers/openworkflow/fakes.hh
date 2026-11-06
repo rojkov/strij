@@ -166,8 +166,7 @@ public:
     }
 
     auto subscriber = subscribers_.at(id);
-    const absl::Status ready_status =
-        ready_status_.ok() ? absl::OkStatus() : ready_status_;
+    const absl::Status ready_status = ready_status_.ok() ? absl::OkStatus() : ready_status_;
     std::move(subscriber->on_ready_)(ready_status, delivery_mode_);
     return subscription;
   }
