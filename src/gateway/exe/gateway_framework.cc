@@ -51,6 +51,12 @@ ABSL_FLAG(std::string, log_format, "", "Override log format (text|json)");
 
 namespace strij::gateway {
 
+namespace {
+
+const size_t kMaxMailboxQueueDepth = 1024;
+
+} // namespace
+
 auto RunGateway(int argc, char** argv) -> int {
   // Suppress SIGPIPE. Within a single io_uring CQE batch a write SQE can be
   // queued (e.g. delivering a task result to an HTTP connection) and then the
@@ -120,16 +126,16 @@ auto RunGateway(int argc, char** argv) -> int {
   // both of which are constructed after it, so back-pointers are filled in
   // once the objects exist. Connections are only accepted during Run(), by
   // which time both pointers are set.
-  strij::gateway::NodeDirectoryImpl* node_directory_ptr = nullptr;
-  strij::gateway::SchedulerRouter* scheduler_router_ptr = nullptr;
-  strij::gateway::GatewayRelayTransport* relay_transport_ptr = nullptr;
-  strij::gateway::GatewayEventEdge* event_edge_ptr = nullptr;
+  strij::gateway::NodeDirectoryImpl* node_directory_ptr{nullptr};
+  strij::gateway::SchedulerRouter* scheduler_router_ptr{nullptr};
+  strij::gateway::GatewayRelayTransport* relay_transport_ptr{nullptr};
+  strij::gateway::GatewayEventEdge* event_edge_ptr{nullptr};
   std::string gateway_id;
   strij::event::DeliveryMode delivery_mode = strij::event::DELIVERY_MODE_BEST_EFFORT;
   auto connection_factory = [&storage, &state_tracker, &node_directory_ptr, &scheduler_router_ptr,
                              &relay_transport_ptr, &event_edge_ptr, &gateway_id, &delivery_mode](
                                 strij::io::Connection& conn) -> strij::io::ProtocolParserPtr {
-    conn.Mailbox()->SetMaxQueueDepth(1024);
+    conn.Mailbox()->SetMaxQueueDepth(kMaxMailboxQueueDepth);
     // Announce this gateway's identity (and event-plane capability) before any
     // relay traffic so the node can resolve targeted peer messages. A gateway
     // without an event plane has no identity and sends no handshake.

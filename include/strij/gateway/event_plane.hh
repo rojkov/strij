@@ -52,6 +52,7 @@ public:
   virtual void Ack(std::string_view subscription_id, std::string_view token) PURE;
 
   [[nodiscard]] virtual auto SupportedDeliveryMode() const -> event::DeliveryMode PURE;
+  // Resolves to a particular delivery mode if "auto" is requested or checks availability.
   virtual auto ResolveDeliveryMode(event::DeliveryMode requested)
       -> absl::StatusOr<event::DeliveryMode> PURE;
 };

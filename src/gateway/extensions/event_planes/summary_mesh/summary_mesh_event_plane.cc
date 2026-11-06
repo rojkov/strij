@@ -43,7 +43,8 @@ SummaryMeshEventPlane::SummaryMeshEventPlane(const EventPlaneDeps& deps,
   transport_.SetReceiver(this);
 
   if (deps.shared_dispatcher_ != nullptr) {
-    timer_ = std::make_unique<io::PeriodicTimer>(deps.shared_dispatcher_, [this]() { tick(); });
+    timer_ =
+        std::make_unique<io::PeriodicTimer>(deps.shared_dispatcher_, [this]() -> void { tick(); });
     timer_->Start(absl::Milliseconds(refresh_interval_ms_));
   }
 }
