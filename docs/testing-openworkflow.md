@@ -80,10 +80,11 @@ bazel test //test/e2e/...
 The suite is also part of `make test`/`bazel test //...`. What it proves:
 
 - `cluster_lifecycle_test`: a 2-node, 2-gateway cluster reaches readiness, shuts
-  down with status 0, releases every listener port, leaves no descendant
-  running, escalates when a process ignores the graceful signal, and reports a
-  node's startup error (with its log) when the generated configuration omits its
-  resource pool.
+  down with status 0, releases every listener port, escalates when a process
+  ignores the graceful signal, and reports a node's startup error (with its log)
+  when the generated configuration omits its resource pool. It also leaves no
+  descendant running after a task spawns a background child and the cluster is
+  stopped.
 - `task_fanout_test`: every gateway serves tasks from every node, 40 concurrent
   requests through both gateways each return their own body, and a one-unit
   shared pool per node admits exactly one request per node while the rest get

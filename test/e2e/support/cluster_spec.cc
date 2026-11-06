@@ -90,6 +90,12 @@ auto markerScript(std::string_view marker) -> std::string {
   return absl::StrCat("#!/bin/sh\n"
                       "set -eu\n"
                       "input=\"$(cat)\"\n"
+                      // A grandchild that outlives the task: cluster teardown must
+                      // remove it through the node's process group. Its stdio is
+                      // redirected so it cannot hold the task's pipes open.
+                      "if [ \"${input}\" = \"spawn-child\" ]; then\n"
+                      "  sleep 60 </dev/null >/dev/null 2>&1 &\n"
+                      "fi\n"
                       "if [ \"${input}\" = \"slow\" ]; then\n"
                       "  sleep 2\n"
                       "fi\n"

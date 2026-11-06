@@ -16,14 +16,6 @@ struct HttpResponse {
   std::string body;
 };
 
-struct HttpRequest {
-  uint16_t port{0};
-  std::string path;
-  std::string body;
-  std::vector<std::pair<std::string, std::string>> headers;
-  std::chrono::milliseconds timeout{std::chrono::seconds{5}};
-};
-
 /// Sends one `POST` over a fresh loopback connection, reads the response to EOF,
 /// decodes `Content-Length` or `Transfer-Encoding: chunked`, and returns the
 /// status code and reassembled body. This is the only way the harness observes a
