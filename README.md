@@ -1,5 +1,23 @@
 # Strij
 
+![Strij — distributed serverless runtime](logo.png)
+
+Strij is a **distributed runtime for serverless functions**, written in C++23 for
+Linux and built on `io_uring` for high-throughput, low-overhead asynchronous I/O.
+It consists of gateway servers that accept task submissions and node agents that
+execute them, and it is designed to scale horizontally: to thousands of nodes and
+millions of concurrent tasks, with no single point of failure — multiple gateway
+processes run side by side, and scheduling policies are pluggable so the placement
+of work can be tuned or swapped out.
+
+It is useful when you want to run short-lived functions across a cluster without
+paying for an orchestrator's control plane or a heavyweight per-task runtime: a
+task is a protocol message, a node claims it, and the result streams back. The
+runtime handles node discovery, admission control, task routing, child-task and
+result propagation, and a distributed event plane for `emit`/`listen`-style
+workflows, while the actual function logic lives in replaceable task handlers
+(e.g. the bundled [Open Workflow](https://open-workflow-specification.org/) interpreter).
+
 Given you've got a fresh VM or a new Linux PC with Docker installed
 for development just type in:
 
