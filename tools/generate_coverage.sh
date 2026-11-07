@@ -12,6 +12,10 @@ if [ -z ${COV_FILE} ]; then
     exit 1
 fi
 
+# Remove a previous report so files that are no longer covered (e.g. external
+# dependencies) don't linger in the generated HTML tree.
+rm -rf coverage
+
 COVERAGE_VALUE="$(genhtml --ignore-errors inconsistent,unsupported,corrupt --prefix "${PWD}" --output "coverage" ${COV_FILE} | tee /dev/stderr | grep lines... | cut -d ' ' -f 4)"
 COVERAGE_VALUE=${COVERAGE_VALUE%?}
 
