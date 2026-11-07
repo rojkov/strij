@@ -89,6 +89,10 @@ The suite is also part of `make test`/`bazel test //...`. What it proves:
   requests through both gateways each return their own body, and a one-unit
   shared pool per node admits exactly one request per node while the rest get
   `429 CAPACITY_REFUSED`.
+- `cross_node_events_test`: a listener workflow on one node stays suspended in
+  `listen` while an emitter workflow on the other node publishes the matching
+  CloudEvent. The listener response names its own node as the consumer and the
+  event data names the emitter's node as the producer.
 - `process_test` / `config_generation_test` / `environment_guard_test`: the
   process supervisor, the YAML generator round-tripping through the real
   `LoadConfig`, and the `io_uring` probe.
@@ -99,6 +103,29 @@ fails its first connection to a node never re-dials it, so it would report
 `429` for that node for the rest of its lifetime. Readiness is then asserted
 through the data path — marker tasks submitted through every gateway until every
 node marker has been observed at that gateway.
+
+**Sequential gateway boot.** Gateways are started one at a time: gateway `j` is
+spawned only after gateway `j-1` has served a marker task from every node. A
+gateway is therefore fully connected to every node before the next gateway
+exists, so each node's event-capable gateway-connection order matches the
+gateway start order. Event-plane scenarios rely on that order to determine which
+gateway receives a node's subscribe or publish.
+
+**Cross-node event scenario.** The two nodes declare distinct `listen` and
+`emit` pools, and both gateways route `openworkflow` through `capability_aware`,
+so the listener and emitter land on different nodes while every gateway still
+discovers both. The listener subscribes on the first-started gateway. The
+emitter workflow first publishes an unmatched warm-up event, which consumes that
+gateway, and then the real event, which is published to the second gateway. The
+second gateway relays the event through a live node to the first, which delivers
+it to the listening node. `summary_mesh` is best-effort, so the test retries the
+emitter workflow until the listener completes; the listener request and the
+retry loop are both bounded, and a timeout fails with the cluster diagnostics.
+
+**Repeated runs.** The harness allocates ports by bind/close, so concurrent
+copies of the suite can race for the same ephemeral port during teardown. Verify
+repetitions with `--local_test_jobs=1`; the event scenario's own repetitions are
+otherwise deterministic.
 
 **Skip condition.** Both binaries build their `io_uring` dispatcher before any
 configuration short-circuit. If `io_uring_setup` is denied (for example in a

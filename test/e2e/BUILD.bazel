@@ -58,8 +58,10 @@ strij_e2e_test(
     deps = [
         ":e2e_support_lib",
         "//api/gateway/config:gateway_config_cc_proto",
+        "//api/gateway/extensions/event_planes/summary_mesh:summary_mesh_cc_proto",
         "//api/gateway/extensions/node_discovery/static:static_node_discovery_cc_proto",
         "//api/nodeagent/config:nodeagent_config_cc_proto",
+        "//api/nodeagent/extensions/task_handlers/openworkflow:openworkflow_task_handler_cc_proto",
         "//api/nodeagent/extensions/task_handlers/piped_executable:piped_executable_cc_proto",
         "//src/common/core/config:config_loader_lib",
         "@googletest//:gtest_main",
@@ -82,6 +84,18 @@ strij_e2e_test(
 strij_e2e_test(
     name = "task_fanout_test",
     srcs = ["task_fanout_test.cc"],
+    deps = [
+        ":e2e_support_lib",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@googletest//:gtest_main",
+    ],
+)
+
+strij_e2e_test(
+    name = "cross_node_events_test",
+    srcs = ["cross_node_events_test.cc"],
     deps = [
         ":e2e_support_lib",
         "@abseil-cpp//absl/status",

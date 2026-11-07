@@ -19,8 +19,13 @@ namespace {
 constexpr std::string_view kPipedExecutableTypeUrl =
     "type.googleapis.com/strij.extensions.task_handlers.piped_executable."
     "PipedExecutableTaskHandlerConfig";
+constexpr std::string_view kOpenWorkflowTypeUrl =
+    "type.googleapis.com/strij.extensions.task_handlers.openworkflow."
+    "OpenWorkflowTaskHandlerConfig";
 constexpr std::string_view kStaticDiscoveryTypeUrl =
     "type.googleapis.com/strij.config.StaticNodeDiscoveryConfig";
+constexpr std::string_view kSummaryMeshTypeUrl =
+    "type.googleapis.com/strij.extensions.event_planes.summary_mesh.SummaryMeshConfig";
 
 auto writeFile(const std::filesystem::path& path, std::string_view content) -> absl::Status {
   std::ofstream output(path, std::ios::binary | std::ios::trunc);
@@ -124,12 +129,51 @@ auto MakeGatewaySpec() -> GatewaySpec {
   return gateway;
 }
 
+auto MakeSummaryMeshEventPlane(std::string gateway_id, uint32_t refresh_interval_ms,
+                               uint32_t peer_ttl_ms) -> EventPlaneSpec {
+  return EventPlaneSpec{
+      .extension_name = "summary_mesh",
+      .typed_config_type_url = std::string(kSummaryMeshTypeUrl),
+      .typed_config_yaml = absl::StrCat("refresh_interval_ms: ", refresh_interval_ms,
+                                        "\npeer_ttl_ms: ", peer_ttl_ms),
+      .gateway_id = std::move(gateway_id),
+  };
+}
+
 auto DefaultFanoutSpec() -> ClusterSpec {
   ClusterSpec spec;
   spec.nodes.push_back(MakeNodeSpec("n0"));
   spec.nodes.push_back(MakeNodeSpec("n1"));
   spec.gateways.push_back(MakeGatewaySpec());
   spec.gateways.push_back(MakeGatewaySpec());
+  return spec;
+}
+
+auto MakeCrossNodeEventSpec() -> ClusterSpec {
+  ClusterSpec spec;
+
+  for (const auto& [marker, pool] : {std::pair<std::string, std::string>{"n0", "listen"},
+                                     std::pair<std::string, std::string>{"n1", "emit"}}) {
+    NodeSpec node = MakeNodeSpec(marker);
+    node.pool_name = pool;
+    node.task_handlers.push_back(TaskHandlerSpec{
+        .name = "openworkflow",
+        .typed_config_type_url = std::string(kOpenWorkflowTypeUrl),
+        .typed_config_yaml = "evaluator:\n  name: \"jq\"",
+    });
+    spec.nodes.push_back(std::move(node));
+  }
+
+  for (const std::string gateway_id : {"gateway-a", "gateway-b"}) {
+    GatewaySpec gateway = MakeGatewaySpec();
+    gateway.schedulers.push_back(SchedulerSpec{
+        .name = "capability_aware",
+        .task_type = "openworkflow",
+    });
+    gateway.event_plane = MakeSummaryMeshEventPlane(gateway_id);
+    spec.gateways.push_back(std::move(gateway));
+  }
+
   return spec;
 }
 
@@ -227,6 +271,30 @@ auto WriteGatewayConfiguration(const GatewaySpec& gateway, const std::vector<Nod
   out << "schedulers:\n";
   appendSchedulerEntries(out, gateway.schedulers, false);
   out << "\n";
+
+  if (gateway.event_plane.has_value()) {
+    const EventPlaneSpec& event_plane = *gateway.event_plane;
+    out << "event_plane:\n";
+    out << "  extension:\n";
+    out << "    name: \"" << event_plane.extension_name << "\"\n";
+    if (!event_plane.typed_config_type_url.empty() || !event_plane.typed_config_yaml.empty()) {
+      out << "    typed_config:\n";
+      if (!event_plane.typed_config_type_url.empty()) {
+        out << "      \"@type\": \"" << event_plane.typed_config_type_url << "\"\n";
+      }
+      if (!event_plane.typed_config_yaml.empty()) {
+        std::istringstream extra(event_plane.typed_config_yaml);
+        std::string line;
+        while (std::getline(extra, line)) {
+          out << "      " << line << "\n";
+        }
+      }
+    }
+    if (!event_plane.gateway_id.empty()) {
+      out << "  gateway_id: \"" << event_plane.gateway_id << "\"\n";
+    }
+    out << "\n";
+  }
 
   out << "logging:\n";
   out << "  level: \"" << gateway.log_level << "\"\n";
