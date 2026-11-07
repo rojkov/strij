@@ -16,7 +16,7 @@ compiledb: build
 	bazel build $(BAZEL_FLAGS) //...
 
 coverage:
-	bazel coverage $(BAZEL_FLAGS) --instrumentation_filter="//src/..." \
+	bazel coverage $(BAZEL_FLAGS) --instrumentation_filter="^//src/..." \
 		--per_file_copt='external/protobuf\+.*@-DSTRIJ_COVERAGE' //...
 	./tools/generate_coverage.sh bazel-out/_coverage/_coverage_report.dat
 
