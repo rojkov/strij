@@ -20,8 +20,10 @@ namespace strij::e2e {
  *
  * `Start` is the only supported entry point. It allocates a port immediately
  * before spawning each process, waits for every node listener to accept before
- * any gateway dials (a failed gateway connect is never retried), then proves
- * readiness by observing every node marker through every gateway's HTTP path.
+ * any gateway dials (a failed gateway connect is never retried), then starts
+ * each gateway and proves it ready (every node marker observed) before spawning
+ * the next. That sequential boot fixes each node's gateway-connection order to
+ * the gateway start order.
  *
  * `Stop` tears down through the process groups, escalates after a bounded wait,
  * reaps every process, and asserts that no descendant survives and every former
@@ -61,7 +63,7 @@ private:
   auto createRoot() -> absl::Status;
   auto startNodes() -> absl::Status;
   auto startGateways() -> absl::Status;
-  auto waitForReadiness() -> absl::Status;
+  auto waitForGatewayReadiness(std::size_t gateway_index) -> absl::Status;
   auto failAndStop(absl::Status status) -> absl::Status;
   auto stopProcesses(std::chrono::milliseconds grace) -> absl::Status;
 

@@ -118,11 +118,6 @@ auto Cluster::Start() -> absl::Status {
     return failAndStop(std::move(status));
   }
 
-  status = waitForReadiness();
-  if (!status.ok()) {
-    return failAndStop(std::move(status));
-  }
-
   return absl::OkStatus();
 }
 
@@ -167,6 +162,10 @@ auto Cluster::startNodes() -> absl::Status {
 }
 
 auto Cluster::startGateways() -> absl::Status {
+  // Readiness is proven one gateway at a time: a gateway is fully connected to
+  // every node before the next gateway is spawned, which fixes each node's
+  // gateway-connection order to gateway start order.
+  observed_.assign(spec_.gateways.size(), {});
   const std::string executable = RunfilePath("src/gateway/exe/gateway");
   for (std::size_t index = 0; index < spec_.gateways.size(); ++index) {
     const auto port = ports_.Allocate();
@@ -194,75 +193,76 @@ auto Cluster::startGateways() -> absl::Status {
       return process.status();
     }
     gateways_.push_back(std::move(*process));
+
+    auto ready = waitForGatewayReadiness(index);
+    if (!ready.ok()) {
+      return ready;
+    }
   }
   return absl::OkStatus();
 }
 
-auto Cluster::waitForReadiness() -> absl::Status {
-  observed_.assign(gateways_.size(), {});
+auto Cluster::waitForGatewayReadiness(std::size_t gateway_index) -> absl::Status {
+  Process& gateway = gateways_[gateway_index];
+  const auto deadline = std::chrono::steady_clock::now() + kReadinessTimeout;
 
-  for (std::size_t gateway_index = 0; gateway_index < gateways_.size(); ++gateway_index) {
-    Process& gateway = gateways_[gateway_index];
-    const auto deadline = std::chrono::steady_clock::now() + kReadinessTimeout;
-
-    while (observed_[gateway_index].size() < nodes_.size()) {
-      if (HasExited(gateway)) {
-        return absl::UnavailableError(
-            absl::StrCat(gateway.name, " exited during the readiness barrier (",
-                         DescribeExit(gateway), "); log tail:\n", LogTail(gateway.log_path, 40)));
-      }
-      for (auto& node : nodes_) {
-        if (HasExited(node)) {
-          return absl::UnavailableError(
-              absl::StrCat(node.name, " exited during the readiness barrier (", DescribeExit(node),
-                           "); log tail:\n", LogTail(node.log_path, 40)));
-        }
-      }
-
-      if (std::chrono::steady_clock::now() >= deadline) {
-        std::vector<std::string> missing;
-        for (const auto& node : spec_.nodes) {
-          if (!observed_[gateway_index].contains(node.marker)) {
-            missing.push_back(node.marker);
-          }
-        }
-        return absl::DeadlineExceededError(
-            absl::StrCat(gateway.name, " did not observe node marker(s) ",
-                         absl::StrJoin(missing, ", "), " within the readiness deadline"));
-      }
-
-      auto response = Post(gateway_ports_[gateway_index], absl::StrCat("/tasks/", kMarkerTaskType),
-                           "", {{std::string(kMarkerFunctionHeader), std::string(kMarkerFunction)}},
-                           std::chrono::seconds{1});
-      if (response.ok()) {
-        if (response->status_code == 200) {
-          const std::string marker = [&]() -> std::string {
-            for (const auto& node : spec_.nodes) {
-              if (response->body == markerBody(node.marker)) {
-                return node.marker;
-              }
-            }
-            return {};
-          }();
-          if (marker.empty()) {
-            return absl::InternalError(absl::StrCat(gateway.name,
-                                                    " returned an unrecognized marker body '",
-                                                    response->body, "' while probing readiness"));
-          }
-          observed_[gateway_index].insert(marker);
-          continue;
-        }
-        // 429 means the gateway has not attached a node yet; retry until the
-        // deadline. Any other status is a real failure, not a readiness wait.
-        if (response->status_code != 429) {
-          return absl::InternalError(
-              absl::StrCat(gateway.name, " returned HTTP ", response->status_code,
-                           " during the readiness barrier: ", response->body));
-        }
-      }
-
-      std::this_thread::sleep_for(kRetryInterval);
+  while (observed_[gateway_index].size() < nodes_.size()) {
+    if (HasExited(gateway)) {
+      return absl::UnavailableError(
+          absl::StrCat(gateway.name, " exited during the readiness barrier (",
+                       DescribeExit(gateway), "); log tail:\n", LogTail(gateway.log_path, 40)));
     }
+    for (auto& node : nodes_) {
+      if (HasExited(node)) {
+        return absl::UnavailableError(
+            absl::StrCat(node.name, " exited during the readiness barrier (", DescribeExit(node),
+                         "); log tail:\n", LogTail(node.log_path, 40)));
+      }
+    }
+
+    if (std::chrono::steady_clock::now() >= deadline) {
+      std::vector<std::string> missing;
+      for (const auto& node : spec_.nodes) {
+        if (!observed_[gateway_index].contains(node.marker)) {
+          missing.push_back(node.marker);
+        }
+      }
+      return absl::DeadlineExceededError(
+          absl::StrCat(gateway.name, " did not observe node marker(s) ",
+                       absl::StrJoin(missing, ", "), " within the readiness deadline"));
+    }
+
+    auto response = Post(gateway_ports_[gateway_index], absl::StrCat("/tasks/", kMarkerTaskType),
+                         "", {{std::string(kMarkerFunctionHeader), std::string(kMarkerFunction)}},
+                         std::chrono::seconds{1});
+    if (response.ok()) {
+      if (response->status_code == 200) {
+        const std::string marker = [&]() -> std::string {
+          for (const auto& node : spec_.nodes) {
+            if (response->body == markerBody(node.marker)) {
+              return node.marker;
+            }
+          }
+          return {};
+        }();
+        if (marker.empty()) {
+          return absl::InternalError(absl::StrCat(gateway.name,
+                                                  " returned an unrecognized marker body '",
+                                                  response->body, "' while probing readiness"));
+        }
+        observed_[gateway_index].insert(marker);
+        continue;
+      }
+      // 429 means the gateway has not attached a node yet; retry until the
+      // deadline. Any other status is a real failure, not a readiness wait.
+      if (response->status_code != 429) {
+        return absl::InternalError(absl::StrCat(gateway.name, " returned HTTP ",
+                                                response->status_code,
+                                                " during the readiness barrier: ", response->body));
+      }
+    }
+
+    std::this_thread::sleep_for(kRetryInterval);
   }
 
   return absl::OkStatus();

@@ -12,10 +12,12 @@
 
 #include "common/core/config/config_loader.hh"
 #include "gateway/config/gateway.pb.h"
+#include "gateway/extensions/event_planes/summary_mesh/summary_mesh.pb.h"
 #include "gateway/extensions/node_discovery/static/static_node_discovery.pb.h"
 #include "google/protobuf/any.pb.h"
 #include "gtest/gtest.h"
 #include "nodeagent/config/nodeagent.pb.h"
+#include "nodeagent/extensions/task_handlers/openworkflow/config.pb.h"
 #include "nodeagent/extensions/task_handlers/piped_executable/piped_executable.pb.h"
 
 namespace strij::e2e {
@@ -135,6 +137,119 @@ TEST(ConfigGenerationTest, MissingPoolIsGeneratedAsWritten) {
   contents << input.rdbuf();
   EXPECT_EQ(contents.str().find("pools:"), std::string::npos)
       << "the generator must not silently repair a specification that omits its pool";
+}
+
+TEST(ConfigGenerationTest, CrossNodeEventTopologyIsGenerated) {
+  ASSERT_NE(
+      strij::extensions::task_handlers::openworkflow::OpenWorkflowTaskHandlerConfig::descriptor(),
+      nullptr);
+  ClusterSpec spec = MakeCrossNodeEventSpec();
+  PortAllocator ports;
+  assignPorts(spec, ports);
+
+  const auto directory = makeTempDir();
+  ASSERT_FALSE(directory.empty());
+
+  auto generated = GenerateClusterConfiguration(spec, directory);
+  ASSERT_TRUE(generated.ok()) << generated.status().message();
+  ASSERT_EQ(generated->nodes.size(), 2U);
+  ASSERT_EQ(generated->gateways.size(), 2U);
+
+  for (std::size_t node_index = 0; node_index < generated->nodes.size(); ++node_index) {
+    const auto path = generated->nodes[node_index].config_path;
+    auto loaded = strij::config::LoadConfig<strij::config::NodeAgentConfig>(path.string());
+    ASSERT_TRUE(loaded.ok()) << path << ": " << loaded.status().message();
+
+    ASSERT_EQ(loaded->pools_size(), 1);
+    EXPECT_EQ(loaded->pools(0).name(), spec.nodes[node_index].pool_name);
+    EXPECT_EQ(loaded->pools(0).total(), 16U);
+
+    ASSERT_EQ(loaded->task_handlers_size(), 2);
+    EXPECT_EQ(loaded->task_handlers(0).name(), "piped_executable");
+    EXPECT_EQ(loaded->task_handlers(1).name(), "openworkflow");
+
+    ASSERT_EQ(loaded->schedulers_size(), 2);
+    EXPECT_EQ(loaded->schedulers(0).extension().name(), "push");
+    EXPECT_EQ(loaded->schedulers(1).extension().name(), "default");
+    EXPECT_TRUE(loaded->schedulers(1).local_default());
+  }
+
+  for (std::size_t gateway_index = 0; gateway_index < generated->gateways.size(); ++gateway_index) {
+    const auto path = generated->gateways[gateway_index].config_path;
+    auto loaded = strij::config::LoadConfig<strij::config::GatewayConfig>(path.string());
+    ASSERT_TRUE(loaded.ok()) << path << ": " << loaded.status().message();
+
+    ASSERT_EQ(loaded->schedulers_size(), 2);
+    EXPECT_EQ(loaded->schedulers(0).extension().name(), "round_robin");
+    EXPECT_TRUE(loaded->schedulers(0).task_type().empty());
+    EXPECT_EQ(loaded->schedulers(1).extension().name(), "capability_aware");
+    EXPECT_EQ(loaded->schedulers(1).task_type(), "openworkflow");
+
+    ASSERT_TRUE(loaded->has_event_plane());
+    const auto& event_plane = spec.gateways[gateway_index].event_plane;
+    ASSERT_TRUE(event_plane.has_value());
+    EXPECT_EQ(loaded->event_plane().extension().name(), "summary_mesh");
+    EXPECT_EQ(loaded->event_plane().gateway_id(), event_plane->gateway_id);
+    EXPECT_EQ(loaded->event_plane().extension().typed_config().type_url(),
+              event_plane->typed_config_type_url);
+  }
+}
+
+TEST(ConfigGenerationTest, EventPlaneConfigurationRoundTrips) {
+  ClusterSpec spec = DefaultFanoutSpec();
+  spec.gateways[0].event_plane = MakeSummaryMeshEventPlane("gateway-a", 50, 1000);
+  PortAllocator ports;
+  assignPorts(spec, ports);
+
+  const auto directory = makeTempDir();
+  ASSERT_FALSE(directory.empty());
+
+  auto generated = GenerateClusterConfiguration(spec, directory);
+  ASSERT_TRUE(generated.ok()) << generated.status().message();
+
+  const auto path = generated->gateways[0].config_path;
+  auto loaded = strij::config::LoadConfig<strij::config::GatewayConfig>(path.string());
+  ASSERT_TRUE(loaded.ok()) << path << ": " << loaded.status().message();
+  ASSERT_TRUE(loaded->has_event_plane()) << path;
+  EXPECT_EQ(loaded->event_plane().extension().name(), "summary_mesh");
+  EXPECT_EQ(loaded->event_plane().gateway_id(), "gateway-a");
+  EXPECT_EQ(loaded->event_plane().extension().typed_config().type_url(),
+            spec.gateways[0].event_plane->typed_config_type_url);
+
+  strij::extensions::event_planes::summary_mesh::SummaryMeshConfig mesh_config;
+  ASSERT_TRUE(loaded->event_plane().extension().typed_config().UnpackTo(&mesh_config))
+      << loaded->event_plane().extension().typed_config().type_url();
+  EXPECT_EQ(mesh_config.refresh_interval_ms(), 50U);
+  EXPECT_EQ(mesh_config.peer_ttl_ms(), 1000U);
+
+  const auto second_path = generated->gateways[1].config_path;
+  auto second = strij::config::LoadConfig<strij::config::GatewayConfig>(second_path.string());
+  ASSERT_TRUE(second.ok()) << second_path << ": " << second.status().message();
+  EXPECT_FALSE(second->has_event_plane());
+}
+
+TEST(ConfigGenerationTest, NoEventPlaneIsGeneratedWhenUnset) {
+  ClusterSpec spec = DefaultFanoutSpec();
+  PortAllocator ports;
+  assignPorts(spec, ports);
+
+  const auto directory = makeTempDir();
+  ASSERT_FALSE(directory.empty());
+
+  auto generated = GenerateClusterConfiguration(spec, directory);
+  ASSERT_TRUE(generated.ok()) << generated.status().message();
+
+  const auto path = generated->gateways[0].config_path;
+  auto loaded = strij::config::LoadConfig<strij::config::GatewayConfig>(path.string());
+  ASSERT_TRUE(loaded.ok()) << path << ": " << loaded.status().message();
+  EXPECT_FALSE(loaded->has_event_plane());
+
+  std::ifstream input(path);
+  ASSERT_TRUE(input);
+  std::ostringstream contents;
+  contents << input.rdbuf();
+  EXPECT_EQ(contents.str().find("event_plane:"), std::string::npos)
+      << "the generator must not materialize an event plane that was not requested";
 }
 
 // NOLINTEND(modernize-use-trailing-return-type)
