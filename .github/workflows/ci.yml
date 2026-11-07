@@ -2,6 +2,9 @@ name: CI
 
 on:
   pull_request:
+  push:
+    branches:
+      - master
 
 permissions:
   contents: read
@@ -27,8 +30,8 @@ jobs:
 
       - name: Check changed C++ and protobuf files
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           mapfile -d '' files < <(
             git diff --name-only --diff-filter=ACMR -z \
