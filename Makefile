@@ -15,9 +15,15 @@ compiledb: build
 	bazel run $(BAZEL_FLAGS) @hedron_compile_commands//:refresh_all
 	bazel build $(BAZEL_FLAGS) //...
 
+# Bazel's `coverage` toolchain feature instruments every C++ dependency,
+# including external ones. Disable it and instrument only our own sources via
+# --per_file_copt so third-party code (e.g. protobuf) is untouched.
 coverage:
-	bazel coverage $(BAZEL_FLAGS) --instrumentation_filter="^//src/..." \
-		--per_file_copt='external/protobuf\+.*@-DSTRIJ_COVERAGE' //...
+	bazel coverage $(BAZEL_FLAGS) \
+		--features=-coverage \
+		--instrumentation_filter='^//src/...' \
+		--per_file_copt='^src/.*@-fprofile-arcs,-ftest-coverage' \
+		--linkopt=--coverage //...
 	./tools/generate_coverage.sh bazel-out/_coverage/_coverage_report.dat
 
 test: test_consumer
