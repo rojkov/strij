@@ -7,5 +7,12 @@ hacks
 .opencode
 .dsh
 
+# Local development cluster runtime state and logs
+.devcluster/
+
+# Python bytecode from repository tooling
+__pycache__/
+*.pyc
+
 # Nested external-module smoke-test workspace output
 test/consumer/bazel-*

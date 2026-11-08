@@ -46,7 +46,6 @@ void LogFrontend::Log(LogEntry&& entry) {
 }
 
 void LogFrontend::HandleCompletion(uint8_t tag, int res, uint32_t flags) {
-  printf("LogFrontend::HandleCompletion called with res=%d, flags=%u\n", res, flags);
   if (res < 0) {
     perror("eventfd read");
     return;
