@@ -85,7 +85,9 @@ def strij_e2e_test(
     `strij_cc_test` accepts neither `tags` nor `timeout`, so end-to-end tests get
     their own sibling macro. The two binaries are always added as `data`
     dependencies (resolved through runfiles by the harness), and the network tag
-    documents that the suite binds loopback listeners.
+    documents that the suite binds loopback listeners. The exclusive tag keeps
+    clusters from different test binaries from racing for host resources or the
+    same bind/close-allocated ephemeral port.
     """
     cc_test(
         name = name,
@@ -95,7 +97,7 @@ def strij_e2e_test(
             "//src/nodeagent/exe:nodeagent",
         ],
         deps = ["@googletest//:gtest"] + deps,
-        tags = ["requires-network"],
+        tags = ["requires-network", "exclusive"],
         timeout = "short",
         size = size,
         visibility = ["//visibility:private"],
