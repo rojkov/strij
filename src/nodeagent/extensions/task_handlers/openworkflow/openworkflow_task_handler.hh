@@ -5,12 +5,15 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <vector>
 
 #include "absl/status/statusor.h"
 #include "common/config/extensions.pb.h"
 #include "common/node/capabilities.pb.h"
 #include "nodeagent/extensions/task_handlers/openworkflow/interpreter.hh"
 #include "nodeagent/extensions/task_handlers/openworkflow/run_workflow.hh"
+#include "strij/event/command_handler.hh"
+#include "strij/event/dispatcher.hh"
 #include "strij/nodeagent/child_task_submitter.hh"
 #include "strij/nodeagent/event_bus.hh"
 #include "strij/nodeagent/function_resolver.hh"
@@ -25,10 +28,11 @@ namespace strij::nodeagent::task_handlers::openworkflow {
 // interpreter is owned by a `shared_ptr` and the child receivers hold a
 // `weak_ptr` back to it, so a late child outcome is dropped rather than routed
 // to a freed interpreter.
-class OpenWorkflowTaskHandler final : public TaskHandler {
+class OpenWorkflowTaskHandler final : public TaskHandler, public event::CommandHandler {
 public:
   OpenWorkflowTaskHandler(ChildTaskSubmitter& submitter, FunctionResolver& resolver,
-                          config::ExtensionConfig evaluator, EventBus* event_bus = nullptr);
+                          config::ExtensionConfig evaluator, EventBus* event_bus = nullptr,
+                          event::Dispatcher* dispatcher = nullptr);
   ~OpenWorkflowTaskHandler() override = default;
 
   OpenWorkflowTaskHandler(const OpenWorkflowTaskHandler&) = delete;
@@ -38,28 +42,37 @@ public:
 
   void HandleTask(const task::Task& task, ResultSenderPtr sender) override;
 
-private:
-  // Erases runs whose interpreter has completed or been cancelled.
-  void reap();
+  // event::CommandHandler interface
+  void ProcessCommand(event::Command cmd) override;
 
+private:
   struct Run {
     std::shared_ptr<WorkflowInterpreter> interpreter_;
     ResultSenderPtr sender_;
     std::optional<std::size_t> close_token_;
-    bool finished_ = false;
   };
 
   void send(const std::string& task_id, task::TaskResult result);
   void onClose(const std::string& task_id);
+  void deferRunReap(std::unique_ptr<Run> run);
 
   ChildTaskSubmitter& submitter_;
   FunctionResolver& resolver_;
   config::ExtensionConfig evaluator_;
   EventBus* event_bus_{nullptr};
+  // Optional for direct unit-test construction; the factory always supplies the
+  // node dispatcher. With a dispatcher, completed runs are destroyed through a
+  // DEFERRED_DELETE command so no completion callback can drop the last
+  // interpreter reference while `drive()` is still on the stack.
+  event::Dispatcher* dispatcher_{nullptr};
   // Owns nested interpreters started by `run.workflow` steps. It outlives every
   // interpreter, including detached runs that continue past a parent run.
   NestedWorkflowRunner runner_;
-  std::map<std::string, Run> runs_;
+  std::map<std::string, std::unique_ptr<Run>> runs_;
+  // Runs moved out of `runs_` but not yet destroyed. With a dispatcher the
+  // matching DEFERRED_DELETE command erases the entry; without one (tests) the
+  // entry lives until the handler is destroyed.
+  std::vector<std::unique_ptr<Run>> reaped_;
 };
 
 class OpenWorkflowTaskHandlerFactory final : public TaskHandlerFactory {
