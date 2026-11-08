@@ -5,6 +5,9 @@
 
 #include <cassert>
 #include <cstdint>
+#include <cstring>
+#include <format>
+#include <stdexcept>
 
 #include "include/strij/event/completable.hh"
 #include "strij/event/completable.hh"
@@ -24,10 +27,17 @@ inline auto merge_with_tag(Completable* completable, uint8_t tag) -> void* {
 } // namespace
 
 DispatcherImpl::DispatcherImpl() : event_fd_{eventfd(0, 0)} {
-  io_uring_queue_init(entries_num_, &ring_, 0);
   if (event_fd_ == -1) {
     perror("eventfd");
     throw std::runtime_error("unable to open event fd");
+  }
+
+  const int result = io_uring_queue_init(entries_num_, &ring_, 0);
+  if (result < 0) {
+    close(event_fd_);
+    event_fd_ = -1;
+    throw std::runtime_error(
+        std::format("unable to initialize io_uring: {}", std::strerror(-result)));
   }
 
   PrepareRead(this, 0, event_fd_, std::as_writable_bytes(std::span<uint64_t, 1>{&event_fd_val_, 1}),
