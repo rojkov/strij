@@ -43,9 +43,9 @@ void sendError(ResultSender& sender, const std::string& task_id, task::TaskStatu
 OpenWorkflowTaskHandler::OpenWorkflowTaskHandler(ChildTaskSubmitter& submitter,
                                                  FunctionResolver& resolver,
                                                  config::ExtensionConfig evaluator,
-                                                 EventBus* event_bus)
+                                                 EventBus* event_bus, event::Dispatcher* dispatcher)
     : submitter_{submitter}, resolver_{resolver}, evaluator_{std::move(evaluator)},
-      event_bus_{event_bus},
+      event_bus_{event_bus}, dispatcher_{dispatcher},
       runner_{submitter_, evaluator_, kDefaultEmbeddedNestingLimit, event_bus_} {}
 
 void OpenWorkflowTaskHandler::HandleTask(const task::Task& task, ResultSenderPtr sender) {
@@ -84,15 +84,15 @@ void OpenWorkflowTaskHandler::HandleTask(const task::Task& task, ResultSenderPtr
       [this, task_id](task::TaskResult result) { send(task_id, std::move(result)); },
       kDefaultSynchronousIterationBudget, &runner_, 0, event_bus_);
 
-  Run run;
-  run.sender_ = std::move(sender);
-  run.interpreter_ = interpreter;
+  auto run = std::make_unique<Run>();
+  run->sender_ = std::move(sender);
+  run->interpreter_ = interpreter;
   auto inserted = runs_.insert_or_assign(task_id, std::move(run));
 
   // Register after the run is installed: an already-closed mailbox fires the
   // callback immediately, which erases the run (and returns below).
-  ResultSender* sender_ptr = inserted.first->second.sender_.get();
-  inserted.first->second.close_token_ =
+  ResultSender* sender_ptr = inserted.first->second->sender_.get();
+  inserted.first->second->close_token_ =
       sender_ptr->RegisterOnClose([this, task_id] { onClose(task_id); });
 
   if (!runs_.contains(task_id)) {
@@ -100,29 +100,6 @@ void OpenWorkflowTaskHandler::HandleTask(const task::Task& task, ResultSenderPtr
   }
 
   interpreter->Start(*document, task.body());
-  reap();
-}
-
-void OpenWorkflowTaskHandler::reap() {
-  // Erases runs whose interpreter has completed or been cancelled. Safe to call
-  // from within a completion callback: the interpreter is additionally owned by
-  // the caller (a HandleTask local or a receiver's locked weak_ptr).
-  for (auto iter = runs_.begin(); iter != runs_.end();) {
-    Run& run = iter->second;
-    const bool finished =
-        run.finished_ || (run.interpreter_ != nullptr && run.interpreter_->Finished());
-
-    if (!finished) {
-      ++iter;
-      continue;
-    }
-
-    if (run.close_token_.has_value() && run.sender_ != nullptr) {
-      run.sender_->UnregisterOnClose(*run.close_token_);
-    }
-
-    iter = runs_.erase(iter);
-  }
 }
 
 void OpenWorkflowTaskHandler::send(const std::string& task_id, task::TaskResult result) {
@@ -131,20 +108,41 @@ void OpenWorkflowTaskHandler::send(const std::string& task_id, task::TaskResult 
     return;
   }
 
-  if (iter->second.sender_ != nullptr) {
-    iter->second.sender_->Send(std::move(result));
+  if (iter->second->sender_ != nullptr) {
+    iter->second->sender_->Send(std::move(result));
   }
 
-  if (iter->second.close_token_.has_value() && iter->second.sender_ != nullptr) {
-    iter->second.sender_->UnregisterOnClose(*iter->second.close_token_);
-    iter->second.close_token_.reset();
+  if (iter->second->close_token_.has_value() && iter->second->sender_ != nullptr) {
+    iter->second->sender_->UnregisterOnClose(*iter->second->close_token_);
+    iter->second->close_token_.reset();
   }
 
-  iter->second.finished_ = true;
-  // The completion callback runs while its caller still owns the interpreter
-  // (the HandleTask local, or the receiver's locked shared_ptr), so erasing the
-  // finished run here does not free it mid-callback.
-  reap();
+  // Move the finished run aside instead of destroying it here: this callback
+  // runs inside the interpreter's `drive()`, which still reads its own state
+  // after `on_complete_` returns.
+  auto node = runs_.extract(iter);
+  deferRunReap(std::move(node.mapped()));
+}
+
+void OpenWorkflowTaskHandler::deferRunReap(std::unique_ptr<Run> run) {
+  auto* run_ptr = run.get();
+  reaped_.push_back(std::move(run));
+
+  if (dispatcher_ != nullptr) {
+    dispatcher_->SubmitCommand(
+        {.type_ = event::Command::DEFERRED_DELETE, .destination_ = this, .args_ = run_ptr});
+  }
+}
+
+void OpenWorkflowTaskHandler::ProcessCommand(event::Command cmd) {
+  if (cmd.type_ != event::Command::DEFERRED_DELETE || cmd.args_ == nullptr) {
+    return;
+  }
+
+  auto* run = static_cast<Run*>(cmd.args_);
+  std::erase_if(reaped_, [run](const std::unique_ptr<Run>& candidate) -> bool {
+    return candidate.get() == run;
+  });
 }
 
 void OpenWorkflowTaskHandler::onClose(const std::string& task_id) {
@@ -153,7 +151,7 @@ void OpenWorkflowTaskHandler::onClose(const std::string& task_id) {
     return;
   }
 
-  iter->second.interpreter_->Cancel();
+  iter->second->interpreter_->Cancel();
   // The close callback lives in the connection's mailbox, not in the sender, so
   // erasing the run (and its sender) here is safe; it also avoids mutating the
   // mailbox's callback list while it is being iterated.
@@ -179,8 +177,9 @@ auto OpenWorkflowTaskHandlerFactory::Create(const ::google::protobuf::Message& c
     evaluator.set_name("jq");
   }
 
-  return std::make_unique<OpenWorkflowTaskHandler>(
-      deps.child_task_submitter_, deps.function_resolver_, std::move(evaluator), deps.event_bus_);
+  return std::make_unique<OpenWorkflowTaskHandler>(deps.child_task_submitter_,
+                                                   deps.function_resolver_, std::move(evaluator),
+                                                   deps.event_bus_, &deps.dispatcher_);
 }
 
 auto OpenWorkflowTaskHandlerFactory::ParseConfig(const ::google::protobuf::Message& config)

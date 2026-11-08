@@ -199,6 +199,7 @@ do:
 )YAML";
 
   event::MockDispatcher dispatcher;
+  EXPECT_CALL(dispatcher, SubmitCommand(::testing::_)).Times(::testing::AnyNumber());
   test::FakeChildTaskSubmitter submitter;
   test::FakeEventBus event_bus;
   const TaskHandlerDeps deps(dispatcher, resolver_, submitter, event_bus);
@@ -215,6 +216,53 @@ do:
   ASSERT_EQ(state->sent_.size(), 1U);
   ASSERT_EQ(event_bus.published_.size(), 1U);
   EXPECT_EQ(event_bus.published_[0].type(), "order.created");
+}
+
+TEST_F(OpenWorkflowTaskHandlerTest, CompletedListenRunIsReapedByDeferredDelete) {
+  const std::string document = WriteArtifact("listen.yaml", R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: listen
+  version: '0.1.0'
+do:
+  - wait:
+      listen:
+        to:
+          one:
+            with:
+              type: order.created
+)YAML");
+
+  test::FakeChildTaskSubmitter submitter;
+  test::FakeEventBus event_bus;
+  event::MockDispatcher dispatcher;
+  std::vector<event::Command> commands;
+  EXPECT_CALL(dispatcher, SubmitCommand(::testing::_))
+      .WillRepeatedly([&commands](event::Command cmd) { commands.push_back(cmd); });
+
+  OpenWorkflowTaskHandler handler(submitter, resolver_, test::JqEvaluatorConfig(), &event_bus,
+                                  &dispatcher);
+  auto state = std::make_shared<test::TestSender::State>();
+  handler.HandleTask(MakeTask("wf", document), std::make_unique<test::TestSender>(state));
+  ASSERT_TRUE(state->sent_.empty());
+  ASSERT_EQ(event_bus.subscribers_.size(), 1U);
+
+  event::CloudEvent event;
+  event.set_specversion("1.0");
+  event.set_id("e1");
+  event.set_source("tests");
+  event.set_type("order.created");
+  event.set_data(R"({"n":1})");
+  event_bus.Deliver("wf/wait/0", event, "t1");
+
+  ASSERT_EQ(state->sent_.size(), 1U);
+  ASSERT_EQ(commands.size(), 1U);
+  EXPECT_EQ(commands[0].type_, event::Command::DEFERRED_DELETE);
+  EXPECT_EQ(commands[0].destination_, static_cast<event::CommandHandler*>(&handler));
+  ASSERT_NE(commands[0].args_, nullptr);
+
+  // Destroying the completed run must happen outside the event-delivery stack.
+  handler.ProcessCommand(commands[0]);
 }
 
 TEST_F(OpenWorkflowTaskHandlerTest, ProjectsDeclaredTypeParametersAndRequirements) {
