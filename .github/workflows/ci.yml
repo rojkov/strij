@@ -86,6 +86,16 @@ jobs:
       - name: Test
         run: make test
 
+      - name: Upload Bazel test logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bazel-testlogs-linux
+          path: |
+            bazel-testlogs/
+            test/consumer/bazel-testlogs/
+          if-no-files-found: ignore
+
   sanitizers:
     name: ${{ matrix.sanitizer }}
     needs: [linux, clang-format]
@@ -136,3 +146,11 @@ jobs:
 
       - name: Test with ${{ matrix.sanitizer }}
         run: make test_${{ matrix.sanitizer }}
+
+      - name: Upload Bazel test logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bazel-testlogs-${{ matrix.sanitizer }}
+          path: bazel-testlogs/
+          if-no-files-found: ignore
