@@ -63,7 +63,7 @@ auto TlvParser::iterateThroughReadBuffer() -> bool {
   }
 
   case type_read: {
-    if ((cursor_ + sizeof(frame_.length_)) >= buffer_.size()) {
+    if ((cursor_ + sizeof(frame_.length_)) > buffer_.size()) {
       assert(bytes_not_parsed_ < sizeof(frame_.length_));
 
       for (size_t i = 0; i < bytes_not_parsed_; i++) {

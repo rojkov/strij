@@ -268,6 +268,29 @@ TEST_F(TlvParserTest, MultipleFramesByteByByte) {
   EXPECT_EQ(received_[1].type_id, 0x20);
   EXPECT_TRUE(std::equal(received_[1].value.begin(), received_[1].value.end(), value2.begin()));
 }
+
+TEST_F(TlvParserTest, HeaderEndsExactlyAtBufferBoundary) {
+  // First frame: type(1) + length(4) + value(4086) = 4091 bytes, so the next
+  // frame's header starts at offset 4091 and its 4-byte length ends exactly at
+  // the end of the 4096-byte buffer.
+  auto big_value = std::vector<std::byte>(4086, std::byte{0xAA});
+  auto frame1 = make_wire_frame(0x01, big_value);
+  ASSERT_EQ(frame1.size(), 4091U);
+  feed(frame1);
+  ASSERT_EQ(received_.size(), 1U);
+
+  // Deliver the whole 5-byte header at once, so all 4 length bytes are
+  // available at the moment the parser sees the header.
+  auto value2 = std::vector<std::byte>{std::byte{0xBB}};
+  auto frame2 = make_wire_frame(0x02, value2);
+  feed(std::span<const std::byte>(frame2.data(), 5));
+  EXPECT_EQ(received_.size(), 1U);
+
+  feed(std::span<const std::byte>(std::next(frame2.data(), 5), frame2.size() - 5));
+  ASSERT_EQ(received_.size(), 2U);
+  EXPECT_EQ(received_[1].type_id, 0x02);
+  EXPECT_TRUE(std::equal(received_[1].value.begin(), received_[1].value.end(), value2.begin()));
+}
 // NOLINTEND(modernize-use-trailing-return-type)
 
 } // namespace

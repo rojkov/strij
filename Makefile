@@ -8,6 +8,11 @@ BAZELISK_VERSION = 1.28.1
 BAZELISK_URL = https://github.com/bazelbuild/bazelisk/releases/download/v${BAZELISK_VERSION}/bazelisk-amd64.deb
 BAZEL_FLAGS ?=
 
+# Local development cluster. CLUSTER names a preset under config/examples/;
+# ARGS is forwarded verbatim to tools/dev_cluster.py.
+CLUSTER ?= local
+ARGS ?=
+
 build:
 	bazel build $(BAZEL_FLAGS) //...
 
@@ -75,6 +80,28 @@ check_namespaces:
 
 check: check_includes check_namespaces
 
+# Local development cluster lifecycle. `dev_up` builds both binaries first;
+# invoking tools/dev_cluster.py directly fails with a build hint when they are
+# missing.
+dev_scaffold:
+	python3 tools/dev_cluster.py scaffold $(CLUSTER) $(ARGS)
+
+dev_up:
+	bazel build $(BAZEL_FLAGS) //src/gateway/exe:gateway //src/nodeagent/exe:nodeagent
+	python3 tools/dev_cluster.py up $(CLUSTER) $(ARGS)
+
+dev_down:
+	python3 tools/dev_cluster.py down $(CLUSTER) $(ARGS)
+
+dev_status:
+	python3 tools/dev_cluster.py status $(CLUSTER) $(ARGS)
+
+dev_logs:
+	python3 tools/dev_cluster.py logs $(CLUSTER) $(ARGS)
+
+dev_clean:
+	python3 tools/dev_cluster.py clean $(CLUSTER) $(ARGS)
+
 docker/artifacts/bazelisk-amd64.deb:
 	mkdir -p docker/artifacts
 	wget -O docker/artifacts/bazelisk-amd64.deb ${BAZELISK_URL}
@@ -85,4 +112,4 @@ env: docker/artifacts/bazelisk-amd64.deb
 llvm-toolchain:
 	./tools/build-llvm-project.sh ${LLVM_PROJECT_PATH}
 
-.PHONY: build compiledb coverage test test_e2e test_consumer build_consumer test_asan test_tsan clang-tidy format check_format check check_includes check_namespaces env
+.PHONY: build compiledb coverage test test_e2e test_consumer build_consumer test_asan test_tsan clang-tidy format check_format check check_includes check_namespaces env dev_scaffold dev_up dev_down dev_status dev_logs dev_clean

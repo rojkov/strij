@@ -40,9 +40,7 @@ and the tests pass
 $ make test
 ```
 
-Now feel free to replace the fake bazel build targets with your own
-real ones and build `compile_commands.json` to help your IDE do
-auto-complete:
+To help your IDE do auto-complete build the `compile_commands.json` file with
 
 ```bash
 $ make compiledb

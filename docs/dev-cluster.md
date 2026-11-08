@@ -1,0 +1,329 @@
+# Local development clusters
+
+`tools/dev_cluster.py` runs a small, persistent Strij cluster on one machine:
+one directory per preset, fixed ports, per-process log files, and commands to
+start, inspect, tail, and stop it. It drives the real `gateway` and `nodeagent`
+binaries; it does not replace the e2e harness and does not change runtime
+protocols, config formats, or scheduling behavior.
+
+## Preset layout
+
+A preset is a committed directory under `config/examples/<name>/`:
+
+```
+config/examples/local/
+  cluster.yaml        # manifest: description, readiness, process set, boot order
+  node-0.yaml         # ordinary NodeAgentConfig YAML
+  node-1.yaml
+  gateway-0.yaml      # ordinary GatewayConfig YAML
+```
+
+Each process config is a standard config file, so you can edit it with the
+same fields documented in `docs/config.md`. The launcher only reads the
+listener port (and address) from it:
+
+- a `node` process supplies `tlv_listener.port`;
+- a `gateway` process supplies `http_listener.port`.
+
+The manifest never repeats a port, so a config edit cannot disagree with the
+manifest.
+
+### Manifest fields
+
+`cluster.yaml` holds only the process set and boot order:
+
+```yaml
+description: "Local development cluster 'local'"
+
+readiness:
+  task_type: "echo"
+
+processes:
+  - name: "node-0"
+    role: "node"
+    config: "node-0.yaml"
+  - name: "node-1"
+    role: "node"
+    config: "node-1.yaml"
+  - name: "gateway-0"
+    role: "gateway"
+    config: "gateway-0.yaml"
+```
+
+| Field | Meaning |
+|-------|---------|
+| `description` | Free-form description shown by `list`. Optional. |
+| `readiness.task_type` | Task type submitted through each gateway's HTTP listener to prove readiness. Defaults to `echo`. Set it to `""` (empty) for port-only readiness. |
+| `processes[].name` | Process identity, unique within the preset; used for logs, prefixes, and the state file. |
+| `processes[].role` | `node` or `gateway`. Any other value is an error. |
+| `processes[].config` | Config path relative to the preset directory. Must exist. |
+
+Node processes always start before gateway processes, in manifest order within
+each role. A gateway that fails its first connection to a node never re-dials
+it, so the start order is not cosmetic.
+
+`up`, `down`, `status`, and `logs` never create, modify, or delete files under
+`config/examples/`. A preset is authored once, or generated once by
+`scaffold`, and then committed.
+
+## Scaffold a preset
+
+`scaffold` is a one-time generator, not part of `up`. It refuses to overwrite
+an existing preset unless `--force` is given.
+
+```bash
+python3 tools/dev_cluster.py scaffold local
+# or through Make:
+make dev_scaffold CLUSTER=local
+```
+
+Defaults:
+
+| Setting | Default |
+|---------|---------|
+| Nodes / gateways | `--nodes 2`, `--gateways 1` |
+| Ports | nodes `9090`, `9091`; gateway `8081` |
+| Gateway scheduling | `probe` (`candidate_count: 2`, `probe_deadline_ms: 1000`) |
+| Node schedulers | `probe`, `push`, and `default` (`local_default: true`) |
+| Task handlers | `echo`, `piped_executable`, `openworkflow` (homogeneous on every node) |
+| Event plane | bundled `summary_mesh`, one unique `gateway_id` per gateway |
+| Logging | `debug`, `text`, `stdout` |
+
+Every gateway's static node discovery lists every generated node, and the
+manifest lists all processes in boot order.
+
+### Options
+
+| Option | Meaning |
+|--------|---------|
+| `--nodes N` / `--gateways M` | Topology size. Both must be at least 1. |
+| `--node-port P` | First node port; nodes use `P..P+N-1`. |
+| `--gateway-port P` | First gateway port; gateways use `P..P+M-1`. |
+| `--scheduler policy` | Gateway policy: `probe` (default), `capability_aware`, or `round_robin`. |
+| `--handlers a,b,c` | Comma-separated task handlers written to every node. |
+| `--no-event-plane` | Omit the `event_plane` section from every gateway. |
+| `--force` | Rewrite an existing preset. |
+
+The node configs always advertise both `probe` and `push`, so a preset can
+switch its gateway to `capability_aware` or `round_robin` by editing only the
+gateway file. `probe` candidate selection filters on protocol advertisement,
+not handler capability; generated nodes therefore have the same handler set so
+a probe cannot land on a node that cannot run the task.
+
+### Port-range convention
+
+Each preset owns a fixed, non-overlapping range: a base node port and a base
+gateway port. The node range is `node-port .. node-port + nodes - 1`; the
+gateway range is `gateway-port .. gateway-port + gateways - 1`. The two ranges
+must not overlap.
+
+`scaffold` rejects a requested range that another preset already uses, names
+the conflicting preset, and suggests a free pair:
+
+```text
+error: port 9090 needed by this preset is already used by preset 'local'
+(node-0); try --gateway-port 8082 --node-port 9092
+```
+
+Fixed ports keep the committed YAML honest and the `curl` commands stable.
+
+### Reproducing the committed `local` preset
+
+The committed `config/examples/local/` tree is generated by the default
+scaffold command. To reproduce it exactly:
+
+```bash
+python3 tools/dev_cluster.py scaffold local --force
+git diff --exit-code config/examples/local
+```
+
+The second command should report no differences.
+
+## Start a cluster
+
+`up` is the only command that spawns processes:
+
+```bash
+python3 tools/dev_cluster.py up local
+# or: make dev_up            (builds both binaries first)
+# or: make dev_up CLUSTER=other
+```
+
+Before spawning anything it:
+
+1. reads the preset and validates every manifest entry (role, config, port);
+2. refuses while retained state lists a live process for the same name;
+3. checks that every required listener port is free, naming the port and the
+   process that needs it when one is busy;
+4. truncates that cluster's log files.
+
+It then starts **all nodes first**, waits until every TLV listener accepts a
+connection, and only then starts gateways **one at a time**. A gateway is ready
+only after the manifest's readiness task completes through its HTTP listener
+(unless `readiness.task_type` is empty, which asks for port-only readiness).
+This proves routing to a node, not merely a bound socket, and respects the
+runtime rule that a gateway never re-dials a refused node address.
+
+If any process exits during boot, `up` stops the processes it already started,
+prints that process's name, exit state, and log tail, and exits non-zero. Stale
+state (retained but with no live pids) is replaced on the next `up`.
+
+A successful start prints each process's pid, port, and log path, plus a `curl`
+hint for each gateway:
+
+```text
+Cluster 'local' is up.
+  node-0       node     pid 12345    port 9090   .devcluster/local/node-0.log
+  node-1       node     pid 12346    port 9091   .devcluster/local/node-1.log
+  gateway-0    gateway  pid 12347    port 8081   .devcluster/local/gateway-0.log
+Try: curl -d hello http://127.0.0.1:8081/tasks/echo
+```
+
+```bash
+curl -d hello http://127.0.0.1:8081/tasks/echo
+# hello
+```
+
+The cluster outlives the command: processes are spawned in their own sessions
+with the repository root as the working directory and an absolute
+`--config_file`, so relative function paths in tasks resolve predictably.
+
+Direct tool invocation does not run Bazel. If a binary is missing it fails with
+the `bazel build //src/gateway/exe:gateway //src/nodeagent/exe:nodeagent` hint;
+`make dev_up` builds them first.
+
+## Inspect process identity
+
+```bash
+python3 tools/dev_cluster.py status local
+# or: make dev_status
+# or: make dev_status CLUSTER=local
+```
+
+`status` reports each process's name, role, **pid**, port, running/stopped
+state, and log path. With no cluster name it lists every cluster that has
+retained state:
+
+```text
+Cluster 'local'  (live)
+  node-0       node     pid 12345    port 9090   running  .devcluster/local/node-0.log
+  node-1       node     pid 12346    port 9091   running  .devcluster/local/node-1.log
+  gateway-0    gateway  pid 12347    port 8081   running  .devcluster/local/gateway-0.log
+```
+
+The reported pid is the debugger attach target and the correlation key for core
+dumps:
+
+```bash
+gdb -p <pid>
+```
+
+After `down`, the same pids are reported with state `stopped`; state is retained
+for postmortem. An unknown name is an error that lists the known clusters.
+
+## Stop a cluster
+
+```bash
+python3 tools/dev_cluster.py down local
+# or: make dev_down
+```
+
+`down`:
+
+1. records `stopping_at` in `state.json` before the first signal, so a concurrent
+   log viewer can classify exits;
+2. sends `SIGTERM` to every **gateway** process group first, then to every node
+   group, so node disconnect churn stays low;
+3. waits a bounded grace period (default 5 s; `--grace SECONDS`), then
+   `SIGKILL`s any group still alive and reports that escalation;
+4. verifies every former listener port refuses new connections;
+5. retains the logs and marks the state `stopped_at` with the last pids.
+
+Because every process is a process-group leader, task descendants (for example
+`piped_executable` children) are signalled through the group and do not
+survive. `down` against a cluster with no retained state reports that nothing is
+running and exits successfully.
+
+## Read logs
+
+```bash
+python3 tools/dev_cluster.py logs local
+# or: make dev_logs
+# or: make dev_logs ARGS="-n 50"
+```
+
+`logs` prints the last 100 lines of every process log by default, each line
+prefixed with the process name:
+
+```text
+[node-0] D 11:28:36.309895 12345 ... message
+[gateway-0] I 11:28:36.309914 12347 ... message
+```
+
+- `-n N` / `--lines N` changes the tail length.
+- `logs local node-1` restricts the view to one process.
+- `--no-prefix` prints each line exactly as written to its log file.
+- A missing or empty log is reported on stderr and does not fail the command;
+  the other processes' logs are still printed.
+- Logs remain readable after `down`.
+
+### Follow mode and exit markers
+
+```bash
+python3 tools/dev_cluster.py logs local -f
+# or: make dev_logs ARGS="-f"
+```
+
+`-f` follows appended lines. It also polls the pids recorded in state and
+interleaves a marker when a process exits:
+
+```text
+*** node-0 (pid 12345) exited unexpectedly; cluster is degraded
+```
+
+while a cluster is not stopping, or:
+
+```text
+*** node-1 (pid 12346) stopped
+```
+
+while `stopping_at` is set (for example during `down`). Markers go to the
+viewer only; log files are never modified. Follow mode exits after a normal
+`down` once every selected process has stopped. `Ctrl-C` stops the viewer only;
+the cluster keeps running.
+
+No exit code or signal name is shown. The processes are orphans of the `up`
+command that exited, so only a parent could reap that information; a supervisor
+is deliberately out of scope. An exit that happens with no viewer attached is
+still visible afterwards through `status`, which reports the process as
+stopped.
+
+## Clean up
+
+```bash
+python3 tools/dev_cluster.py clean local
+# or: make dev_clean
+```
+
+`clean` removes `.devcluster/local/` (state and logs) and leaves
+`config/examples/local/` untouched. It refuses to remove a running cluster;
+run `down` first. Cleaning a cluster with no runtime directory reports nothing
+to clean and exits successfully.
+
+## Runtime footprint
+
+Everything runtime-scoped lives under `.devcluster/<name>/`:
+
+```text
+.devcluster/local/
+  state.json          # pids, ports, configs, logs, timestamps
+  .lock               # flock serializing up/down for this name
+  node-0.log
+  node-1.log
+  gateway-0.log
+```
+
+`.devcluster/` is ignored by git. `state.json` is replaced atomically (a
+concurrent `status` or `logs` never sees a partial file) and is retained after
+`down`; only `clean` removes it. Deleting the directory by hand while no
+process is live is equivalent to `clean`.

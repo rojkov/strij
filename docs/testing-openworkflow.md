@@ -174,16 +174,27 @@ chain is JSON unless a previous step produced opaque bytes.)
 > `io_uring_setup` (e.g. `EPERM`) both crash at startup. Run this on a normal
 > Linux host, or use section 1 otherwise.
 
-Build both binaries:
+Build both binaries if you want to run the example configs directly:
 
 ```bash
 make build          # or: bazel build //src/gateway/exe:gateway //src/nodeagent/exe:nodeagent
 ```
 
-The example nodeagent config already enables the handler with the `jq`
-evaluator (`config/examples/nodeagent.yaml`), and the example gateway config
-connects to a node at `127.0.0.1:9090` (`config/examples/gateway.yaml`). Start
-them in two terminals, from the repo root:
+The recommended way to get this topology is the committed `local` preset,
+which starts one gateway on `127.0.0.1:8081` and two nodes with the `echo`,
+`piped_executable`, and `openworkflow` handlers enabled (the same handler set
+as `config/examples/nodeagent.yaml`):
+
+```bash
+make dev_up
+```
+
+See [Local development clusters](dev-cluster.md) for `status`, merged `logs -f`,
+and `down`. The cluster outlives the command, so run the `curl` steps below from
+another terminal.
+
+If you prefer to start the example configs by hand, use two terminals from the
+repo root (the gateway config connects to a node at `127.0.0.1:9090`):
 
 ```bash
 # terminal 1
@@ -961,8 +972,10 @@ lost. In a multi-gateway deployment every gateway must use the same
 `event_plane` extension, and the v1 relay assumes every gateway is connected to
 every node.
 
-Start the nodeagent as in section 3, and start the gateway with the event-plane
-example:
+The `local` preset started by `make dev_up` already runs a `summary_mesh` event
+plane on gateway port 8081, so section 3 is enough for this section. If you
+started the example configs by hand instead, start the gateway with the
+event-plane example:
 
 ```bash
 ./bazel-bin/src/gateway/exe/gateway --config_file=config/examples/gateway-event-plane.yaml
