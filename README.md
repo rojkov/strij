@@ -113,3 +113,9 @@ STRIJ_GATEWAY_HTTP_LISTENER_PORT=9090 ./gateway
 # Start with CLI flag override
 ./gateway --http_port=9090 --log_level=debug
 ```
+
+## License
+
+Strij is licensed under the [Apache License, Version 2.0](LICENSE). See
+[THIRD_PARTY_NOTICES](THIRD_PARTY_NOTICES) for the copyright and license
+notices of bundled and linked third-party components.
