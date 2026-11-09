@@ -26,6 +26,7 @@ def strij_nodeagent_binary(
         name,
         extensions = [],
         deps = [],
+        data = [],
         visibility = ["//visibility:private"],
         **kwargs):
     """Composes a node agent executable from the nodeagent framework and extensions.
@@ -37,6 +38,7 @@ def strij_nodeagent_binary(
     """
     cc_binary(
         name = name,
+        data = data,
         deps = [
             "@strij//src/nodeagent/exe:nodeagent_framework",
         ] + list(extensions) + list(deps),

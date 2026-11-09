@@ -4,6 +4,7 @@ llvm-project-build
 toolchain/clang
 toolchain/abs_path.bzl
 hacks
+python/strij.egg-info/
 .opencode
 .dsh
 

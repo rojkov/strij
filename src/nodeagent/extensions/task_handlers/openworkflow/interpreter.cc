@@ -220,11 +220,11 @@ auto validateNestedUntil(const ::strij::openworkflow::Value& until) -> std::opti
 }
 
 auto validateSlot(const std::variant<std::string, ::strij::openworkflow::Value>& slot,
-                  TypedSlot kind, ExpressionEngine& engine, std::span<const std::string> locals)
-    -> std::optional<Failure> {
+                  const ExpressionSlot& slot_descriptor, ExpressionEngine& engine,
+                  std::span<const std::string> locals) -> std::optional<Failure> {
   std::vector<ExpressionLocal> storage;
   const absl::Status status =
-      engine.ValidateTypedSlot(slotValue(slot), kind, validationArguments(locals, storage));
+      engine.Validate(slotValue(slot), slot_descriptor, validationArguments(locals, storage));
   if (!status.ok()) {
     return Failure{.phase_ = Phase::kValidation,
                    .status_ = task::TASK_STATUS_MALFORMED_REQUEST,
@@ -239,9 +239,8 @@ auto validateTaskSlots(const Task& task, ExpressionEngine& engine,
   if (task.if_.has_value()) {
     std::vector<ExpressionLocal> storage;
 
-    const absl::Status status =
-        engine.ValidateTypedSlot(::strij::openworkflow::Value{*task.if_}, TypedSlot::kIf,
-                                 validationArguments(locals, storage));
+    const absl::Status status = engine.Validate(::strij::openworkflow::Value{*task.if_}, kIf,
+                                                validationArguments(locals, storage));
     if (!status.ok()) {
       return Failure{.phase_ = Phase::kValidation,
                      .status_ = task::TASK_STATUS_MALFORMED_REQUEST,
@@ -250,21 +249,21 @@ auto validateTaskSlots(const Task& task, ExpressionEngine& engine,
   }
 
   if (task.input_.has_value() && task.input_->from_.has_value()) {
-    if (auto failure = validateSlot(*task.input_->from_, TypedSlot::kInputFrom, engine, locals);
+    if (auto failure = validateSlot(*task.input_->from_, kInputFrom, engine, locals);
         failure.has_value()) {
       return failure;
     }
   }
 
   if (task.output_.has_value() && task.output_->as_.has_value()) {
-    if (auto failure = validateSlot(*task.output_->as_, TypedSlot::kTaskOutput, engine, locals);
+    if (auto failure = validateSlot(*task.output_->as_, kTaskOutput, engine, locals);
         failure.has_value()) {
       return failure;
     }
   }
 
   if (task.export_.has_value() && task.export_->as_.has_value()) {
-    if (auto failure = validateSlot(*task.export_->as_, TypedSlot::kTaskExport, engine, locals);
+    if (auto failure = validateSlot(*task.export_->as_, kTaskExport, engine, locals);
         failure.has_value()) {
       return failure;
     }
@@ -274,7 +273,7 @@ auto validateTaskSlots(const Task& task, ExpressionEngine& engine,
       emit != nullptr && emit->event_.with_.data_.has_value()) {
     std::vector<ExpressionLocal> storage;
     const absl::Status status =
-        engine.Validate(*emit->event_.with_.data_, validationArguments(locals, storage));
+        engine.Validate(*emit->event_.with_.data_, kValue, validationArguments(locals, storage));
     if (!status.ok()) {
       return Failure{.phase_ = Phase::kValidation,
                      .status_ = task::TASK_STATUS_MALFORMED_REQUEST,
@@ -322,8 +321,8 @@ auto validateSwitchBody(const NamedTask& named, const SwitchBody& switch_body,
       continue;
     }
 
-    if (auto failure = validateSlot(::strij::openworkflow::Value{*switch_case.when_},
-                                    TypedSlot::kSwitchWhen, engine, locals);
+    if (auto failure = validateSlot(::strij::openworkflow::Value{*switch_case.when_}, kSwitchWhen,
+                                    engine, locals);
         failure.has_value()) {
       failure->step_ = named.name_;
       failure->message_ =
@@ -470,15 +469,15 @@ auto validateTask(const NamedTask& named, Scope scope, const Document& document,
 
     const ::strij::openworkflow::Value collection = slotValue(for_body->for_.in_);
     if (collection.IsString()) {
-      if (auto failure = validateSlot(collection, TypedSlot::kForIn, engine, locals);
-          failure.has_value()) {
+      if (auto failure = validateSlot(collection, kForIn, engine, locals); failure.has_value()) {
         failure->step_ = named.name_;
 
         return failure;
       }
     } else {
       std::vector<ExpressionLocal> storage;
-      const absl::Status syntax = engine.Validate(collection, validationArguments(locals, storage));
+      const absl::Status syntax =
+          engine.Validate(collection, kValue, validationArguments(locals, storage));
       if (!syntax.ok()) {
         return Failure{.phase_ = Phase::kValidation,
                        .status_ = task::TASK_STATUS_MALFORMED_REQUEST,
@@ -499,8 +498,8 @@ auto validateTask(const NamedTask& named, Scope scope, const Document& document,
     body_locals.push_back(loop_names->at_);
 
     if (for_body->while_.has_value()) {
-      if (auto failure = validateSlot(::strij::openworkflow::Value{*for_body->while_},
-                                      TypedSlot::kForWhile, engine, body_locals);
+      if (auto failure = validateSlot(::strij::openworkflow::Value{*for_body->while_}, kForWhile,
+                                      engine, body_locals);
           failure.has_value()) {
         failure->step_ = named.name_;
 
@@ -516,7 +515,7 @@ auto validateTask(const NamedTask& named, Scope scope, const Document& document,
     const ::strij::openworkflow::Value data = slotValue(set_body->set_);
     std::vector<ExpressionLocal> storage;
 
-    const absl::Status status = engine.Validate(data, validationArguments(locals, storage));
+    const absl::Status status = engine.Validate(data, kValue, validationArguments(locals, storage));
     if (!status.ok()) {
       return Failure{.phase_ = Phase::kValidation,
                      .status_ = task::TASK_STATUS_MALFORMED_REQUEST,
@@ -576,7 +575,7 @@ auto validateTask(const NamedTask& named, Scope scope, const Document& document,
       }
       std::vector<ExpressionLocal> storage;
       const absl::Status status =
-          engine.Validate(*filter.with_.data_, validationArguments(locals, storage));
+          engine.Validate(*filter.with_.data_, kValue, validationArguments(locals, storage));
       if (!status.ok()) {
         return Failure{.phase_ = Phase::kValidation,
                        .status_ = task::TASK_STATUS_MALFORMED_REQUEST,
@@ -589,7 +588,7 @@ auto validateTask(const NamedTask& named, Scope scope, const Document& document,
       if (listen->to_.until_->IsString()) {
         std::vector<ExpressionLocal> storage;
         const absl::Status status =
-            engine.Validate(*listen->to_.until_, validationArguments(locals, storage));
+            engine.Validate(*listen->to_.until_, kValue, validationArguments(locals, storage));
         if (!status.ok()) {
           return Failure{.phase_ = Phase::kValidation,
                          .status_ = task::TASK_STATUS_MALFORMED_REQUEST,
@@ -618,8 +617,8 @@ auto validateTask(const NamedTask& named, Scope scope, const Document& document,
       body_locals.push_back(names->at_);
 
       if (listen->foreach_->output_.has_value() && listen->foreach_->output_->as_.has_value()) {
-        if (auto failure = validateSlot(*listen->foreach_->output_->as_, TypedSlot::kTaskOutput,
-                                        engine, body_locals);
+        if (auto failure =
+                validateSlot(*listen->foreach_->output_->as_, kTaskOutput, engine, body_locals);
             failure.has_value()) {
           failure->step_ = named.name_;
           return failure;
@@ -627,8 +626,8 @@ auto validateTask(const NamedTask& named, Scope scope, const Document& document,
       }
 
       if (listen->foreach_->export_.has_value() && listen->foreach_->export_->as_.has_value()) {
-        if (auto failure = validateSlot(*listen->foreach_->export_->as_, TypedSlot::kTaskExport,
-                                        engine, body_locals);
+        if (auto failure =
+                validateSlot(*listen->foreach_->export_->as_, kTaskExport, engine, body_locals);
             failure.has_value()) {
           failure->step_ = named.name_;
           return failure;
@@ -680,7 +679,7 @@ auto validateTask(const NamedTask& named, Scope scope, const Document& document,
   // in a value tree must be reported as a syntax error, not masked by the
   // enclosing value's shape.
   std::vector<ExpressionLocal> storage;
-  auto syntax = engine.Validate(call.with_, validationArguments(locals, storage));
+  auto syntax = engine.Validate(call.with_, kValue, validationArguments(locals, storage));
   if (!syntax.ok()) {
     return Failure{.phase_ = Phase::kValidation,
                    .status_ = task::TASK_STATUS_MALFORMED_REQUEST,
@@ -728,14 +727,14 @@ auto validateSequence(Scope scope, const Document& document, ExpressionEngine& e
 auto validateDocument(const Document& document, ExpressionEngine& engine, std::size_t depth)
     -> std::optional<Failure> {
   if (document.input_.has_value() && document.input_->from_.has_value()) {
-    if (auto failure = validateSlot(*document.input_->from_, TypedSlot::kInputFrom, engine, {});
+    if (auto failure = validateSlot(*document.input_->from_, kInputFrom, engine, {});
         failure.has_value()) {
       return failure;
     }
   }
 
   if (document.output_.has_value() && document.output_->as_.has_value()) {
-    if (auto failure = validateSlot(*document.output_->as_, TypedSlot::kDocumentOutput, engine, {});
+    if (auto failure = validateSlot(*document.output_->as_, kDocumentOutput, engine, {});
         failure.has_value()) {
       return failure;
     }
@@ -917,22 +916,45 @@ void WorkflowInterpreter::terminalize(FrameResult result) {
     StepDataValue value = std::move(*final_value);
 
     if (document_->output_.has_value() && document_->output_->as_.has_value()) {
-      if (!value.IsJson()) {
-        fail(task::TASK_STATUS_INTERNAL, "", "the document output subject is not JSON");
+      const ::strij::openworkflow::Value slot = slotValue(*document_->output_->as_);
+      auto programs = CollectExpressions(slot);
+      if (!programs.ok()) {
+        fail(task::TASK_STATUS_INTERNAL, "", programs.status().message());
 
         return;
       }
 
-      auto transformed =
-          engine_.EvaluateTypedSlot(slotValue(*document_->output_->as_), TypedSlot::kDocumentOutput,
-                                    value.Json(), ExpressionArguments{.context = &context_});
+      // A literal-only document output builds its value without reading the
+      // final value, so it tolerates an opaque one.
+      utils::Jv null_subject;
+      const utils::Jv* subject = nullptr;
+      if (value.IsJson()) {
+        subject = &value.Json();
+      } else if (!programs->empty()) {
+        fail(task::TASK_STATUS_INTERNAL, "", "the document output subject is not JSON");
+
+        return;
+      } else {
+        auto parsed = utils::Jv::Parse("null");
+        if (!parsed.ok()) {
+          fail(task::TASK_STATUS_INTERNAL, "", parsed.status().message());
+
+          return;
+        }
+
+        null_subject = std::move(*parsed);
+        subject = &null_subject;
+      }
+
+      auto transformed = engine_.Evaluate(slot, kDocumentOutput, *subject,
+                                          ExpressionArguments{.context = &context_});
       if (!transformed.ok()) {
         fail(task::TASK_STATUS_INTERNAL, "", transformed.status().message());
 
         return;
       }
 
-      value = StepDataValue::FromBytes(transformed->Dump());
+      value = StepDataValue::FromBytes(ValueToJv(*transformed).Dump());
     }
 
     succeed(std::move(value));
@@ -989,18 +1011,17 @@ auto WorkflowInterpreter::EvaluateCondition(const NamedTask& step, const StepDat
   }
 
   std::vector<ExpressionLocal> locals;
-  auto result = engine_.EvaluateTypedSlot(::strij::openworkflow::Value{*task.if_}, TypedSlot::kIf,
-                                          raw.Json(), lexicalArguments(scope, &context_, locals));
+  auto result = engine_.Evaluate(::strij::openworkflow::Value{*task.if_}, kIf, raw.Json(),
+                                 lexicalArguments(scope, &context_, locals));
   if (!result.ok()) {
     return result.status();
   }
 
-  const ::strij::openworkflow::Value value = ::strij::openworkflow::JvToValue(*result);
-  if (!value.IsBool()) {
+  if (!result->IsBool()) {
     return absl::InvalidArgumentError("the condition result is not a boolean");
   }
 
-  return value.AsBool();
+  return result->AsBool();
 }
 
 auto WorkflowInterpreter::TransformTaskInput(const NamedTask& step, const StepDataValue& raw,
@@ -1053,38 +1074,68 @@ auto WorkflowInterpreter::transformInput(
   }
 
   std::vector<ExpressionLocal> locals;
-  auto result = engine_.EvaluateTypedSlot(slot, TypedSlot::kInputFrom, *subject,
-                                          lexicalArguments(scope, &context_, locals));
+  auto result =
+      engine_.Evaluate(slot, kInputFrom, *subject, lexicalArguments(scope, &context_, locals));
   if (!result.ok()) {
     return result.status();
   }
 
-  return StepDataValue::FromBytes(result->Dump());
+  return StepDataValue::FromBytes(ValueToJv(*result).Dump());
 }
 
 auto WorkflowInterpreter::transformOutput(
     const std::variant<std::string, ::strij::openworkflow::Value>& as_value,
     const StepDataValue& input, const StepDataValue& raw_output, const LexicalScope* scope)
     -> absl::StatusOr<StepDataValue> {
-  if (!input.IsJson()) {
-    return absl::InvalidArgumentError("the task input is not JSON");
+  const ::strij::openworkflow::Value slot = slotValue(as_value);
+  auto programs = CollectExpressions(slot);
+  if (!programs.ok()) {
+    return programs.status();
   }
 
-  if (!raw_output.IsJson()) {
-    return absl::InvalidArgumentError("the output subject is not JSON");
+  // A literal-only slot builds its value without reading the subject, so it
+  // tolerates opaque input and output. Any expression needs both to be JSON.
+  const bool needs_subject = !programs->empty();
+  if (needs_subject) {
+    if (!input.IsJson()) {
+      return absl::InvalidArgumentError("the task input is not JSON");
+    }
+
+    if (!raw_output.IsJson()) {
+      return absl::InvalidArgumentError("the output subject is not JSON");
+    }
+  }
+
+  utils::Jv null_subject;
+  const utils::Jv* subject = nullptr;
+  if (raw_output.IsJson()) {
+    subject = &raw_output.Json();
+  } else {
+    auto parsed = utils::Jv::Parse("null");
+    if (!parsed.ok()) {
+      return parsed.status();
+    }
+
+    null_subject = std::move(*parsed);
+    subject = &null_subject;
   }
 
   std::vector<ExpressionLocal> locals;
   ExpressionArguments arguments = lexicalArguments(scope, &context_, locals);
-  arguments.input = &input.Json();
-  arguments.output = &raw_output.Json();
-  auto result = engine_.EvaluateTypedSlot(slotValue(as_value), TypedSlot::kTaskOutput,
-                                          raw_output.Json(), arguments);
+  if (input.IsJson()) {
+    arguments.input = &input.Json();
+  }
+
+  if (raw_output.IsJson()) {
+    arguments.output = &raw_output.Json();
+  }
+
+  auto result = engine_.Evaluate(slot, kTaskOutput, *subject, arguments);
   if (!result.ok()) {
     return result.status();
   }
 
-  return StepDataValue::FromBytes(result->Dump());
+  return StepDataValue::FromBytes(ValueToJv(*result).Dump());
 }
 
 auto WorkflowInterpreter::ExportTaskResult(const NamedTask& step, const StepDataValue& input,
@@ -1095,29 +1146,59 @@ auto WorkflowInterpreter::ExportTaskResult(const NamedTask& step, const StepData
     return absl::OkStatus();
   }
 
-  if (!input.IsJson()) {
-    return absl::InvalidArgumentError("the task input is not JSON");
+  const ::strij::openworkflow::Value slot = slotValue(*task.export_->as_);
+  auto programs = CollectExpressions(slot);
+  if (!programs.ok()) {
+    return programs.status();
   }
 
-  if (!transformed_output.IsJson()) {
-    return absl::InvalidArgumentError("the task output is not JSON");
+  // A literal-only export never reads `$input` or `$output`, so opaque values
+  // are fine; an expression-bearing export keeps the JSON precondition.
+  const bool needs_subject = !programs->empty();
+  if (needs_subject) {
+    if (!input.IsJson()) {
+      return absl::InvalidArgumentError("the task input is not JSON");
+    }
+
+    if (!transformed_output.IsJson()) {
+      return absl::InvalidArgumentError("the task output is not JSON");
+    }
+  }
+
+  utils::Jv null_subject;
+  const utils::Jv* subject = nullptr;
+  if (transformed_output.IsJson()) {
+    subject = &transformed_output.Json();
+  } else {
+    auto parsed = utils::Jv::Parse("null");
+    if (!parsed.ok()) {
+      return parsed.status();
+    }
+
+    null_subject = std::move(*parsed);
+    subject = &null_subject;
   }
 
   std::vector<ExpressionLocal> locals;
   ExpressionArguments arguments = lexicalArguments(scope, &context_, locals);
-  arguments.input = &input.Json();
-  arguments.output = &transformed_output.Json();
-  auto result = engine_.EvaluateTypedSlot(slotValue(*task.export_->as_), TypedSlot::kTaskExport,
-                                          transformed_output.Json(), arguments);
+  if (input.IsJson()) {
+    arguments.input = &input.Json();
+  }
+
+  if (transformed_output.IsJson()) {
+    arguments.output = &transformed_output.Json();
+  }
+
+  auto result = engine_.Evaluate(slot, kTaskExport, *subject, arguments);
   if (!result.ok()) {
     return result.status();
   }
 
-  if (!::strij::openworkflow::JvToValue(*result).IsObject()) {
+  if (!result->IsObject()) {
     return absl::InvalidArgumentError("the exported context must be an object");
   }
 
-  context_ = std::move(*result);
+  context_ = ValueToJv(*result);
 
   return absl::OkStatus();
 }
@@ -1147,7 +1228,8 @@ auto WorkflowInterpreter::EvaluateSet(const NamedTask& step, const StepDataValue
   }
 
   std::vector<ExpressionLocal> locals;
-  auto result = engine_.Evaluate(value, *subject, lexicalArguments(scope, &context_, locals));
+  auto result =
+      engine_.Evaluate(value, kValue, *subject, lexicalArguments(scope, &context_, locals));
   if (!result.ok()) {
     return result.status();
   }
@@ -1185,23 +1267,21 @@ auto WorkflowInterpreter::SelectSwitchDirective(const NamedTask& step, const Ste
     }
 
     std::vector<ExpressionLocal> locals;
-    auto result = engine_.EvaluateTypedSlot(::strij::openworkflow::Value{*switch_case.when_},
-                                            TypedSlot::kSwitchWhen, input.Json(),
-                                            lexicalArguments(scope, &context_, locals));
+    auto result = engine_.Evaluate(::strij::openworkflow::Value{*switch_case.when_}, kSwitchWhen,
+                                   input.Json(), lexicalArguments(scope, &context_, locals));
     if (!result.ok()) {
       return absl::InvalidArgumentError(absl::StrCat("switch '", step.name_, "': case '",
                                                      switch_case.name_,
                                                      "': ", result.status().message()));
     }
 
-    const ::strij::openworkflow::Value value = ::strij::openworkflow::JvToValue(*result);
-    if (!value.IsBool()) {
+    if (!result->IsBool()) {
       return absl::InvalidArgumentError(absl::StrCat("switch '", step.name_, "': case '",
                                                      switch_case.name_,
                                                      "': the when result is not a boolean"));
     }
 
-    if (value.AsBool()) {
+    if (result->AsBool()) {
       return switch_case.then_;
     }
   }
@@ -1221,18 +1301,17 @@ auto WorkflowInterpreter::EvaluateForIn(const NamedTask& step, const StepDataVal
     }
 
     std::vector<ExpressionLocal> locals;
-    auto result = engine_.EvaluateTypedSlot(collection, TypedSlot::kForIn, input.Json(),
-                                            lexicalArguments(scope, &context_, locals));
+    auto result = engine_.Evaluate(collection, kForIn, input.Json(),
+                                   lexicalArguments(scope, &context_, locals));
     if (!result.ok()) {
       return result.status();
     }
 
-    const ::strij::openworkflow::Value value = ::strij::openworkflow::JvToValue(*result);
-    if (!value.IsArray() && !value.IsNull()) {
+    if (!result->IsArray() && !result->IsNull()) {
       return absl::InvalidArgumentError("the for.in collection is not an array or null");
     }
 
-    return StepDataValue::FromBytes(result->Dump());
+    return StepDataValue::FromBytes(ValueToJv(*result).Dump());
   }
 
   const utils::Jv* subject = input.IsJson() ? &input.Json() : nullptr;
@@ -1255,7 +1334,8 @@ auto WorkflowInterpreter::EvaluateForIn(const NamedTask& step, const StepDataVal
   }
 
   std::vector<ExpressionLocal> locals;
-  auto result = engine_.Evaluate(collection, *subject, lexicalArguments(scope, &context_, locals));
+  auto result =
+      engine_.Evaluate(collection, kValue, *subject, lexicalArguments(scope, &context_, locals));
   if (!result.ok()) {
     return result.status();
   }
@@ -1279,19 +1359,17 @@ auto WorkflowInterpreter::EvaluateForWhile(const NamedTask& step, const StepData
   }
 
   std::vector<ExpressionLocal> locals;
-  auto result = engine_.EvaluateTypedSlot(::strij::openworkflow::Value{*for_body.while_},
-                                          TypedSlot::kForWhile, accumulator.Json(),
-                                          lexicalArguments(&scope, &context_, locals));
+  auto result = engine_.Evaluate(::strij::openworkflow::Value{*for_body.while_}, kForWhile,
+                                 accumulator.Json(), lexicalArguments(&scope, &context_, locals));
   if (!result.ok()) {
     return result.status();
   }
 
-  const ::strij::openworkflow::Value value = ::strij::openworkflow::JvToValue(*result);
-  if (!value.IsBool()) {
+  if (!result->IsBool()) {
     return absl::InvalidArgumentError("the while result is not a boolean");
   }
 
-  return value.AsBool();
+  return result->AsBool();
 }
 
 auto WorkflowInterpreter::ExecuteCall(SequenceFrame& owner, const NamedTask& step,
@@ -1388,8 +1466,8 @@ auto WorkflowInterpreter::ExecuteEmit(SequenceFrame& /*owner*/, const NamedTask&
     }
 
     std::vector<ExpressionLocal> locals;
-    auto data =
-        engine_.Evaluate(*properties.data_, *subject, lexicalArguments(scope, &context_, locals));
+    auto data = engine_.Evaluate(*properties.data_, kValue, *subject,
+                                 lexicalArguments(scope, &context_, locals));
     if (!data.ok()) {
       return data.status();
     }
@@ -1487,7 +1565,7 @@ auto WorkflowInterpreter::EvaluateListenFilter(const NamedTask& /*step*/, const 
       return absl::InvalidArgumentError("the event data is not JSON");
     }
 
-    auto predicate = engine_.Evaluate(*filter.with_.data_, *event_data,
+    auto predicate = engine_.Evaluate(*filter.with_.data_, kValue, *event_data,
                                       lexicalArguments(scope, &context_, locals));
     if (!predicate.ok()) {
       return predicate.status();
@@ -1679,25 +1757,53 @@ auto WorkflowInterpreter::TransformListenForeachOutput(
     return body_output.Copy();
   }
 
-  if (!body_output.IsJson()) {
-    return absl::InvalidArgumentError("the foreach body output is not JSON");
+  const ::strij::openworkflow::Value slot = slotValue(*iterator.output_->as_);
+  auto programs = CollectExpressions(slot);
+  if (!programs.ok()) {
+    return programs.status();
   }
 
-  if (!selected.IsJson()) {
-    return absl::InvalidArgumentError("the foreach selected value is not JSON");
+  const bool needs_subject = !programs->empty();
+  if (needs_subject) {
+    if (!body_output.IsJson()) {
+      return absl::InvalidArgumentError("the foreach body output is not JSON");
+    }
+
+    if (!selected.IsJson()) {
+      return absl::InvalidArgumentError("the foreach selected value is not JSON");
+    }
+  }
+
+  utils::Jv null_subject;
+  const utils::Jv* subject = nullptr;
+  if (body_output.IsJson()) {
+    subject = &body_output.Json();
+  } else {
+    auto parsed = utils::Jv::Parse("null");
+    if (!parsed.ok()) {
+      return parsed.status();
+    }
+
+    null_subject = std::move(*parsed);
+    subject = &null_subject;
   }
 
   std::vector<ExpressionLocal> locals;
   ExpressionArguments arguments = lexicalArguments(&scope, &context_, locals);
-  arguments.input = &selected.Json();
-  arguments.output = &body_output.Json();
-  auto result = engine_.EvaluateTypedSlot(slotValue(*iterator.output_->as_), TypedSlot::kTaskOutput,
-                                          body_output.Json(), arguments);
+  if (selected.IsJson()) {
+    arguments.input = &selected.Json();
+  }
+
+  if (body_output.IsJson()) {
+    arguments.output = &body_output.Json();
+  }
+
+  auto result = engine_.Evaluate(slot, kTaskOutput, *subject, arguments);
   if (!result.ok()) {
     return result.status();
   }
 
-  return StepDataValue::FromValue(::strij::openworkflow::JvToValue(*result));
+  return StepDataValue::FromValue(*result);
 }
 
 auto WorkflowInterpreter::ExportListenForeach(
@@ -1707,25 +1813,51 @@ auto WorkflowInterpreter::ExportListenForeach(
     return absl::OkStatus();
   }
 
-  if (!selected.IsJson() || !transformed_output.IsJson()) {
+  const ::strij::openworkflow::Value slot = slotValue(*iterator.export_->as_);
+  auto programs = CollectExpressions(slot);
+  if (!programs.ok()) {
+    return programs.status();
+  }
+
+  const bool needs_subject = !programs->empty();
+  if (needs_subject && (!selected.IsJson() || !transformed_output.IsJson())) {
     return absl::InvalidArgumentError("the foreach export values are not JSON");
+  }
+
+  utils::Jv null_subject;
+  const utils::Jv* subject = nullptr;
+  if (transformed_output.IsJson()) {
+    subject = &transformed_output.Json();
+  } else {
+    auto parsed = utils::Jv::Parse("null");
+    if (!parsed.ok()) {
+      return parsed.status();
+    }
+
+    null_subject = std::move(*parsed);
+    subject = &null_subject;
   }
 
   std::vector<ExpressionLocal> locals;
   ExpressionArguments arguments = lexicalArguments(&scope, &context_, locals);
-  arguments.input = &selected.Json();
-  arguments.output = &transformed_output.Json();
-  auto result = engine_.EvaluateTypedSlot(slotValue(*iterator.export_->as_), TypedSlot::kTaskExport,
-                                          transformed_output.Json(), arguments);
+  if (selected.IsJson()) {
+    arguments.input = &selected.Json();
+  }
+
+  if (transformed_output.IsJson()) {
+    arguments.output = &transformed_output.Json();
+  }
+
+  auto result = engine_.Evaluate(slot, kTaskExport, *subject, arguments);
   if (!result.ok()) {
     return result.status();
   }
 
-  if (!::strij::openworkflow::JvToValue(*result).IsObject()) {
+  if (!result->IsObject()) {
     return absl::InvalidArgumentError("the exported context must be an object");
   }
 
-  context_ = std::move(*result);
+  context_ = ValueToJv(*result);
   return absl::OkStatus();
 }
 

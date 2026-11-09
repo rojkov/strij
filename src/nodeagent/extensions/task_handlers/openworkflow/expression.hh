@@ -41,20 +41,39 @@ struct ExpressionArguments {
   std::span<const ExpressionLocal> locals{};
 };
 
-// An expression-typed DSL slot. Unlike literal-capable value slots, every
-// string in these trees must be a whole `${ }` expression.
-enum class TypedSlot : std::uint8_t {
-  kIf = 0,
-  kInputFrom = 1,
-  kTaskOutput = 2,
-  kTaskExport = 3,
-  kDocumentOutput = 4,
-  kSwitchWhen = 5,
-  kForIn = 6,
-  kForWhile = 7,
+// The reserved variables a slot binds, in binding order.
+enum class SlotVariables : std::uint8_t {
+  kContext = 0,
+  kContextInputOutput = 1,
 };
 
-[[nodiscard]] auto TypedSlotName(TypedSlot slot) -> std::string_view;
+// One DSL slot descriptor. `name_` is the display name used in errors,
+// `variables_` selects the reserved bindings, and `literals_` decides whether a
+// bare string is literal text (a value-construction slot) or a malformed
+// document (an expression-only slot that must produce one typed value).
+struct ExpressionSlot {
+  std::string_view name_;
+  SlotVariables variables_;
+  bool literals_;
+};
+
+// Expression-only slots: their result must be a single typed value, so a bare
+// string is never meaningful.
+inline constexpr ExpressionSlot kIf{"if", SlotVariables::kContext, false};
+inline constexpr ExpressionSlot kSwitchWhen{"a switch case's when", SlotVariables::kContext, false};
+inline constexpr ExpressionSlot kForIn{"a for task's in", SlotVariables::kContext, false};
+inline constexpr ExpressionSlot kForWhile{"a for task's while", SlotVariables::kContext, false};
+
+// Value-construction slots: they build a value tree, so literal text is kept.
+inline constexpr ExpressionSlot kInputFrom{"input.from", SlotVariables::kContext, true};
+inline constexpr ExpressionSlot kTaskOutput{"output.as", SlotVariables::kContextInputOutput, true};
+inline constexpr ExpressionSlot kTaskExport{"export.as", SlotVariables::kContextInputOutput, true};
+inline constexpr ExpressionSlot kDocumentOutput{"the document's output.as", SlotVariables::kContext,
+                                                true};
+
+// The generic literal-capable slot used by `with`, `set`, `emit.data`, `until`
+// filters, and the non-string form of `for.in`.
+inline constexpr ExpressionSlot kValue{"value", SlotVariables::kContext, true};
 
 // Strict-mode recognition (design D5): a string is an expression if and only if
 // it is entirely wrapped in `${ }`.
@@ -89,30 +108,21 @@ public:
   auto Run(std::string_view program, const utils::Jv& subject,
            const ExpressionArguments& arguments = {}) -> absl::StatusOr<utils::Jv>;
 
-  // Validation over a value tree: compiles every expression it contains with
-  // the supplied reserved and lexical variables.
-  auto Validate(const ::strij::openworkflow::Value& value,
+  // Validation over a value tree: applies `slot`'s literal policy (an
+  // expression-only slot rejects a bare string; a value-construction slot keeps
+  // it literal) and compiles every discovered expression with the slot's
+  // reserved variables plus the lexical locals.
+  auto Validate(const ::strij::openworkflow::Value& value, const ExpressionSlot& slot,
                 const ExpressionArguments& arguments = {}) -> absl::Status;
 
   // Evaluates every expression in `value` against `subject`, preserving
-  // literals and the surrounding structure. `$context` and any lexical locals
-  // are bound.
-  auto Evaluate(const ::strij::openworkflow::Value& value, const utils::Jv& subject,
-                const ExpressionArguments& arguments = {})
+  // literals and the surrounding structure. `slot` selects the reserved
+  // variables; `$context` and any lexical locals are always bound, and
+  // `$input`/`$output` are bound when the slot declares them and the caller
+  // supplies them.
+  auto Evaluate(const ::strij::openworkflow::Value& value, const ExpressionSlot& slot,
+                const utils::Jv& subject, const ExpressionArguments& arguments = {})
       -> absl::StatusOr<::strij::openworkflow::Value>;
-
-  // Typed-slot validation: every string in `value` must be a whole `${ }`
-  // expression, and every discovered program is compiled with the slot's
-  // expression arguments.
-  auto ValidateTypedSlot(const ::strij::openworkflow::Value& value, TypedSlot slot,
-                         const ExpressionArguments& arguments = {}) -> absl::Status;
-
-  // JSON-faithful typed-slot evaluation. `subject` is the expression subject;
-  // the task-output and task-export slots additionally require `input` and
-  // `output` (the transformed task input and the transformed task output).
-  auto EvaluateTypedSlot(const ::strij::openworkflow::Value& value, TypedSlot slot,
-                         const utils::Jv& subject, const ExpressionArguments& arguments = {})
-      -> absl::StatusOr<utils::Jv>;
 
 private:
   auto compile(std::string_view program, const std::vector<std::string>& variable_names)

@@ -3,7 +3,6 @@
 #include <cctype>
 #include <functional>
 #include <initializer_list>
-#include <iterator>
 #include <optional>
 #include <span>
 #include <string>
@@ -46,13 +45,6 @@ auto ExpressionProgram(std::string_view text) -> std::string {
 
 namespace {
 
-// Appends `nested`'s programs to `programs`.
-void appendPrograms(std::vector<std::string>& programs,
-                    const absl::StatusOr<std::vector<std::string>>& nested) {
-  programs.insert(programs.end(), std::make_move_iterator(nested->begin()),
-                  std::make_move_iterator(nested->end()));
-}
-
 // A reserved-plus-lexical variable list in jq_compile_args order. Locals keep
 // their given order (innermost scope first) and the first occurrence of a name
 // wins, so an inner loop shadows an outer one with the same name.
@@ -93,16 +85,75 @@ auto makeVariableSet(std::initializer_list<std::string_view> reserved,
                          locals);
 }
 
-// Returns the reserved variables bound by a typed slot, in declaration order.
-auto typedSlotReservedNames(TypedSlot slot) -> std::vector<std::string_view> {
+// Returns the reserved variables bound by a slot, in declaration order.
+auto slotReservedNames(const ExpressionSlot& slot) -> std::vector<std::string_view> {
   std::vector<std::string_view> variables{kContextVariable};
 
-  if (slot == TypedSlot::kTaskOutput || slot == TypedSlot::kTaskExport) {
+  if (slot.variables_ == SlotVariables::kContextInputOutput) {
     variables.push_back(kInputVariable);
     variables.push_back(kOutputVariable);
   }
 
   return variables;
+}
+
+// Recursively collects every expression program in `value`, applying the slot's
+// literal policy. An empty `slot_name` produces the slot-agnostic messages used
+// by the public scan helper.
+auto collectPrograms(const ::strij::openworkflow::Value& value, std::string_view slot_name,
+                     bool literals, std::vector<std::string>& programs) -> absl::Status {
+  if (value.IsString()) {
+    const std::string& text = value.AsString();
+    if (IsExpression(text)) {
+      programs.push_back(ExpressionProgram(text));
+      return absl::OkStatus();
+    }
+
+    if (HasPartialWrapper(text)) {
+      if (slot_name.empty()) {
+        return absl::InvalidArgumentError(absl::StrCat(
+            "the ${ } wrapper must span the whole value, but '", text, "' has text outside it"));
+      }
+
+      return absl::InvalidArgumentError(
+          absl::StrCat("the ${ } wrapper must span the whole value in '", slot_name, "', but '",
+                       text, "' has text outside it"));
+    }
+
+    if (literals) {
+      return absl::OkStatus();
+    }
+
+    if (slot_name.empty()) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "a string must be a whole ${ } expression, but '", text, "' is literal text"));
+    }
+
+    return absl::InvalidArgumentError(absl::StrCat(
+        "'", slot_name, "' must be a whole ${ } expression, but '", text, "' is literal text"));
+  }
+
+  if (value.IsArray()) {
+    for (const ::strij::openworkflow::Value& element : value.AsArray()) {
+      auto status = collectPrograms(element, slot_name, literals, programs);
+      if (!status.ok()) {
+        return status;
+      }
+    }
+
+    return absl::OkStatus();
+  }
+
+  if (value.IsObject()) {
+    for (const auto& [_key, member] : value.AsObject()) {
+      auto status = collectPrograms(member, slot_name, literals, programs);
+      if (!status.ok()) {
+        return status;
+      }
+    }
+  }
+
+  return absl::OkStatus();
 }
 
 // Appends each selected local's value copy to `args`. A validation-only local
@@ -186,120 +237,14 @@ auto normalizeLoopName(const std::optional<std::string>& declared, std::string_v
 
 auto CollectExpressions(const ::strij::openworkflow::Value& value)
     -> absl::StatusOr<std::vector<std::string>> {
-  if (value.IsString()) {
-    const std::string& text = value.AsString();
-    if (IsExpression(text)) {
-      return std::vector<std::string>{ExpressionProgram(text)};
-    }
-
-    if (HasPartialWrapper(text)) {
-      return absl::InvalidArgumentError(absl::StrCat(
-          "the ${ } wrapper must span the whole value, but '", text, "' has text outside it"));
-    }
-
-    return std::vector<std::string>{};
+  std::vector<std::string> programs;
+  auto status = collectPrograms(value, {}, true, programs);
+  if (!status.ok()) {
+    return status;
   }
 
-  if (value.IsArray()) {
-    std::vector<std::string> programs;
-
-    for (const ::strij::openworkflow::Value& element : value.AsArray()) {
-      auto nested = CollectExpressions(element);
-      if (!nested.ok()) {
-        return nested.status();
-      }
-
-      appendPrograms(programs, nested);
-    }
-
-    return programs;
-  }
-
-  if (value.IsObject()) {
-    std::vector<std::string> programs;
-    for (const auto& [_key, member] : value.AsObject()) {
-      auto nested = CollectExpressions(member);
-      if (!nested.ok()) {
-        return nested.status();
-      }
-
-      appendPrograms(programs, nested);
-    }
-
-    return programs;
-  }
-
-  return std::vector<std::string>{};
+  return programs;
 }
-
-auto TypedSlotName(TypedSlot slot) -> std::string_view {
-  switch (slot) {
-  case TypedSlot::kIf:
-    return "if";
-  case TypedSlot::kInputFrom:
-    return "input.from";
-  case TypedSlot::kTaskOutput:
-    return "output.as";
-  case TypedSlot::kTaskExport:
-    return "export.as";
-  case TypedSlot::kDocumentOutput:
-    return "the document's output.as";
-  case TypedSlot::kSwitchWhen:
-    return "a switch case's when";
-  case TypedSlot::kForIn:
-    return "a for task's in";
-  case TypedSlot::kForWhile:
-    return "a for task's while";
-  }
-
-  return "expression";
-}
-
-namespace {
-
-auto collectTypedPrograms(const ::strij::openworkflow::Value& value, std::string_view slot,
-                          std::vector<std::string>& programs) -> absl::Status {
-  if (value.IsString()) {
-    const std::string& text = value.AsString();
-    if (IsExpression(text)) {
-      programs.push_back(ExpressionProgram(text));
-      return absl::OkStatus();
-    }
-
-    if (HasPartialWrapper(text)) {
-      return absl::InvalidArgumentError(
-          absl::StrCat("the ${ } wrapper must span the whole value in '", slot, "', but '", text,
-                       "' has text outside it"));
-    }
-
-    return absl::InvalidArgumentError(absl::StrCat(
-        "'", slot, "' must be a whole ${ } expression, but '", text, "' is literal text"));
-  }
-
-  if (value.IsArray()) {
-    for (const ::strij::openworkflow::Value& element : value.AsArray()) {
-      auto status = collectTypedPrograms(element, slot, programs);
-      if (!status.ok()) {
-        return status;
-      }
-    }
-
-    return absl::OkStatus();
-  }
-
-  if (value.IsObject()) {
-    for (const auto& [_key, member] : value.AsObject()) {
-      auto status = collectTypedPrograms(member, slot, programs);
-      if (!status.ok()) {
-        return status;
-      }
-    }
-  }
-
-  return absl::OkStatus();
-}
-
-} // namespace
 
 auto ExpressionEngine::Compile(std::string_view program) -> absl::Status {
   return compile(program, {std::string(kContextVariable)});
@@ -371,88 +316,15 @@ auto ExpressionEngine::run(std::string_view program, const utils::Jv& subject,
 }
 
 auto ExpressionEngine::Validate(const ::strij::openworkflow::Value& value,
-                                const ExpressionArguments& arguments) -> absl::Status {
-  auto programs = CollectExpressions(value);
-  if (!programs.ok()) {
-    return programs.status();
-  }
-
-  const VariableSet variables = makeVariableSet({kContextVariable}, arguments.locals);
-  for (const std::string& program : *programs) {
-    auto status = compile(program, variables.names_);
-    if (!status.ok()) {
-      return status;
-    }
-  }
-
-  return absl::OkStatus();
-}
-
-auto ExpressionEngine::Evaluate(const ::strij::openworkflow::Value& value, const utils::Jv& subject,
-                                const ExpressionArguments& arguments)
-    -> absl::StatusOr<::strij::openworkflow::Value> {
-  if (value.IsString()) {
-    const std::string& text = value.AsString();
-
-    if (IsExpression(text)) {
-      auto result = Run(ExpressionProgram(text), subject, arguments);
-      if (!result.ok()) {
-        return result.status();
-      }
-
-      return ::strij::openworkflow::JvToValue(*result);
-    }
-
-    if (HasPartialWrapper(text)) {
-      return absl::InvalidArgumentError(absl::StrCat(
-          "the ${ } wrapper must span the whole value, but '", text, "' has text outside it"));
-    }
-
-    return value;
-  }
-
-  if (value.IsArray()) {
-    ::strij::openworkflow::Value::Array array;
-    array.reserve(value.AsArray().size());
-
-    for (const ::strij::openworkflow::Value& element : value.AsArray()) {
-      auto evaluated = Evaluate(element, subject, arguments);
-      if (!evaluated.ok()) {
-        return evaluated.status();
-      }
-
-      array.push_back(std::move(*evaluated));
-    }
-
-    return ::strij::openworkflow::Value{std::move(array)};
-  }
-
-  if (value.IsObject()) {
-    ::strij::openworkflow::Value::Object object;
-    for (const auto& [key, member] : value.AsObject()) {
-      auto evaluated = Evaluate(member, subject, arguments);
-      if (!evaluated.ok()) {
-        return evaluated.status();
-      }
-
-      object.emplace(key, std::move(*evaluated));
-    }
-
-    return ::strij::openworkflow::Value{std::move(object)};
-  }
-
-  return value;
-}
-
-auto ExpressionEngine::ValidateTypedSlot(const ::strij::openworkflow::Value& value, TypedSlot slot,
-                                         const ExpressionArguments& arguments) -> absl::Status {
+                                const ExpressionSlot& slot, const ExpressionArguments& arguments)
+    -> absl::Status {
   std::vector<std::string> programs;
-  auto status = collectTypedPrograms(value, TypedSlotName(slot), programs);
+  auto status = collectPrograms(value, slot.name_, slot.literals_, programs);
   if (!status.ok()) {
     return status;
   }
 
-  const std::vector<std::string_view> reserved = typedSlotReservedNames(slot);
+  const std::vector<std::string_view> reserved = slotReservedNames(slot);
   const VariableSet variables = makeVariableSet(reserved, arguments.locals);
   for (const std::string& program : programs) {
     status = compile(program, variables.names_);
@@ -464,13 +336,10 @@ auto ExpressionEngine::ValidateTypedSlot(const ::strij::openworkflow::Value& val
   return absl::OkStatus();
 }
 
-auto ExpressionEngine::EvaluateTypedSlot(const ::strij::openworkflow::Value& value, TypedSlot slot,
-                                         const utils::Jv& subject,
-                                         const ExpressionArguments& arguments)
-    -> absl::StatusOr<utils::Jv> {
-  const std::vector<std::string_view> reserved = typedSlotReservedNames(slot);
-  const VariableSet variables = makeVariableSet(reserved, arguments.locals);
-
+auto ExpressionEngine::Evaluate(const ::strij::openworkflow::Value& value,
+                                const ExpressionSlot& slot, const utils::Jv& subject,
+                                const ExpressionArguments& arguments)
+    -> absl::StatusOr<::strij::openworkflow::Value> {
   utils::Jv empty_context;
   const utils::Jv* context = arguments.context;
   if (context == nullptr) {
@@ -483,22 +352,24 @@ auto ExpressionEngine::EvaluateTypedSlot(const ::strij::openworkflow::Value& val
     context = &empty_context;
   }
 
+  std::vector<std::string_view> reserved{kContextVariable};
   std::vector<utils::Jv> args;
-  args.reserve(variables.names_.size());
+  args.reserve(3);
   args.push_back(context->Copy());
 
-  if (slot == TypedSlot::kTaskOutput || slot == TypedSlot::kTaskExport) {
-    if (arguments.input == nullptr) {
-      return absl::InvalidArgumentError("the task input is not JSON");
-    }
-    if (arguments.output == nullptr) {
-      return absl::InvalidArgumentError("the task output is not JSON");
+  if (slot.variables_ == SlotVariables::kContextInputOutput) {
+    if (arguments.input != nullptr) {
+      reserved.push_back(kInputVariable);
+      args.push_back(arguments.input->Copy());
     }
 
-    args.push_back(arguments.input->Copy());
-    args.push_back(arguments.output->Copy());
+    if (arguments.output != nullptr) {
+      reserved.push_back(kOutputVariable);
+      args.push_back(arguments.output->Copy());
+    }
   }
 
+  const VariableSet variables = makeVariableSet(reserved, arguments.locals);
   auto appended = appendLocalArguments(variables, args);
   if (!appended.ok()) {
     return appended;
@@ -509,23 +380,29 @@ auto ExpressionEngine::EvaluateTypedSlot(const ::strij::openworkflow::Value& val
       -> absl::StatusOr<::strij::openworkflow::Value> {
     if (node.IsString()) {
       const std::string& text = node.AsString();
-      if (!IsExpression(text)) {
-        if (HasPartialWrapper(text)) {
-          return absl::InvalidArgumentError(
-              absl::StrCat("the ${ } wrapper must span the whole value in '", TypedSlotName(slot),
-                           "', but '", text, "' has text outside it"));
+
+      if (IsExpression(text)) {
+        auto result = run(ExpressionProgram(text), subject, variables.names_, args);
+        if (!result.ok()) {
+          return result.status();
         }
 
+        return ::strij::openworkflow::JvToValue(*result);
+      }
+
+      if (HasPartialWrapper(text)) {
         return absl::InvalidArgumentError(
-            absl::StrCat("'", TypedSlotName(slot), "' must be a whole ${ } expression"));
+            absl::StrCat("the ${ } wrapper must span the whole value in '", slot.name_, "', but '",
+                         text, "' has text outside it"));
       }
 
-      auto result = run(ExpressionProgram(text), subject, variables.names_, args);
-      if (!result.ok()) {
-        return result.status();
+      if (!slot.literals_) {
+        return absl::InvalidArgumentError(absl::StrCat("'", slot.name_,
+                                                       "' must be a whole ${ } expression, but '",
+                                                       text, "' is literal text"));
       }
 
-      return ::strij::openworkflow::JvToValue(*result);
+      return node;
     }
 
     if (node.IsArray()) {
@@ -560,12 +437,7 @@ auto ExpressionEngine::EvaluateTypedSlot(const ::strij::openworkflow::Value& val
     return node;
   };
 
-  auto evaluated = evaluate(value);
-  if (!evaluated.ok()) {
-    return evaluated.status();
-  }
-
-  return ::strij::openworkflow::ValueToJv(*evaluated);
+  return evaluate(value);
 }
 
 auto NormalizeLoopVariables(const std::optional<std::string>& each,

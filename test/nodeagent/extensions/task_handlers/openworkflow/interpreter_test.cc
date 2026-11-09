@@ -825,6 +825,55 @@ do:
         type: echo
 )YAML";
 
+constexpr std::string_view kInputFromLiteralMembers = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: literal-input
+  version: '0.1.0'
+do:
+  - one:
+      call: strij
+      input:
+        from:
+          content_type: application/json
+          mode: batch
+      with:
+        type: echo
+)YAML";
+
+constexpr std::string_view kInputFromMixedLiteralAndExpression = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: mixed-input
+  version: '0.1.0'
+do:
+  - one:
+      call: strij
+      input:
+        from:
+          python_code: |
+            def main(x):
+              return x * 2
+          input: ${ .value }
+      with:
+        type: echo
+)YAML";
+
+constexpr std::string_view kPartialWrappedInputFrom = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: partial-input
+  version: '0.1.0'
+do:
+  - one:
+      call: strij
+      input:
+        from:
+          name: 'job-${ .id }'
+      with:
+        type: echo
+)YAML";
+
 constexpr std::string_view kBareOutputAs = R"YAML(document:
   dsl: '1.0.3'
   namespace: test
@@ -835,6 +884,21 @@ do:
       call: strij
       output:
         as: .result
+      with:
+        type: echo
+)YAML";
+
+constexpr std::string_view kOutputAsLiteralOnly = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: literal-output
+  version: '0.1.0'
+do:
+  - one:
+      call: strij
+      output:
+        as:
+          normalized: true
       with:
         type: echo
 )YAML";
@@ -1320,6 +1384,21 @@ do:
       call: strij
       export:
         as: .result
+      with:
+        type: echo
+)YAML";
+
+constexpr std::string_view kExportAsLiteralObject = R"YAML(document:
+  dsl: '1.0.3'
+  namespace: test
+  name: literal-export
+  version: '0.1.0'
+do:
+  - one:
+      call: strij
+      export:
+        as:
+          mode: batch
       with:
         type: echo
 )YAML";
@@ -2314,6 +2393,44 @@ TEST(InterpreterInputFromTest, TransformedInputPreservesAJsonString) {
   EXPECT_EQ(harness.submitter_.last()->task_.body(), R"("world")");
 }
 
+TEST(InterpreterInputFromTest, LiteralMembersStayLiteral) {
+  Harness harness;
+  harness.interpreter_->Start(std::string(kInputFromLiteralMembers));
+  ASSERT_EQ(harness.submitter_.size(), 1U);
+  EXPECT_EQ(harness.submitter_.last()->task_.body(),
+            R"({"content_type":"application/json","mode":"batch"})");
+}
+
+TEST(InterpreterInputFromTest, LiteralOnlyTransformationWorksOverOpaqueInput) {
+  Harness harness;
+  harness.interpreter_->Start(std::string(kInputFromLiteralMembers), "not json");
+  ASSERT_EQ(harness.submitter_.size(), 1U);
+  EXPECT_EQ(harness.submitter_.last()->task_.body(),
+            R"({"content_type":"application/json","mode":"batch"})");
+}
+
+TEST(InterpreterInputFromTest, BareStringIsAJsonStringBody) {
+  Harness harness;
+  harness.interpreter_->Start(std::string(kBareInputFrom), R"({"payload":{"id":7}})");
+  ASSERT_EQ(harness.submitter_.size(), 1U);
+  EXPECT_EQ(harness.submitter_.last()->task_.body(), R"(".payload")");
+}
+
+TEST(InterpreterInputFromTest, NestedBareMemberIsLiteralText) {
+  Harness harness;
+  harness.interpreter_->Start(std::string(kNestedBareInputFrom), R"({"payload":{"id":7}})");
+  ASSERT_EQ(harness.submitter_.size(), 1U);
+  EXPECT_EQ(harness.submitter_.last()->task_.body(), R"({"id":".payload.id"})");
+}
+
+TEST(InterpreterInputFromTest, LiteralAndExpressionMembersMix) {
+  Harness harness;
+  harness.interpreter_->Start(std::string(kInputFromMixedLiteralAndExpression), R"({"value":21})");
+  ASSERT_EQ(harness.submitter_.size(), 1U);
+  EXPECT_EQ(harness.submitter_.last()->task_.body(),
+            "{\"input\":21,\"python_code\":\"def main(x):\\n  return x * 2\\n\"}");
+}
+
 TEST(InterpreterInputFromTest, TransformedInputSeedsANestedDo) {
   Harness harness;
   harness.interpreter_->Start(std::string(kNestedDoInputFrom), R"({"payload":{"id":5},"id":1})");
@@ -2403,8 +2520,8 @@ TEST(InterpreterValidationTest, BareAndMalformedConditionsFailBeforeSubmission) 
   }
 }
 
-TEST(InterpreterValidationTest, BareAndMalformedInputFromFailBeforeSubmission) {
-  for (std::string_view document : {kBareInputFrom, kMalformedInputFrom, kNestedBareInputFrom}) {
+TEST(InterpreterValidationTest, MalformedInputFromFailsBeforeSubmission) {
+  for (std::string_view document : {kMalformedInputFrom, kPartialWrappedInputFrom}) {
     Harness harness;
     harness.interpreter_->Start(std::string(document));
 
@@ -2414,8 +2531,8 @@ TEST(InterpreterValidationTest, BareAndMalformedInputFromFailBeforeSubmission) {
   }
 }
 
-TEST(InterpreterValidationTest, BareAndMalformedOutputAsFailBeforeSubmission) {
-  for (std::string_view document : {kBareOutputAs, kMalformedOutputAs}) {
+TEST(InterpreterValidationTest, MalformedOutputAsFailsBeforeSubmission) {
+  for (std::string_view document : {kMalformedOutputAs}) {
     Harness harness;
     harness.interpreter_->Start(std::string(document));
 
@@ -2425,8 +2542,8 @@ TEST(InterpreterValidationTest, BareAndMalformedOutputAsFailBeforeSubmission) {
   }
 }
 
-TEST(InterpreterValidationTest, BareAndMalformedDocumentOutputFailBeforeSubmission) {
-  for (std::string_view document : {kBareDocumentOutput, kMalformedDocumentOutput}) {
+TEST(InterpreterValidationTest, MalformedDocumentOutputFailsBeforeSubmission) {
+  for (std::string_view document : {kMalformedDocumentOutput}) {
     Harness harness;
     harness.interpreter_->Start(std::string(document));
 
@@ -2502,6 +2619,30 @@ TEST(InterpreterOutputAsTest, OutputExpressionBindsInputAndOutput) {
             R"({"after":{"name":"pet"},"before":{"seed":1}})");
 }
 
+TEST(InterpreterOutputAsTest, BareOutputAsIsLiteralText) {
+  Harness harness;
+  harness.interpreter_->Start(std::string(kBareOutputAs));
+  ASSERT_EQ(harness.submitter_.size(), 1U);
+
+  test::CompleteSuccessAt(harness.submitter_, 0, R"({"result":7})");
+
+  ASSERT_EQ(harness.results_.size(), 1U);
+  EXPECT_EQ(harness.results_[0].status(), task::TASK_STATUS_OK);
+  EXPECT_EQ(harness.results_[0].body(), R"(".result")");
+}
+
+TEST(InterpreterOutputAsTest, LiteralOnlyOutputOverOpaqueOutputSucceeds) {
+  Harness harness;
+  harness.interpreter_->Start(std::string(kOutputAsLiteralOnly));
+  ASSERT_EQ(harness.submitter_.size(), 1U);
+
+  test::CompleteSuccessAt(harness.submitter_, 0, "not json");
+
+  ASSERT_EQ(harness.results_.size(), 1U);
+  EXPECT_EQ(harness.results_[0].status(), task::TASK_STATUS_OK);
+  EXPECT_EQ(harness.results_[0].body(), R"({"normalized":true})");
+}
+
 TEST(InterpreterOutputAsTest, OpaqueRawOutputFailsTheStep) {
   Harness harness;
   harness.interpreter_->Start(std::string(kOutputAsOpaqueOutput), R"({"id":1})");
@@ -2542,6 +2683,18 @@ TEST(InterpreterDocumentOutputTest, ShapesTheFinalResultExactlyOnce) {
   ASSERT_EQ(harness.results_.size(), 1U);
   EXPECT_EQ(harness.results_[0].body(), R"({"petId":7})");
   EXPECT_TRUE(harness.results_[0].is_final());
+}
+
+TEST(InterpreterDocumentOutputTest, LiteralOnlyOutputOverOpaqueFinalValueSucceeds) {
+  Harness harness;
+  harness.interpreter_->Start(std::string(kBareDocumentOutput));
+  ASSERT_EQ(harness.submitter_.size(), 1U);
+
+  test::CompleteSuccessAt(harness.submitter_, 0, "not json");
+
+  ASSERT_EQ(harness.results_.size(), 1U);
+  EXPECT_EQ(harness.results_[0].status(), task::TASK_STATUS_OK);
+  EXPECT_EQ(harness.results_[0].body(), R"(".result")");
 }
 
 TEST(InterpreterDocumentOutputTest, OpaqueFinalValueFailsTheRun) {
@@ -2694,6 +2847,42 @@ TEST(InterpreterExportTest, AForkExportsItsShapedJoinValue) {
   EXPECT_EQ(harness.results_[0].body(), R"({"joined":7})");
 }
 
+TEST(InterpreterExportTest, LiteralOnlyExportOverOpaqueInputSucceeds) {
+  Harness harness;
+  harness.interpreter_->Start(std::string(kExportAsLiteralObject), "not json");
+  ASSERT_EQ(harness.submitter_.size(), 1U);
+
+  test::CompleteSuccessAt(harness.submitter_, 0, R"({"id":1})");
+
+  ASSERT_EQ(harness.results_.size(), 1U);
+  EXPECT_EQ(harness.results_[0].status(), task::TASK_STATUS_OK);
+  EXPECT_EQ(harness.results_[0].body(), R"({"id":1})");
+}
+
+TEST(InterpreterExportTest, LiteralOnlyExportOverOpaqueOutputSucceeds) {
+  Harness harness;
+  harness.interpreter_->Start(std::string(kExportAsLiteralObject), R"({"id":1})");
+  ASSERT_EQ(harness.submitter_.size(), 1U);
+
+  test::CompleteSuccessAt(harness.submitter_, 0, "not json");
+
+  ASSERT_EQ(harness.results_.size(), 1U);
+  EXPECT_EQ(harness.results_[0].status(), task::TASK_STATUS_OK);
+  EXPECT_EQ(harness.results_[0].body(), "not json");
+}
+
+TEST(InterpreterExportTest, LiteralExportMustBeAnObject) {
+  Harness harness;
+  harness.interpreter_->Start(std::string(kBareExportAs), R"({"id":1})");
+  ASSERT_EQ(harness.submitter_.size(), 1U);
+
+  test::CompleteSuccessAt(harness.submitter_, 0, R"({"result":7})");
+
+  ASSERT_EQ(harness.results_.size(), 1U);
+  EXPECT_EQ(harness.results_[0].status(), task::TASK_STATUS_INTERNAL);
+  EXPECT_NE(harness.results_[0].body().find("must be an object"), std::string::npos);
+}
+
 TEST(InterpreterExportTest, OpaqueTransformedOutputFailsTheStep) {
   Harness harness;
   harness.interpreter_->Start(std::string(kExportOpaqueOutput), R"({"id":1})");
@@ -2748,8 +2937,8 @@ TEST(InterpreterExportTest, ALocalChildCompletingInsideSubmitExportsExactlyOnce)
   EXPECT_EQ(harness.results_[0].body(), R"({"count":1})");
 }
 
-TEST(InterpreterValidationTest, BareAndMalformedExportAsFailBeforeSubmission) {
-  for (std::string_view document : {kBareExportAs, kMalformedExportAs}) {
+TEST(InterpreterValidationTest, MalformedExportAsFailsBeforeSubmission) {
+  for (std::string_view document : {kMalformedExportAs}) {
     Harness harness;
     harness.interpreter_->Start(std::string(document));
 

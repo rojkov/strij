@@ -38,6 +38,10 @@ The `2026-08-19-node-capabilities-and-scheduling` change has landed the node-man
   - A child forwarded upstream by node A (two-hop path) is re-scheduled by the gateway through the normal per-type `Schedule` routing, and A is itself a candidate in `NodeDirectory` — so the child can bounce straight back to the node that already declined it (no capacity, or no handler claiming its type). At best that is a wasted A→gateway→A round trip; at worst a spurious `kTaskRejected` reaches the parent even though other nodes could have served the child. Add a `Task.anti_affinity_node_id` field (`api/common/task/task.proto`); the gateway's `SchedulerRouter::handleChildSubmission` stamps it from the submitting connection's owning node id (no wire-protocol change — the origin is derivable gateway-side), and `round_robin`/`capability_aware` exclude that node from candidates, delivering an error through the receiver only when no eligible node remains. With a single-node fleet the exclusion leaves no candidate and the child fails fast instead of taking a guaranteed-bounce round trip.
   - Source: `openspec/changes/child-tasks-and-local-execution/design.md` (two-hop path); `src/gateway/core/scheduler_router.cc` (`handleChildSubmission`); `src/gateway/extensions/schedulers/{round_robin,capability_aware}`.
 
+- [ ] **Simplify the `pyfunction` handler `Slot` booleans**
+  - `task_active_` duplicates `sender_ != nullptr`; `close_registered_` can become `std::optional<size_t> close_token_`; `drop_result_` is a task disposition that can be folded with task presence into a `TaskPhase { kNone, kHeld, kRunning, kDropped }`. Consider whether `Slot::State` and the task phase should become one six-state FSM (`startingIdle`, `startingHeld`, `idle`, `running`, `dropping`, `dead`) or remain orthogonal. Do not fold the four independent io_uring drain flags into the slot FSM.
+  - Source: `src/nodeagent/extensions/task_handlers/pyfunction/pyfunction_task_handler.cc` (`Slot` TODO); follow-up to the pyfunction `WriteState`/`Lifecycle` cleanup in `worker_process.{hh,cc}`.
+
 ## Phase 2 — piped_executable maturity
 
 - [ ] **Surface errors/exit codes via a `TaskResult` error field**

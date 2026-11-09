@@ -1,0 +1,59 @@
+load("//bazel:build_system.bzl", "strij_cc_binary", "strij_cc_test")
+
+# Scripted protocol peer for the C++ tests. It is intentionally separate from
+# the Python worker so framing/lifecycle tests need no Python runtime.
+strij_cc_binary(
+    name = "fake_worker",
+    srcs = ["fake_worker.cc"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//api/nodeagent/extensions/task_handlers/pyfunction:pyfunction_cc_proto",
+    ],
+)
+
+strij_cc_test(
+    name = "frame_test",
+    srcs = ["frame_test.cc"],
+    deps = [
+        "//src/nodeagent/extensions/task_handlers/pyfunction:pyfunction_task_handler_lib",
+        "@abseil-cpp//absl/status",
+        "@googletest//:gtest_main",
+    ],
+)
+
+strij_cc_test(
+    name = "config_test",
+    srcs = ["config_test.cc"],
+    deps = [
+        "//api/nodeagent/extensions/task_handlers/pyfunction:pyfunction_cc_proto",
+        "//src/nodeagent/extensions/task_handlers/pyfunction:pyfunction_task_handler_lib",
+        "@googletest//:gtest_main",
+    ],
+)
+
+strij_cc_test(
+    name = "worker_process_test",
+    srcs = ["worker_process_test.cc"],
+    data = [":fake_worker"],
+    deps = [
+        "//src/common/core/event:dispatcher_impl_lib",
+        "//src/nodeagent/extensions/task_handlers/pyfunction:pyfunction_task_handler_lib",
+        "@abseil-cpp//absl/time",
+        "@googletest//:gtest_main",
+    ],
+)
+
+strij_cc_test(
+    name = "pyfunction_task_handler_test",
+    srcs = ["pyfunction_task_handler_test.cc"],
+    data = [":fake_worker"],
+    deps = [
+        "//api/common/task:task_cc_proto",
+        "//include/strij/gateway:result_receiver_storage_interface",
+        "//include/strij/nodeagent:child_task_submitter_interface",
+        "//src/common/core/event:dispatcher_impl_lib",
+        "//src/nodeagent/extensions/task_handlers/pyfunction:pyfunction_task_handler_lib",
+        "@abseil-cpp//absl/time",
+        "@googletest//:gtest_main",
+    ],
+)

@@ -1,10 +1,10 @@
-# Spec Delta
+# pyfunction-sdk Specification
 
 ## Purpose
 
 Provides the Python `strij` package: a worker runtime for `@strij.remote` calls and a client runtime that submits pyfunction tasks over the gateway HTTP endpoint.
 
-## ADDED Requirements
+## Requirements
 
 ### Requirement: Package surface and runtime selection
 
@@ -152,7 +152,7 @@ Before serializing an invocation, the runtime SHALL recursively resolve `RemoteR
 
 ### Requirement: Versioned invocation envelope
 
-The pickle-mode invocation envelope SHALL be a versioned cloudpickle `Invocation` carrying the callable or code reference, positional arguments, and keyword arguments. A serialized value with an unsupported version SHALL raise a clear error before submission.
+The pickle-mode invocation envelope SHALL be a versioned cloudpickle `Invocation` carrying the callable or code reference, positional arguments, and keyword arguments. The SDK SHALL always emit the supported version. The worker SHALL reject an envelope with an unsupported version with a clear error and `MALFORMED_REQUEST` when it decodes the invocation.
 
 #### Scenario: Envelope carries the invocation
 
@@ -161,11 +161,12 @@ The pickle-mode invocation envelope SHALL be a versioned cloudpickle `Invocation
 - **THEN** the envelope SHALL contain the callable or code reference, arguments, and keyword arguments
 - **AND** it SHALL include the supported version
 
-#### Scenario: Unsupported version is rejected locally
+#### Scenario: Unsupported version is rejected by the worker
 
-- **GIVEN** an envelope produced with an unsupported version
-- **WHEN** the runtime reads it
-- **THEN** a clear error SHALL be raised before any task is submitted
+- **GIVEN** a task body containing an envelope produced with an unsupported version
+- **WHEN** the worker decodes the invocation
+- **THEN** the task SHALL fail with `MALFORMED_REQUEST`
+- **AND** the error SHALL name the unsupported version and the supported version
 
 ### Requirement: Error and timeout semantics
 
@@ -209,7 +210,7 @@ The worker runtime SHALL be safe to use from multiple threads within a task: con
 
 ### Requirement: Worker bootstrap
 
-The package SHALL provide a worker bootstrap that imports `cloudpickle` and `strij`, installs the pipe runtime, announces readiness, and serves run and remote-result frames until shutdown. The bootstrap SHALL keep protocol bytes off stdout.
+The package SHALL provide a worker bootstrap that imports `cloudpickle`, the generated pipe-protocol modules and their `protobuf` runtime, and `strij`, installs the pipe runtime, announces readiness, and serves run and remote-result frames until shutdown. The bootstrap SHALL keep protocol bytes off stdout.
 
 #### Scenario: Worker announces readiness
 
@@ -217,6 +218,13 @@ The package SHALL provide a worker bootstrap that imports `cloudpickle` and `str
 - **WHEN** the bootstrap has imported its dependencies and installed the runtime
 - **THEN** it SHALL send a readiness frame
 - **AND** it SHALL accept run frames
+
+#### Scenario: Worker without a compatible protobuf runtime does not become ready
+
+- **GIVEN** a worker environment with `cloudpickle` but no compatible protobuf runtime
+- **WHEN** the worker bootstrap starts
+- **THEN** it SHALL fail before sending the readiness frame
+- **AND** the handler SHALL keep the slot unavailable instead of assigning tasks to that worker
 
 #### Scenario: Worker serves until shutdown
 
