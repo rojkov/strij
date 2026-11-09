@@ -1,5 +1,7 @@
 #include "nodeagent_framework.hh"
 
+#include <signal.h>
+
 #include <cassert>
 #include <memory>
 #include <vector>
@@ -48,6 +50,12 @@ ABSL_FLAG(std::string, log_format, "", "Override log format (text|json)");
 namespace strij::nodeagent {
 
 auto RunNodeagent(int argc, char** argv) -> int {
+  // Suppress SIGPIPE: a task handler may write to a child process (for example
+  // a pyfunction worker) that exits between queueing the frame and the io_uring
+  // write completion. The write completion handles -EPIPE as a normal failure;
+  // without this the nodeagent would be killed by the signal.
+  signal(SIGPIPE, SIG_IGN);
+
   absl::ParseCommandLine(argc, argv);
 
   // Load configuration

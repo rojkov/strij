@@ -7,6 +7,7 @@
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "nodeagent/extensions/task_handlers/openworkflow/expression.hh"
+#include "openworkflow/value_jv.hh"
 
 namespace strij::nodeagent::task_handlers::openworkflow {
 namespace {
@@ -65,10 +66,10 @@ TEST(ExpressionEngineTest, CompilesValidAndRejectsMalformed) {
 TEST(ExpressionEngineTest, ValidatesEveryNestedExpression) {
   ExpressionEngine engine(test::JqEvaluatorConfig());
   const Value good{Value::Object{{"a", Value{"${ .x }"}}}};
-  EXPECT_TRUE(engine.Validate(good).ok());
+  EXPECT_TRUE(engine.Validate(good, kValue).ok());
 
   const Value malformed{Value::Object{{"a", Value{Value::Object{{"b", Value{"${ .x( }"}}}}}}};
-  EXPECT_FALSE(engine.Validate(malformed).ok());
+  EXPECT_FALSE(engine.Validate(malformed, kValue).ok());
 }
 
 TEST(ExpressionEngineTest, EvaluatesMixedObjectBesideLiteral) {
@@ -81,7 +82,7 @@ TEST(ExpressionEngineTest, EvaluatesMixedObjectBesideLiteral) {
   auto subject = utils::Jv::Parse(R"({"name":"widget"})");
   ASSERT_TRUE(subject.ok());
 
-  auto result = engine.Evaluate(tree, *subject);
+  auto result = engine.Evaluate(tree, kValue, *subject);
   ASSERT_TRUE(result.ok()) << result.status().message();
   const auto& object = result->AsObject();
   EXPECT_EQ(object.at("literal").AsString(), "unchanged");
@@ -117,14 +118,13 @@ TEST(ExpressionEngineTest, RunAndEvaluateObserveTheSuppliedContext) {
   EXPECT_EQ(run->Dump(), R"("abc")");
 
   auto evaluated = engine.Evaluate(Value{Value::Object{{"token", Value{"${ $context.token }"}}}},
-                                   *subject, arguments);
+                                   kValue, *subject, arguments);
   ASSERT_TRUE(evaluated.ok()) << evaluated.status().message();
   EXPECT_EQ(evaluated->AsObject().at("token").AsString(), "abc");
 
-  auto typed =
-      engine.EvaluateTypedSlot(Value{"${ $context.token }"}, TypedSlot::kIf, *subject, arguments);
+  auto typed = engine.Evaluate(Value{"${ $context.token }"}, kIf, *subject, arguments);
   ASSERT_TRUE(typed.ok()) << typed.status().message();
-  EXPECT_EQ(typed->Dump(), R"("abc")");
+  EXPECT_EQ(::strij::openworkflow::ValueToJv(*typed).Dump(), R"("abc")");
 }
 
 TEST(ExpressionEngineTest, InputAndOutputAreAbsentFromSlotsThatDoNotBindThem) {
@@ -133,49 +133,52 @@ TEST(ExpressionEngineTest, InputAndOutputAreAbsentFromSlotsThatDoNotBindThem) {
   ASSERT_TRUE(context.ok());
 
   const ExpressionArguments arguments{.context = &*context};
-  for (TypedSlot slot : {TypedSlot::kIf, TypedSlot::kInputFrom, TypedSlot::kDocumentOutput}) {
-    EXPECT_FALSE(engine.ValidateTypedSlot(Value{"${ $input }"}, slot, arguments).ok());
-    EXPECT_FALSE(engine.ValidateTypedSlot(Value{"${ $output }"}, slot, arguments).ok());
+  for (const ExpressionSlot& slot : {kIf, kInputFrom, kDocumentOutput}) {
+    EXPECT_FALSE(engine.Validate(Value{"${ $input }"}, slot, arguments).ok());
+    EXPECT_FALSE(engine.Validate(Value{"${ $output }"}, slot, arguments).ok());
   }
 
-  EXPECT_TRUE(engine.ValidateTypedSlot(Value{"${ $input }"}, TypedSlot::kTaskExport).ok());
-  EXPECT_TRUE(engine.ValidateTypedSlot(Value{"${ $output }"}, TypedSlot::kTaskExport).ok());
+  EXPECT_TRUE(engine.Validate(Value{"${ $input }"}, kTaskExport).ok());
+  EXPECT_TRUE(engine.Validate(Value{"${ $output }"}, kTaskExport).ok());
 }
 
-TEST(ExpressionEngineTest, TypedSlotsRequireWholeValueWrappers) {
+TEST(ExpressionEngineTest, ExpressionOnlySlotsRejectLiteralText) {
   ExpressionEngine engine(test::JqEvaluatorConfig());
 
-  EXPECT_FALSE(engine.ValidateTypedSlot(Value{".enabled"}, TypedSlot::kIf).ok());
-  EXPECT_FALSE(engine.ValidateTypedSlot(Value{".payload"}, TypedSlot::kInputFrom).ok());
-  EXPECT_FALSE(engine.ValidateTypedSlot(Value{".result"}, TypedSlot::kTaskOutput).ok());
-  EXPECT_FALSE(engine.ValidateTypedSlot(Value{".result"}, TypedSlot::kTaskExport).ok());
-  EXPECT_FALSE(engine.ValidateTypedSlot(Value{"${ .x } tail"}, TypedSlot::kIf).ok());
-  EXPECT_FALSE(engine.ValidateTypedSlot(Value{"${ .x("}, TypedSlot::kInputFrom).ok());
-  EXPECT_FALSE(engine.ValidateTypedSlot(Value{"${ .x("}, TypedSlot::kTaskExport).ok());
+  for (const ExpressionSlot& slot : {kIf, kSwitchWhen, kForIn, kForWhile}) {
+    EXPECT_FALSE(engine.Validate(Value{".bare"}, slot).ok());
+  }
+
+  EXPECT_FALSE(engine.Validate(Value{"${ .x } tail"}, kIf).ok());
+}
+
+TEST(ExpressionEngineTest, ValueConstructionSlotsAcceptLiteralTextAndExpressions) {
+  ExpressionEngine engine(test::JqEvaluatorConfig());
+
+  for (const ExpressionSlot& slot : {kInputFrom, kTaskOutput, kTaskExport, kDocumentOutput}) {
+    EXPECT_TRUE(engine.Validate(Value{".bare"}, slot).ok());
+  }
 
   const Value nested{Value::Object{{"id", Value{".payload.id"}}}};
-  EXPECT_FALSE(engine.ValidateTypedSlot(nested, TypedSlot::kInputFrom).ok());
+  EXPECT_TRUE(engine.Validate(nested, kInputFrom).ok());
 
-  EXPECT_TRUE(engine.ValidateTypedSlot(Value{"${ .enabled }"}, TypedSlot::kIf).ok());
-  EXPECT_TRUE(engine.ValidateTypedSlot(Value{"${ .payload }"}, TypedSlot::kInputFrom).ok());
-  EXPECT_TRUE(engine.ValidateTypedSlot(Value{"${ .result }"}, TypedSlot::kTaskOutput).ok());
+  EXPECT_TRUE(engine.Validate(Value{"${ .enabled }"}, kIf).ok());
+  EXPECT_TRUE(engine.Validate(Value{"${ .payload }"}, kInputFrom).ok());
+  EXPECT_TRUE(engine.Validate(Value{"${ { token: .token } }"}, kTaskExport).ok());
   EXPECT_TRUE(
-      engine.ValidateTypedSlot(Value{"${ { token: .token } }"}, TypedSlot::kTaskExport).ok());
-  EXPECT_TRUE(engine
-                  .ValidateTypedSlot(Value{Value::Object{{"id", Value{"${ .payload.id }"}}}},
-                                     TypedSlot::kInputFrom)
-                  .ok());
+      engine.Validate(Value{Value::Object{{"id", Value{"${ .payload.id }"}}}}, kInputFrom).ok());
+
+  // A partial wrapper or an unparsable program stays malformed in every slot.
+  EXPECT_FALSE(engine.Validate(Value{"job-${ .id }"}, kInputFrom).ok());
+  EXPECT_FALSE(engine.Validate(Value{"${ .x("}, kTaskExport).ok());
 }
 
 TEST(ExpressionEngineTest, SwitchWhenRequiresAWholeValueExpression) {
   ExpressionEngine engine(test::JqEvaluatorConfig());
 
-  EXPECT_FALSE(
-      engine.ValidateTypedSlot(Value{".orderType == \"electronic\""}, TypedSlot::kSwitchWhen).ok());
-  EXPECT_FALSE(engine.ValidateTypedSlot(Value{"${ .orderType( }"}, TypedSlot::kSwitchWhen).ok());
-  EXPECT_TRUE(
-      engine.ValidateTypedSlot(Value{"${ .orderType == \"electronic\" }"}, TypedSlot::kSwitchWhen)
-          .ok());
+  EXPECT_FALSE(engine.Validate(Value{".orderType == \"electronic\""}, kSwitchWhen).ok());
+  EXPECT_FALSE(engine.Validate(Value{"${ .orderType( }"}, kSwitchWhen).ok());
+  EXPECT_TRUE(engine.Validate(Value{"${ .orderType == \"electronic\" }"}, kSwitchWhen).ok());
 }
 
 TEST(ExpressionEngineTest, SwitchWhenBindsOnlyTheContext) {
@@ -184,21 +187,20 @@ TEST(ExpressionEngineTest, SwitchWhenBindsOnlyTheContext) {
   const auto context = *utils::Jv::Parse(R"({"token":"abc"})");
   const ExpressionArguments arguments{.context = &context};
 
-  auto result = engine.EvaluateTypedSlot(Value{"${ $context.token }"}, TypedSlot::kSwitchWhen,
-                                         subject, arguments);
+  auto result = engine.Evaluate(Value{"${ $context.token }"}, kSwitchWhen, subject, arguments);
   ASSERT_TRUE(result.ok()) << result.status().message();
-  EXPECT_EQ(result->Dump(), R"("abc")");
+  EXPECT_EQ(::strij::openworkflow::ValueToJv(*result).Dump(), R"("abc")");
 
-  EXPECT_FALSE(engine.ValidateTypedSlot(Value{"${ $input }"}, TypedSlot::kSwitchWhen).ok());
+  EXPECT_FALSE(engine.Validate(Value{"${ $input }"}, kSwitchWhen).ok());
 }
 
-TEST(ExpressionEngineTest, TypedSlotEvaluationIsJsonFaithful) {
+TEST(ExpressionEngineTest, ValueSlotEvaluationIsJsonFaithful) {
   ExpressionEngine engine(test::JqEvaluatorConfig());
   const auto subject = *utils::Jv::Parse(R"({"name":"world"})");
 
-  auto result = engine.EvaluateTypedSlot(Value{"${ .name }"}, TypedSlot::kInputFrom, subject);
+  auto result = engine.Evaluate(Value{"${ .name }"}, kInputFrom, subject);
   ASSERT_TRUE(result.ok()) << result.status().message();
-  EXPECT_EQ(result->Dump(), R"("world")");
+  EXPECT_EQ(::strij::openworkflow::ValueToJv(*result).Dump(), R"("world")");
 }
 
 TEST(ExpressionEngineTest, TaskOutputSlotBindsInputAndOutput) {
@@ -207,12 +209,12 @@ TEST(ExpressionEngineTest, TaskOutputSlotBindsInputAndOutput) {
   const auto output = *utils::Jv::Parse(R"({"name":"pet"})");
   const auto context = *utils::Jv::Parse(R"({"token":"abc"})");
 
-  auto result = engine.EvaluateTypedSlot(
-      Value{"${ { before: $input, after: $output, token: $context.token } }"},
-      TypedSlot::kTaskOutput, output,
+  auto result = engine.Evaluate(
+      Value{"${ { before: $input, after: $output, token: $context.token } }"}, kTaskOutput, output,
       ExpressionArguments{.context = &context, .input = &input, .output = &output});
   ASSERT_TRUE(result.ok()) << result.status().message();
-  EXPECT_EQ(result->Dump(), R"({"after":{"name":"pet"},"before":{"id":7},"token":"abc"})");
+  EXPECT_EQ(::strij::openworkflow::ValueToJv(*result).Dump(),
+            R"({"after":{"name":"pet"},"before":{"id":7},"token":"abc"})");
 }
 
 TEST(ExpressionEngineTest, TaskExportSlotRunsAgainstShapedOutput) {
@@ -221,12 +223,13 @@ TEST(ExpressionEngineTest, TaskExportSlotRunsAgainstShapedOutput) {
   const auto output = *utils::Jv::Parse(R"({"token":"abc"})");
   const auto context = *utils::Jv::Parse(R"({"previous":true})");
 
-  auto result = engine.EvaluateTypedSlot(
+  auto result = engine.Evaluate(
       Value{"${ $context + { token: .token, before: $input.id, after: $output.token } }"},
-      TypedSlot::kTaskExport, output,
+      kTaskExport, output,
       ExpressionArguments{.context = &context, .input = &input, .output = &output});
   ASSERT_TRUE(result.ok()) << result.status().message();
-  EXPECT_EQ(result->Dump(), R"({"after":"abc","before":7,"previous":true,"token":"abc"})");
+  EXPECT_EQ(::strij::openworkflow::ValueToJv(*result).Dump(),
+            R"({"after":"abc","before":7,"previous":true,"token":"abc"})");
 }
 
 TEST(ExpressionEngineTest, UndeclaredDescriptorArgumentIsRejected) {
@@ -234,9 +237,8 @@ TEST(ExpressionEngineTest, UndeclaredDescriptorArgumentIsRejected) {
   auto subject = utils::Jv::Parse("null");
   ASSERT_TRUE(subject.ok());
 
-  EXPECT_FALSE(engine.ValidateTypedSlot(Value{"${ $task }"}, TypedSlot::kIf).ok());
-  EXPECT_FALSE(
-      engine.EvaluateTypedSlot(Value{"${ $runtime }"}, TypedSlot::kInputFrom, *subject).ok());
+  EXPECT_FALSE(engine.Validate(Value{"${ $task }"}, kIf).ok());
+  EXPECT_FALSE(engine.Evaluate(Value{"${ $runtime }"}, kInputFrom, *subject).ok());
 }
 
 TEST(ExpressionEngineLocalTest, ADeclaredLocalIsVisibleAndAbsentOtherwise) {
@@ -250,8 +252,8 @@ TEST(ExpressionEngineLocalTest, ADeclaredLocalIsVisibleAndAbsentOtherwise) {
   ASSERT_TRUE(visible.ok()) << visible.status().message();
   EXPECT_EQ(visible->Dump(), R"("red")");
 
-  auto evaluated =
-      engine.Evaluate(Value{Value::Object{{"color", Value{"${ $item }"}}}}, subject, arguments);
+  auto evaluated = engine.Evaluate(Value{Value::Object{{"color", Value{"${ $item }"}}}}, kValue,
+                                   subject, arguments);
   ASSERT_TRUE(evaluated.ok()) << evaluated.status().message();
   EXPECT_EQ(evaluated->AsObject().at("color").AsString(), "red");
 
@@ -276,12 +278,12 @@ TEST(ExpressionEngineLocalTest, TheFirstLocalWithANameShadowsLaterOnes) {
 
 TEST(ExpressionEngineForSlotsTest, ForInAndWhileRequireWrappedExpressions) {
   ExpressionEngine engine(test::JqEvaluatorConfig());
-  for (TypedSlot slot : {TypedSlot::kForIn, TypedSlot::kForWhile}) {
-    EXPECT_FALSE(engine.ValidateTypedSlot(Value{".colors"}, slot).ok());
-    EXPECT_FALSE(engine.ValidateTypedSlot(Value{"${ .colors( }"}, slot).ok());
-    EXPECT_TRUE(engine.ValidateTypedSlot(Value{"${ .colors }"}, slot).ok());
-    EXPECT_FALSE(engine.ValidateTypedSlot(Value{"${ $input }"}, slot).ok());
-    EXPECT_FALSE(engine.ValidateTypedSlot(Value{"${ $output }"}, slot).ok());
+  for (const ExpressionSlot& slot : {kForIn, kForWhile}) {
+    EXPECT_FALSE(engine.Validate(Value{".colors"}, slot).ok());
+    EXPECT_FALSE(engine.Validate(Value{"${ .colors( }"}, slot).ok());
+    EXPECT_TRUE(engine.Validate(Value{"${ .colors }"}, slot).ok());
+    EXPECT_FALSE(engine.Validate(Value{"${ $input }"}, slot).ok());
+    EXPECT_FALSE(engine.Validate(Value{"${ $output }"}, slot).ok());
   }
 }
 
@@ -292,22 +294,19 @@ TEST(ExpressionEngineForSlotsTest, ForSlotsBindLocalsButNotInputOrOutput) {
   const ExpressionLocal local{.name_ = "color", .value_ = &color};
   const ExpressionArguments arguments{.locals = std::span(&local, 1)};
 
-  auto collection = engine.EvaluateTypedSlot(Value{"${ [.colors[], $color] }"}, TypedSlot::kForIn,
-                                             subject, arguments);
+  auto collection = engine.Evaluate(Value{"${ [.colors[], $color] }"}, kForIn, subject, arguments);
   ASSERT_TRUE(collection.ok()) << collection.status().message();
-  EXPECT_EQ(collection->Dump(), R"(["red","red"])");
+  EXPECT_EQ(::strij::openworkflow::ValueToJv(*collection).Dump(), R"(["red","red"])");
 
-  auto predicate = engine.EvaluateTypedSlot(Value{"${ $color == \"red\" }"}, TypedSlot::kForWhile,
-                                            subject, arguments);
+  auto predicate = engine.Evaluate(Value{"${ $color == \"red\" }"}, kForWhile, subject, arguments);
   ASSERT_TRUE(predicate.ok()) << predicate.status().message();
-  EXPECT_EQ(predicate->Dump(), "true");
+  EXPECT_EQ(::strij::openworkflow::ValueToJv(*predicate).Dump(), "true");
 
-  auto non_boolean =
-      engine.EvaluateTypedSlot(Value{"${ 1 }"}, TypedSlot::kForWhile, subject, arguments);
+  auto non_boolean = engine.Evaluate(Value{"${ 1 }"}, kForWhile, subject, arguments);
   ASSERT_TRUE(non_boolean.ok()) << non_boolean.status().message();
-  EXPECT_EQ(non_boolean->Dump(), "1");
+  EXPECT_EQ(::strij::openworkflow::ValueToJv(*non_boolean).Dump(), "1");
 
-  EXPECT_TRUE(engine.ValidateTypedSlot(Value{"${ $color }"}, TypedSlot::kForIn, arguments).ok());
+  EXPECT_TRUE(engine.Validate(Value{"${ $color }"}, kForIn, arguments).ok());
 }
 
 TEST(LoopVariableNormalizationTest, DefaultsAndBothSpellingsNormalizeToBareNames) {

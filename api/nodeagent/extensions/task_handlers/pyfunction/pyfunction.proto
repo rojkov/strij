@@ -1,0 +1,120 @@
+syntax = "proto3";
+
+package strij.extensions.task_handlers.pyfunction;
+
+import "common/node/capabilities.proto";
+import "google/protobuf/duration.proto";
+
+// Operator configuration for the bundled `pyfunction` handler.
+message PyFunctionTaskHandlerConfig {
+  // Number of worker processes and maximum in-flight pyfunction tasks.
+  strij.node.HandlerCapacity capacity = 1;
+
+  // Interpreter used when `worker_module` is configured ("python3" when unset).
+  string python_executable = 2;
+
+  // Installed module to run as `python -m <worker_module>` (for example
+  // `strij._worker`). Mutually exclusive with `worker_executable`.
+  string worker_module = 3;
+
+  // Pre-built worker launcher (for example the Bazel py_binary). Mutually
+  // exclusive with `worker_module`.
+  string worker_executable = 4;
+
+  // Directories prepended to PYTHONPATH for the worker.
+  repeated string python_paths = 5;
+
+  // Maximum time from spawn to the Ready handshake. Zero uses the 30 s default.
+  google.protobuf.Duration startup_timeout = 6;
+
+  // Maximum task wall time. Zero (the default) disables the timeout.
+  google.protobuf.Duration task_timeout = 7;
+
+  // Maximum time a worker waits for a nested remote call. Zero uses the 300 s
+  // default.
+  google.protobuf.Duration remote_call_timeout = 8;
+
+  // Largest accepted protocol frame. Required and must be greater than zero.
+  uint64 max_frame_bytes = 9;
+}
+
+enum InvocationMode {
+  INVOCATION_MODE_UNSPECIFIED = 0;
+  // Reference/JSON mode: `function` is `embedded:<entry>` or
+  // `module:<module>:<qualname>` and `body` is a JSON object.
+  INVOCATION_MODE_JSON = 1;
+  // Pickle mode: `body` is a cloudpickle-serialized versioned Invocation.
+  INVOCATION_MODE_PICKLE = 2;
+}
+
+// Handler -> worker handshake. `version` must match the worker's protocol
+// version.
+message Hello {
+  uint32 version = 1;
+}
+
+// Worker -> handler response to Hello.
+message Ready {
+  uint32 pid = 1;
+  uint32 version = 2;
+}
+
+// Handler -> worker: execute one task.
+message Run {
+  string task_id = 1;
+  InvocationMode mode = 2;
+  // Set only in JSON mode.
+  string function = 3;
+  map<string, string> parameters = 4;
+  // Opaque to the handler: JSON object (JSON mode) or pickled Invocation
+  // (pickle mode).
+  bytes body = 5;
+}
+
+// Worker -> handler: one task result. This change sends exactly one final
+// chunk, but is_final leaves room for streaming later.
+message RunResult {
+  string task_id = 1;
+  bytes body = 2;
+  bool is_final = 3;
+  // Numeric strij.task.TaskStatus. Kept as an integer so this internal
+  // protocol has a single proto import root (see BUILD.bazel).
+  uint32 status = 4;
+  string reason = 5;
+}
+
+// Worker -> handler: a nested remote call. `invocation` is the opaque
+// pickle-mode child body and `parameters` carries the child task parameters
+// (for example `function` in JSON mode).
+message RemoteCall {
+  string call_id = 1;
+  bytes invocation = 2;
+  map<string, uint64> requirements = 3;
+  map<string, string> parameters = 4;
+}
+
+// Handler -> worker: the outcome of a remote call, routed back to the waiting
+// ref.
+message RemoteResult {
+  string call_id = 1;
+  bytes body = 2;
+  bool is_final = 3;
+  uint32 status = 4;
+  string reason = 5;
+}
+
+message Shutdown {
+}
+
+// One length-prefixed frame on the dedicated protocol pipe.
+message WorkerFrame {
+  oneof frame {
+    Hello hello = 1;
+    Ready ready = 2;
+    Run run = 3;
+    RunResult run_result = 4;
+    RemoteCall remote_call = 5;
+    RemoteResult remote_result = 6;
+    Shutdown shutdown = 7;
+  }
+}

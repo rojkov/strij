@@ -10,7 +10,7 @@ The change plugs into existing seams rather than adding new routing:
 - `piped_executable` is the lifecycle template for `posix_spawn`, `pipe2`, pidfd polling, stderr logging, and deferred deletion.
 - Handlers are shared across connections and run on the single event-loop thread. `Task.body` is opaque bytes, and `capacity.concurrency` is already advertised through `ParseConfig`.
 
-Constraints: Python 3 is available in the environment but cloudpickle is not; `rules_python` is declared but the repo has no Python package, pip integration, or Python tests yet. The nodeagent binary supports `data` dependencies, and the e2e harness resolves data dependencies through runfiles.
+Constraints: Python 3 is available in the environment but cloudpickle and the protobuf Python runtime are not installed; `rules_python` is declared but the repo has no Python package, pip integration, or Python tests yet. The Bazel `protobuf` module provides `@protobuf//:protobuf_python` and `py_proto_library`, so the worker's protobuf runtime can come from Bazel rather than pip. The nodeagent binary supports `data` dependencies, and the e2e harness resolves data dependencies through runfiles.
 
 Behavioral requirements are in `specs/pyfunction-task-handler/spec.md` and `specs/pyfunction-sdk/spec.md`.
 
@@ -25,7 +25,7 @@ Behavioral requirements are in `specs/pyfunction-task-handler/spec.md` and `spec
 
 **Non-Goals:**
 
-- An object store, non-blocking object refs, or dependency-aware scheduling (Stage 2/3).
+- An object store, non-blocking object refs, or dependency-aware scheduling.
 - Cancellation of already-running Python beyond killing the worker.
 - Automatic retries, multi-return, or streaming results.
 - Non-Python SDKs or changes to the gateway wire protocol.
@@ -49,7 +49,7 @@ Consequence: on a single node, nested calls need `concurrency` headroom. With ev
 
 Each slot owns one Python process, spawned with `posix_spawn` on the bootstrap path. The protocol uses a dedicated pipe pair, not stdin/stdout, so user `print()` cannot corrupt frames. Worker stdout and stderr go to the node log stream; the handler reads stderr through io_uring and never forwards it as result data. Exit is detected with a pidfd and reaped with `waitpid(WNOHANG)` after the poll fires.
 
-The worker boundary stays language-agnostic: framed messages over pipes, one task at a time, opaque payloads. An embedded C++ worker can replace the Python process later.
+The worker boundary stays language-agnostic: framed messages over pipes, one task at a time, opaque payloads. An embedded C++ worker can replace the Python process later; it would decode the same frames with the C++ protobuf library and would no longer need a Python protobuf runtime.
 
 ### D3: Length-prefixed protobuf protocol
 
@@ -58,12 +58,14 @@ Each frame is a 4-byte length prefix followed by a serialized protobuf message. 
 ```
 handler -> worker: Hello(version) | Run(task_id, mode, function, parameters, body)
                    | RemoteResult(call_id, body, is_final, status, reason)
-                   | Cancel(task_id) | Shutdown
+                   | Shutdown
 worker -> handler: Ready(pid, version) | RunResult(task_id, body, is_final, status, reason)
                    | RemoteCall(call_id, invocation, requirements, parameters)
 ```
 
-The handler never parses the invocation payload. `Run` carries the mode (`json` or `pickle`) and the optional function reference; the worker owns all Python semantics. `RunResult` supports `is_final` chunks for a future streaming extension, but v1 sends one final chunk.
+The handler never parses the invocation payload. `Run` carries the mode (`json` or `pickle`) and the optional function reference; the worker owns all Python semantics. `RunResult` supports `is_final` chunks for a future streaming extension, but this change sends one final chunk.
+
+The Python worker decodes and encodes these frames with generated `*_pb2` modules plus the protobuf Python runtime, making `protobuf` the worker's second Python dependency after `cloudpickle`. The `body` and `invocation` fields stay opaque bytes and are never parsed by the handler. A future embedded C++ worker would decode the same frames with the C++ protobuf library and drop the Python protobuf dependency.
 
 Alternatives considered: reusing the TLV wire format (its type ids are global and its 4 KiB read-buffer machinery is tuned for connections) and newline-delimited JSON (base64 overhead, no schema). A dedicated framed protobuf stream is smaller and keeps the internal protocol separate from the gateway wire.
 
@@ -109,9 +111,9 @@ Alternatives considered: direct worker-to-worker transport (no cross-node story 
 ```
 
 - Workers are spawned eagerly per slot at handler creation. A task assigned to a starting worker holds the slot until `Ready`.
-- `startup_timeout` (proposed 30 s) retires a worker that never becomes ready.
-- `task_timeout` (proposed 0, disabled) kills a worker and delivers `DEADLINE_EXCEEDED`; Python cannot be interrupted safely, so killing is the only hard stop.
-- `remote_call_timeout` (proposed 300 s) resolves a pending worker call with an error, so a lost child cannot pin a slot forever.
+- `startup_timeout` (default 30 s) retires a worker that never becomes ready.
+- `task_timeout` (default 0, disabled) kills a worker and delivers `DEADLINE_EXCEEDED`; Python cannot be interrupted safely, so killing is the only hard stop.
+- `remote_call_timeout` (default 300 s) resolves a pending worker call with an error, so a lost child cannot pin a slot forever.
 - A crash fails the in-flight task with `INTERNAL`, drops outstanding remote-call receivers, and respawns. The task is not retried automatically because side effects are not idempotent.
 - A client disconnect kills the running worker, drops its result, and frees the slot, mirroring `piped_executable`.
 
@@ -127,7 +129,7 @@ The `strij` package exposes `init`, `remote`, `RemoteRef`, and `RemoteError`. A 
 
 The decorator is identical in both contexts. `fn.remote(...)` returns a `RemoteRef`; `.get()` awaits it. The worker runtime serializes frame writes so calls from multiple threads inside a task are safe.
 
-Eager ref resolution happens while building the invocation: the runtime walks positional and keyword arguments, resolves `RemoteRef` values recursively, including inside lists/tuples/dicts, and then serializes. This is Stage 1: the callee receives values, matching Ray's default argument behavior. A foreign or unreachable ref raises before submission. Returning a ref from a task fails with a clear error. The object-store follow-up (Stage 2/3) can introduce a real object id later; v1 refs remain local and are never serialized.
+Eager ref resolution happens while building the invocation: the runtime walks positional and keyword arguments, resolves `RemoteRef` values recursively, including inside lists/tuples/dicts, and then serializes. The callee receives values, matching Ray's default argument behavior. A foreign or unreachable ref raises before submission. Returning a ref from a task fails with a clear error. A future object-store follow-up can introduce a real object id later; refs in this change remain local and are never serialized.
 
 The invocation envelope carries an explicit version so a future ref-aware encoding is distinguishable.
 
@@ -135,11 +137,13 @@ The invocation envelope carries an explicit version so a future ref-aware encodi
 
 The `strij` sources live under `python/strij/` and are shared by both consumers:
 
-- **Worker**: Bazel `py_library` + `py_binary`, with cloudpickle vendored under `third_party/python/cloudpickle` (consistent with the existing vendored `SPSCQueue.h`). The nodeagent binary carries the worker as a `data` dependency and resolves it through runfiles. The handler also accepts an installed `python_executable` + `worker_module` for operators who do not deploy runfiles.
-- **Client**: a `pyproject.toml` package declaring `cloudpickle` as a normal PyPI dependency. Users install it; the worker's vendored copy is an implementation detail.
-- **CI/tests**: Bazel Python tests run hermetically against the vendored copy; the real-Python e2e suite skips with an explanatory message when Python or cloudpickle is unavailable, following the existing capability-probe pattern.
+- **Worker**: Bazel `py_library` + `py_binary`, with cloudpickle vendored under `third_party/python/cloudpickle` (consistent with the existing vendored `SPSCQueue.h`) and the protobuf runtime supplied by the Bazel protobuf module (`@protobuf//:protobuf_python`) together with generated `py_proto_library` modules. Both are carried through runfiles, so the worker needs no pip install. The nodeagent binary carries the worker as a `data` dependency and resolves it through runfiles. The handler also accepts an installed `python_executable` + `worker_module` for operators who do not deploy runfiles.
+- **Client**: a `pyproject.toml` package declaring `cloudpickle` and `protobuf` as normal PyPI dependencies, with `protobuf` pinned to the runtime version generated by the Bazel module. Users install it; the worker's vendored and Bazel-provided copies are implementation details.
+- **CI/tests**: Bazel Python tests run hermetically against the vendored cloudpickle and the Bazel-provided protobuf runtime; the real-Python e2e suite skips with an explanatory message when Python, cloudpickle, or protobuf is unavailable, following the existing capability-probe pattern.
 
-Alternatives considered: a pip-installed worker everywhere (simpler on paper, but `bazel test` would depend on host state) and a fully hermetic rules_python toolchain plus pip/wheel repositories (most reproducible, but the largest build change and a consumer-module cost). Option B keeps `bazel test` meaningful while giving users a normal package.
+Alternatives considered: a pip-installed worker everywhere (simpler on paper, but `bazel test` would depend on host state) and a fully hermetic rules_python toolchain plus pip/wheel repositories (most reproducible, but the largest build change and a consumer-module cost). The chosen split — a Bazel-built worker from in-repo sources plus a normal PyPI client package — keeps `bazel test` meaningful while giving users a normal package.
+
+A future C++ worker linked against libpython replaces the Python process: it decodes the same frames with the C++ protobuf library, so it drops the Python protobuf runtime dependency without changing the protocol, handler, or task contract.
 
 ### D9: Error mapping
 
@@ -165,10 +169,11 @@ The client maps the inverse HTTP statuses back to these codes for `RemoteError`.
 - **`round_robin` can route to a node without the handler** -> Recommend `capability_aware` for `pyfunction`; keep the remote-call timeout so a dropped submission does not pin the parent.
 - **Worker crash loses the task** -> At-most-once semantics; no automatic retry; `INTERNAL` surfaces the failure.
 - **A hung task occupies a slot forever** -> Offer `task_timeout`; zero keeps the Ray-like behavior, and operators can set a bound.
-- **Eager ref resolution blocks the caller** -> Same slot/exhaustion rules as `.get()`; Stage 2/3 can add non-blocking object refs.
+- **Eager ref resolution blocks the caller** -> Same slot/exhaustion rules as `.get()`; a future object store can add non-blocking object refs.
 - **Pickle trust and version skew** -> Treat submission as trusted cluster input, version the envelope, and keep client and worker cloudpickle copies compatible.
 - **Large inline payloads** -> Enforce `max_frame_bytes`; a future object store moves large values out of the task body.
 - **Vendored cloudpickle diverges from the client's PyPI copy** -> Pin one version range in both places and test round-trips across both copies.
+- **Protobuf runtime version skew** -> Take the worker runtime from the Bazel protobuf module, pin the client's PyPI `protobuf` to the matching version, and rely on generated-module runtime validation so a mismatch fails at import rather than on the wire.
 - **Worker user output corrupts the protocol** -> Dedicated protocol fds; redirect `sys.stdout` to the log stream in the bootstrap.
 - **Runfiles deployment** -> Provide the installed `python_executable` + `worker_module` configuration path for production.
 - **Python worker and sanitizer jobs** -> C++ tests use a fake worker; real-Python e2e skips when unavailable; ASan/TSan never instrument the Python interpreter.
@@ -179,4 +184,4 @@ The capability is additive. Existing nodeagent configurations remain valid; a no
 
 ## Open Questions
 
-None. The slot model, invocation modes, ref-resolution stage, worker implementation, and packaging boundary are settled; remaining choices (exact default timeouts and the vendored cloudpickle pin) are configuration and implementation details, not architectural unknowns.
+None. The slot model, invocation modes, ref-resolution behavior, worker implementation, and packaging boundary are settled; remaining choices (the vendored cloudpickle pin and the protobuf runtime pin) are configuration and implementation details, not architectural unknowns.

@@ -18,6 +18,7 @@ TEST(BundledExtensionsTest, FactoriesAreRegistered) {
   EXPECT_NE(handlers.GetFactory("echo"), nullptr);
   EXPECT_NE(handlers.GetFactory("openworkflow"), nullptr);
   EXPECT_NE(handlers.GetFactory("piped_executable"), nullptr);
+  EXPECT_NE(handlers.GetFactory("pyfunction"), nullptr);
 
   auto& schedulers = extensions::Registry<NodeSchedulerFactory>::instance();
   EXPECT_NE(schedulers.GetFactory("default"), nullptr);

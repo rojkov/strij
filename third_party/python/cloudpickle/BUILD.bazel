@@ -1,0 +1,17 @@
+load("@rules_python//python:defs.bzl", "py_library")
+
+# Vendored cloudpickle 3.1.1 (see LICENSE). Kept in-tree, like the vendored
+# SPSCQueue.h, so `bazel test` does not depend on host-installed Python
+# packages. The client package (python/pyproject.toml) declares the matching
+# PyPI dependency.
+py_library(
+    name = "cloudpickle_lib",
+    srcs = [
+        "__init__.py",
+        "cloudpickle.py",
+    ],
+    # `..` is third_party/python; it makes the package importable as
+    # `cloudpickle` rather than `third_party.python.cloudpickle`.
+    imports = [".."],
+    visibility = ["//visibility:public"],
+)

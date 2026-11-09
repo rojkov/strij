@@ -1,0 +1,26 @@
+load("@rules_python//python:defs.bzl", "py_binary", "py_library")
+
+# The client package and the worker runtime share these sources. `imports`
+# adds `python/` (the runfiles-package directory) to PYTHONPATH so callers say
+# `import strij`, not `import python.strij`.
+py_library(
+    name = "strij_lib",
+    srcs = glob(["strij/*.py", "strij/_proto/*.py"]),
+    imports = ["."],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//third_party/python/cloudpickle:cloudpickle_lib",
+        "@protobuf//:protobuf_python",
+    ],
+)
+
+# The nodeagent carries this launcher as a `data` dependency and can be pointed
+# at it through `worker_executable`. Running it as `python -m strij._worker`
+# works too when the package is installed.
+py_binary(
+    name = "worker",
+    srcs = ["strij/_worker.py"],
+    main = "strij/_worker.py",
+    visibility = ["//visibility:public"],
+    deps = [":strij_lib"],
+)

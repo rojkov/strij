@@ -381,9 +381,9 @@ The first terminal branch outcome that is a failure SHALL fail the workflow with
 - **WHEN** a fork with `compete: true` has its first terminal outcome be a branch failure, even though another branch might succeed later
 - **THEN** the workflow fails with that branch's status, naming the branch
 
-### Requirement: Expression-typed slots accept only whole-value wrapped expressions
+### Requirement: Expression-only slots accept only whole-value wrapped expressions
 
-For the expression-typed slots — a task's `if`, a task's `input.from`, a task's `output.as`, a task's `export.as`, a `switch` case's `when`, a `for` task's `while`, the string form of a `for` task's `in`, the document's `input.from`, and the document's `output.as` — the system SHALL treat only a string wholly wrapped in `${ }` as an expression. A bare string in one of these slots SHALL be rejected as a malformed document rather than treated as literal text. When the slot uses an object form, each nested string member SHALL follow the same rule. Literal-capable value slots, such as a call's `with` values, a `set` task's data, a non-string `for.in` value, and task `metadata`, SHALL retain the literal-text rule; a bare string in a `set` value or an inline `for.in` array is literal text.
+For the expression-only slots — a task's `if`, a `switch` case's `when`, a `for` task's `while`, and the string form of a `for` task's `in` — the system SHALL treat only a string wholly wrapped in `${ }` as an expression. A bare string in one of these slots SHALL be rejected as a malformed document rather than treated as literal text. These slots exist to produce a single typed result, so literal text is never a meaningful value in them.
 
 #### Scenario: Bare condition is malformed
 
@@ -393,21 +393,6 @@ For the expression-typed slots — a task's `if`, a task's `input.from`, a task'
 #### Scenario: Bare switch condition is malformed
 
 - **WHEN** a switch case declares `when: .orderType == "electronic"`
-- **THEN** the workflow fails with a malformed-document error and no child task is submitted
-
-#### Scenario: Bare input transformation is malformed
-
-- **WHEN** a task declares `input.from: .payload`
-- **THEN** the workflow fails with a malformed-document error and no child task is submitted
-
-#### Scenario: Bare output transformation is malformed
-
-- **WHEN** a task declares `output.as: .result`
-- **THEN** the workflow fails with a malformed-document error and no child task is submitted
-
-#### Scenario: Bare export transformation is malformed
-
-- **WHEN** a task declares `export: { as: .result }`
 - **THEN** the workflow fails with a malformed-document error and no child task is submitted
 
 #### Scenario: Bare for collection is malformed
@@ -420,20 +405,63 @@ For the expression-typed slots — a task's `if`, a task's `input.from`, a task'
 - **WHEN** a `for` task declares `while: .vet != null`
 - **THEN** the workflow fails with a malformed-document error and no child task is submitted
 
-#### Scenario: Nested object member must be wrapped
+#### Scenario: Wrapped expression-only slots are accepted
 
-- **WHEN** a task declares `input.from: { id: .payload.id }`
-- **THEN** the workflow fails with a malformed-document error and no child task is submitted
-
-#### Scenario: Wrapped forms are accepted
-
-- **WHEN** a task declares `if: '${ .enabled }'`, `input.from: '${ .payload }'`, `output.as: '${ .result }'`, and `export.as: '${ { token: .token } }'`, and a switch case declares `when: '${ .orderType == "electronic" }'`
+- **WHEN** a task declares `if: '${ .enabled }'`, a switch case declares `when: '${ .orderType == "electronic" }'`, and a `for` task declares `in: '${ .colors }'` and `while: '${ .vet != null }'`
 - **THEN** the document parses, validates, and executes those slots as expressions
 
-#### Scenario: Literal value slots are unaffected
+### Requirement: Value-construction slots accept literal text alongside expressions
 
-- **WHEN** a call's `with` value, a `set` value, or an inline `for.in` array element is the unwrapped string `/bin/task.sh`
-- **THEN** it remains literal text and is not treated as an expression
+The value-construction slots — a task's `input.from`, `output.as`, and `export.as`, the document's `input.from`, and the document's `output.as` — SHALL be literal-capable value trees. A string wholly wrapped in `${ }` SHALL be evaluated, a bare string SHALL stay literal text, a non-string scalar SHALL be used as that value, and arrays and objects SHALL recurse into their members while preserving structure and keys.
+
+#### Scenario: Literal member stays literal
+
+- **WHEN** a task declares `input.from: { content_type: "application/json", mode: "batch" }`
+- **THEN** the transformed input is the object with those literal string values
+
+#### Scenario: Literal source text and an expression member mix
+
+- **WHEN** a task declares an `input.from` object whose `python_code` member is a literal multi-line string and whose `input` member is `'${ .value }'`
+- **THEN** the transformed input carries the literal source text unchanged and the evaluated value of `.value` as its `input` member
+
+#### Scenario: Literal root string is a JSON string
+
+- **WHEN** a task declares `input.from: hello`
+- **THEN** the transformed input is the JSON string `"hello"`, not the opaque bytes `hello`
+
+#### Scenario: Wrapped member is evaluated
+
+- **WHEN** a task declares `input.from: { id: '${ .payload.id }' }`
+- **THEN** the `id` member is the evaluated value from the payload
+
+#### Scenario: Partial wrapper is malformed
+
+- **WHEN** a task declares `input.from: { name: 'job-${ .id }' }`
+- **THEN** the workflow fails with a malformed-document error and no child task is submitted
+
+#### Scenario: Malformed expression fails before submitting
+
+- **WHEN** a value-construction slot contains a `${ }`-wrapped string that is not a valid program
+- **THEN** the workflow fails in the pre-execution validation pass with a malformed-document error and no child task is submitted
+
+### Requirement: A value-construction slot requires a JSON subject only when it contains an expression
+
+A value-construction slot that contains no expression SHALL be evaluated without a JSON subject, even when the value it would otherwise transform is opaque bytes. A value-construction slot that contains an expression SHALL require its expression subject to be JSON, and SHALL fail the step during execution with a subject error naming the step when it is not.
+
+#### Scenario: Literal-only input transformation over opaque input
+
+- **WHEN** a task whose raw input is opaque bytes declares `input.from: { mode: "batch" }`
+- **THEN** the transformed input is that literal object and no subject error occurs
+
+#### Scenario: Literal-only output transformation over opaque output
+
+- **WHEN** a step whose raw output is opaque bytes declares `output.as: { normalized: true }`
+- **THEN** the transformation succeeds without a subject error
+
+#### Scenario: Expression over opaque output fails
+
+- **WHEN** a step whose raw output is opaque bytes declares `output.as: '${ .value }'`
+- **THEN** the workflow fails during execution with a subject error naming the step
 
 ### Requirement: A task condition controls whether the step runs
 
@@ -510,7 +538,7 @@ When a task declares `input.from`, the system SHALL evaluate it against the raw 
 
 ### Requirement: Task output.as transforms the step's raw output
 
-When a completed `call`, `do`, `for`, or `fork` step declares `output.as`, the system SHALL evaluate it against the step's raw output and use its JSON-faithful result as the data value for the following step. The raw output SHALL be the expression subject; `$output` SHALL name that same raw output, and `$input` SHALL name the step's transformed input. When the step declares no `output.as`, its raw output SHALL become the data value. A declared `output.as` SHALL require both the transformed input and the raw output to be JSON; if either is opaque, the step SHALL fail during execution with a subject error naming the step.
+When a completed `call`, `do`, `for`, or `fork` step declares `output.as`, the system SHALL evaluate it against the step's raw output and use its JSON-faithful result as the data value for the following step. The raw output SHALL be the expression subject; `$output` SHALL name that same raw output, and `$input` SHALL name the step's transformed input. When the step declares no `output.as`, its raw output SHALL become the data value. A declared `output.as` that contains an expression SHALL require both the transformed input and the raw output to be JSON; if either is opaque, the step SHALL fail during execution with a subject error naming the step. A declared `output.as` that contains no expression SHALL be evaluated without a JSON subject.
 
 #### Scenario: Call output is shaped
 
@@ -544,12 +572,12 @@ When a completed `call`, `do`, `for`, or `fork` step declares `output.as`, the s
 
 #### Scenario: Output transformation over opaque output fails
 
-- **WHEN** a step declares `output.as` and its raw output is not JSON
+- **WHEN** a step declares an `output.as` that contains an expression and its raw output is not JSON
 - **THEN** the workflow fails during execution with an error stating the subject is not JSON and naming the step
 
 #### Scenario: Output transformation over opaque input fails
 
-- **WHEN** a step declares `output.as` and its transformed input is not JSON
+- **WHEN** a step declares an `output.as` that contains an expression and its transformed input is not JSON
 - **THEN** the workflow fails during execution with an error stating the input is not JSON and naming the step
 
 #### Scenario: Malformed output transformation fails before submitting
@@ -559,7 +587,7 @@ When a completed `call`, `do`, `for`, or `fork` step declares `output.as`, the s
 
 ### Requirement: Document output.as transforms the workflow's final output
 
-When a workflow completes successfully and the document declares `output.as`, the system SHALL evaluate it against the last transformed data value and use its JSON-faithful result as the final result body. The last data value SHALL be the expression subject, and `$context` SHALL be present with the current workflow context. When the document declares no `output.as`, the last data value SHALL be the final result body. A declared `output.as` over a final value that is not JSON SHALL fail the workflow during execution with a subject error.
+When a workflow completes successfully and the document declares `output.as`, the system SHALL evaluate it against the last transformed data value and use its JSON-faithful result as the final result body. The last data value SHALL be the expression subject, and `$context` SHALL be present with the current workflow context. When the document declares no `output.as`, the last data value SHALL be the final result body. A declared `output.as` that contains an expression over a final value that is not JSON SHALL fail the workflow during execution with a subject error. A declared `output.as` that contains no expression SHALL be evaluated without a JSON subject.
 
 #### Scenario: Document output shapes the final result
 
@@ -578,7 +606,7 @@ When a workflow completes successfully and the document declares `output.as`, th
 
 #### Scenario: Document output over non-JSON fails
 
-- **WHEN** the document declares `output.as` and the last data value is not JSON
+- **WHEN** the document declares an `output.as` that contains an expression and the last data value is not JSON
 - **THEN** the workflow fails during execution with an error stating the subject is not JSON
 
 #### Scenario: Malformed document output fails before submitting
@@ -590,7 +618,7 @@ When a workflow completes successfully and the document declares `output.as`, th
 
 When a task declares `export` with `as`, the system SHALL evaluate `export.as` against the step's transformed task output after the step's output transformation completes and before the next step begins. The transformed output SHALL be the expression subject; `$output` SHALL name that transformed output, `$input` SHALL name the step's transformed input, and `$context` SHALL name the current context. The result SHALL be a JSON object and SHALL replace the workflow context. A task with no `export`, or an `export` with no `as`, SHALL leave the context unchanged.
 
-`export.as` SHALL run only for a step that completed successfully and was not skipped by `if`. A failed or skipped step SHALL NOT export. It SHALL apply to `call`, `do`, `for`, and `fork` steps. A declared `export.as` SHALL require both the transformed input and the transformed output to be JSON; if either is opaque, the step SHALL fail during execution with a subject error naming the step. A result that is not a JSON object SHALL fail the step during execution.
+`export.as` SHALL run only for a step that completed successfully and was not skipped by `if`. A failed or skipped step SHALL NOT export. It SHALL apply to `call`, `do`, `for`, and `fork` steps. A declared `export.as` that contains an expression SHALL require both the transformed input and the transformed output to be JSON; if either is opaque, the step SHALL fail during execution with a subject error naming the step. A declared `export.as` that contains no expression SHALL be evaluated without a JSON subject. A result that is not a JSON object SHALL fail the step during execution.
 
 A task that declares `export` inside a fork branch SHALL be rejected during the pre-execution validation pass as unimplemented, because fork branches write concurrently and no context-combination semantics are defined. A `fork` task's own `export`, outside its branches, SHALL be supported, and a `for` body outside a fork branch MAY export on each iteration.
 
@@ -641,7 +669,7 @@ A task that declares `export` inside a fork branch SHALL be rejected during the 
 
 #### Scenario: Export over opaque values fails
 
-- **WHEN** a task declares `export.as` and its transformed input or transformed output is not JSON
+- **WHEN** a task declares an `export.as` that contains an expression and its transformed input or transformed output is not JSON
 - **THEN** the workflow fails during execution with an error stating the value is not JSON and naming the step
 
 #### Scenario: Export inside a fork branch is rejected
@@ -719,7 +747,7 @@ The directive SHALL run after the step's `output.as` and `export.as` effects. It
 
 A `switch` task SHALL evaluate its cases against the transformed task input. Cases that declare `when` SHALL be considered in declaration order, and the first case whose expression yields `true` SHALL select that case. A case without `when` SHALL be a fallback selected only if no conditional case matched. The selected case's `then` SHALL be the step's flow directive. If no case matches, the switch task's own `then` SHALL be used, or `continue` when it is absent. The switch task's raw output SHALL be its transformed task input, and `output.as`, `export.as`, and `then` SHALL apply through the ordinary step pipeline.
 
-A case `when` SHALL be an expression-typed slot and SHALL yield a boolean. A non-boolean result SHALL fail the step during execution, naming the task and case. When at least one case declares `when`, a non-JSON transformed input SHALL fail the step during execution with a subject error; a switch with no conditional case SHALL not require a JSON subject. Every case SHALL declare `then`, and a switch SHALL declare at most one case without `when`; violations SHALL be malformed documents rejected before execution.
+A case `when` SHALL be an expression-only slot and SHALL yield a boolean. A non-boolean result SHALL fail the step during execution, naming the task and case. When at least one case declares `when`, a non-JSON transformed input SHALL fail the step during execution with a subject error; a switch with no conditional case SHALL not require a JSON subject. Every case SHALL declare `then`, and a switch SHALL declare at most one case without `when`; violations SHALL be malformed documents rejected before execution.
 
 #### Scenario: The first matching case is selected
 
@@ -821,11 +849,11 @@ A `set` task SHALL evaluate its data against the transformed task input and use 
 
 A `for` task SHALL evaluate its `for.in` collection exactly once, against the task's transformed input, before its first iteration, and SHALL execute its `do` body once per element in declaration order. The first iteration SHALL begin with the task's transformed input; each completed iteration's data value SHALL seed the next; and the task's raw output SHALL be the accumulator after the final iteration. When the collection is empty, the raw output SHALL be the transformed input.
 
-`for.in` SHALL accept two forms. A string SHALL be an expression-typed slot: a whole-value `${ }` expression evaluated against the transformed input. A non-string SHALL be a literal-capable value tree evaluated against the transformed input: `${ }`-wrapped strings are evaluated, bare strings remain literal, and the resulting array is the collection. The evaluated collection SHALL be an array or `null`; an array is iterated in order, `null` produces zero iterations, and any other result SHALL fail the step during execution with a failure naming the task. An expression over a non-JSON transformed input SHALL fail the step with a subject error.
+`for.in` SHALL accept two forms. A string SHALL be an expression-only slot: a whole-value `${ }` expression evaluated against the transformed input. A non-string SHALL be a literal-capable value tree evaluated against the transformed input: `${ }`-wrapped strings are evaluated, bare strings remain literal, and the resulting array is the collection. The evaluated collection SHALL be an array or `null`; an array is iterated in order, `null` produces zero iterations, and any other result SHALL fail the step during execution with a failure naming the task. An expression over a non-JSON transformed input SHALL fail the step with a subject error.
 
 `for.each` and `for.at` SHALL name the current element and zero-based index. An absent, empty, or whitespace-only `each` defaults to `item`, and an absent, empty, or whitespace-only `at` defaults to `index`; a leading `$` on a declared name is not part of the variable name. The bound variables SHALL be expression bindings scoped to the body: visible to every expression in every task of the body, including nested `do`, `fork`, and `for` bodies, and preserved across a suspension. They SHALL NOT be visible in the `for` task's own `if`, `input.from`, `output.as`, `export.as`, or `then`; `for.in` SHALL observe only loop variables of enclosing loops. A nested `for` that reuses a name SHALL shadow the enclosing binding within its body. The declared names SHALL be valid identifiers and SHALL differ from each other and from the reserved `context`, `input`, and `output` names; a violation SHALL be a malformed document.
 
-After each completed iteration, if the task declares `while`, the system SHALL evaluate `while` against the accumulator, with the current loop variables and `$context` bound, and the result SHALL be a boolean. A false result SHALL stop iteration before the next element and leave the accumulator as the task's raw output. `while` SHALL be an expression-typed slot; a non-boolean result, a subject that is not JSON, or a malformed program SHALL fail the step as specified for expression slots. An `end` flow directive inside the body SHALL conclude the workflow immediately and skip the `for` task's own `output.as`, `export.as`, and `then`; an `exit` directive SHALL complete only the current iteration's body.
+After each completed iteration, if the task declares `while`, the system SHALL evaluate `while` against the accumulator, with the current loop variables and `$context` bound, and the result SHALL be a boolean. A false result SHALL stop iteration before the next element and leave the accumulator as the task's raw output. `while` SHALL be an expression-only slot; a non-boolean result, a subject that is not JSON, or a malformed program SHALL fail the step as specified for expression slots. An `end` flow directive inside the body SHALL conclude the workflow immediately and skip the `for` task's own `output.as`, `export.as`, and `then`; an `exit` directive SHALL complete only the current iteration's body.
 
 A failure while evaluating `in` or `while`, or in any body step, SHALL fail the workflow exactly once and SHALL NOT continue to later iterations. The `for` task SHALL otherwise pass through the ordinary step pipeline: `if` may skip the whole loop, `input.from` seeds it, and `output.as`, `export.as`, and `then` apply after iteration completes.
 

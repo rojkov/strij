@@ -1,0 +1,28 @@
+load("@protobuf//bazel:cc_proto_library.bzl", "cc_proto_library")
+load("@protobuf//bazel:py_proto_library.bzl", "py_proto_library")
+load("@rules_proto//proto:defs.bzl", "proto_library")
+
+proto_library(
+    name = "pyfunction_proto",
+    srcs = ["pyfunction.proto"],
+    strip_import_prefix = "/api",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//api/common/node:node_proto",
+        "@protobuf//:duration_proto",
+    ],
+)
+
+cc_proto_library(
+    name = "pyfunction_cc_proto",
+    visibility = ["//visibility:public"],
+    deps = [":pyfunction_proto"],
+)
+
+# The generated module path follows the proto import path:
+# `nodeagent.extensions.task_handlers.pyfunction.pyfunction_pb2`.
+py_proto_library(
+    name = "pyfunction_py_pb2",
+    visibility = ["//visibility:public"],
+    deps = [":pyfunction_proto"],
+)

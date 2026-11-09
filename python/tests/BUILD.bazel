@@ -1,0 +1,47 @@
+load("@rules_python//python:defs.bzl", "py_test")
+
+py_test(
+    name = "invocation_test",
+    srcs = ["test_invocation.py"],
+    main = "test_invocation.py",
+    deps = ["//python:strij_lib"],
+)
+
+py_test(
+    name = "runtime_test",
+    srcs = ["test_runtime.py"],
+    main = "test_runtime.py",
+    deps = ["//python:strij_lib"],
+)
+
+py_test(
+    name = "worker_bootstrap_test",
+    srcs = ["test_worker_bootstrap.py"],
+    data = ["//python:worker"],
+    main = "test_worker_bootstrap.py",
+    deps = ["//python:strij_lib"],
+)
+
+py_test(
+    name = "client_runtime_test",
+    srcs = ["test_client_runtime.py"],
+    main = "test_client_runtime.py",
+    tags = ["requires-network"],
+    deps = ["//python:strij_lib"],
+)
+
+# Real processes and the real Python worker. The capability probe in the test
+# skips with an explanatory message when the worker runfiles are unavailable.
+py_test(
+    name = "e2e_pyfunction_test",
+    srcs = ["test_e2e_pyfunction.py"],
+    data = [
+        "//python:worker",
+        "//src/gateway/exe:gateway",
+        "//src/nodeagent/exe:nodeagent",
+    ],
+    main = "test_e2e_pyfunction.py",
+    tags = ["requires-network", "exclusive"],
+    timeout = "moderate",
+    deps = ["//python:strij_lib"],
+)

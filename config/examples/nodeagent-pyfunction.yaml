@@ -1,0 +1,60 @@
+tlv_listener:
+  address: "0.0.0.0"
+  port: 9090
+
+schedulers:
+  # "push" advertises the wire protocol that gateway-side schedulers such as
+  # capability_aware match on; without it the node is not a candidate for
+  # gateway submissions.
+  - extension:
+      name: "push"
+  # One local authority: the bundled default scheduler owns local admission and
+  # forwarding for pyfunction children.
+  - extension:
+      name: "default"
+    local_default: true
+
+pools:
+  - name: "cpu"
+    total: 8
+
+task_handlers:
+  - name: "openworkflow"
+    typed_config:
+      "@type": "type.googleapis.com/strij.extensions.task_handlers.openworkflow.OpenWorkflowTaskHandlerConfig"
+      evaluator:
+        name: "jq"
+  - name: "pyfunction"
+    typed_config:
+      "@type": "type.googleapis.com/strij.extensions.task_handlers.pyfunction.PyFunctionTaskHandlerConfig"
+      capacity:
+        # Number of persistent Python worker processes, and the maximum number
+        # of in-flight pyfunction tasks on this node.
+        concurrency: 4
+      # This python_executable points to venv's python interpreter
+      # Alternatively you can replace with worker_executable to point at the
+      # Bazel launcher (for example the nodeagent runfiles worker). For example:
+      # worker_executable: "./bazel-bin/python/worker"
+      python_executable: "./hacks/venv/bin/python3"
+      worker_module: "strij._worker"
+      python_paths:
+        - "./strij/python"
+      startup_timeout:
+        seconds: 30
+      # Zero disables the task timeout (Ray-like behavior).
+      task_timeout:
+        seconds: 0
+      remote_call_timeout:
+        seconds: 300
+      # Required and must be greater than zero. Every wire frame (including
+      # pickled bodies) is bounded by this value.
+      max_frame_bytes: 8388608
+
+heartbeat_interval:
+  seconds: 5
+
+logging:
+  level: "info"
+  format: "text"
+  output: "stdout"
+  include_source_location: false

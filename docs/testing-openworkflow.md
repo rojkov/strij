@@ -41,7 +41,7 @@ What each target covers:
 | `//test/openworkflow:value_jv_test` | The `Value` ⇄ JSON bridge (`ValueToJv`/`JvToValue`), including `int64` extremes and `1` vs `1.0`. |
 | `artifact_loader_test` | Loading the workflow document from a local artifact: regular/empty files, missing paths, non-regular files (including a FIFO), and the size cap. |
 | `step_data_value_test` | Data-value sniffing: JSON text, non-JSON text, empty input. |
-| `expression_test` | Strict-mode `${ }` recognition, typed-slot validation (wrapped-only), JSON-faithful evaluation, data-chain subject vs a live `$context`, `$input`/`$output` (including their absence from slots that do not bind them), and scalar rendering. |
+| `expression_test` | Strict-mode `${ }` recognition, slot validation (expression-only vs literal-capable), JSON-faithful evaluation, data-chain subject vs a live `$context`, `$input`/`$output` (including their absence from slots that do not bind them), and scalar rendering. |
 | `call_strij_test` | The `with` key set, parameter projection (including `$context`), requirement coercion (incl. rejecting `100M`), reserved call targets. |
 | `interpreter_test` | The frame tree, resumable step loop, reentrancy, stale results, the validation/execution split, fork entry/join (join-all, compete, nested), fail-fast branch failures, seeding from the invocation body, `if` short-circuiting, the `input.from` pipeline, `for` iteration and loop variables, task/document `output.as`, `export.as` context updates (merge/replace, skipped/failed steps, composite tasks, opaque/non-object failures, and the fork-branch rejection), and the embedded `run.workflow` profile (awaited/detached execution, inline completion, cancellation, abandonment, recursive validation, nesting limits, and unsupported shapes). |
 | `openworkflow_task_handler_test` | The handler/factory, function reference resolution and artifact loading, failure-status classification, connection teardown, and the nested-workflow runner (start/completion, cancel, detached ownership, recursive embedding, depth limit, and detached runs outliving a reaped parent). |
@@ -271,13 +271,20 @@ How the result is produced, step by step:
    `{"echo":{"echo":{"name":"world"}}}`.
 4. The workflow completes and its final result is that last value.
 
-### Conditions, input.from, and output.as
+### Conditions, value construction, and output.as
 
-The expression-typed slots — a task's `if`, `input.from`, `output.as`, and
-`export.as`, and the document's `input.from` and `output.as` — accept only a
+The expression-only slots — a task's `if`, a switch case's `when`, a `for`
+task's `while`, and the string form of a `for` task's `in` — accept only a
 whole-value `${ }` expression. Bare text in one of these slots (for example
-`if: .enabled`) is a malformed document, not a literal value. Literal-capable
-slots such as a call's `with` values keep their literal-text rule.
+`if: .enabled`) is a malformed document, not a literal value.
+
+The value-construction slots — a task's `input.from`, `output.as`, and
+`export.as`, the document's `input.from` and `output.as` — are literal-capable,
+like a call's `with` values and a `set` task's data. Object members and scalar
+strings are expressions only when wholly wrapped in `${ }`, and a bare string
+stays literal text. A partially wrapped string such as `job-${ .id }` remains a
+malformed document. A literal-only slot is evaluated without a JSON subject;
+only a slot that contains an expression requires its subject to be JSON.
 
 This document (the same shape as
 `InputTransformConditionAndOutputShapeCompose`) skips its first step, transforms
@@ -321,8 +328,9 @@ With the invocation body `{"run":false,"id":7}`, `skipped` is not submitted,
 `input.from` results are JSON-faithful. A string result is a JSON string, so
 if a step declares `input.from: '${ .name }'` and the body is
 `{"name":"world"}`, the child receives `"world"` (with quotes), not `world`.
-The same rule applies to the document's `input.from`: a string-valued seed
-keeps its quotes in the data chain.
+A bare literal root string is quoted the same way: `input.from: hello` yields
+the body `"hello"`. The same rule applies to the document's `input.from`: a
+string-valued seed keeps its quotes in the data chain.
 
 ### Exporting workflow context
 
@@ -640,7 +648,7 @@ Use `in: '${ .values }'` with an expression slot, or an inline array such as
 and only wrapped strings are evaluated.
 
 `while` is checked after each completed iteration against the accumulator, with
-that iteration's loop variables and `$context` bound. It is an expression-typed
+that iteration's loop variables and `$context` bound. It is an expression-only
 slot and must yield a boolean; `false` stops before the next element:
 
 ```yaml
@@ -776,6 +784,65 @@ This returns `{"hello":"world"}`.
 > `push`'s local `Schedule` is unimplemented — so a locally-submitted `echo`
 > child would be refused. `piped_executable` is unclaimed and falls through to
 > the `default` local scheduler, which runs it.
+
+### Calling a trivial pyfunction child
+
+A workflow can submit any task type through `call: strij`; the child does not
+have to be `piped_executable`. This document submits one `pyfunction` child
+using its reference/JSON mode with inline Python code. Save it as
+`/tmp/openworkflow-pyfunction.yaml`:
+
+```yaml
+document:
+  dsl: '1.0.3'
+  namespace: docs
+  name: openworkflow-pyfunction
+  version: '0.1.0'
+do:
+  - double:
+      call: strij
+      input:
+        from:
+          python_code: |
+            def main(x):
+              return x * 2
+          input: ${ .value }
+      with:
+        type: pyfunction
+        parameters:
+          function: embedded:main
+        requirements:
+          cpu: 1
+```
+
+The node must load both the `openworkflow` and `pyfunction` task handlers. The
+default `config/examples/nodeagent.yaml` loads `openworkflow` but not
+`pyfunction`; add the `pyfunction` entry from
+`config/examples/nodeagent-pyfunction.yaml` (with a working worker) before
+starting the nodeagent. The gateway configuration is unchanged.
+
+Submit the workflow with the input value in the invocation body:
+
+```bash
+curl -sS -X POST http://127.0.0.1:8081/tasks/openworkflow \
+  -H 'content-type: application/json' \
+  -H 'x-strij-function: /tmp/openworkflow-pyfunction.yaml' \
+  --data-binary '{"value":21}'
+```
+
+Expected response body:
+
+```text
+42
+```
+
+The step's `input.from` builds the child body
+`{"python_code":"def main(value):\n    return value * 2","input":21}`. Here
+`python_code` is literal text and `input` is the only expression. The
+`function: embedded:main` parameter selects `pyfunction`'s reference/JSON mode,
+executes the embedded `main`, and returns its JSON result. The workflow
+completes with that child result as its final value. (The `\n` stays escaped in
+the YAML literal block and is decoded by the expression's JSON string.)
 
 ## 4. Manual fork workflows
 

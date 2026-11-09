@@ -59,11 +59,19 @@ strij_cc_library(
         "//src/nodeagent/extensions/task_handlers/echo:echo_task_handler_lib",
         "//src/nodeagent/extensions/task_handlers/openworkflow:openworkflow_task_handler_lib",
         "//src/nodeagent/extensions/task_handlers/piped_executable:piped_executable_task_handler_lib",
+        "//src/nodeagent/extensions/task_handlers/pyfunction:pyfunction_task_handler_lib",
     ],
 )
 
 strij_nodeagent_binary(
     name = "nodeagent",
+    data = [
+        # The worker launcher, its vendored protobuf modules, and the protobuf
+        # runtime travel through runfiles, so a deployed nodeagent can run
+        # pyfunction without a host pip install.
+        "//python:worker",
+        "@protobuf//:protobuf_python",
+    ],
     extensions = [":bundled_extensions"],
     visibility = ["//visibility:public"],
 )
