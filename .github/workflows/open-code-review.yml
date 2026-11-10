@@ -1,0 +1,35 @@
+name: AI Code Review
+
+on:
+  # pull_request_target (not pull_request) so secrets and a write-scoped token
+  # are available for fork PRs. Safe here: the action only reads the diff and
+  # never executes PR code.
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: ocr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Run OpenCodeReview (DeepSeek)
+        uses: alibaba/open-code-review@main
+        with:
+          llm_url: https://api.deepseek.com/chat/completions
+          llm_auth_token: ${{ secrets.DEEPSEEK_API_KEY }}
+          llm_model: deepseek-chat
+          llm_use_anthropic: 'false'
+          # Default is '{"thinking": {"type": "disabled"}}' (Anthropic-shaped).
+          # DeepSeek doesn't use it, so send an empty body instead.
+          llm_extra_body: '{}'
+          sticky_summary: 'true'
+          incremental: 'true'
+          # rule: ./.opencodereview/rule.json
