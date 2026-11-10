@@ -2,6 +2,7 @@
 
 #include <sys/types.h>
 
+#include <atomic>
 #include <vector>
 
 #include "absl/base/thread_annotations.h"
@@ -20,6 +21,7 @@ public:
   // Dispatcher interface
   void Run() override;
   void Shutdown() override;
+  auto IsShuttingDown() const -> bool override;
   void SubmitCommand(Command cmd) override;
   void PrepareAcceptMultishot(Completable* receiver, uint8_t tag, int fdesc) override;
   void PrepareRead(Completable* receiver, uint8_t tag, int fdesc, std::span<std::byte> buf,
@@ -40,6 +42,7 @@ private:
   struct io_uring ring_{};
   std::vector<Command> command_queue_;
   bool is_finishing_{false};
+  std::atomic<bool> is_shutting_down_{false};
   absl::Mutex event_fd_mtx_;
   int event_fd_ ABSL_GUARDED_BY(event_fd_mtx_){-1}; // for waking up the event loop
   uint64_t event_fd_val_{0};

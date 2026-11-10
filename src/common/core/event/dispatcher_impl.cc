@@ -76,9 +76,17 @@ void DispatcherImpl::Run() {
 }
 
 void DispatcherImpl::Shutdown() {
+  // Set before waking the loop so a completion handler running in the same
+  // batch as the wakeup already observes the shutdown.
+  is_shutting_down_.store(true, std::memory_order_release);
+
   absl::MutexLock lock(event_fd_mtx_);
   uint64_t val = 1;
   write(event_fd_, &val, sizeof(val));
+}
+
+auto DispatcherImpl::IsShuttingDown() const -> bool {
+  return is_shutting_down_.load(std::memory_order_acquire);
 }
 
 void DispatcherImpl::SubmitCommand(Command cmd) { command_queue_.push_back(cmd); }

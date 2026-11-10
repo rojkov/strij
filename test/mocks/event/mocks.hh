@@ -10,6 +10,7 @@ class MockDispatcher : public Dispatcher {
 public:
   MOCK_METHOD(void, Run, (), (override));
   MOCK_METHOD(void, Shutdown, (), (override));
+  MOCK_METHOD(bool, IsShuttingDown, (), (const, override));
   MOCK_METHOD(void, SubmitCommand, (Command cmd), (override));
   MOCK_METHOD(void, PrepareAcceptMultishot, (Completable * io, uint8_t tag, int fd), (override));
   MOCK_METHOD(void, PrepareRead,
