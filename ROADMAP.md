@@ -14,8 +14,8 @@ The `2026-08-19-node-capabilities-and-scheduling` change has landed the node-man
   - Within a single io_uring CQE batch, a handler may submit a write SQE (e.g. delivering a task result to an HTTP connection) and then the same batch contains the EOF for that connection, closing the fd. The stale SQE is submitted on the next `io_uring_submit_and_wait`, causing the kernel to deliver SIGPIPE. Currently masked by `signal(SIGPIPE, SIG_IGN)` in `gateway.cc` — the write completion handler already treats `res <= 0` as an error and tears down the connection. The proper fix is to defer SQE submission: queue write data in `Connection::Write()` without calling `PrepareWrite`, and submit all pending writes after the CQE batch is drained. The same race applies to node disconnect paths where `NotifyNodeDisconnected` writes to HTTP connections. Affects both gateway and nodeagent.
   - Source: SIGPIPE crash reported during HTTP client drop with in-flight task; `common/core/io/connection.cc:60`, `src/common/core/event/dispatcher_impl.cc:47`.
 
-- [ ] **`TcpListener`: guard against shutdown in progress**
-  - Accept path does not check whether shutdown is underway.
+- [x] **`TcpListener`: guard against shutdown in progress**
+  - Landed: `Dispatcher::IsShuttingDown()` reports a requested shutdown (set before the loop is woken), and `TcpListener` drops an accept completion while it is set — closing the accepted fd and skipping the connection factory instead of retaining an inert `Connection` whose read would never be submitted.
   - Source: TODO `common/core/io/tcp_listener.cc:56`.
 
 - [ ] **Resolve whether `FactoryContext::Logger()` is needed**

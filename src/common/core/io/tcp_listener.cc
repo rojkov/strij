@@ -3,6 +3,7 @@
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
+#include <unistd.h>
 
 #include <algorithm>
 #include <cerrno>
@@ -49,6 +50,17 @@ TcpListener::TcpListener(event::DispatcherSharedPtr dispatcher, uint32_t port,
 }
 
 void TcpListener::HandleCompletion(uint8_t /*tag*/, int res, uint32_t flags) {
+  if (dispatcher_->IsShuttingDown()) {
+    // The loop is draining its final completion batch. A connection accepted
+    // now would never get its read submitted, so drop it (and its fd) instead
+    // of retaining an inert Connection in owned_connections_.
+    if (res >= 0) {
+      ::close(res);
+    }
+    LOG_DEBUG("dropping accept completion (res={}, flags={}) during shutdown", res, flags);
+    return;
+  }
+
   if (res < 0) {
     LOG_ERROR("unable to accept connection");
     return;
@@ -58,7 +70,6 @@ void TcpListener::HandleCompletion(uint8_t /*tag*/, int res, uint32_t flags) {
 
   if ((flags & IORING_CQE_F_MORE) == 0) {
     // If this flag is missing, the multi-shot was cancelled or failed.
-    // TODO: perhaps check for shutdown being in progress.
     LOG_WARNING("no more multishot accepts. Were they canceled?");
   }
 

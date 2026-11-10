@@ -24,6 +24,11 @@ public:
 
   virtual void Run() PURE;
   virtual void Shutdown() PURE;
+  // True once Shutdown() has been requested, possibly before the loop has
+  // finished draining the current completion batch. Completion handlers use
+  // it to avoid starting new work (e.g. accepting a connection) that the
+  // teardown would discard before it makes progress.
+  virtual auto IsShuttingDown() const -> bool PURE;
   virtual void SubmitCommand(Command cmd) PURE;
   // tag is interpreted by the receiver Completable.
   virtual void PrepareAcceptMultishot(Completable* io, uint8_t tag, int fd) PURE;
